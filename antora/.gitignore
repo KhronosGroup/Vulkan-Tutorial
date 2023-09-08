@@ -1,0 +1,4 @@
+modules/ROOT/attachments/**
+modules/ROOT/images/**
+modules/ROOT/pages/**
+!modules/ROOT/pages/index.adoc

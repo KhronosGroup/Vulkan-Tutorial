@@ -1,0 +1,9 @@
+# Copyright (c) 2023 Sascha Willems
+# SPDX-License-Identifier: CC-BY-SA-4.0
+
+name: tutorial
+title: Khronos Vulkan Tutorial
+version: latest
+start_page: 00_Introduction.adoc
+nav:
+- modules/ROOT/nav.adoc

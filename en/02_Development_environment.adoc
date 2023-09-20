@@ -31,7 +31,7 @@ If you receive an error message then ensure that your drivers are up-to-date, in
 See the xref:00_Introduction.adoc[introduction chapter] for links to drivers from the major vendors.
 
 There is another program in this directory that will be useful for development.
-The `glslangValidator.exe` and `glslc.exe` programs will be used to compile shaders from the human-readable https://en.wikipedia.org/wiki/OpenGL_Shading_Language[GLSL] to bytecode.
+The `glslangValidator.exe` and `glslc.exe` programs will be used to compile shaders from the human-readable https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.html[GLSL] to bytecode.
 We'll cover this in depth in the xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/01_Shader_modules.adoc[shader modules] chapter.
 The `Bin` directory also contains the binaries of the Vulkan loader and the validation layers, while the `Lib` directory contains the libraries.
 
@@ -263,7 +263,7 @@ sudo pacman -S glm
 
 === Shader Compiler
 
-We have just about all we need, except we'll want a program to compile shaders from the human-readable  https://en.wikipedia.org/wiki/OpenGL_Shading_Language[GLSL] to bytecode.
+We have just about all we need, except we'll want a program to compile shaders from the human-readable https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.html[GLSL] to bytecode.
 
 Two popular shader compilers are Khronos Group's `glslangValidator` and Google's `glslc`.
 The latter has a familiar GCC- and Clang-like usage, so we'll go with that: on Ubuntu, download Google's https://github.com/google/shaderc/blob/main/downloads.md[unofficial binaries] and copy `glslc` to your `/usr/local/bin`.

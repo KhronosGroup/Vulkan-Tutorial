@@ -439,7 +439,7 @@ You don't have to create an account, but it will give you access to some additio
 
 image::/images/vulkan_sdk_download_buttons.png[]
 
-The SDK version for MacOS internally uses https://moltengl.com/[MoltenVK].
+The SDK version for MacOS internally uses link:https://github.com/KhronosGroup/MoltenVK[MoltenVK].
 There is no native support for Vulkan on MacOS, so what MoltenVK does is actually act as a layer that translates Vulkan API calls to Apple's Metal graphics framework.
 With this you can take advantage of debugging and performance benefits of Apple's Metal framework.
 

@@ -1,0 +1,36 @@
+// Copyright 2023 The Khronos Group, Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Khronos Vulkan^®^ Tutorial Contributing
+
+Contributions to this repository are welcome and anyone is free to contribute. But please read the following guidelines on how to contribute.
+
+== License
+
+The contents of this repository are licensed as https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0], unless stated otherwise.
+By contributing to this repository, you agree to license your contributions to the public under that same license.
+
+== Ways to Contribute
+
+* Small fixes like typos, grammar errors, or other minor changes
+** Feel free to create a PR, it'll usually get merged quickly
+* Adding new content or making larger changes
+** We are mostly driving forward development within an internal Khronos Group, any larger external contribution should be coordinated beforehand. So if you plan on doing a larger change, please open a new issue to inform us up-front and we'll get back to you and coordinate this
+
+== Technical background
+
+Before contributing, make sure you read through these to understand how the tutorial works and why it's structured the way it is.
+
+=== Antora site generator
+
+The tutorial is meant to be rendered as part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project site]. That project makes use of link:https://antora.org/[Antora], a multi-repository documentation site generator.
+
+As such the tutorial is not meant to work or be viewed outside of that documentation site. That means things that may seem broken in e.g. github's preview (like missing images) are fine due to how Antora works.
+
+Any change or fix needs to consider this and make sure that it follows Antora's requirements. This is relevant for the content as well as the structure (see link:https://docs.antora.org/antora/latest/standard-directories/[Antora standard directories]). So if you e.g. want to add screenshots, they need to go into that folder structure.
+
+=== Markup format
+
+The content's of the tutorial are written in Asciidoc (adoc file extension). New content or changes to existing content need comply with this format. If you are new to Asciidoc, the link:https://docs.antora.org/antora/latest/asciidoc/asciidoc/[Antora's Asciidoc primer] is a good starting point.
+
+Similar to other markdown languages, most development environments support live preview for Asciidoc. For Visual Studio Code, link:https://marketplace.visualstudio.com/items?itemName=asciidoctor.asciidoctor-vscode[this extension] is recommended. It's advised to set the `asciidoc.preview.useEditorStyle` extension setting to `false` to get a preview look similar to the Antora site and also enable the extension's `asciidoc.antora.enableAntoraSupport` option.

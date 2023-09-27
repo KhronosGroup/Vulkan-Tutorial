@@ -478,7 +478,7 @@ brew install glm
 
 Now that all the dependencies are installed we can set up a basic Xcode project for Vulkan.
 Most of the instructions here are essentially a lot of "plumbing" so we can get all the dependencies linked to the project.
-Also, keep in mind that during the following instructions whenever we mention the folder `vulkansdk` we are refering to the folder where you extracted the Vulkan SDK.
+Also, keep in mind that during the following instructions whenever we mention the folder `vulkansdk` we are referring to the folder where you extracted the Vulkan SDK.
 
 Start Xcode and create a new Xcode project.
 On the window that will open select Application > Command Line Tool.

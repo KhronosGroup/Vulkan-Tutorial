@@ -12,11 +12,11 @@ A descriptor is a way for shaders to freely access resources like buffers and im
 We're going to set up a buffer that contains the transformation matrices and have the vertex shader access them through a descriptor.
 Usage of descriptors consists of three parts:
 
-* Specify a descriptor layout during pipeline creation
+* Specify a descriptor set layout during pipeline creation
 * Allocate a descriptor set from a descriptor pool
 * Bind the descriptor set during rendering
 
-The _descriptor layout_ specifies the types of resources that are going to be accessed by the pipeline, just like a render pass specifies the types of attachments that will be accessed.
+The _descriptor set layout_ specifies the types of resources that are going to be accessed by the pipeline, just like a render pass specifies the types of attachments that will be accessed.
 A _descriptor set_ specifies the actual buffer or image resources that will be bound to the descriptors, just like a framebuffer specifies the actual image views to bind to render pass attachments.
 The descriptor set is then bound for the drawing commands just like the vertex buffers and framebuffer.
 
@@ -80,7 +80,7 @@ void main() {
 
 Note that the order of the `uniform`, `in` and `out` declarations doesn't matter.
 The `binding` directive is similar to the `location` directive for attributes.
-We're going to reference this binding in the descriptor layout.
+We're going to reference this binding in the descriptor set layout.
 The line with `gl_Position` is changed to use the transformations to compute the final position in clip coordinates.
 Unlike the 2D triangles, the last component of the clip coordinates may not be `1`, which will result in a division when converted to the final normalized device coordinates on the screen.
 This is used in perspective projection as the _perspective division_ and is essential for making closer objects look larger than objects that are further away.
@@ -194,7 +194,7 @@ pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
 You may be wondering why it's possible to specify multiple descriptor set layouts here, because a single one already includes all of the bindings.
 We'll get back to that in the next chapter, where we'll look into descriptor pools and descriptor sets.
 
-The descriptor layout should stick around while we may create new graphics pipelines i.e.
+The descriptor set layout should stick around while we may create new graphics pipelines i.e.
 until the program ends:
 
 [,c++]
@@ -392,4 +392,4 @@ We may look at these in a future chapter.
 
 In the next chapter we'll look at descriptor sets, which will actually bind the ``VkBuffer``s to the uniform buffer descriptors so that the shader can access this transformation data.
 
-link:/attachments/22_descriptor_layout.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]
+link:/attachments/22_descriptor_set_layout.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

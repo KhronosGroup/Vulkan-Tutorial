@@ -4,12 +4,6 @@ project (VulkanTutorial)
 
 find_package (Vulkan REQUIRED)
 
-set(STB_INCLUDEDIR "" CACHE PATH "Path to the stb include directory")
-set(GLFW_INCLUDEDIR "" CACHE PATH "Path to the GLFW include directory")
-set(GLFW_LIBRARY "" CACHE PATH "Path to the GLFW library file")
-set(GLM_INCLUDEDIR "" CACHE PATH "Path to the GLM include directory")
-set(TINYOBJ_INCLUDEDIR "" CACHE FILEPATH "Path to the TinyObj include directory")
-
 # stb
 find_path(STB_INCLUDE_DIR NAMES "stb_image.h" PATHS "/usr/include/stb" "C:/Vulkan/stb")
 if (NOT STB_INCLUDE_DIR)
@@ -26,10 +20,16 @@ else()
   message(STATUS "GLFW found in ${GLFW_INCLUDE_DIR}")
 endif()
 
-# @todo: cross-platform glfw library selection
-# if (NOT GLFW_LIBRARY)
-#   message (FATAL_ERROR "glfw3 library not found")
-# endif ()
+if (UNIX)
+  find_package(glfw3 3.3 REQUIRED)
+  MESSAGE(STATUS "GLFW: ${GLFW_LIBRARIES}")
+else ()
+  find_library(GLFW_LIBRARIES NAMES glfw3 glfw)
+endif ()
+if (NOT GLFW_LIBRARIES)
+  message (FATAL_ERROR "glfw3 library not found")
+endif ()
+
 
 # glm
 find_path(GLM_INCLUDE_DIR NAMES "glm/glm.hpp" PATHS "/usr/include" "C:/Vulkan/glm")
@@ -77,7 +77,7 @@ function (add_chapter CHAPTER_NAME)
   set_target_properties (${CHAPTER_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_BINARY_DIR}/${CHAPTER_NAME}>)
   set_target_properties (${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY $<1:${CMAKE_BINARY_DIR}/${CHAPTER_NAME}>)
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 17)
-  target_link_libraries (${CHAPTER_NAME} Vulkan::Vulkan ${GLFW_LIBRARY})
+  target_link_libraries (${CHAPTER_NAME} Vulkan::Vulkan ${GLFW_LIBRARIES})
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDE_DIR} ${GLFW_INCLUDE_DIR} ${GLM_INCLUDE_DIR} ${TINYOBJ_INCLUDE_DIR})
 
   if (DEFINED CHAPTER_SHADER)

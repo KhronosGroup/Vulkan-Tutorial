@@ -35,7 +35,7 @@ The next two sections will cover the GLSL code of each of those and after that I
 == Vertex shader
 
 The vertex shader processes each incoming vertex.
-It takes its attributes, like world position, color, normal and texture coordinates as input.
+It takes its attributes, like model space position, color, normal and texture coordinates as input.
 The output is the final position in clip coordinates and the attributes that need to be passed on to the fragment shader, like color and texture coordinates.
 These values will then be interpolated over the fragments by the rasterizer to produce a smooth gradient.
 

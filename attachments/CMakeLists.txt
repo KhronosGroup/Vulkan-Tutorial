@@ -58,8 +58,15 @@ function (add_shaders_target TARGET)
     OUTPUT ${SHADERS_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
     )
+  set (SHADERS ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv)
+  # Some chapters may have compute shaders in addition to vertex and fragment shaders,
+  # so we conditionally check this and add them to the target
+  string(FIND "${SHADER_SOURCES}" "${CHAPTER_SHADER}.comp" COMPUTE_SHADER_INDEX)
+  if (${COMPUTE_SHADER_INDEX} GREATER -1)  
+    set (SHADERS ${SHADERS} ${SHADERS_DIR}/comp.spv)
+  endif()    
   add_custom_command (
-    OUTPUT ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv
+    OUTPUT ${SHADERS}
     COMMAND glslang::validator
     ARGS --target-env vulkan1.0 ${SHADER_SOURCES} --quiet
     WORKING_DIRECTORY ${SHADERS_DIR}
@@ -67,7 +74,7 @@ function (add_shaders_target TARGET)
     COMMENT "Compiling Shaders"
     VERBATIM
     )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv)
+  add_custom_target (${TARGET} DEPENDS ${SHADERS})
 endfunction ()
 
 function (add_chapter CHAPTER_NAME)

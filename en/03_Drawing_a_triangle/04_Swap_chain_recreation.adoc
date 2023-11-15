@@ -58,7 +58,7 @@ We'll move the cleanup code of all objects that are recreated as part of a swap 
 ----
 void cleanupSwapChain() {
     for (auto framebuffer : swapChainFramebuffers) {
-        vvkDestroyFramebuffer(device, framebuffer, nullptr);
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
 
     for (auto imageView : swapChainImageViews) {

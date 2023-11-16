@@ -192,7 +192,14 @@ You'll also need `make`.
 
 === Vulkan Packages
 
-The most important components you'll need for developing Vulkan applications on Linux are the Vulkan loader, validation layers, and a couple of command-line utilities to test whether your machine is Vulkan-capable:
+LunarG provides the Vulkan SDK for 64-bit Linux distribution. Installation depends on your distribution and installation:
+
+- link::https://vulkan.lunarg.com/doc/view/latest/linux/getting_started_ubuntu.html[Getting Started with the Ubuntu Vulkan SDK]
+- link::https://vulkan.lunarg.com/doc/view/latest/linux/getting_started.html[Getting Started with the Linux Tarball Vulkan SDK]
+
+NOTE: Installing the SDK via the official guides from LunarG is the preferred way. This will install all required tools and components and also makes them globally available via the path environment variable.
+
+If your distribution isn't supported you can try to install the required SDK components used in this tutorial from different sources, but you may need to adjust some paths that are used in this tutorial to make things work:
 
 * `sudo apt install vulkan-tools` or `sudo dnf install vulkan-tools`: Command-line utilities, most importantly `vulkaninfo` and `vkcube`.
 Run these to confirm your machine supports Vulkan.
@@ -200,8 +207,6 @@ Run these to confirm your machine supports Vulkan.
 The loader looks up the functions in the driver at runtime, similarly to GLEW for OpenGL - if you're familiar with that.
 * `sudo apt install vulkan-validationlayers-dev spirv-tools` or `sudo dnf install mesa-vulkan-devel vulkan-validation-layers-devel`: Installs the standard validation layers and required SPIR-V tools.
 These are crucial when debugging Vulkan applications, and we'll discuss them in the upcoming chapter.
-
-On Arch Linux, you can run `sudo pacman -S vulkan-devel` to install all the required tools above.
 
 If installation was successful, you should be all set with the Vulkan portion.
 Remember to run  `vkcube` and ensure you see the following pop up in a window:

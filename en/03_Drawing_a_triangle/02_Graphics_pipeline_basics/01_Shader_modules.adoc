@@ -205,8 +205,8 @@ Create a `compile.bat` file with the following contents:
 
 [,bash]
 ----
-C:/VulkanSDK/x.x.x.x/Bin/glslc.exe shader.vert -o vert.spv
-C:/VulkanSDK/x.x.x.x/Bin/glslc.exe shader.frag -o frag.spv
+%VULKAN_SDK%/Bin/glslc.exe shader.vert -o vert.spv
+%VULKAN_SDK%/Bin/glslc.exe shader.frag -o frag.spv
 pause
 ----
 
@@ -219,11 +219,12 @@ Create a `compile.sh` file with the following contents:
 
 [,bash]
 ----
-/home/user/VulkanSDK/x.x.x.x/x86_64/bin/glslc shader.vert -o vert.spv
-/home/user/VulkanSDK/x.x.x.x/x86_64/bin/glslc shader.frag -o frag.spv
+glslc shader.vert -o vert.spv
+glslc shader.frag -o frag.spv
 ----
 
-Replace the path to `glslc` with the path to where you installed the Vulkan SDK.
+NOTE: If you have installed the Vulkan SDK tools like `glslc` are added to the path and there is no need to explicitly call them from a given path. If you have manually installed glslc you may need to prepend it's path to make this work.
+
 Make the script executable with `chmod +x compile.sh` and run it.
 
 *End of platform-specific instructions*

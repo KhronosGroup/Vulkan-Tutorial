@@ -38,6 +38,8 @@ The `Bin` directory also contains the binaries of the Vulkan loader and the vali
 Lastly, there's the `Include` directory that contains the Vulkan headers.
 Feel free to explore the other files, but we won't need them for this tutorial.
 
+The installer also sets the system environment variable `VULKAN_SDK` to the directory where the SDK is installed. That means we can easily access it's folder by using `%VULKAN_SDK%` instead of having to explicitly specify the versioned SDK folder names. This also makes updating to a new SDK dead simple, as the installer updates that variable to point at the new SDK instead.
+
 === GLFW
 
 As mentioned before, Vulkan by itself is a platform agnostic API and does not include tools for creating a window to display the rendered results.
@@ -47,8 +49,9 @@ There are other libraries available for this purpose, like https://www.libsdl.or
 You can find the latest release of GLFW on the http://www.glfw.org/download.html[official website].
 In this tutorial we'll be using the 64-bit binaries, but you can of course also choose to build in 32 bit mode.
 In that case make sure to link with the Vulkan SDK binaries in the `Lib32` directory instead of `Lib`.
-After downloading it, extract the archive to a convenient location.
-I've chosen to create a `Libraries` directory in the Visual Studio directory under documents.
+After downloading it, extract the archive to a convenient location like `C:\Vulkan-Tutorial`.
+
+Extract glfw there so that you have a path called `C:\Vulkan-Tutorial\glfw` with contents similar to this:
 
 image::/images/glfw_directory.png[]
 
@@ -57,8 +60,13 @@ image::/images/glfw_directory.png[]
 Unlike DirectX 12, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
 http://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
 
-GLM is a header-only library, so just download the https://github.com/g-truc/glm/releases[latest version] and store it in a convenient location.
-You should have a directory structure similar to the following now:
+GLM is a header-only library, so just download the https://github.com/g-truc/glm/releases[latest version] and store it in a convenient location like `C:\Vulkan-Tutorial`.
+
+Extract glm there so that you have a folder called `C:\Vulkan-Tutorial\glm` with contents similar to this:
+
+image::/images/glm_directory.png[]
+
+After setting up glfw and glm, you should now have a directory structure similar to the following:
 
 image::/images/library_directory.png[]
 
@@ -147,6 +155,8 @@ image::/images/vs_link_settings.png[]
 And add the locations of the object files for Vulkan and GLFW:
 
 image::/images/vs_link_dirs.png[]
+
+NOTE: The GLFW folder you need to select depends on the Visual Studio version you are using. If you're using Visual Studio 2022 you need to select the `lib-vc2022` folder and if you e.g. use Visual Studio 2017 you select the `lib-vc2017` folder, etc.
 
 Go to `+Linker -> Input+` and press `+<Edit...>+` in the `Additional Dependencies` dropdown box.
 

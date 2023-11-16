@@ -194,8 +194,8 @@ You'll also need `make`.
 
 LunarG provides the Vulkan SDK for 64-bit Linux distribution. Installation depends on your distribution and installation:
 
-- link::https://vulkan.lunarg.com/doc/view/latest/linux/getting_started_ubuntu.html[Getting Started with the Ubuntu Vulkan SDK]
-- link::https://vulkan.lunarg.com/doc/view/latest/linux/getting_started.html[Getting Started with the Linux Tarball Vulkan SDK]
+- link:https://vulkan.lunarg.com/doc/view/latest/linux/getting_started_ubuntu.html[Getting Started with the Ubuntu Vulkan SDK]
+- link:https://vulkan.lunarg.com/doc/view/latest/linux/getting_started.html[Getting Started with the Linux Tarball Vulkan SDK]
 
 NOTE: Installing the SDK via the official guides from LunarG is the preferred way. This will install all required tools and components and also makes them globally available via the path environment variable.
 

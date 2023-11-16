@@ -158,20 +158,20 @@ add_chapter (27_depth_buffering
 
 add_chapter (28_model_loading
   SHADER 27_shader_depth
-  MODELS ../resources/viking_room.obj
-  TEXTURES ../resources/viking_room.png
+  MODELS ../attachments/viking_room.obj
+  TEXTURES ../attachments/viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (29_mipmapping
   SHADER 27_shader_depth
-  MODELS ../resources/viking_room.obj
-  TEXTURES ../resources/viking_room.png
+  MODELS ../attachments/viking_room.obj
+  TEXTURES ../attachments/viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (30_multisampling
   SHADER 27_shader_depth
-  MODELS ../resources/viking_room.obj
-  TEXTURES ../resources/viking_room.png
+  MODELS ../attachments/viking_room.obj
+  TEXTURES ../attachments/viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (31_compute_shader

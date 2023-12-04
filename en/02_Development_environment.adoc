@@ -565,6 +565,7 @@ On Xcode toolbar go to `Product` > `Scheme` > `+Edit Scheme...+`, and in the `Ar
 
 * VK_ICD_FILENAMES = `vulkansdk/macOS/share/vulkan/icd.d/MoltenVK_icd.json`
 * VK_LAYER_PATH = `vulkansdk/macOS/share/vulkan/explicit_layer.d`
+* VK_DRIVER_FILES = `vulkansdk/macOS/share/vulkan/icd.d/MoltenVK_icd.json`
 
 It should look like so:
 

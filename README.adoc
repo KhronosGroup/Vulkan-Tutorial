@@ -6,7 +6,7 @@ The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.co
 
 == About
 
-This repository hosts the contents of the link:https://learn.vulkan.org/vulkan-tutorial[Khronos Vulkan Tutorial]. The tutorial is part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project].
+This repository hosts the contents of the link:https://docs.vulkan.org/tutorial/latest[Khronos Vulkan Tutorial]. The tutorial is part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project].
 
 == License
 

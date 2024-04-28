@@ -41,10 +41,10 @@ Feel free to explore the other files, but we won't need them for this tutorial.
 === GLFW
 
 As mentioned before, Vulkan by itself is a platform agnostic API and does not include tools for creating a window to display the rendered results.
-To benefit from the cross-platform advantages of Vulkan and to avoid the horrors of Win32, we'll use the http://www.glfw.org/[GLFW library] to create a window, which supports Windows, Linux and MacOS.
+To benefit from the cross-platform advantages of Vulkan and to avoid the horrors of Win32, we'll use the https://www.glfw.org/[GLFW library] to create a window, which supports Windows, Linux and MacOS.
 There are other libraries available for this purpose, like https://www.libsdl.org/[SDL], but the advantage of GLFW is that it also abstracts away some of the other platform-specific things in Vulkan besides just window creation.
 
-You can find the latest release of GLFW on the http://www.glfw.org/download.html[official website].
+You can find the latest release of GLFW on the https://www.glfw.org/download.html[official website].
 In this tutorial we'll be using the 64-bit binaries, but you can of course also choose to build in 32 bit mode.
 In that case make sure to link with the Vulkan SDK binaries in the `Lib32` directory instead of `Lib`.
 After downloading it, extract the archive to a convenient location.
@@ -55,7 +55,7 @@ image::/images/glfw_directory.png[]
 === GLM
 
 Unlike DirectX 12, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
-http://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
+https://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
 
 GLM is a header-only library, so just download the https://github.com/g-truc/glm/releases[latest version] and store it in a convenient location.
 You should have a directory structure similar to the following now:
@@ -210,7 +210,7 @@ It is possible that these libraries are not on the system, if not, you can insta
 === GLFW
 
 As mentioned before, Vulkan by itself is a platform agnostic API and does not include tools for creation a window to display the rendered results.
-To benefit from the cross-platform advantages of Vulkan and to avoid the horrors of X11, we'll use the http://www.glfw.org/[GLFW library] to create a window, which supports Windows, Linux and MacOS.
+To benefit from the cross-platform advantages of Vulkan and to avoid the horrors of X11, we'll use the https://www.glfw.org/[GLFW library] to create a window, which supports Windows, Linux and MacOS.
 There are other libraries available for this purpose, like https://www.libsdl.org/[SDL], but the advantage of GLFW is that it also abstracts away some of the other platform-specific things in Vulkan besides just window creation.
 
 We'll be installing GLFW from the following command:
@@ -237,7 +237,7 @@ sudo pacman -S glfw-wayland # glfw-x11 for X11 users
 === GLM
 
 Unlike DirectX 12, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
-http://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
+https://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
 
 It is a header-only library that can be installed from the `libglm-dev` or `glm-devel` package:
 
@@ -450,7 +450,7 @@ image::/images/cube_demo_mac.png[]
 === GLFW
 
 As mentioned before, Vulkan by itself is a platform agnostic API and does not include tools for creation a window to display the rendered results.
-We'll use the http://www.glfw.org/[GLFW library] to create a window, which supports Windows, Linux and MacOS.
+We'll use the https://www.glfw.org/[GLFW library] to create a window, which supports Windows, Linux and MacOS.
 There are other libraries available for this purpose, like https://www.libsdl.org/[SDL], but the advantage of GLFW is that it also abstracts away some of the other platform-specific things in Vulkan besides just window creation.
 
 To install GLFW on MacOS we will use the Homebrew package manager to get the `glfw` package:
@@ -463,7 +463,7 @@ brew install glfw
 === GLM
 
 Vulkan does not include a library for linear algebra operations, so we'll have to download one.
-http://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
+https://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
 
 It is a header-only library that can be installed from the `glm` package:
 

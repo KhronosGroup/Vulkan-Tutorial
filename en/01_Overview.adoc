@@ -50,7 +50,7 @@ It is possible for a device with Vulkan support to not offer any graphics functi
 === Step 3 - Window surface and swap chain
 
 Unless you're only interested in offscreen rendering, you will need to create a window to present rendered images to.
-Windows can be created with the native platform APIs or libraries like http://www.glfw.org/[GLFW] and https://www.libsdl.org/[SDL].
+Windows can be created with the native platform APIs or libraries like https://www.glfw.org/[GLFW] and https://www.libsdl.org/[SDL].
 We will be using GLFW in this tutorial, but more about that in the next chapter.
 
 We need two more components to actually render to a window: a window surface (VkSurfaceKHR) and a swap chain (VkSwapchainKHR).

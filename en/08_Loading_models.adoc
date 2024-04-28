@@ -274,7 +274,7 @@ bool operator==(const Vertex& other) const {
 ----
 
 A hash function for `Vertex` is implemented by specifying a template specialization for `std::hash<T>`.
-Hash functions are a complex topic, but http://en.cppreference.com/w/cpp/utility/hash[cppreference.com recommends] the following approach combining the fields of a struct to create a decent quality hash function:
+Hash functions are a complex topic, but https://en.cppreference.com/w/cpp/utility/hash[cppreference.com recommends] the following approach combining the fields of a struct to create a decent quality hash function:
 
 [,c++]
 ----

@@ -54,7 +54,7 @@ image::/images/glfw_directory.png[]
 
 === GLM
 
-Unlike DirectX 12, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
+As a pure graphics api, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
 https://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
 
 GLM is a header-only library, so just download the https://github.com/g-truc/glm/releases[latest version] and store it in a convenient location.
@@ -236,7 +236,7 @@ sudo pacman -S glfw-wayland # glfw-x11 for X11 users
 
 === GLM
 
-Unlike DirectX 12, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
+As a pure graphics api, Vulkan does not include a library for linear algebra operations, so we'll have to download one.
 https://glm.g-truc.net/[GLM] is a nice library that is designed for use with graphics APIs and is also commonly used with OpenGL.
 
 It is a header-only library that can be installed from the `libglm-dev` or `glm-devel` package:

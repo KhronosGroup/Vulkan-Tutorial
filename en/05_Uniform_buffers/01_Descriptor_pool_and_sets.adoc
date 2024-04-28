@@ -323,7 +323,6 @@ We can define `GLM_FORCE_DEFAULT_ALIGNED_GENTYPES` right before including GLM:
 
 [,c++]
 ----
-#define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 ----

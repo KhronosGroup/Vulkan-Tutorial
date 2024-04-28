@@ -313,7 +313,6 @@ We need to include two new headers to implement this functionality:
 
 [,c++]
 ----
-#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -321,7 +320,6 @@ We need to include two new headers to implement this functionality:
 ----
 
 The `glm/gtc/matrix_transform.hpp` header exposes functions that can be used to generate model transformations like `glm::rotate`, view transformations like `glm::lookAt` and projection transformations like `glm::perspective`.
-The `GLM_FORCE_RADIANS` definition is necessary to make sure that functions like `glm::rotate` use radians as arguments, to avoid any possible confusion.
 
 The `chrono` standard library header exposes functions to do precise timekeeping.
 We'll use this to make sure that the geometry rotates 90 degrees per second regardless of frame rate.

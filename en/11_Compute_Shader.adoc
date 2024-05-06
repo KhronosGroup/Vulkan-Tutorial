@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Compute Shader
+
 == Introduction
 
 In this bonus chapter we'll take a look at compute shaders.

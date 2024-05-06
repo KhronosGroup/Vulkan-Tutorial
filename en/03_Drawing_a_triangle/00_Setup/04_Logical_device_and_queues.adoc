@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Logical device and queues
+
 == Introduction
 
 After selecting a physical device to use we need to set up a _logical device_ to interface with it.

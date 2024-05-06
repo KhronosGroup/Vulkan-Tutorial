@@ -1,3 +1,5 @@
+= Overview
+
 This chapter will start off with an introduction of Vulkan and the problems it addresses.
 After that we're going to look at the ingredients that are required for the first triangle.
 This will give you a big picture to place each of the subsequent chapters in.

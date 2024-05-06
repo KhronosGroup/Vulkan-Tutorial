@@ -1,3 +1,5 @@
+= Frequently Asked Questions
+
 This page lists solutions to common problems that you may encounter while developing Vulkan applications.
 
 == I get an access violation error in the core validation layer

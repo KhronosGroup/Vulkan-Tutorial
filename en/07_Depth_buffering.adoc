@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Depth Buffering
+
 == Introduction
 
 The geometry we've worked with so far is projected into 3D, but it's still completely flat.

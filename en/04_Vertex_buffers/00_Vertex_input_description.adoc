@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Vertex input description
+
 == Introduction
 
 In the next few chapters, we're going to replace the hardcoded vertex data in the vertex shader with a vertex buffer in memory.

@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Generating Mipmaps
+
 == Introduction
 
 Our program can now load and render 3D models.

@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Staging buffer
+
 == Introduction
 
 The vertex buffer we have right now works correctly, but the memory type that allows us to access it from the CPU may not be the most optimal memory type for the graphics card itself to read from.

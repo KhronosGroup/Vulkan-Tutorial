@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Descriptor layout and buffer
+
 == Introduction
 
 We're now able to pass arbitrary attributes to the vertex shader for each vertex, but what about global variables?

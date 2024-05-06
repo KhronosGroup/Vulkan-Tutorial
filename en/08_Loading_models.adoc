@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Loading Models
+
 == Introduction
 
 Your program is now ready to render textured 3D meshes, but the current geometry in the `vertices` and `indices` arrays is not very interesting yet.

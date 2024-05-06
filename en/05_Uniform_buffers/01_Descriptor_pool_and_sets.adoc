@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Descriptor pool and sets
+
 == Introduction
 
 The descriptor set layout from the previous chapter describes the type of descriptors that can be bound.

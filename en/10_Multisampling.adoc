@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Multisampling
+
 == Introduction
 
 Our program can now load multiple levels of detail for textures which fixes artifacts when rendering objects far away from the viewer.

@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Swap chain recreation
+
 == Introduction
 
 The application we have now successfully draws a triangle, but there are some circumstances that it isn't handling properly yet.

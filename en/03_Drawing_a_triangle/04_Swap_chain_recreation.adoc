@@ -106,7 +106,7 @@ Note that in `chooseSwapExtent` we already query the new window resolution to ma
 That's all it takes to recreate the swap chain!
 However, the disadvantage of this approach is that we need to stop all rendering before creating the new swap chain.
 It is possible to create a new swap chain while drawing commands on an image from the old swap chain are still in-flight.
-You need to pass the previous swap chain to the `oldSwapChain` field in the `VkSwapchainCreateInfoKHR` struct and destroy the old swap chain as soon as you've finished using it.
+You need to pass the previous swap chain to the `oldSwapchain` field in the `VkSwapchainCreateInfoKHR` struct and destroy the old swap chain as soon as you've finished using it.
 
 == Suboptimal or out-of-date swap chain
 

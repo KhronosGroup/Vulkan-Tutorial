@@ -484,7 +484,7 @@ Unless you really need to be able to read these pixels back and get predictable 
 createInfo.oldSwapchain = VK_NULL_HANDLE;
 ----
 
-That leaves one last field, `oldSwapChain`.
+That leaves one last field, `oldSwapchain`.
 With Vulkan it's possible that your swap chain becomes invalid or unoptimized while your application is running, for example because the window was resized.
 In that case the swap chain actually needs to be recreated from scratch and a reference to the old one must be specified in this field.
 This is a complex topic that we'll learn more about in xref:03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[a future chapter].

@@ -484,7 +484,6 @@ image::/images/triangle.png[]
 ____
 This colored triangle may look a bit different from the one you're used to seeing in graphics tutorials.
 That's because this tutorial lets the shader interpolate in linear color space and converts to sRGB color space afterwards.
-See https://medium.com/@heypete/hello-triangle-meet-swift-and-wide-color-6f9e246616d9[this blog post] for a discussion of the difference.
 ____
 
 Yay!

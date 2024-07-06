@@ -36,12 +36,6 @@ jobs:
           node-version: 'latest'
           cache: 'npm'
 
-      - name: "Setup npm"
-        working-directory: ./antora-ui-khronos
-        run: |
-          npm cache clean --force
-          npm install
-
       - name: "Install dependencies"
         run: |
           sudo apt-get update

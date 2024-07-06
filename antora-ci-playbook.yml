@@ -7,9 +7,9 @@ site:
   start_page: tutorial::00_Introduction.adoc
 content:
   sources: 
-  - url: antora
+  - url: ./
     branches: HEAD
-    start_path: ./
+    start_path: antora
 ui: 
   bundle:
     url: ui-bundle.zip

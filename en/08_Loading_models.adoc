@@ -309,4 +309,6 @@ If you check the size of `vertices`, then you'll see that it has shrunk down fro
 That means that each vertex is reused in an average number of ~6 triangles.
 This definitely saves us a lot of GPU memory.
 
+In the xref:09_Generating_Mipmaps.adoc[next chapter] we'll learn about a technique to improve texture rendering.
+
 link:/attachments/28_model_loading.cpp[C{pp} code] / link:/attachments/27_shader_depth.vert[Vertex shader] / link:/attachments/27_shader_depth.frag[Fragment shader]

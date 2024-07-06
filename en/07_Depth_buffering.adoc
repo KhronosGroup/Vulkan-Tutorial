@@ -574,6 +574,6 @@ void cleanupSwapChain() {
 ----
 
 Congratulations, your application is now finally ready to render arbitrary 3D geometry and have it look right.
-We're going to try this out in the next chapter by drawing a textured model!
+We're going to try this out in the xref:08_Loading_models.adoc[next chapter] by drawing a textured model!
 
 link:/attachments/27_depth_buffering.cpp[C{pp} code] / link:/attachments/27_shader_depth.vert[Vertex shader] / link:/attachments/27_shader_depth.frag[Fragment shader]

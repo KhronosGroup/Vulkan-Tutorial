@@ -74,4 +74,6 @@ void createGraphicsPipeline() {
 }
 ----
 
+The xref:./01_Shader_modules.adoc[next chapter] will talk about shader modules required to actually put something on the screen.
+
 link:/attachments/08_graphics_pipeline.cpp[C{pp} code]

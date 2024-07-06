@@ -104,6 +104,6 @@ void cleanup() {
 
 Now run your program to confirm that all this hard work has resulted in a successful pipeline creation!
 We are already getting quite close to seeing something pop up on the screen.
-In the next couple of chapters we'll set up the actual framebuffers from the swap chain images and prepare the drawing commands.
+In the xref:03_Drawing_a_triangle/03_Drawing/00_Framebuffers.adoc[next couple of chapters] we'll set up the actual framebuffers from the swap chain images and prepare the drawing commands.
 
 link:/attachments/12_graphics_pipeline_complete.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

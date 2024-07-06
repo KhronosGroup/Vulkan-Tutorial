@@ -696,6 +696,6 @@ void cleanup() {
 ----
 
 The image now contains the texture, but we still need a way to access it from the graphics pipeline.
-We'll work on that in the next chapter.
+We'll work on that in the xref:./01_Image_view_and_sampler.adoc[next chapter].
 
 link:/attachments/24_texture_image.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

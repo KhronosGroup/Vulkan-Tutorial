@@ -313,6 +313,6 @@ if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 }
 ----
 
-In the next chapter we'll write the code for the main loop, which will acquire an image from the swap chain, record and execute a command buffer, then return the finished image to the swap chain.
+In the xref:./02_Rendering_and_presentation.adoc[next chapter] we'll write the code for the main loop, which will acquire an image from the swap chain, record and execute a command buffer, then return the finished image to the swap chain.
 
 link:/attachments/14_command_buffers.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

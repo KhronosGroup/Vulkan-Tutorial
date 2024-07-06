@@ -237,4 +237,6 @@ The right way to allocate memory for a large number of objects at the same time 
 You can either implement such an allocator yourself, or use the https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator[VulkanMemoryAllocator] library provided by the GPUOpen initiative.
 However, for this tutorial it's okay to use a separate allocation for every resource, because we won't come close to hitting any of these limits for now.
 
+In the xref:./03_Index_buffer.adoc[next chapter] we'll learn about index buffers for vertex reuse.
+
 link:/attachments/20_staging_buffer.cpp[C{pp} code] / link:/attachments/18_shader_vertexbuffer.vert[Vertex shader] / link:/attachments/18_shader_vertexbuffer.frag[Fragment shader]

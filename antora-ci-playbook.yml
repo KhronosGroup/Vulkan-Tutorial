@@ -13,4 +13,3 @@ content:
 ui: 
   bundle:
     url: ui-bundle.zip
-  supplemental_files: ./supplemental-ui

@@ -1,0 +1,19 @@
+# Copyright 2024 Sascha Willems
+# SPDX-License-Identifier: CC-BY-4.0
+# This Antora playbook is used by the CI to make sure the Antora build works
+
+site:
+  title: Vulan Tutorial Antora CI Playboo
+  start_page: tutorial::00_Introduction.adoc
+content:
+  sources: 
+  - url: antora
+    branches: HEAD
+    start_path: ./
+ui: 
+  bundle:
+    url: ui-bundle.zip
+  supplemental_files: ./supplemental-ui
+antora:
+  extensions:
+  - '@antora/lunr-extension'

@@ -521,6 +521,6 @@ Bootstrapping a Vulkan program is definitely a lot of work, but the take-away me
 I recommend you to take some time now to reread the code and build a mental model of the purpose of all of the Vulkan objects in the program and how they relate to each other.
 We'll be building on top of that knowledge to extend the functionality of the program from this point on.
 
-The next chapter will expand the render loop to handle multiple frames in flight.
+The xref:./03_Frames_in_flight.adoc[next chapter] will expand the render loop to handle multiple frames in flight.
 
 link:/attachments/15_hello_triangle.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

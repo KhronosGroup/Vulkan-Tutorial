@@ -567,6 +567,6 @@ swapChainExtent = extent;
 ----
 
 We now have a set of images that can be drawn onto and can be presented to the window.
-The next chapter will begin to cover how we can set up the images as render targets and then we start looking into the actual graphics pipeline and drawing commands!
+The xref:./02_Image_views.adoc[next chapter] will begin to cover how we can set up the images as render targets and then we start looking into the actual graphics pipeline and drawing commands!
 
 link:/attachments/06_swap_chain_creation.cpp[C{pp} code]

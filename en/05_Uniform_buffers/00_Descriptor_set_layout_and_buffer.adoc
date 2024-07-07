@@ -390,6 +390,6 @@ Using a UBO this way is not the most efficient way to pass frequently changing v
 A more efficient way to pass a small buffer of data to shaders are _push constants_.
 We may look at these in a future chapter.
 
-In the next chapter we'll look at descriptor sets, which will actually bind the ``VkBuffer``s to the uniform buffer descriptors so that the shader can access this transformation data.
+In the xref:./01_Descriptor_pool_and_sets.adoc[next chapter] we'll look at descriptor sets, which will actually bind the ``VkBuffer``s to the uniform buffer descriptors so that the shader can access this transformation data.
 
 link:/attachments/22_descriptor_set_layout.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

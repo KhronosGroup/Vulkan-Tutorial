@@ -124,6 +124,6 @@ void cleanup() {
 
 An image view is sufficient to start using an image as a texture, but it's not quite ready to be used as a render target just yet.
 That requires one more step of indirection, known as a framebuffer.
-But first we'll have to set up the graphics pipeline.
+In the xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[next chapters] we'll have to set up the graphics pipeline.
 
 link:/attachments/07_image_views.cpp[C{pp} code]

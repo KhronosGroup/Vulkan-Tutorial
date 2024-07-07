@@ -186,6 +186,6 @@ void cleanup() {
 }
 ----
 
-That was a lot of work, but in the next chapter it all comes together to finally create the graphics pipeline object!
+That was a lot of work, but in the xref:./04_Conclusion.adoc[next chapter] it all comes together to finally create the graphics pipeline object!
 
 link:/attachments/11_render_passes.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

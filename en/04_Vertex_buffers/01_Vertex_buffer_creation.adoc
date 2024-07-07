@@ -315,6 +315,6 @@ Run the program again and you should see the following:
 
 image::/images/triangle_white.png[]
 
-In the next chapter we'll look at a different way to copy vertex data to a vertex buffer that results in better performance, but takes some more work.
+In the xref:./02_Staging_buffer.adoc[next chapter] we'll look at a different way to copy vertex data to a vertex buffer that results in better performance, but takes some more work.
 
 link:/attachments/19_vertex_buffer.cpp[C{pp} code] / link:/attachments/18_shader_vertexbuffer.vert[Vertex shader] / link:/attachments/18_shader_vertexbuffer.frag[Fragment shader]

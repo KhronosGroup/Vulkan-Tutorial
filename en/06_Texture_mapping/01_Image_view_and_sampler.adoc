@@ -351,6 +351,6 @@ samplerInfo.anisotropyEnable = VK_FALSE;
 samplerInfo.maxAnisotropy = 1.0f;
 ----
 
-In the next chapter we will expose the image and sampler objects to the shaders to draw the texture onto the square.
+In the xref:./02_Combined_image_sampler.adoc[next chapter] we will expose the image and sampler objects to the shaders to draw the texture onto the square.
 
 link:/attachments/25_sampler.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

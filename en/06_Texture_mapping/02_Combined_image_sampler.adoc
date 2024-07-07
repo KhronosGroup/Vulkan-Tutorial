@@ -275,4 +275,6 @@ You now know how to access images in shaders!
 This is a very powerful technique when combined with images that are also written to in framebuffers.
 You can use these images as inputs to implement cool effects like post-processing and camera displays within the 3D world.
 
+In the xref:07_Depth_buffering.adoc[next chapter] we'll learn how to add depth buffering for properly sorting objects.
+
 link:/attachments/26_texture_mapping.cpp[C{pp} code] / link:/attachments/26_shader_textures.vert[Vertex shader] / link:/attachments/26_shader_textures.frag[Fragment shader]

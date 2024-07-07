@@ -167,6 +167,6 @@ You should decide on which approach to use based on performance requirements.
 
 To learn more about synchronization through examples, have a look at https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples#swapchain-image-acquire-and-present[this extensive overview] by Khronos.
 
-In the next chapter we'll deal with one more small thing that is required for a well-behaved Vulkan program.
+In the xref:03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[next chapter] we'll deal with one more small thing that is required for a well-behaved Vulkan program.
 
 link:/attachments/16_frames_in_flight.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

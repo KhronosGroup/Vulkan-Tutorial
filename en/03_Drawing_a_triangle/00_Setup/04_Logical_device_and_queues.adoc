@@ -163,7 +163,7 @@ vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
 ----
 
 With the logical device and queue handles we can now actually start using the graphics card to do things!
-In the next few chapters we'll set up the resources to present results to the window system.
+In the xref:03_Drawing_a_triangle/01_Presentation/00_Window_surface.adoc[next few chapters] we'll set up the resources to present results to the window system.
 
 The next step is to xref:03_Drawing_a_triangle/01_Presentation/00_Window_surface.adoc[create a window surface].
 

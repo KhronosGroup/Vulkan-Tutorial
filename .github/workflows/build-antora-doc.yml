@@ -58,6 +58,5 @@ jobs:
 
       - name: "Build Antora documentation"
         working-directory: ./
-        run: |          
-          npx antora antora-ci-playbook.yml --stacktrace
+        run: npx antora antora-ci-playbook.yml --stacktrace
     

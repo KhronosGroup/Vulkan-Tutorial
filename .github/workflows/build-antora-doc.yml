@@ -19,19 +19,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
 
       - name: "Get Antora UI bundle"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: KhronosGroup/antora-ui-khronos
           path: ./antora-ui-khronos
           ref: main
 
       - name: "Install npm"
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 'latest'
           cache: 'npm'

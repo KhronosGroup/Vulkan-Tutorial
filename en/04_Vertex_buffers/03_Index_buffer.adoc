@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Index buffer
+
 == Introduction
 
 The 3D meshes you'll be rendering in a real world application will often share vertices between multiple triangles.
@@ -157,5 +159,7 @@ https://developer.nvidia.com/vulkan-memory-management[Driver developers recommen
 The advantage is that your data is more cache friendly in that case, because it's closer together.
 It is even possible to reuse the same chunk of memory for multiple resources if they are not used during the same render operations, provided that their data is refreshed, of course.
 This is known as _aliasing_ and some Vulkan functions have explicit flags to specify that you want to do this.
+
+The xref:05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[next chapter] we'll learn how to pass frequently changing parameters to the GPU.
 
 link:/attachments/21_index_buffer.cpp[C{pp} code] / link:/attachments/18_shader_vertexbuffer.vert[Vertex shader] / link:/attachments/18_shader_vertexbuffer.frag[Fragment shader]

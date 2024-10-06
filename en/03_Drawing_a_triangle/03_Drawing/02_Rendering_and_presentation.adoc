@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Rendering and presentation
+
 This is the chapter where everything is going to come together.
 We're going to write the `drawFrame` function that will be called from the main loop to put the triangle on the screen.
 Let's start by creating the function and call it from `mainLoop`:
@@ -482,7 +484,6 @@ image::/images/triangle.png[]
 ____
 This colored triangle may look a bit different from the one you're used to seeing in graphics tutorials.
 That's because this tutorial lets the shader interpolate in linear color space and converts to sRGB color space afterwards.
-See https://medium.com/@heypete/hello-triangle-meet-swift-and-wide-color-6f9e246616d9[this blog post] for a discussion of the difference.
 ____
 
 Yay!
@@ -520,6 +521,6 @@ Bootstrapping a Vulkan program is definitely a lot of work, but the take-away me
 I recommend you to take some time now to reread the code and build a mental model of the purpose of all of the Vulkan objects in the program and how they relate to each other.
 We'll be building on top of that knowledge to extend the functionality of the program from this point on.
 
-The next chapter will expand the render loop to handle multiple frames in flight.
+The xref:./03_Frames_in_flight.adoc[next chapter] will expand the render loop to handle multiple frames in flight.
 
 link:/attachments/15_hello_triangle.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

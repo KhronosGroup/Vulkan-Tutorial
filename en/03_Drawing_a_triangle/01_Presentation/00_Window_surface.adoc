@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Window surface
+
 Since Vulkan is a platform agnostic API, it can not interface directly with the window system on its own.
 To establish the connection between Vulkan and the window system to present results to the screen, we need to use the WSI (Window System Integration) extensions.
 In this chapter we'll discuss the first one, which is `VK_KHR_surface`.
@@ -211,6 +213,6 @@ vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 ----
 
 In case the queue families are the same, the two handles will most likely have the same value now.
-In the next chapter we're going to look at swap chains and how they give us the ability to present images to the surface.
+In the xref:./01_Swap_chain.adoc[next chapter] we're going to look at swap chains and how they give us the ability to present images to the surface.
 
 link:/attachments/05_window_surface.cpp[C{pp} code]

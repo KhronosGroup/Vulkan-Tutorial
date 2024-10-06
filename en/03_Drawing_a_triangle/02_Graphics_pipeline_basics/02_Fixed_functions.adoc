@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Fixed functions
+
 The older graphics APIs provided default state for most of the stages of the graphics pipeline.
 In Vulkan you have to be explicit about most pipeline states as it'll be baked into an immutable pipeline state object.
 In this chapter we'll fill  in all of the structures to configure these fixed-function operations.
@@ -162,7 +164,7 @@ viewportState.scissorCount = 1;
 viewportState.pScissors = &scissor;
 ----
 
-Independent of how you set them, it's is possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
+Independent of how you set them, it's possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
 Using multiple requires enabling a GPU feature (see logical device creation).
 
 == Rasterizer

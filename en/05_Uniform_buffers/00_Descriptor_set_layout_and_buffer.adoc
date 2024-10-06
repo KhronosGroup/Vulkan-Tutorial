@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Descriptor layout and buffer
+
 == Introduction
 
 We're now able to pass arbitrary attributes to the vertex shader for each vertex, but what about global variables?
@@ -313,7 +315,6 @@ We need to include two new headers to implement this functionality:
 
 [,c++]
 ----
-#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -321,7 +322,6 @@ We need to include two new headers to implement this functionality:
 ----
 
 The `glm/gtc/matrix_transform.hpp` header exposes functions that can be used to generate model transformations like `glm::rotate`, view transformations like `glm::lookAt` and projection transformations like `glm::perspective`.
-The `GLM_FORCE_RADIANS` definition is necessary to make sure that functions like `glm::rotate` use radians as arguments, to avoid any possible confusion.
 
 The `chrono` standard library header exposes functions to do precise timekeeping.
 We'll use this to make sure that the geometry rotates 90 degrees per second regardless of frame rate.
@@ -390,6 +390,6 @@ Using a UBO this way is not the most efficient way to pass frequently changing v
 A more efficient way to pass a small buffer of data to shaders are _push constants_.
 We may look at these in a future chapter.
 
-In the next chapter we'll look at descriptor sets, which will actually bind the ``VkBuffer``s to the uniform buffer descriptors so that the shader can access this transformation data.
+In the xref:./01_Descriptor_pool_and_sets.adoc[next chapter] we'll look at descriptor sets, which will actually bind the ``VkBuffer``s to the uniform buffer descriptors so that the shader can access this transformation data.
 
 link:/attachments/22_descriptor_set_layout.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

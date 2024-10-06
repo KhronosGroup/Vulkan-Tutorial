@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Physical devices and queue families
+
 == Selecting a physical device
 
 After initializing the Vulkan library through a VkInstance we need to look for and select a graphics card in the system that supports the features we need.

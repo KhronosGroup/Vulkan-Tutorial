@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Multisampling
+
 == Introduction
 
 Our program can now load multiple levels of detail for textures which fixes artifacts when rendering objects far away from the viewer.
@@ -341,7 +343,7 @@ The knowledge of the basic principles of Vulkan that you now possess should be s
 * Pipeline cache
 * Multi-threaded command buffer generation
 * Multiple subpasses
-* Compute shaders
+* xref:11_Compute_Shader.adoc[Compute shaders]
 
 The current program can be extended in many ways, like adding Blinn-Phong lighting, post-processing effects and shadow mapping.
 You should be able to learn how these effects work from tutorials for other APIs, because despite Vulkan's explicitness, many concepts still work the same.

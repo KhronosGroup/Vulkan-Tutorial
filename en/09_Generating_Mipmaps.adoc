@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Generating Mipmaps
+
 == Introduction
 
 Our program can now load and render 3D models.
@@ -448,5 +450,7 @@ These settings will produce this image:
 image::/images/highmipmaps.png[]
 
 This is how higher mip levels will be used when objects are further away from the camera.
+
+The xref:10_Multisampling.adoc[next chapter] will walk us through multisampling to produce a smoother image.
 
 link:/attachments/29_mipmapping.cpp[C{pp} code] / link:/attachments/27_shader_depth.vert[Vertex shader] / link:/attachments/27_shader_depth.frag[Fragment shader]

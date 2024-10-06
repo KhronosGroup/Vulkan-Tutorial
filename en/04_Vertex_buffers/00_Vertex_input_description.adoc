@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Vertex input description
+
 == Introduction
 
 In the next few chapters, we're going to replace the hardcoded vertex data in the vertex shader with a vertex buffer in memory.
@@ -203,6 +205,6 @@ vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 The pipeline is now ready to accept vertex data in the format of the `vertices` container and pass it on to our vertex shader.
 If you run the program now with validation layers enabled, you'll see that it complains that there is no vertex buffer bound to the binding.
-The next step is to create a vertex buffer and move the vertex data to it so the GPU is able to access it.
+The xref:./01_Vertex_buffer_creation.adoc[next step] is to create a vertex buffer and move the vertex data to it so the GPU is able to access it.
 
 link:/attachments/18_vertex_input.cpp[C{pp} code] / link:/attachments/18_shader_vertexbuffer.vert[Vertex shader] / link:/attachments/18_shader_vertexbuffer.frag[Fragment shader]

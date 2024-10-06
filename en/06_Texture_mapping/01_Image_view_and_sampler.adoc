@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Image view and sampler
+
 In this chapter we're going to create two more resources that are needed for the graphics pipeline to sample an image.
 The first resource is one that we've already seen before while working with the swap chain images, but the second one is new - it relates to how the shader will read texels from the image.
 
@@ -349,6 +351,6 @@ samplerInfo.anisotropyEnable = VK_FALSE;
 samplerInfo.maxAnisotropy = 1.0f;
 ----
 
-In the next chapter we will expose the image and sampler objects to the shaders to draw the texture onto the square.
+In the xref:./02_Combined_image_sampler.adoc[next chapter] we will expose the image and sampler objects to the shaders to draw the texture onto the square.
 
 link:/attachments/25_sampler.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

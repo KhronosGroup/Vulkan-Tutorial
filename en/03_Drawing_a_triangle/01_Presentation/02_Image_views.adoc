@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Image views
+
 To use any `VkImage`, including those in the swap chain, in the render pipeline we have to create a `VkImageView` object.
 An image view is quite literally a view into an image.
 It describes how to access the image and which part of the image to access, for example if it should be treated as a 2D texture depth texture without any mipmapping levels.
@@ -122,6 +124,6 @@ void cleanup() {
 
 An image view is sufficient to start using an image as a texture, but it's not quite ready to be used as a render target just yet.
 That requires one more step of indirection, known as a framebuffer.
-But first we'll have to set up the graphics pipeline.
+In the xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[next chapters] we'll have to set up the graphics pipeline.
 
 link:/attachments/07_image_views.cpp[C{pp} code]

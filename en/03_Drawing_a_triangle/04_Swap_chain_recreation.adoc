@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Swap chain recreation
+
 == Introduction
 
 The application we have now successfully draws a triangle, but there are some circumstances that it isn't handling properly yet.
@@ -57,12 +59,12 @@ We'll move the cleanup code of all objects that are recreated as part of a swap 
 [,c++]
 ----
 void cleanupSwapChain() {
-    for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
-        vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+    for (auto framebuffer : swapChainFramebuffers) {
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
 
-    for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-        vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+    for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
     }
 
     vkDestroySwapchainKHR(device, swapChain, nullptr);
@@ -104,7 +106,7 @@ Note that in `chooseSwapExtent` we already query the new window resolution to ma
 That's all it takes to recreate the swap chain!
 However, the disadvantage of this approach is that we need to stop all rendering before creating the new swap chain.
 It is possible to create a new swap chain while drawing commands on an image from the old swap chain are still in-flight.
-You need to pass the previous swap chain to the `oldSwapChain` field in the `VkSwapchainCreateInfoKHR` struct and destroy the old swap chain as soon as you've finished using it.
+You need to pass the previous swap chain to the `oldSwapchain` field in the `VkSwapchainCreateInfoKHR` struct and destroy the old swap chain as soon as you've finished using it.
 
 == Suboptimal or out-of-date swap chain
 
@@ -274,6 +276,6 @@ void recreateSwapChain() {
 The initial call to `glfwGetFramebufferSize` handles the case where the size is already correct and `glfwWaitEvents` would have nothing to wait on.
 
 Congratulations, you've now finished your very first well-behaved Vulkan program!
-In the next chapter we're going to get rid of the hardcoded vertices in the vertex shader and actually use a vertex buffer.
+In the xref:04_Vertex_buffers/00_Vertex_input_description.adoc[next chapter] we're going to get rid of the hardcoded vertices in the vertex shader and actually use a vertex buffer.
 
 link:/attachments/17_swap_chain_recreation.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

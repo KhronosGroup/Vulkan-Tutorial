@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Descriptor pool and sets
+
 == Introduction
 
 The descriptor set layout from the previous chapter describes the type of descriptors that can be bound.
@@ -323,7 +325,6 @@ We can define `GLM_FORCE_DEFAULT_ALIGNED_GENTYPES` right before including GLM:
 
 [,c++]
 ----
-#define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 ----
@@ -398,5 +399,7 @@ layout(set = 0, binding = 0) uniform UniformBufferObject { ... }
 
 You can use this feature to put descriptors that vary per-object and descriptors that are shared into separate descriptor sets.
 In that case you avoid rebinding most of the descriptors across draw calls which is potentially more efficient.
+
+In the xref:06_Texture_mapping/00_Images.adoc[next chapters] we'll build upon what we just learned and add textures to our scene.
 
 link:/attachments/23_descriptor_sets.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]

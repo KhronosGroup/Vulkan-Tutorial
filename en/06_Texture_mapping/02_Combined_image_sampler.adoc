@@ -1,5 +1,7 @@
 :pp: {plus}{plus}
 
+= Combined image sampler
+
 == Introduction
 
 We looked at descriptors for the first time in the uniform buffers part of the tutorial.
@@ -58,7 +60,7 @@ Other times, `vkAllocateDescriptorSets` will fail and return `VK_ERROR_POOL_OUT_
 This can be particularly frustrating if the allocation succeeds on some machines, but fails on others.
 
 Since Vulkan shifts the responsibility for the allocation to the driver, it is no longer a strict requirement to only allocate as many descriptors of a certain type (`VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER`, etc.) as specified by the corresponding `descriptorCount` members for the creation of the descriptor pool.
-However, it remains best practice to do so, and in the future, `VK_LAYER_KHRONOS_validation` will warn about this type of problem if you enable https://vulkan.lunarg.com/doc/view/1.2.189.0/linux/best_practices.html[Best Practice Validation].
+However, it remains best practice to do so, and in the future, `VK_LAYER_KHRONOS_validation` will warn about this type of problem if you enable https://vulkan.lunarg.com/doc/view/1.3.280.0/linux/best_practices.html[Best Practice Validation].
 
 The final step is to bind the actual image and sampler resources to the descriptors in the descriptor set.
 Go to the `createDescriptorSets` function.
@@ -112,8 +114,8 @@ The descriptors are now ready to be used by the shaders!
 
 == Texture coordinates
 
-There is one important ingredient for texture mapping that is still missing, and that's the actual coordinates for each vertex.
-The coordinates determine how the image is actually mapped to the geometry.
+There is one important ingredient for texture mapping that is still missing, and that's the actual texture coordinates for each vertex, often called "uv coordinates".
+The texture coordinates determine how the image is actually mapped to the geometry.
 
 [,c++]
 ----
@@ -272,5 +274,7 @@ image::/images/texture_on_square_colorized.png[]
 You now know how to access images in shaders!
 This is a very powerful technique when combined with images that are also written to in framebuffers.
 You can use these images as inputs to implement cool effects like post-processing and camera displays within the 3D world.
+
+In the xref:07_Depth_buffering.adoc[next chapter] we'll learn how to add depth buffering for properly sorting objects.
 
 link:/attachments/26_texture_mapping.cpp[C{pp} code] / link:/attachments/26_shader_textures.vert[Vertex shader] / link:/attachments/26_shader_textures.frag[Fragment shader]

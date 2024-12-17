@@ -44,14 +44,7 @@ Vulkan does not come with any validation layers built-in, but the LunarG Vulkan 
 They're also completely https://github.com/KhronosGroup/Vulkan-ValidationLayers[open source], so you can check which kind of mistakes they check for and contribute.
 Using the validation layers is the best way to avoid your application breaking on different drivers by accidentally relying on undefined behavior.
 
-Validation layers can only be used if they have been installed onto the system.
-For example, the LunarG validation layers are only available on PCs with the Vulkan SDK installed.
-
-There were formerly two different types of validation layers in Vulkan: instance and device specific.
-The idea was that instance layers would only check calls related to global Vulkan objects like instances, and device specific layers would only check calls related to a specific GPU.
-Device specific layers have now been deprecated, which means that instance validation layers apply to all Vulkan calls.
-The specification document still recommends that you enable validation layers at device level as well for compatibility, which is required by some implementations.
-We'll simply specify the same layers as the instance at logical device level, which we'll see link:./04_Logical_device_and_queues.adoc[later on].
+Validation layers can only be used if they have been installed onto the system. One way to get those layers is through the LunarG SDK.
 
 == Using validation layers
 

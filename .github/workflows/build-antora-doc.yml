@@ -1,0 +1,62 @@
+# Copyright 2024 Sascha Willems
+# SPDX-License-Identifier: CC-BY-4.0
+# This Antora playbook is used by the CI to make sure the Antora build works
+
+name: "Build Antora documentation"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: "Get Antora UI bundle"
+        uses: actions/checkout@v4
+        with:
+          repository: KhronosGroup/antora-ui-khronos
+          path: ./antora-ui-khronos
+          ref: main
+
+      - name: "Install npm"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+          cache: 'npm'
+
+      - name: "Install dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y asciidoctor
+
+      - name: "Build UI bundle"
+        working-directory: ./antora-ui-khronos
+        run: |
+          npx update-browserslist-db@latest
+          ./node_modules/gulp/bin/gulp.js --version
+          ./node_modules/gulp/bin/gulp.js bundle
+
+      - name: "Copy UI bundle"
+        run: cp ./antora-ui-khronos/build/ui-bundle.zip ./
+
+      - name: "Build tutorial"
+        run: |
+          cd antora
+          make
+
+      - name: "Build Antora documentation"
+        working-directory: ./
+        run: npx antora antora-ci-playbook.yml --stacktrace
+    

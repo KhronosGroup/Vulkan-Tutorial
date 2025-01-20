@@ -74,7 +74,7 @@ const std::vector<const char*> validationLayers = {
 
 We'll add a new function `checkValidationLayerSupport` that checks if all of the requested layers are available.
 First list all of the available layers using the `vkEnumerateInstanceLayerProperties` function.
-Its usage is identical to that of `vkEnumerateInstanceExtensionProperties` which was discussed in the instance creation chapter.
+Its usage is identical to that of `vkEnumerateInstanceExtensionProperties` which was discussed in the instance creation chapter. Next, check if all of the layers in `validationLayers` exist in the `availableLayers` list. You may need to include `<cstring>` for `strcmp`.
 
 [,c++]
 ----
@@ -85,31 +85,23 @@ bool checkValidationLayerSupport() {
     std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-    return false;
-}
-----
+    for (const char* layerName : validationLayers) {
+        bool layerFound = false;
 
-Next, check if all of the layers in `validationLayers` exist in the `availableLayers` list.
-You may need to include `<cstring>` for `strcmp`.
+        for (const auto& layerProperties : availableLayers) {
+            if (strcmp(layerName, layerProperties.layerName) == 0) {
+                layerFound = true;
+                break;
+            }
+        }
 
-[,c++]
-----
-for (const char* layerName : validationLayers) {
-    bool layerFound = false;
-
-    for (const auto& layerProperties : availableLayers) {
-        if (strcmp(layerName, layerProperties.layerName) == 0) {
-            layerFound = true;
-            break;
+        if (!layerFound) {
+            return false;
         }
     }
 
-    if (!layerFound) {
-        return false;
-    }
+    return true;
 }
-
-return true;
 ----
 
 We can now use this function in `createInstance`:

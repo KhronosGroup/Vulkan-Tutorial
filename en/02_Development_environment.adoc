@@ -390,10 +390,10 @@ We'll now define two more rules, `test` and `clean`, where the former will run t
 .PHONY: test clean
 
 test: VulkanTest
-    ./VulkanTest
+  ./VulkanTest
 
 clean:
-    rm -f VulkanTest
+  rm -f VulkanTest
 ----
 
 Running `make test` should show the program running successfully, and displaying the number of Vulkan extensions.

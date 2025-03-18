@@ -3,8 +3,10 @@
 = Command Buffers
 
 Commands in Vulkan, like drawing operations and memory transfers, are not executed directly using function calls.
-You have to record all of the operations you want to perform in command buffer objects.
-The advantage of this is that when we are ready to tell the Vulkan what we want to do, all of the commands are submitted together and Vulkan can more efficiently process the commands since all of them are available together.
+You have to record all the operations you want to perform in command buffer objects.
+The advantage of this is that when we are ready to tell Vulkan what we want
+to do, all the commands are submitted together. Vulkan can more
+efficiently process the commands since all of them are available together.
 In addition, this allows command recording to happen in multiple threads if so desired.
 
 == Command pools
@@ -15,7 +17,7 @@ Add a new class member to store a `VkCommandPool`:
 
 [,c++]
 ----
-VkCommandPool commandPool;
+std::unique_ptr<vk::raii::CommandPool> commandPool;
 ----
 
 Then create a new function `createCommandPool` and call it from `initVulkan` after the framebuffers were created.
@@ -47,12 +49,7 @@ Command pool creation only takes two parameters:
 
 [,c++]
 ----
-QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-
-VkCommandPoolCreateInfo poolInfo{};
-poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsIndex);
 ----
 
 There are two possible flags for command pools:
@@ -69,23 +66,12 @@ We're going to record commands for drawing, which is why we've chosen the graphi
 
 [,c++]
 ----
-if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
-    throw std::runtime_error("failed to create command pool!");
-}
+commandPool = std::make_unique<vk::raii::CommandPool>(*device, poolInfo);
 ----
 
 Finish creating the command pool using the `vkCreateCommandPool` function.
 It doesn't have any special parameters.
-Commands will be used throughout the program to draw things on the screen, so the pool should only be destroyed at the end:
-
-[,c++]
-----
-void cleanup() {
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    ...
-}
-----
+Commands will be used throughout the program to draw things on the screen.
 
 == Command buffer allocation
 
@@ -96,7 +82,7 @@ Command buffers will be automatically freed when their command pool is destroyed
 
 [,c++]
 ----
-VkCommandBuffer commandBuffer;
+std::unique_ptr<vk::raii::CommandBuffer> commandBuffer;
 ----
 
 We'll now start working on a `createCommandBuffer` function to allocate a single command buffer from the command pool.
@@ -129,15 +115,9 @@ Command buffers are allocated with the `vkAllocateCommandBuffers` function, whic
 
 [,c++]
 ----
-VkCommandBufferAllocateInfo allocInfo{};
-allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-allocInfo.commandPool = commandPool;
-allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-allocInfo.commandBufferCount = 1;
+vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
 
-if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
-    throw std::runtime_error("failed to allocate command buffers!");
-}
+commandBuffer = std::make_unique<vk::raii::CommandBuffer>( std::move( vk::raii::CommandBuffers( *device, allocInfo ).front() ));
 ----
 
 The `level` parameter specifies if the allocated command buffers are primary or secondary command buffers.
@@ -156,7 +136,7 @@ The `VkCommandBuffer` used will be passed in as a parameter, as well as the inde
 
 [,c++]
 ----
-void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+void recordCommandBuffer(uint32_t imageIndex) {
 
 }
 ----
@@ -165,14 +145,7 @@ We always begin recording a command buffer by calling `vkBeginCommandBuffer` wit
 
 [,c++]
 ----
-VkCommandBufferBeginInfo beginInfo{};
-beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-beginInfo.flags = 0; // Optional
-beginInfo.pInheritanceInfo = nullptr; // Optional
-
-if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-    throw std::runtime_error("failed to begin recording command buffer!");
-}
+commandBuffer->begin( {} );
 ----
 
 The `flags` parameter specifies how we're going to use the command buffer.
@@ -197,21 +170,17 @@ The render pass is configured using some parameters in a `VkRenderPassBeginInfo`
 
 [,c++]
 ----
-VkRenderPassBeginInfo renderPassInfo{};
-renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-renderPassInfo.renderPass = renderPass;
-renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+vk::RenderPassBeginInfo renderPassInfo( *renderPass, swapChainFramebuffers[imageIndex]);
 ----
 
 The first parameters are the render pass itself and the attachments to bind.
 We created a framebuffer for each swap chain image where it is specified as a color attachment.
-Thus we need to bind the framebuffer for the swapchain image we want to draw to.
+Thus, we need to bind the framebuffer for the swapchain image we want to draw to.
 Using the imageIndex parameter which was passed in, we can pick the right framebuffer for the current swapchain image.
 
 [,c++]
 ----
-renderPassInfo.renderArea.offset = {0, 0};
-renderPassInfo.renderArea.extent = swapChainExtent;
+vk::RenderPassBeginInfo renderPassInfo( *renderPass, swapChainFramebuffers[imageIndex], {{0, 0}, swapChainExtent});
 ----
 
 The next two parameters define the size of the render area.
@@ -221,7 +190,7 @@ It should match the size of the attachments for best performance.
 
 [,c++]
 ----
-VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
 renderPassInfo.clearValueCount = 1;
 renderPassInfo.pClearValues = &clearColor;
 ----
@@ -231,11 +200,11 @@ I've defined the clear color to simply be black with 100% opacity.
 
 [,c++]
 ----
-vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+commandBuffer->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 ----
 
 The render pass can now begin.
-All of the functions that record commands can be recognized by their `vkCmd` prefix.
+All the functions that record commands can be recognized by their `vkCmd` prefix.
 They all return `void`, so there will be no error handling until we've finished recording.
 
 The first parameter for every command is always the command buffer to record the command to.
@@ -254,7 +223,7 @@ We can now bind the graphics pipeline:
 
 [,c++]
 ----
-vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+commandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
 ----
 
 The second parameter specifies if the pipeline object is a graphics or compute pipeline.
@@ -265,26 +234,15 @@ So we need to set them in the command buffer before issuing our draw command:
 
 [,c++]
 ----
-VkViewport viewport{};
-viewport.x = 0.0f;
-viewport.y = 0.0f;
-viewport.width = static_cast<float>(swapChainExtent.width);
-viewport.height = static_cast<float>(swapChainExtent.height);
-viewport.minDepth = 0.0f;
-viewport.maxDepth = 1.0f;
-vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-VkRect2D scissor{};
-scissor.offset = {0, 0};
-scissor.extent = swapChainExtent;
-vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+commandBuffer->setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+commandBuffer->setScissor( 0, vk::Rect2D( vk::Offset2D( 0, 0 ), swapChainExtent ) );
 ----
 
 Now we are ready to issue the draw command for the triangle:
 
 [,c++]
 ----
-vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+commandBuffer->draw(3, 1, 0, 0);
 ----
 
 The actual `vkCmdDraw` function is a bit anticlimactic, but it's so simple because of all the information we specified in advance.
@@ -301,16 +259,14 @@ The render pass can now be ended:
 
 [,c++]
 ----
-vkCmdEndRenderPass(commandBuffer);
+commandBuffer->endRenderPass();
 ----
 
 And we've finished recording the command buffer:
 
 [,c++]
 ----
-if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-    throw std::runtime_error("failed to record command buffer!");
-}
+commandBuffer->end();
 ----
 
 In the xref:./02_Rendering_and_presentation.adoc[next chapter] we'll write the code for the main loop, which will acquire an image from the swap chain, record and execute a command buffer, then return the finished image to the swap chain.

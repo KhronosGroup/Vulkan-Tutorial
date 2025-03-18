@@ -1,4 +1,4 @@
-#define GLFW_INCLUDE_VULKAN
+import vulkan_hpp;
 #include <GLFW/glfw3.h>
 
 #include <iostream>

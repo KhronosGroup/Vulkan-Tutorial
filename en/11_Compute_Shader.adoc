@@ -90,7 +90,7 @@ The biggest differences are that you can alias other buffer types to SSBOs and t
 Going back to the GPU-based particle system, you might now wonder how to deal with vertices being updated (written) by the compute shader and read (drawn) by the vertex shader, as both usages would seemingly require different buffer types.
 
 But that's not the case.
-In Vulkan you can specify multiple usages for buffers and images.
+In Vulkan, you can specify multiple usages for buffers and images.
 So for the particle vertex buffer to be used as a vertex buffer (in the graphics pass) and as a storage buffer (in the compute pass), you simply create the buffer with those two usage flags:
 
 [,c++]
@@ -105,9 +105,9 @@ shaderStorageBuffers[i] = vk::raii::Buffer(*device, bufferInfo);
 
 The two flags `VK_BUFFER_USAGE_VERTEX_BUFFER_BIT` and `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` set with `bufferInfo.usage` tell the implementation that we want to use this buffer for two different scenarios: as a vertex buffer in the vertex shader and as a store buffer.
 Note that we also added the `VK_BUFFER_USAGE_TRANSFER_DST_BIT` flag in here so we can transfer data from the host to the GPU.
-This is crucial as we want the shader storage buffer to stay in GPU memory only (`VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT`) we need to to transfer data from the host to this buffer.
+This is crucial as we want the shader storage buffer to stay in GPU memory only (`VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT`) we need to transfer data from the host to this buffer.
 
-Here is the same code using using the `createBuffer` helper function:
+Here is the same code using the `createBuffer` helper function:
 
 [,c++]
 ----
@@ -138,7 +138,7 @@ RWStructuredBuffer<ParticleSSBO> particlesOut;
 
 In this example we have a typed SSBO with each particle having a position and velocity value (see the `Particle` struct).
 The SSBO then contains an unbound number of particles as it is placed into a
-StructuredBuffer without upper limit and it's a read only buffer for
+StructuredBuffer without upper limit, and it's a read-only buffer for
 particlesIn.  For particlesOut, we place it into a RWStructedBuffer.
 Not having to specify the number of elements in an SSBO is one of the advantages over e.g.
 uniform buffers.
@@ -155,7 +155,7 @@ particlesOut[index].particles.position = particlesIn[index].particles.position +
 _Note that we won't be doing image manipulation in this chapter.
 This paragraph is here to make readers aware that compute shaders can also be used for image manipulation._
 
-A storage image allows you read from and write to an image.
+A storage image allows you to read from and write to an image.
 Typical use cases are applying image effects to textures, doing post-processing (which in turn is very similar) or generating mip-maps.
 
 This is similar for images:
@@ -199,7 +199,8 @@ outputImage[int2(gl_GlobalInvocationID.xy)] = pixel;
 
 == Compute queue families
 
-In the link:03_Drawing_a_triangle/00_Setup/03_Physical_devices_and_queue_families.md#page_Queue-families[physical device and queue families chapter], we have already learned about queue families and how to select a graphics queue family.
+In the link:03_Drawing_a_triangle/00_Setup/03_Physical_devices_and_queue_families.adoc[physical device and queue families chapter],
+we have already learned about queue families and how to select a graphics queue family.
 Compute uses the queue family properties flag bit `VK_QUEUE_COMPUTE_BIT`.
 So if we want to do compute work, we need to get a queue from a queue family that supports compute.
 
@@ -233,7 +234,7 @@ computeQueue = std::make_unique<vk::raii::Queue>( *device, graphicsAndComputeInd
 
 == The compute shader stage
 
-In the graphics samples we have used different pipeline stages to load shaders and access descriptors.
+In the graphics samples, we have used different pipeline stages to load shaders and access descriptors.
 Compute shaders are accessed in a similar way by using the `VK_SHADER_STAGE_COMPUTE_BIT` pipeline.
 So loading a compute shader is just the same as loading a vertex shader, but with a different shader stage.
 We'll talk about this in detail in the next paragraphs.
@@ -266,7 +267,7 @@ std::vector<vk::raii::Buffer> shaderStorageBuffers;
 std::vector<vk::raii::DeviceMemory> shaderStorageBuffersMemory;
 ----
 
-In the `createShaderStorageBuffers` we then clear those vectors to cleanup
+In the `createShaderStorageBuffers` we then clear those vectors to clean up
 any objects already created in their as is our RAII practice.
 
 [,c++]
@@ -342,7 +343,7 @@ The only difference is that descriptors need to have the `VK_SHADER_STAGE_COMPUT
 ...
 ----
 
-Note that you can combine shader stages here, so if you want the descriptor to be accessible from the vertex and compute stage, e.g.
+Note that you can combine shader stages here, so if you want the descriptor to be accessible from the vertex and compute stage, e.g.,
 for a uniform buffer with parameters shared across them, you set the bits for both stages:
 
 [,c++]
@@ -406,7 +407,7 @@ We need to double the number of `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER` types reques
 == Compute pipelines
 
 As compute is not a part of the graphics pipeline, we can't use `vkCreateGraphicsPipelines`.
-Instead we need to create a dedicated compute pipeline with `vkCreateComputePipelines` for running our compute commands.
+Instead, we need to create a dedicated compute pipeline with `vkCreateComputePipelines` for running our compute commands.
 Since a compute pipeline does not touch any of the rasterization state, it has a lot less state than a graphics pipeline:
 
 [,c++]
@@ -587,13 +588,20 @@ Synchronization is an important part of Vulkan, even more so when doing compute 
 Wrong or lacking synchronization may result in the vertex stage starting to draw (=read) particles while the compute shader hasn't finished updating (=write) them (read-after-write hazard), or the compute shader could start updating particles that are still in use by the vertex part of the pipeline (write-after-read hazard).
 
 So we must make sure that those cases don't happen by properly synchronizing the graphics and the compute load.
-There are different ways of doing so, depending on how you submit your compute workload but in our case with two separate submits, we'll be using link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.md#page_Semaphores[semaphores] and link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.md#page_Fences[fences] to ensure that the vertex shader won't start fetching vertices until the compute shader has finished updating them.
+There are different ways of doing so, depending on how you submit your
+compute workload, but in our case with two separate submits, we'll be using
+link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphores] and
+link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[fences] to ensure that the vertex shader won't start fetching
+ vertices until the compute shader has finished updating them.
 
 This is necessary as even though the two submits are ordered one-after-another, there is no guarantee that they execute on the GPU in this order.
 Adding in wait and signal semaphores ensures this execution order.
 
 So we first add a new set of synchronization primitives for the compute work in `createSyncObjects`.
-The compute fences, just like the graphics fences, are created in the signaled state because otherwise, the first draw would time out while waiting for the fences to be signaled as detailed link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.md#page_Waiting-for-the-previous-frame[here]:
+The compute fences, just like the graphics fences, are created in the
+signaled state because otherwise, the first draw would time out while waiting
+ for the fences to be signaled as detailed
+ link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[here]:
 
 [,c++]
 ----
@@ -642,8 +650,10 @@ We then use these to synchronize the compute buffer submission with the graphics
     graphicsQueue->submit(submitInfo, **inFlightFences[currentFrame]);
 ----
 
-Similar to the sample in the link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.md#page_Semaphores[semaphores chapter], this setup will immediately run the compute shader as we haven't specified any wait semaphores.
-Note, that we're using scoping braces above to ensure that the RAII temporary
+Similar to the sample in the
+link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphore chapter], this setup will immediately run the
+ compute shader as we haven't specified any wait semaphores.
+Note that we're using scoping braces above to ensure that the RAII temporary
  variables we use get a chance to clean themselves up between the compute and
   the graphics stage.
 This is fine, as we are waiting for the compute command buffer of the current frame to finish execution before the compute submission with the `vkWaitForFences` command.
@@ -656,7 +666,7 @@ So we also wait on the `imageAvailableSemaphores` on the current frame at the `V
 
 == Drawing the particle system
 
-Earlier on, we learned that buffers in Vulkan can have multiple use-cases and so we created the shader storage buffer that contains our particles with both the shader storage buffer bit and the vertex buffer bit.
+Earlier on, we learned that buffers in Vulkan can have multiple use-cases, and so we created the shader storage buffer that contains our particles with both the shader storage buffer bit and the vertex buffer bit.
 This means that we can use the shader storage buffer for drawing just as we used "pure" vertex buffers in the previous chapters.
 
 We first set up the vertex input state to match our particle structure:

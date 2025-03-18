@@ -197,20 +197,6 @@ for (const auto& extension : extensions) {
 }
 ----
 
-You can add this code to the `createInstance` function if you'd like to provide some details about the Vulkan support.
-As a challenge, try to create a function that checks if all the extensions returned by `glfwGetRequiredInstanceExtensions` are included in the supported extensions list.
-
-== Cleaning up
-
-The `VkInstance` should be only destroyed right before the program exits.
-It can be destroyed in `cleanup` with the `vkDestroyInstance` function:
-
-[,c++]
-----
-void cleanup() {
-    vkDestroyInstance(instance, nullptr);
-----
-
 You can add this code to the `createInstance` function if you'd like to provide
 some details about the Vulkan support. As a challenge, try to create a function
 that checks if all the extensions returned by

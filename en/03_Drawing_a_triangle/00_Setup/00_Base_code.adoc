@@ -83,16 +83,16 @@ Just like each chunk of memory allocated with `malloc` requires a call to
 `free`, every Vulkan object that we create needs to be explicitly destroyed when
 we no longer need it. In c{pp} it is possible to perform automatic resource
 management using https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization[RAII]
-or smart pointers provided in the `<memory>` header. In an attempt to make
-Vulkan easier to work with, and demonstrate modern Vulkan programming.  This
-tutorial will not only use RAII with smart pointers, it will endeavor to
-demonstrate the latest methods and extensions which should hopefully make
-Vulkan a joy to use.  Just because we enjoy working with low level graphics
-APIs, we shouldn't make the bar too high to learn how to do so.  Where
- appropriate, we will discuss concerns for resource management for freeing
-resources.  However, for this tutorial, we'll demonstrate
-that we can get pretty far with a basic destructor to clean up after
-our work.
+or smart pointers provided in the `<memory>` header. This tutorial is an attempt
+to make Vulkan easier to work with, and demonstrate modern Vulkan
+programming.  This tutorial will not only use RAII with smart pointers, it
+will endeavor to demonstrate the latest methods and extensions which should
+hopefully make Vulkan a joy to use.  Just because we enjoy working with
+low level graphics APIs, we shouldn't make the bar too high to learn how
+to do so.  Where appropriate, we will discuss concerns for resource
+management for freeing resources.  However, for this tutorial, we'll
+demonstrate that we can get pretty far with a basic destructor to clean up
+after our work.
 
 Vulkan objects are either created directly with functions like `vkCreateXXX`, or
 allocated through another object with functions like `vkAllocateXXX`. After
@@ -158,7 +158,7 @@ specification and everything else works perfectly fine.
 #include <GLFW/glfw3.h>
 ----
 
-That way GLFW will include its own definitions and automatically load the Vulkan
+That way, GLFW will include its own definitions and automatically load the Vulkan
 C header with it. Add a `initWindow` function and add a call to it from the
 `run` function before the other calls. We'll use that function to initialize
 GLFW and create a window.

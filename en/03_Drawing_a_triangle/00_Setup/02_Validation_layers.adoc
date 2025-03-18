@@ -84,7 +84,7 @@ specifying their name. All the useful standard validation is bundled into a
 layer included in the SDK that is known as `VK_LAYER_KHRONOS_validation`.
 
 Let's first add two configuration variables to the program to specify the layers
-to enable and whether to enable them or not. I've chosen to base that value on
+to enable and whether to enable them or not. We've chosen to base that value on
 whether the program is being compiled in debug mode or not. The `NDEBUG` macro
 is part of the c{pp} standard and means "not debug".
 
@@ -188,7 +188,7 @@ std::vector<const char*> getRequiredExtensions() {
 
 The extensions specified by GLFW are always required, as we're working with
 the GLFW dependency for windowing, but the debug messenger extension is
-conditionally added. Note that I've used the
+conditionally added. Note that We've used the
 `VK_EXT_DEBUG_UTILS_EXTENSION_NAME` macro here which is equal to the literal
 string "VK_EXT_debug_utils". Using this macro lets you avoid typos.
 
@@ -299,13 +299,13 @@ debugMessenger = std::make_unique<vk::raii::DebugUtilsMessengerEXT>( *instance, 
 ----
 
 The `messageSeverity` field allows you to specify all the types of
-severities you would like your callback to be called for. I've specified
+severities you would like your callback to be called for. We've specified
 all types except for `VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT` here to
 receive notifications about possible problems while leaving out verbose
 general debug info.
 
 Similarly, the `messageType` field lets you filter which types of messages
-your callback is notified about. I've simply enabled all types here. You
+your callback is notified about. We've simply enabled all types here. You
 can always disable some if they're not useful to you.
 
 Finally, the `pfnUserCallback` field specifies the pointer to the callback
@@ -344,11 +344,11 @@ to the Vulkan SDK and go to the `Config` directory. There you will find a
 
 To configure the layer settings for your own application, copy the file to the
 `Debug` and `Release` directories of your project and follow the instructions to
-set the desired behavior. However, for the remainder of this tutorial, I'll
+set the desired behavior. However, for the remainder of this tutorial, We will
 assume that you're using the default settings.
 
-Throughout this tutorial, I'll be making a couple of intentional mistakes to show
-you how helpful the validation layers are with catching them and to teach you
+Throughout this tutorial, we will be making a couple of intentional mistakes
+to show you how helpful the validation layers are with catching them and to teach you
 how important it is to know exactly what you're doing with Vulkan. Now it's time
 to look at link:03_Physical_devices_and_queue_families.adoc[Vulkan devices in the system].
 

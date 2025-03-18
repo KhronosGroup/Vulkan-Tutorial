@@ -369,7 +369,7 @@ private:
     void createRenderPass() {
         vk::AttachmentDescription colorAttachment({}, swapChainImageFormat, msaaSamples, vk::AttachmentLoadOp::eClear,
          vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-          vk::ImageLayout::ePresentSrcKHR);
+          vk::ImageLayout::eColorAttachmentOptimal);
         vk::AttachmentDescription depthAttachment({}, findDepthFormat(), msaaSamples, vk::AttachmentLoadOp::eClear,
         vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
         vk::ImageLayout::eDepthStencilAttachmentOptimal);

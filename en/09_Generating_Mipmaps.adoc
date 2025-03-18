@@ -30,7 +30,7 @@ First, add a class member to store this number:
 ----
 ...
 uint32_t mipLevels;
-VkImage textureImage;
+std::unique_ptr<vk::raii::Image> textureImage;
 ...
 ----
 
@@ -55,7 +55,7 @@ Add a `mipLevels` parameter to the functions:
 
 [,c++]
 ----
-void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
+void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) const {
     ...
     imageInfo.mipLevels = mipLevels;
     ...
@@ -64,7 +64,7 @@ void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat f
 
 [,c++]
 ----
-VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
+[[nodiscard]] std::unique_ptr<vk::raii::ImageView> createImageView(const vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels) const {
     ...
     viewInfo.subresourceRange.levelCount = mipLevels;
     ...
@@ -72,7 +72,7 @@ VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags a
 
 [,c++]
 ----
-void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels) {
+void transitionImageLayout(const vk::raii::Image& image, const vk::ImageLayout oldLayout, const vk::ImageLayout newLayout, uint32_t mipLevels) const {
     ...
     barrier.subresourceRange.levelCount = mipLevels;
     ...
@@ -82,32 +82,32 @@ Update all calls to these functions to use the right values:
 
 [,c++]
 ----
-createImage(swapChainExtent.width, swapChainExtent.height, 1, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
+createImage(swapChainExtent.width, swapChainExtent.height, 1, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage, depthImageMemory);
 ...
-createImage(texWidth, texHeight, mipLevels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+createImage(texWidth, texHeight, mipLevels, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, textureImage, textureImageMemory);
 ----
 
 [,c++]
 ----
-swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1);
 ...
-depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+depthImageView = createImageView(depthImage, depthFormat,vk::ImageAspectFlagBits::eDepth, 1);
 ...
-textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
+textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mipLevels);
 ----
 
 [,c++]
 ----
-transitionImageLayout(depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
+transitionImageLayout(depthImage, depthFormat, vk::ImageLayout::eUndefined,vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
 ...
-transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
+transitionImageLayout(textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
 ----
 
 == Generating Mipmaps
 
 Our texture image now has multiple mip levels, but the staging buffer can only be used to fill mip level 0.
 The other levels are still undefined.
-To fill these levels we need to generate the data from the single level that we have.
+To fill these levels, we need to generate the data from the single level that we have.
 We will use the `vkCmdBlitImage` command.
 This command performs copying, scaling, and filtering operations.
 We will call this multiple times to _blit_ data to each level of our texture image.
@@ -118,7 +118,7 @@ Add `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` to the texture image's usage flags in `cre
 [,c++]
 ----
 ...
-createImage(texWidth, texHeight, mipLevels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+createImage(texWidth, texHeight, mipLevels, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, textureImage, textureImageMemory);
 ...
 ----
 
@@ -134,7 +134,7 @@ Remove the existing transition to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` in 
 [,c++]
 ----
 ...
-transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
+transitionImageLayout(textureImage,  vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
     copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 //transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL while generating mipmaps
 ...
@@ -147,19 +147,16 @@ We're now going to write the function that generates the mipmaps:
 
 [,c++]
 ----
-void generateMipmaps(VkImage image, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+void generateMipmaps(vk::raii::Image& image, vk::Format imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
+    std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = beginSingleTimeCommands();
 
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.image = image;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    vk::ImageMemoryBarrier barrier (vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eTransferRead
+                               , vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal
+                               , vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, image);
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
     barrier.subresourceRange.levelCount = 1;
-
     endSingleTimeCommands(commandBuffer);
 }
 ----
@@ -184,16 +181,12 @@ Note that the loop variable starts at 1, not 0.
 [,c++]
 ----
 barrier.subresourceRange.baseMipLevel = i - 1;
-barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+barrier.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
 
-vkCmdPipelineBarrier(commandBuffer,
-    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-    0, nullptr,
-    0, nullptr,
-    1, &barrier);
+commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier);
 ----
 
 First, we transition level `i - 1` to `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL`.
@@ -202,19 +195,10 @@ The current blit command will wait on this transition.
 
 [,c++]
 ----
-VkImageBlit blit{};
-blit.srcOffsets[0] = { 0, 0, 0 };
-blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
-blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-blit.srcSubresource.mipLevel = i - 1;
-blit.srcSubresource.baseArrayLayer = 0;
-blit.srcSubresource.layerCount = 1;
-blit.dstOffsets[0] = { 0, 0, 0 };
-blit.dstOffsets[1] = { mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 };
-blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-blit.dstSubresource.mipLevel = i;
-blit.dstSubresource.baseArrayLayer = 0;
-blit.dstSubresource.layerCount = 1;
+vk::ImageBlit blit( {}, {vk::Offset3D(0,0, 0),vk::Offset3D(mipWidth, mipHeight, 1)},
+                    {}, {vk::Offset3D(0,0, 0),vk::Offset3D(mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1)} );
+blit.srcSubresource = vk::ImageSubresourceLayers( vk::ImageAspectFlagBits::eColor, i - 1, 0, 1);
+blit.dstSubresource = vk::ImageSubresourceLayers( vk::ImageAspectFlagBits::eColor, i, 0, 1);
 ----
 
 Next, we specify the regions that will be used in the blit operation.
@@ -226,11 +210,7 @@ The Z dimension of `srcOffsets[1]` and `dstOffsets[1]` must be 1, since a 2D ima
 
 [,c++]
 ----
-vkCmdBlitImage(commandBuffer,
-    image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    1, &blit,
-    VK_FILTER_LINEAR);
+commandBuffer->blitImage(image, vk::ImageLayout::eTransferSrcOptimal, image, vk::ImageLayout::eTransferDstOptimal, { blit }, vk::Filter::eLinear);
 ----
 
 Now, we record the blit command.
@@ -246,16 +226,12 @@ We use the `VK_FILTER_LINEAR` to enable interpolation.
 
 [,c++]
 ----
-barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+barrier.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
-vkCmdPipelineBarrier(commandBuffer,
-    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-    0, nullptr,
-    0, nullptr,
-    1, &barrier);
+commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
 ----
 
 This barrier transitions mip level `i - 1` to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`.
@@ -278,37 +254,33 @@ When this happens, that dimension should remain 1 for all remaining levels.
 [,c++]
 ----
     barrier.subresourceRange.baseMipLevel = mipLevels - 1;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+    barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+    barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
-    vkCmdPipelineBarrier(commandBuffer,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier);
+    commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
 
-    endSingleTimeCommands(commandBuffer);
+    endSingleTimeCommands(*commandBuffer);
 }
 ----
 
 Before we end the command buffer, we insert one more pipeline barrier.
 This barrier transitions the last mip level from `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL` to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`.
-This wasn't handled by the loop, since the last mip level is never blitted from.
+The loop didn't handle this, since the last mip level is never blitted from.
 
 Finally, add the call to `generateMipmaps` in `createTextureImage`:
 
 [,c++]
 ----
-transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
-    copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+transitionImageLayout(*textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
+copyBufferToImage(stagingBuffer, *textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 //transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL while generating mipmaps
 ...
 generateMipmaps(textureImage, texWidth, texHeight, mipLevels);
 ----
 
-Our texture image's mipmaps are now completely filled.
+Our texture image's mipmaps are now filled.
 
 == Linear filtering support
 
@@ -316,17 +288,17 @@ It is very convenient to use a built-in function like `vkCmdBlitImage` to genera
 It requires the texture image format we use to support linear filtering, which can be checked with the `vkGetPhysicalDeviceFormatProperties` function.
 We will add a check to the `generateMipmaps` function for this.
 
-First add an additional parameter that specifies the image format:
+First, add a parameter that specifies the image format:
 
 [,c++]
 ----
 void createTextureImage() {
     ...
 
-    generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
+    generateMipmaps(*textureImage, vk::Format::eR8G8B8A8Srgb, texWidth, texHeight, mipLevels);
 }
 
-void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
+void generateMipmaps(vk::raii::Image& image, vk::Format imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
 
     ...
 }
@@ -336,11 +308,10 @@ In the `generateMipmaps` function, use `vkGetPhysicalDeviceFormatProperties` to 
 
 [,c++]
 ----
-void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
+void generateMipmaps(vk::raii::Image& image, vk::Format imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
 
-    // Check if image format supports linear blitting
-    VkFormatProperties formatProperties;
-    vkGetPhysicalDeviceFormatProperties(physicalDevice, imageFormat, &formatProperties);
+    // Check if image format supports linear blit-ing
+    vk::FormatProperties formatProperties = physicalDevice->getFormatProperties(imageFormat);
 
     ...
 ----
@@ -351,7 +322,7 @@ Support for the linear filtering feature can be checked with the `VK_FORMAT_FEAT
 
 [,c++]
 ----
-if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+if (!(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear)) {
     throw std::runtime_error("texture image format does not support linear blitting!");
 }
 ----
@@ -361,7 +332,8 @@ You could implement a function that searches common texture image formats for on
 Each mip level can then be loaded into the image in the same way that you loaded the original image.
 
 It should be noted that it is uncommon in practice to generate the mipmap levels at runtime anyway.
-Usually they are pregenerated and stored in the texture file alongside the base level to improve loading speed.
+Usually they are pre-generated and stored in the texture file alongside the
+base level to improve loading speed.
 Implementing resizing in software and loading multiple levels from a file is left as an exercise to the reader.
 
 == Sampler
@@ -377,7 +349,7 @@ lod = clamp(lod + mipLodBias, minLod, maxLod);
 
 level = clamp(floor(lod), 0, texture.mipLevels - 1);  //clamped to the number of mip levels in the texture
 
-if (mipmapMode == VK_SAMPLER_MIPMAP_MODE_NEAREST) {
+if (mipmapMode == vk::SamplerMipmapMode::eNearest) {
     color = sample(level);
 } else {
     color = blend(sample(level), sample(level + 1));
@@ -412,10 +384,11 @@ We just need to choose values for `minLod`, `maxLod`, `mipLodBias`, and `mipmapM
 ----
 void createTextureSampler() {
     ...
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    samplerInfo.minLod = 0.0f; // Optional
-    samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
-    samplerInfo.mipLodBias = 0.0f; // Optional
+    svk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
+                                        vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, vk::True,
+                                        properties.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways,
+                                        0.0f, vk::LodClampNone, vk::BorderColor::eFloatOpaqueBlack, vk::False
+                                    );
     ...
 }
 ----
@@ -424,16 +397,16 @@ To allow the full range of mip levels to be used, we set `minLod` to 0.0f, and `
 This constant is equal to `1000.0f`, which means that all available mipmap levels in the texture will be sampled.
 We have no reason to change the `lod` value, so we set `mipLodBias` to 0.0f.
 
-Now run your program and you should see the following:
+Now run your program, and you should see the following:
 
 image::/images/mipmaps.png[]
 
 It's not a dramatic difference, since our scene is so simple.
-There are subtle differences if you look closely.
+There are subtle differences if you look close.
 
 image::/images/mipmaps_comparison.png[]
 
-The most noticeable difference is the writing on the papers.
+The most noticeable difference is the writing in the papers.
 With mipmaps, the writing has been smoothed.
 Without mipmaps, the writing has harsh edges and gaps from Moiré artifacts.
 
@@ -453,4 +426,5 @@ This is how higher mip levels will be used when objects are further away from th
 
 The xref:10_Multisampling.adoc[next chapter] will walk us through multisampling to produce a smoother image.
 
-link:/attachments/29_mipmapping.cpp[C{pp} code] / link:/attachments/27_shader_depth.vert[Vertex shader] / link:/attachments/27_shader_depth.frag[Fragment shader]
+link:/attachments/29_mipmapping.cpp[C{pp} code] /
+link:/attachments/27_shader_depth.slang[Slang shader]

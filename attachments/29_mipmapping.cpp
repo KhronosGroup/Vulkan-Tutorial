@@ -527,9 +527,6 @@ private:
         vk::ImageMemoryBarrier barrier (vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eTransferRead
                                , vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal
                                , vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, image);
-        barrier.image = image;
-        barrier.srcQueueFamilyIndex = vk::QueueFamilyIgnored;
-        barrier.dstQueueFamilyIndex = vk::QueueFamilyIgnored;
         barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
         barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.layerCount = 1;

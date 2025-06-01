@@ -266,8 +266,7 @@ sudo pacman -S glm
 We have just about all we need, except we'll want a program to compile shaders from the human-readable https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.html[GLSL] to bytecode.
 
 Two popular shader compilers are Khronos Group's `glslangValidator` and Google's `glslc`.
-The latter has a familiar GCC- and Clang-like usage, so we'll go with that: on Ubuntu, download Google's https://github.com/google/shaderc/blob/main/downloads.md[unofficial binaries] and copy `glslc` to your `/usr/local/bin`.
-Note you may need to `sudo` depending on your permissions.
+The latter has a familiar GCC- and Clang-like usage, so we'll go with that: on Ubuntu run `sudo apt install glslc`.
 On Fedora use `sudo dnf install glslc`, while on Arch Linux run `sudo pacman -S shaderc`.
 To test, run `glslc` and it should rightfully complain we didn't pass any shaders to compile:
 

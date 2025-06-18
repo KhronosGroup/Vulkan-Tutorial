@@ -162,9 +162,9 @@ Create three class members to store these semaphore objects and fence object:
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Semaphore> presentCompleteSemaphore;
-std::unique_ptr<vk::raii::Semaphore> renderFinishedSemaphore;
-std::unique_ptr<vk::raii::Fence> drawFence;
+vk::raii::Semaphore presentCompleteSemaphore = nullptr;
+vk::raii::Semaphore renderFinishedSemaphore = nullptr;
+vk::raii::Fence drawFence = nullptr;
 ----
 
 To create the semaphores, we'll add the last `create` function for this part of the tutorial: `createSyncObjects`:
@@ -179,9 +179,7 @@ void initVulkan() {
     createLogicalDevice();
     createSwapChain();
     createImageViews();
-    createRenderPass();
     createGraphicsPipeline();
-    createFramebuffers();
     createCommandPool();
     createCommandBuffer();
     createSyncObjects();
@@ -199,19 +197,13 @@ Creating semaphores requires filling in the `VkSemaphoreCreateInfo`, but in the 
 [,c++]
 ----
 void createSyncObjects() {
-    presentCompleteSemaphore = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-    renderFinishedSemaphore = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
+    presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+    renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+    drawFence = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
 }
 ----
 
 Future versions of the Vulkan API or extensions may add functionality for the `flags` and `pNext` parameters like it does for the other structures.
-
-Creating a fence requires filling in the `VkFenceCreateInfo`:
-
-[,c++]
-----
-    drawFence = std::make_unique<vk::raii::Fence>(*device, vk::FenceCreateInfo());
-----
 
 Onto the main drawing function!
 
@@ -223,7 +215,7 @@ To do that, we call `vkWaitForFences`:
 [,c++]
 ----
 void drawFrame() {
-   auto [result, imageIndex] = swapChain->acquireNextImage( UINT64_MAX, **presentCompleteSemaphore, nullptr );
+   auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr );
 }
 ----
 
@@ -263,7 +255,7 @@ already happened, so we know to wait on it later.
 
 [,c++]
 ----
-device->resetFences(  **drawFence );
+device.resetFences(  *drawFence );
 ----
 
 With a fully recorded command buffer, we can now submit it.
@@ -292,7 +284,7 @@ In our case we're using the `renderFinishedSemaphore` for that purpose.
 
 [,c++]
 ----
-graphicsQueue->submit(submitInfo, **drawFence);
+graphicsQueue.submit(submitInfo, *drawFence);
 ----
 
 We can now submit the command buffer to the graphics queue using `vkQueueSubmit`.
@@ -304,7 +296,7 @@ just submitted:
 
 [,c++]
 ----
-while ( vk::Result::eTimeout == device->waitForFences( **drawFence, vk::True, FenceTimeout ) )
+while ( vk::Result::eTimeout == device.waitForFences( *drawFence, vk::True, UINT64_MAX ) )
             ;
 ----
 
@@ -389,7 +381,7 @@ It's not necessary if you're only using a single swap chain, because you can use
 
 [,c++]
 ----
-result = presentQueue->presentKHR( presentInfoKHR );
+result = presentQueue.presentKHR( presentInfoKHR );
 ----
 
 The `vkQueuePresentKHR` function submits the request to present an image to the swap chain.
@@ -424,7 +416,7 @@ void mainLoop() {
         drawFrame();
     }
 
-    device->waitIdle();
+    device.waitIdle();
 }
 ----
 

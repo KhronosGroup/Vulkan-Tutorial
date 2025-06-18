@@ -35,7 +35,12 @@ validation layers to enable.
 
 [,c++]
 ----
-std::vector deviceExtensions = { vk::KHRSwapchainExtensionName };
+std::vector<const char*> deviceExtensions = {
+    vk::KHRSwapchainExtensionName,
+    vk::KHRSpirv14ExtensionName,
+    vk::KHRSynchronization2ExtensionName,
+    vk::KHRCreateRenderpass2ExtensionName
+};
 ----
 
 It should be noted that the availability of a presentation queue,
@@ -88,7 +93,7 @@ straightforward to query and are returned into a single
 
 [,c++]
 ----
-auto surfaceCapabilities = physicalDevice->getSurfaceCapabilitiesKHR( *surface );
+auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surface );
 ----
 
 This function takes the specified `VkPhysicalDevice` and `VkSurfaceKHR` window
@@ -100,7 +105,7 @@ The next step is about querying the supported surface formats.
 
 [,c++]
 ----
-std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice->getSurfaceFormatsKHR( *surface );
+std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR( surface );
 ----
 
 Make sure that the vector is resized to hold all the available formats.
@@ -110,7 +115,7 @@ with `vkGetPhysicalDeviceSurfacePresentModesKHR`:
 
 [,c++]
 ----
-std::vector<vk::PresentModeKHR> = physicalDevice->getSurfacePresentModesKHR( *surface );
+std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR( surface );
 ----
 
 All the details are available now. Swap chain support is enough for this
@@ -321,11 +326,11 @@ void initVulkan() {
 }
 
 void createSwapChain() {
-    auto surfaceCapabilities = physicalDevice->getSurfaceCapabilitiesKHR( *surface );
-
-    auto swapChainImageFormat = chooseSwapSurfaceFormat(physicalDevice->getSurfaceFormatsKHR( *surface ));
-    auto swapChainExtent = chooseSwapExtent(surfaceCapabilities);
-    auto presentMode = chooseSwapPresentMode(physicalDevice->getSurfacePresentModesKHR( *surface ));
+    auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surface );
+    swapChainImageFormat = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR( surface ));
+    swapChainExtent = chooseSwapExtent(surfaceCapabilities);
+    auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
+    minImageCount = ( surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount ) ? surfaceCapabilities.maxImageCount : minImageCount;
 }
 ----
 
@@ -364,11 +369,15 @@ object so it is among the larger createInfo structures in Vulkan:
 
 [,c++]
 ----
-vk::SwapchainCreateInfoKHR swapChainCreateInfo( vk::SwapchainCreateFlagsKHR(), *surface,
-    minImageCount, swapChainImageFormat, vk::ColorSpaceKHR::eSrgbNonlinear,swapChainExtent,
-    1, vk::ImageUsageFlagBits::eColorAttachment,vk::SharingMode::eExclusive, {},
-    surfaceCapabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque,
-    presentMode, true, nullptr );
+vk::SwapchainCreateInfoKHR swapChainCreateInfo{
+    .flags = vk::SwapchainCreateFlagsKHR(), .
+    surface = surface, .minImageCount = minImageCount,
+    .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
+    .imageExtent = swapChainExtent, .imageArrayLayers =1,
+    .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive,
+    .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+    .presentMode = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR( surface )),
+    .clipped = true, .oldSwapchain = nullptr };
 ----
 
 he `imageArrayLayers` specifies the number of layers each image consists of.
@@ -474,7 +483,8 @@ Creating the swap chain is now as simple as calling `vkCreateSwapchainKHR`:
 
 [,c++]
 ----
-swapChain = vk::raii::SwapchainKHR( *device, swapChainCreateInfo );
+swapChain = vk::raii::SwapchainKHR( device, swapChainCreateInfo );
+swapChainImages = swapChain.getImages();
 ----
 
 The parameters are the logical device, swap chain creation info, optional custom
@@ -507,7 +517,7 @@ images in member variables. We'll need them in future chapters.
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::SwapchainKHR> swapChain;
+vk::raii::SwapchainKHR swapChain = nullptr;
 std::vector<vk::Image> swapChainImages;
 vk::Format swapChainImageFormat = vk::Format::eUndefined;
 vk::Extent2D swapChainExtent;

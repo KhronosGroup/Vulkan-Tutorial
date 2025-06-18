@@ -32,13 +32,13 @@ Rename and then change them to be ``std::vector``s of the objects:
 
 [,c++]
 ----
-std::vector<std::unique_ptr<vk::raii::CommandBuffer>> commandBuffers;
+std::vector<vk::raii::CommandBuffer> commandBuffers;
 
 ...
 
-std::vector<std::unique_ptr<vk::raii::Semaphore>> presentCompleteSemaphore;
-std::vector<std::unique_ptr<vk::raii::Semaphore>> renderFinishedSemaphore;
-std::vector<std::unique_ptr<vk::raii::Fence>> inFlightFences;
+std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
+std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
+std::vector<vk::raii::Fence> inFlightFences;
 ----
 
 Then we need to create multiple command buffers.
@@ -48,14 +48,10 @@ Next we need to resize the command buffers vector to the size of `MAX_FRAMES_IN_
 [,c++]
 ----
 void createCommandBuffers() {
-    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    ...
-    vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, commandBuffers.size());
-
-    auto commandBuffers_ = vk::raii::CommandBuffers( *device, allocInfo );
-    for (int i = 0; i < commandBuffers.size(); i++) {
-        commandBuffers[i] = std::make_unique<vk::raii::CommandBuffer>(std::move(commandBuffers_[i]));
-    }
+    commandBuffers.clear();
+    vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary,
+                                           .commandBufferCount = MAX_FRAMES_IN_FLIGHT };
+    commandBuffers = vk::raii::CommandBuffers( device, allocInfo );
 }
 ----
 
@@ -64,14 +60,14 @@ The `createSyncObjects` function should be changed to create all the objects:
 [,c++]
 ----
 void createSyncObjects() {
-    presentCompleteSemaphore.resize(MAX_FRAMES_IN_FLIGHT);
-    renderFinishedSemaphore.resize(MAX_FRAMES_IN_FLIGHT);
-    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    presentCompleteSemaphores.clear();
+    renderFinishedSemaphores.clear();
+    inFlightFences.clear();
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        presentCompleteSemaphore[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-        renderFinishedSemaphore[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-        inFlightFences[i] = std::make_unique<vk::raii::Fence>(*device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
+        presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+        renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+        inFlightFences.emplace_back(device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
     }
 }
 ----
@@ -89,24 +85,27 @@ The `drawFrame` function can now be modified to use the right objects:
 [,c++]
 ----
 void drawFrame() {
-    while ( vk::Result::eTimeout == device->waitForFences( **inFlightFences[currentFrame], vk::True, FenceTimeout ) )
+    while ( vk::Result::eTimeout == device.waitForFences( inFlightFences[currentFrame], vk::True, UINT64_MAX ) )
             ;
-    auto [result, imageIndex] = swapChain->acquireNextImage( UINT64_MAX, **presentCompleteSemaphore[currentFrame], nullptr );
+    auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, presentCompleteSemaphores[currentFrame], nullptr );
 
-    device->resetFences(  **inFlightFences[currentFrame] );
-
-    ...
-
-    commandBuffers[currentFrame]->reset();
-    recordCommandBuffer(imageIndex);
+    device.resetFences( inFlightFences[currentFrame] );
 
     ...
 
-    const vk::SubmitInfo submitInfo( **presentCompleteSemaphore[currentFrame], waitDestinationStageMask, **commandBuffers[currentFrame], **renderFinishedSemaphore[currentFrame] );
+    commandBuffers[currentFrame].reset();
+    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
     ...
 
-    graphicsQueue->submit(submitInfo, **inFlightFences[currentFrame]);
+    vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
+    const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphores[currentFrame],
+                        .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame],
+                        .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame] };
+
+    ...
+
+    graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
 }
 ----
 
@@ -134,8 +133,17 @@ these frames are not stepping over each other.
 Note that it is fine for other parts of the code, like the final cleanup, to rely on more rough synchronization like `vkDeviceWaitIdle`.
 You should decide on which approach to use based on performance requirements.
 
+Additionally, we could use timeline semaphores instead of the binary
+semaphores presented here.  To see an example of how to use timeline
+semaphores, look at xref:../../11_Compute_Shader.adoc[compute shader chapter]
+.  Note that timeline semaphores are especially useful for dealing with a
+compute and a graphics queue as in that example.  This method of simple
+binary semaphores could be thought of as the more traditional approach to
+synchronization.
+
 To learn more about synchronization through examples, have a look at https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples#swapchain-image-acquire-and-present[this extensive overview] by Khronos.
 
-In the xref:03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[next chapter] we'll deal with one more small thing required for a well-behaved Vulkan program.
+In the xref:../03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[next
+chapter] we'll deal with one more small thing required for a well-behaved Vulkan program.
 
 link:/attachments/16_frames_in_flight.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

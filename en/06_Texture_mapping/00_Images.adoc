@@ -145,8 +145,8 @@ Add the following new class members:
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Image> textureImage;
-std::unique_ptr<vk::raii::DeviceMemory> textureImageMemory;
+vk::raii::Image textureImage = nullptr;
+vk::raii::DeviceMemory textureImageMemory = nullptr;
 ----
 
 The parameters for an image are specified in a `VkImageCreateInfo` struct:
@@ -200,7 +200,7 @@ We won't be using it in this tutorial, so leave it to its default value of `0`.
 
 [,c++]
 ----
-image = vk::raii::Image( *device, imageInfo );
+image = vk::raii::Image( device, imageInfo );
 ----
 
 The image is created using `vkCreateImage`, which doesn't have any particularly noteworthy parameters.
@@ -214,7 +214,7 @@ We will get back to this in the depth buffer chapter, where we'll implement such
 ----
 vk::MemoryRequirements memRequirements = image.getMemoryRequirements();
 vk::MemoryAllocateInfo allocInfo( memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, properties) );
-imageMemory = vk::raii::DeviceMemory( *device, allocInfo );
+imageMemory = vk::raii::DeviceMemory( device, allocInfo );
 image.bindMemory(*imageMemory, 0);
 ----
 
@@ -229,12 +229,12 @@ Create the function and move the image object creation and memory allocation to 
 void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) {
     vk::ImageCreateInfo imageInfo( {}, vk::ImageType::e2D, format, {width, height, 1}, 1, 1, vk::SampleCountFlagBits::e1, tiling, usage, vk::SharingMode::eExclusive, 0);
 
-    image = vk::raii::Image( *device, imageInfo );
+    image = vk::raii::Image( device, imageInfo );
 
     vk::MemoryRequirements memRequirements = image.getMemoryRequirements();
     vk::MemoryAllocateInfo allocInfo( memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, properties) );
-    imageMemory = vk::raii::DeviceMemory( *device, allocInfo );
-    image.bindMemory(*imageMemory, 0);
+    imageMemory = vk::raii::DeviceMemory( device, allocInfo );
+    image.bindMemory(imageMemory, 0);
 }
 ----
 
@@ -275,12 +275,12 @@ The function we're going to write now involves recording and executing a command
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands() {
-    vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
-    std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = std::make_unique<vk::raii::CommandBuffer>(std::move(vk::raii::CommandBuffers( *device, allocInfo ).front()));
+vk::raii::CommandBuffer beginSingleTimeCommands() {
+    vk::CommandBufferAllocateInfo allocInfo(commandPool, vk::CommandBufferLevel::ePrimary, 1);
+    vk::raii::CommandBuffer commandBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
 
     vk::CommandBufferBeginInfo beginInfo( vk::CommandBufferUsageFlagBits::eOneTimeSubmit );
-    commandBuffer->begin(beginInfo);
+    commandBuffer.begin(beginInfo);
 
     return commandBuffer;
 }
@@ -289,8 +289,8 @@ void endSingleTimeCommands(vk::raii::CommandBuffer& commandBuffer) {
     commandBuffer.end();
 
     vk::SubmitInfo submitInfo( {}, {}, {*commandBuffer});
-    graphicsQueue->submit(submitInfo, nullptr);
-    graphicsQueue->waitIdle();
+    graphicsQueue.submit(submitInfo, nullptr);
+    graphicsQueue.waitIdle();
 }
 ----
 
@@ -300,9 +300,9 @@ You can now simplify that function to:
 [,c++]
 ----
 void copyBuffer(vk::raii::Buffer & srcBuffer, vk::raii::Buffer & dstBuffer, vk::DeviceSize size) {
-    vk::raii::CommandBuffer commandCopyBuffer = beginSingleTimeCommands()
+    vk::raii::CommandBuffer commandCopyBuffer = beginSingleTimeCommands();
     commandCopyBuffer.copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy(0, 0, size));
-    ndSingleTimeCommands(commandCopyBuffer);
+    endSingleTimeCommands(commandCopyBuffer);
 }
 ----
 
@@ -342,7 +342,7 @@ The right values depend on the old and new layout, so we'll get back to this onc
 
 [,c++]
 ----
-commandBuffer->pipelineBarrier( sourceStage, destinationStage, {}, {}, nullptr, barrier );
+commandBuffer.pipelineBarrier( sourceStage, destinationStage, {}, {}, nullptr, barrier );
 ----
 
 All types of pipeline barriers are submitted using the same function.
@@ -367,7 +367,7 @@ Before we get back to `createTextureImage`, we're going to write one more helper
 [,c++]
 ----
 void copyBufferToImage(const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height) {
-    std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = beginSingleTimeCommands();
+    vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
 
     endSingleTimeCommands(commandBuffer);
 }
@@ -392,7 +392,7 @@ Buffer to image copy operations are enqueued using the `vkCmdCopyBufferToImage` 
 
 [,c++]
 ----
-commandBuffer->copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, {region});
+commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, {region});
 ----
 
 The fourth parameter indicates which layout the image is currently using.
@@ -413,8 +413,8 @@ This is easy to do with the functions we just created:
 
 [,c++]
 ----
-transitionImageLayout(*textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-copyBufferToImage(stagingBuffer, *textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+transitionImageLayout(textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 ----
 
 The image was created with the `VK_IMAGE_LAYOUT_UNDEFINED` layout, so that one should be specified as old layout when transitioning `textureImage`.
@@ -424,7 +424,7 @@ To be able to start sampling from the texture image in the shader, we need one l
 
 [,c++]
 ----
-transitionImageLayout(*textureImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+transitionImageLayout(textureImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 ----
 
 == Transition barrier masks
@@ -460,7 +460,7 @@ if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eT
     throw std::invalid_argument("unsupported layout transition!");
 }
 
-commandBuffer->pipelineBarrier( sourceStage, destinationStage, {}, {}, nullptr, barrier );
+commandBuffer.pipelineBarrier( sourceStage, destinationStage, {}, {}, nullptr, barrier );
 ----
 
 As you can see in the aforementioned table, transfer writes must occur in the pipeline transfer stage.
@@ -490,4 +490,4 @@ It's best to do this after the texture mapping works to check if the texture res
 The image now contains the texture, but we still need a way to access it from the graphics pipeline.
 We'll work on that in the xref:./01_Image_view_and_sampler.adoc[next chapter].
 
-link:/attachments/24_texture_image.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]
+link:/attachments/24_texture_image.cpp[C{pp} code] / link:/attachments/22_shader_ubo.slang[Slang shader]

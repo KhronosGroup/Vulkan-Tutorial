@@ -175,8 +175,8 @@ Define a new class member above `pipelineLayout`:
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout;
-std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout;
+vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
+vk::raii::PipelineLayout pipelineLayout = nullptr;
 ----
 
 We can then create it using `vkCreateDescriptorSetLayout`.
@@ -186,7 +186,7 @@ This function accepts a simple `VkDescriptorSetLayoutCreateInfo` with the array 
 ----
 vk::DescriptorSetLayoutBinding uboLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr);
 vk::DescriptorSetLayoutCreateInfo layoutInfo({}, 1, &uboLayoutBinding);
-descriptorSetLayout = std::make_unique<vk::raii::DescriptorSetLayout>( *device, layoutInfo );
+descriptorSetLayout = vk::raii::DescriptorSetLayout( device, layoutInfo );
 ----
 
 We need to specify the descriptor set layout during pipeline creation to tell Vulkan which descriptors the shaders will be using.
@@ -195,7 +195,7 @@ Modify the `VkPipelineLayoutCreateInfo` to reference the layout object:
 
 [,c++]
 ----
-vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, 1, &**descriptorSetLayout, 0, nullptr);
+vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0 };
 ----
 
 You may be wondering why it's possible to specify multiple descriptor set layouts here, because a single one already includes all of the bindings.
@@ -214,8 +214,8 @@ To that end, add new class members for `uniformBuffers`, and `uniformBuffersMemo
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Buffer> indexBuffer;
-std::unique_ptr<vk::raii::DeviceMemory> indexBufferMemory;
+vk::raii::Buffer indexBuffer = nullptr;
+vk::raii::DeviceMemory indexBufferMemory = nullptr;
 
 std::vector<vk::raii::Buffer> uniformBuffers;
 std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
@@ -271,7 +271,9 @@ void drawFrame() {
 
     ...
 
-    const vk::SubmitInfo submitInfo( **presentCompleteSemaphore[currentFrame], waitDestinationStageMask, **commandBuffers[currentFrame], **renderFinishedSemaphore[currentFrame] );
+    const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore[currentFrame],
+                            .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame],
+                            .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore[currentFrame] };
 
     ...
 }

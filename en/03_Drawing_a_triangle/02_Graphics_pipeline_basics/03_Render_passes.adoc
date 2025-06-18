@@ -1,187 +1,42 @@
 :pp: {plus}{plus}
 
-= Render passes
+= Dynamic Rendering
 
-== Setup
+== Introduction
 
-Before we can finish creating the pipeline, we need to tell Vulkan about the
- framebuffer attachments that will be used while rendering.
-We need to specify how many color and depth buffers there will be, how many
-samples to use for each of them and how their contents should be handled
-throughout the rendering operations.
-All of this information is wrapped in a _render pass_ object, for which
-we'll create a new `createRenderPass` function.
-Call this function from `initVulkan` before `createGraphicsPipeline`.
+In previous versions of Vulkan, before we could finish creating the pipeline, we needed to tell Vulkan about the framebuffer attachments that would be used while rendering through a render pass object. However, with the introduction of dynamic rendering in Vulkan 1.3, we can now specify this information directly when creating the graphics pipeline and when recording command buffers.
 
-[,c++]
-----
-void initVulkan() {
-    createInstance();
-    setupDebugMessenger();
-    createSurface();
-    pickPhysicalDevice();
-    createLogicalDevice();
-    createSwapChain();
-    createImageViews();
-    createRenderPass();
-    createGraphicsPipeline();
-}
+Dynamic rendering simplifies the rendering process by eliminating the need for render pass and framebuffer objects. Instead, we can specify the color, depth, and stencil attachments directly when we begin rendering.
 
-...
+== Pipeline Rendering Create Info
 
-void createRenderPass() {
-
-}
-----
-
-== Attachment description
-
-In our case, we'll have just a single color buffer attachment represented by
- one of the images from the swap chain.
+To use dynamic rendering, we need to specify the formats of the attachments that will be used during rendering. This is done through the `vk::PipelineRenderingCreateInfo` structure when creating the graphics pipeline:
 
 [,c++]
 ----
-void createRenderPass() {
-    vk::AttachmentDescription colorAttachment({}, swapChainImageFormat, vk::SampleCountFlagBits::e1);
-}
+vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
 ----
 
-The `format` of the color attachment should match the format of the swap
-chain images, and we're not doing anything with multisampling yet, so we'll
-stick to one sample.
+This structure specifies that we'll be using one color attachment with the format of our swap chain images. We then include this structure in the `pNext` chain of the `vk::GraphicsPipelineCreateInfo` structure:
 
 [,c++]
 ----
-vk::AttachmentDescription colorAttachment({}, swapChainImageFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore);
+vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
+    .stageCount = 2, .pStages = shaderStages,
+    .pVertexInputState = &vertexInputInfo, .pInputAssemblyState = &inputAssembly,
+    .pViewportState = &viewportState, .pRasterizationState = &rasterizer,
+    .pMultisampleState = &multisampling, .pColorBlendState = &colorBlending,
+    .pDynamicState = &dynamicState, .layout = pipelineLayout, .renderPass = nullptr };
 ----
 
-The `loadOp` and `storeOp` determine what to do with the data in the attachment before rendering and after rendering.
-We have the following choices for `loadOp`:
+Note that the `renderPass` parameter is set to `nullptr` because we're using dynamic rendering instead of a traditional render pass.
 
-* `VK_ATTACHMENT_LOAD_OP_LOAD`: Preserve the existing contents of the attachment
-* `VK_ATTACHMENT_LOAD_OP_CLEAR`: Clear the values to a constant at the start
-* `VK_ATTACHMENT_LOAD_OP_DONT_CARE`: Existing contents are undefined;
-we don't care about them
+== Command Buffer Recording
 
-In our case, we're going to use the clear operation to clear the framebuffer to black before drawing a new frame.
-There are only two possibilities for the `storeOp`:
+When recording command buffers, we'll use the `vk::CommandBuffer::beginRendering` function to start rendering to the specified attachments. We'll cover this in more detail in the Drawing chapter.
 
-* `VK_ATTACHMENT_STORE_OP_STORE`: Rendered contents will be stored in memory and can be read later
-* `VK_ATTACHMENT_STORE_OP_DONT_CARE`: Contents of the framebuffer will be undefined after the rendering operation
+The advantage of dynamic rendering is that it simplifies the rendering process by eliminating the need for render pass and framebuffer objects. It also provides more flexibility by allowing us to change the attachments we're rendering to without creating new render pass objects.
 
-We're interested in seeing the rendered triangle on the screen, so we're going with the store operation here.
+In the xref:./04_Conclusion.adoc[next chapter], we'll put everything together to finally create the graphics pipeline object!
 
-[,c++]
-----
-vk::AttachmentDescription colorAttachment({}, swapChainImageFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare);
-----
-
-The `loadOp` and `storeOp` apply to color and depth data, and `stencilLoadOp` / `stencilStoreOp` apply to stencil data.
-Our application won't do anything with the stencil buffer, so the results of loading and storing are irrelevant.
-
-[,c++]
-----
-vk::AttachmentDescription colorAttachment({}, swapChainImageFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-         vk::ImageLayout::ePresentSrcKHR);
-----
-
-Textures and framebuffers in Vulkan are represented by `VkImage` objects
-with a certain pixel format, however, the layout of the pixels in memory can
- change based on what you're trying to do with an image.
-
-Some of the most common layouts are:
-
-* `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL`: Images used as color attachment
-* `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`: Images to be presented in the swap chain
-* `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`: Images to be used as destination for a memory copy operation
-
-We'll discuss this topic in more depth in the texturing chapter. However, what's
-important to know right now is that images need to be transitioned to
-specific layouts that are suitable for the operation that they're going to
-be involved in next.
-
-The `initialLayout` specifies which layout the image will have before the render pass begins.
-The `finalLayout` specifies the layout to automatically transition to when the render pass finishes.
-Using `VK_IMAGE_LAYOUT_UNDEFINED` for `initialLayout` means that we don't care what previous layout the image was in.
-The warning of this special value is that the contents of the image are not
-guaranteed to be preserved, but that doesn't matter since we're going to
-clear it anyway.
-We want the image to be ready for presentation using the swap chain after
-rendering, which is why we use `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` as `finalLayout`.
-
-== Subpasses and attachment references
-
-A single render pass can consist of multiple subpasses.
-Subpasses are subsequent rendering operations that depend on the contents of framebuffers in previous passes, for example a sequence of post-processing effects that are applied one after another.
-If you group these rendering operations into one render pass, then Vulkan is able to reorder the operations and conserve memory bandwidth for possibly better performance.
-For our very first triangle, however, we'll stick to a single subpass.
-
-Every subpass references one or more of the attachments that we've described using the structure in the previous sections.
-These references are themselves `VkAttachmentReference` structs that look like this:
-
-[,c++]
-----
-vk::AttachmentReference colorAttachmentRef(0, vk::ImageLayout::eColorAttachmentOptimal);
-----
-
-The `attachment` parameter specifies which attachment to reference by its index in the attachment descriptions array.
-Our array consists of a single `VkAttachmentDescription`, so its index is `0`.
-The `layout` specifies which layout we would like the attachment to have during a subpass that uses this reference.
-Vulkan will automatically transition the attachment to this layout when the subpass is started.
-We intend to use the attachment to function as a color buffer and the `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` layout will give us the best performance, as its name implies.
-
-The subpass is described using a `VkSubpassDescription` structure:
-
-[,c++]
-----
-vk::SubpassDescription subpass();
-----
-
-Vulkan may also support compute subpasses in the future, so we have to be explicit about this being a graphics subpass.
-Next, we specify the reference to the color attachment:
-
-[,c++]
-----
-vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, 0, nullptr,
-        1, &colorAttachmentRef);
-----
-
-The index of the attachment in this array is referenced from the
-fragment shader with the `SV_Target` annotation when it's returned by the
-fragMain function.
-
-The following other types of attachments can be referenced by a subpass:
-
-* `pInputAttachments`: Attachments that are read from a shader
-* `pResolveAttachments`: Attachments used for multisampling color attachments
-* `pDepthStencilAttachment`: Attachment for depth and stencil data
-* `pPreserveAttachments`: Attachments that are not used by this subpass, but for which the data must be preserved
-
-== Render pass
-
-Now that the attachment and a basic subpass referencing it have been described, we can create the render pass itself.
-Create a new class member variable to hold the `VkRenderPass` object right above the `pipelineLayout` variable:
-
-[,c++]
-----
-std::unique_ptr<vk::raii::RenderPass> renderPass;
-std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout;
-----
-
-The render pass object can then be created by filling in the `VkRenderPassCreateInfo` structure with an array of attachments and subpasses.
-The `VkAttachmentReference` objects reference attachments using the indices of this array.
-
-[,c++]
-----
-renderPass = std::make_unique<vk::raii::RenderPass>( *device, renderPassInfo );
-----
-
-Just like the pipeline layout, the render pass will be referenced throughout
-the program.
-
-That was a lot of work, but in the xref:./04_Conclusion.adoc[next chapter] it all comes together to finally create the graphics pipeline object!
-
-link:/attachments/11_render_passes.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]
+link:/attachments/12_graphics_pipeline_complete.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

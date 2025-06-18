@@ -38,7 +38,11 @@ certain special behavior). This struct is called `VkApplicationInfo`:
 [,c++]
 ----
 void createInstance() {
-    constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No  Engine", 1, vk::ApiVersion14);
+    constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+            .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+            .pEngineName        = "No Engine",
+            .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+            .apiVersion         = vk::ApiVersion14 };
 }
 ----
 
@@ -58,7 +62,9 @@ device, which will become clear in the next few chapters.
 
 [,c++]
 ----
-vk::InstanceCreateInfo createInfo({}, &appInfo, {}, {});
+vk::InstanceCreateInfo createInfo{
+    .pApplicationInfo = &appInfo
+};
 ----
 
 The first parameter is the flags for the structure, the second is the
@@ -76,12 +82,14 @@ const char** glfwExtensions;
 
 glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-vk::InstanceCreateInfo createInfo({}, &appInfo, {}, glfwExtensions);
+vk::InstanceCreateInfo createInfo{
+    .pApplicationInfo = &appInfo,
+    .ppEnabledLayerNames = glfwExtensions};
 ----
 
 The other missing piece is the Layers to enable. Here is where we'll talk
 about how to enable validation layers, which is one of the most useful and
-important layers to enable for any project. We'll talk about these more
+important layers to enable for any project. We'll talk about this more
 in-depth in the next chapter, so leave this empty for now.
 
 We've now specified everything Vulkan needs to create an instance, and we can
@@ -160,8 +168,16 @@ Typically, the code could be like this:
 
 [,c++]
 ----
-constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion11);
-vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo, {}, { vk::KHRPortabilityEnumerationExtensionName });
+constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+            .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+            .pEngineName        = "No Engine",
+            .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+            .apiVersion         = vk::ApiVersion14 };
+vk::InstanceCreateInfo createInfo{
+    .flas = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
+    .pApplicationInfo = &appInfo,
+    .ppEnabledExtensionNames = { vk::KHRPortabilityEnumerationExtensionName }
+};
 instance = std::make_unique<vk::raii::Instance>(context, createInfo);
 ----
 
@@ -175,7 +191,7 @@ what if we want to check for optional functionality?
 
 To retrieve a list of supported extensions before creating an instance, there's
 the `vkEnumerateInstanceExtensionProperties` function. We can call it on the
-context object; it returns a vector of the extensions available which
+context object; it returns a vector of the extensions available, which
 allows us to filter extensions by a specific validation layer, which we'll
 ignore for now.
 

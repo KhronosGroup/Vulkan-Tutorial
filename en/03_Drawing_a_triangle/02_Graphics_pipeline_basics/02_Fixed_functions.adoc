@@ -22,7 +22,7 @@ std::vector dynamicStates = {
     vk::DynamicState::eScissor
 };
 
-vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates.size(), dynamicStates.data());
+vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data() };
 ----
 
 This will cause the configuration of these values to be ignored, and you will be able (and required) to specify the data at drawing time.
@@ -66,7 +66,7 @@ We intend to draw triangles throughout this tutorial, so we'll stick to the foll
 
 [,c++]
 ----
-vk::PipelineInputAssemblyStateCreateInfo inputAssembly({}, vk::PrimitiveTopology::eTriangleList);
+vk::PipelineInputAssemblyStateCreateInfo inputAssembly{  .topology = vk::PrimitiveTopology::eTriangleList };
 ----
 
 == Viewports and scissors
@@ -76,7 +76,7 @@ This will almost always be `(0, 0)` to `(width, height)` and in this tutorial th
 
 [,c++]
 ----
-vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width),static_cast<float>(swapChainExtent.height), 0.0f, 1.0f);
+vk::Viewport{ 0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f };
 ----
 
 Remember that the size of the swap chain and its images may differ from the `WIDTH` and `HEIGHT` of the window.
@@ -98,10 +98,10 @@ So if we wanted to draw to the entire framebuffer, we would specify a scissor re
 
 [,c++]
 ----
-vk::Rect2D( vk::Offset2D( 0, 0 ), swapChainExtent )
+vk::Rect2D{ vk::Offset2D{ 0, 0 }, swapChainExtent }
 ----
 
-Viewport(s) and scissor rectangle(s) can either be specified as a static part of the pipeline or as a <<dynamic-state,dynamic state>> set in the command buffer.
+Viewport(s) and scissor rectangle(s) can either be specified as a static part of the pipeline or as a dynamic state set in the command buffer.
 While the former is more in line with the other states, it's often convenient to make viewport and scissor state dynamic as it gives you a lot more flexibility.
 This is widespread and all implementations can handle this dynamic state without a performance penalty.
 
@@ -134,7 +134,7 @@ Any changes required to these values would require a new pipeline to be created 
 
 [,c++]
 ----
-vk::PipelineViewportStateCreateInfo viewportState({}, {&viewport}, {&scissor});
+vk::PipelineViewportStateCreateInfo viewportState{ .viewportCount = 1, .scissorCount = 1 };
 ----
 
 Independent of how you set them, it's possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
@@ -166,7 +166,10 @@ This basically disables any output to the framebuffer.
 
 [,c++]
 ----
-vk::PipelineRasterizationStateCreateInfo rasterizer({}, vk::False, vk::False, vk::PolygonMode::eFill);
+vk::PipelineRasterizationStateCreateInfo rasterizer{  .depthClampEnable = vk::False, .rasterizerDiscardEnable = vk::False,
+ .polygonMode = vk::PolygonMode::eFill, .cullMode = vk::CullModeFlagBits::eBack,
+ .frontFace = vk::FrontFace::eClockwise, .depthBiasEnable = vk::False,
+ .depthBiasSlopeFactor = 1.0f, .lineWidth = 1.0f };
 ----
 
 The `polygonMode` determines how fragments are generated for geometry.
@@ -216,7 +219,7 @@ Enabling it requires enabling a GPU feature.
 
 [,c++]
 ----
-vk::PipelineMultisampleStateCreateInfo multisampling({}, vk::SampleCountFlagBits::e1, vk::False);
+vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False};
 ----
 
 We'll revisit multisampling in later chapter, for now let's keep it disabled.
@@ -295,7 +298,7 @@ framebuffers and allows you to set blend constants that you can use as blend
 
 [,c++]
 ----
-vk::PipelineColorBlendStateCreateInfo colorBlending({},vk::False, vk::LogicOp::eCopy, 1, &colorBlendAttachment);
+vk::PipelineColorBlendStateCreateInfo colorBlending{.logicOpEnable = vk::False, .logicOp =  vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments =  &colorBlendAttachment };
 ----
 
 If you want to use the second method of blending (a bitwise combination), then you should set `logicOpEnable` to `VK_TRUE`.
@@ -316,16 +319,16 @@ Create a class member to hold this object because we'll refer to it from other f
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout;
+vk::raii::PipelineLayout pipelineLayout = nullptr;
 ----
 
 And then create the object in the `createGraphicsPipeline` function:
 
 [,c++]
 ----
-vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, 0, nullptr, 0, nullptr);
+vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 0, .pushConstantRangeCount = 0 };
 
-pipelineLayout = std::make_unique<vk::raii::PipelineLayout>( *device, pipelineLayoutInfo );
+pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
 ----
 
 The structure also specifies _push constants_, which are another way of passing dynamic values to shaders that we may get into in a future chapter.

@@ -173,6 +173,14 @@ The color attribute is described in much the same way.
 We now need to set up the graphics pipeline to accept vertex data in this format by referencing the structures in `createGraphicsPipeline`.
 Find the `vertexInputInfo` struct and modify it to reference the two descriptions:
 
+[,c++]
+----
+auto bindingDescription = Vertex::getBindingDescription();
+auto attributeDescriptions = Vertex::getAttributeDescriptions();
+vk::PipelineVertexInputStateCreateInfo vertexInputInfo {  .vertexBindingDescriptionCount =1, .pVertexBindingDescriptions = &bindingDescription,
+    .vertexAttributeDescriptionCount = attributeDescriptions.size(), .pVertexAttributeDescriptions = attributeDescriptions.data() };
+----
+
 The pipeline is now ready to accept vertex data in the format of the `vertices` container and pass it on to our vertex shader.
 If you run the program now with validation layers enabled, you'll see that it complains that there is no vertex buffer bound to the binding.
 The xref:./01_Vertex_buffer_creation.adoc[next step] is to create a vertex buffer and move the vertex data to it so the GPU is able to access it.

@@ -57,7 +57,7 @@ Go to the `createDescriptorSets` function.
 ----
 for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vk::DescriptorBufferInfo bufferInfo(uniformBuffers[i], 0, sizeof(UniformBufferObject));
-    vk::DescriptorImageInfo imageInfo( *textureSampler, *textureImageView, vk::ImageLayout::eShaderReadOnlyOptimal );
+    vk::DescriptorImageInfo imageInfo( textureSampler, textureImageView, vk::ImageLayout::eShaderReadOnlyOptimal );
 
     ...
 }
@@ -72,7 +72,7 @@ std::array descriptorWrites{
     vk::WriteDescriptorSet( descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo ),
     vk::WriteDescriptorSet( descriptorSets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &imageInfo)
 };
-device->updateDescriptorSets(descriptorWrites, {});
+device.updateDescriptorSets(descriptorWrites, {});
 ----
 
 The descriptors must be updated with this image info, just like the buffer.

@@ -16,18 +16,16 @@ Create a new `recreateSwapChain` function that calls `createSwapChain` and all t
 [,c++]
 ----
 void recreateSwapChain() {
-    device->waitIdle();
+    device.waitIdle();
 
     createSwapChain();
     createImageViews();
-    createFramebuffers();
 }
 ----
 
 We first call `vkDeviceWaitIdle`, because just like in the last chapter, we shouldn't touch resources that may still be in use.
 Obviously, we'll have to recreate  the swap chain itself.
-The image views need to be recreated because they are based  directly on the swap chain images.
-Finally, the framebuffers directly depend on the  swap chain images, and thus must be recreated as well.
+The image views need to be recreated because they are based directly on the swap chain images.
 
 To make sure that the old versions of these objects are cleaned up before recreating them, we should move some of the cleanup code to a separate function that we can call from the `recreateSwapChain` function.
 Let's call it `cleanupSwapChain`:
@@ -39,13 +37,12 @@ void cleanupSwapChain() {
 }
 
 void recreateSwapChain() {
-    vkDeviceWaitIdle(device);
+    device.waitIdle();
 
     cleanupSwapChain();
 
     createSwapChain();
     createImageViews();
-    createFramebuffers();
 }
 ----
 
@@ -59,14 +56,14 @@ We'll move the cleanup code of all objects that are recreated as part of a swap 
 [,c++]
 ----
 void cleanupSwapChain() {
-    swapChainFramebuffers.clear();
     swapChainImageViews.clear();
-    swapChainImageViews.clear();
+    swapChain = nullptr;
 }
 
 void cleanup() {
-    glfwDestroyWindow(window);
+    cleanupSwapChain();
 
+    glfwDestroyWindow(window);
     glfwTerminate();
 }
 ----
@@ -90,7 +87,7 @@ Usually happens after a window resize.
 
 [,c++]
 ----
-auto [result, imageIndex] = swapChain->acquireNextImage( UINT64_MAX, **presentCompleteSemaphore[currentFrame], nullptr );
+auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphores[currentFrame], nullptr );
 
 if (result == vk::Result::eErrorOutOfDateKHR) {
     recreateSwapChain();
@@ -109,7 +106,7 @@ Both `VK_SUCCESS` and `VK_SUBOPTIMAL_KHR` are considered "success" return codes.
 
 [,c++]
 ----
-result = presentQueue->presentKHR( presentInfoKHR );
+result = presentQueue.presentKHR( presentInfoKHR );
 if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
     framebufferResized = false;
     recreateSwapChain();
@@ -163,7 +160,7 @@ First, add a new member variable that flags that a resize has happened:
 
 [,c++]
 ----
-std::vector<std::unique_ptr<vk::raii::Fence>> inFlightFences;
+std::vector<vk::raii::Fence> inFlightFences;
 
 bool framebufferResized = false;
 ----
@@ -238,7 +235,7 @@ void recreateSwapChain() {
         glfwWaitEvents();
     }
 
-    device->waitIdle();
+    device.waitIdle();
 
     ...
 }

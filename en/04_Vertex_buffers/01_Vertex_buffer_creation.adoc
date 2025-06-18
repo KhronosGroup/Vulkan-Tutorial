@@ -23,9 +23,7 @@ void initVulkan() {
     createLogicalDevice();
     createSwapChain();
     createImageViews();
-    createRenderPass();
     createGraphicsPipeline();
-    createFramebuffers();
     createCommandPool();
     createVertexBuffer();
     createCommandBuffers();
@@ -67,13 +65,13 @@ Define a class member to hold the buffer handle and call it `vertexBuffer`.
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Buffer> vertexBuffer;
+vk::raii::Buffer vertexBuffer = nullptr;
 
 ...
 
 void createVertexBuffer() {
-    vk::BufferCreateInfo bufferInfo({}, sizeof(vertices[0]) * vertices.size(), vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive);
-    vertexBuffer = std::make_unique<vk::raii::Buffer>(*device, bufferInfo);
+    vk::BufferCreateInfo bufferInfo{ .size = sizeof(vertices[0]) * vertices.size(), .usage = vk::BufferUsageFlagBits::eVertexBuffer, .sharingMode = vk::SharingMode::eExclusive };
+    vertexBuffer = vk::raii::Buffer(device, bufferInfo);
 }
 ----
 
@@ -87,7 +85,7 @@ The first step of allocating memory for the buffer is to query its memory requir
 
 [,c++]
 ----
-vk::MemoryRequirements memRequirements = vertexBuffer->getMemoryRequirements();
+vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
 ----
 
 The `VkMemoryRequirements` struct has three fields:
@@ -172,19 +170,19 @@ Create a class member to store the handle to the memory and allocate it with `vk
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Buffer> vertexBuffer;
-std::unique_ptr<vk::raii::DeviceMemory> vertexBufferMemory;
+vk::raii::Buffer vertexBuffer = nullptr;
+vk::raii::DeviceMemory vertexBufferMemory = nullptr;
 
 ...
 
-vertexBufferMemory = std::make_unique<vk::raii::DeviceMemory>( *device, memoryAllocateInfo );
+vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
 ----
 
 If memory allocation was successful, then we can now associate this memory with the buffer using `vkBindBufferMemory`:
 
 [,c++]
 ----
-vertexBuffer->bindMemory( *vertexBufferMemory, 0 );
+vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
 ----
 
 The first three parameters are self-explanatory, and the fourth parameter is the offset within the region of memory.
@@ -198,7 +196,7 @@ This is done by https://en.wikipedia.org/wiki/Memory-mapped_I/O[mapping the buff
 
 [,c++]
 ----
-void* data = vertexBufferMemory->mapMemory(0, bufferInfo.size);
+void* data = vertexBufferMemory.mapMemory(0, bufferInfo.size);
 ----
 
 This function allows us to access a region of the specified memory resource defined by an offset and size.
@@ -206,9 +204,9 @@ The offset and size here are `0` and `bufferInfo.size`, respectively.
 
 [,c++]
 ----
-void* data = vertexBufferMemory->mapMemory(0, bufferInfo.size);
+void* data = vertexBufferMemory.mapMemory(0, bufferInfo.size);
 memcpy(data, vertices.data(), bufferInfo.size);
-vertexBufferMemory->unmapMemory();
+vertexBufferMemory.unmapMemory();
 ----
 
 You can now simply `memcpy` the vertex data to the mapped memory and unmap it again using `vkUnmapMemory`.
@@ -232,11 +230,11 @@ We're going to extend the `recordCommandBuffer` function to do that.
 
 [,c++]
 ----
-commandBuffers[currentFrame]->bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
 
-commandBuffers[currentFrame]->bindVertexBuffers(0, **vertexBuffer, {0});
+commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
 
-commandBuffers[currentFrame]->draw(3, 1, 0, 0);
+commandBuffers[currentFrame].draw(3, 1, 0, 0);
 ----
 
 The `vkCmdBindVertexBuffers` function is used to bind vertex buffers to bindings, like the one we set up in the previous chapter.

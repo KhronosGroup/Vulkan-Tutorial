@@ -35,12 +35,12 @@ Create a new function `createBuffer` and move the code in `createVertexBuffer` (
 [,c++]
 ----
 void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& bufferMemory) {
-    vk::BufferCreateInfo bufferInfo({}, size, usage, vk::SharingMode::eExclusive);
-    buffer = vk::raii::Buffer(*device, bufferInfo);
+    vk::BufferCreateInfo bufferInfo{ .size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive };
+    buffer = vk::raii::Buffer(device, bufferInfo);
     vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements();
-    vk::MemoryAllocateInfo allocInfo(memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, properties));
-    bufferMemory = vk::raii::DeviceMemory(*device, allocInfo);
-        buffer.bindMemory(bufferMemory, 0);
+    vk::MemoryAllocateInfo allocInfo{ .allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties) };
+    bufferMemory = vk::raii::DeviceMemory(device, allocInfo);
+    buffer.bindMemory(*bufferMemory, 0);
 }
 ----
 
@@ -54,9 +54,9 @@ You can now remove the buffer creation and memory allocation code from `createVe
 void createVertexBuffer() {
     vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
     createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vertexBuffer, vertexBufferMemory);
-    void* data = vertexBufferMemory->mapMemory(0, bufferSize);
+    void* data = vertexBufferMemory.mapMemory(0, bufferSize);
     memcpy(data, vertices.data(), (size_t) bufferSize);
-    vertexBufferMemory->unmapMemory();
+    vertexBufferMemory.unmapMemory();
 }
 ----
 
@@ -69,22 +69,29 @@ We're now going to change `createVertexBuffer` to only use a host visible buffer
 [,c++]
 ----
 void createVertexBuffer() {
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
-    vk::raii::Buffer stagingBuffer({});
-    vk::raii::DeviceMemory stagingBufferMemory({});
-    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+    vk::BufferCreateInfo stagingInfo{ .size = bufferSize, .usage = vk::BufferUsageFlagBits::eTransferSrc, .sharingMode = vk::SharingMode::eExclusive };
+    vk::raii::Buffer stagingBuffer(device, stagingInfo);
+    vk::MemoryRequirements memRequirementsStaging = stagingBuffer.getMemoryRequirements();
+    vk::MemoryAllocateInfo memoryAllocateInfoStaging{  .allocationSize = memRequirementsStaging.size, .memoryTypeIndex = findMemoryType(memRequirementsStaging.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) };
+    vk::raii::DeviceMemory stagingBufferMemory(device, memoryAllocateInfoStaging);
 
-
-    void* dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
-        memcpy(dataStaging, vertices.data(), bufferSize);
+    stagingBuffer.bindMemory(stagingBufferMemory, 0);
+    void* dataStaging = stagingBufferMemory.mapMemory(0, stagingInfo.size);
+    memcpy(dataStaging, vertices.data(), stagingInfo.size);
     stagingBufferMemory.unmapMemory();
 
-    vk::raii::Buffer vertexBufferTemp({});
-    vk::raii::DeviceMemory vertexBufferMemoryTemp({});
-    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBufferTemp, vertexBufferMemoryTemp);
-    vertexBuffer = std::make_unique<vk::raii::Buffer>(std::move(vertexBufferTemp));
-    vertexBufferMemory = std::make_unique<vk::raii::DeviceMemory>(std::move(vertexBufferMemoryTemp));
+    vk::BufferCreateInfo bufferInfo{ .size = bufferSize,  .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, .sharingMode = vk::SharingMode::eExclusive };
+    vertexBuffer = vk::raii::Buffer(device, bufferInfo);
+
+    vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
+    vk::MemoryAllocateInfo memoryAllocateInfo{  .allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal) };
+    vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
+
+    vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
+
+    copyBuffer(stagingBuffer, vertexBuffer, stagingInfo.size);
 }
 ----
 
@@ -118,8 +125,8 @@ You should use the `VK_COMMAND_POOL_CREATE_TRANSIENT_BIT` flag during command po
 [,c++]
 ----
 void copyBuffer(vk::raii::Buffer & srcBuffer, vk::raii::Buffer & dstBuffer, vk::DeviceSize size) {
-    vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
-    vk::raii::CommandBuffer commandCopyBuffer = std::move(device->allocateCommandBuffers(allocInfo).front());
+    vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1 };
+    vk::raii::CommandBuffer commandCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
 }
 ----
 
@@ -127,7 +134,7 @@ And immediately start recording the command buffer:
 
 [,c++]
 ----
-commandCopyBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+commandCopyBuffer.begin(vk::CommandBufferBeginInfo { .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 ----
 
 We're only going to use the command buffer once and wait with returning from the function until the copy operation has finished executing.
@@ -153,8 +160,8 @@ Now execute the command buffer to complete the transfer:
 
 [,c++]
 ----
-graphicsQueue->submit(vk::SubmitInfo({}, {}, {*commandCopyBuffer}), nullptr);
-graphicsQueue->waitIdle();
+graphicsQueue.submit(vk::SubmitInfo{ .commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer }, nullptr);
+graphicsQueue.waitIdle();
 ----
 
 Unlike the draw commands, there are no events we need to wait on this time.
@@ -168,13 +175,16 @@ We can now call `copyBuffer` from the `createVertexBuffer` function to move the 
 
 [,c++]
 ----
-vk::raii::Buffer vertexBufferTemp({});
-vk::raii::DeviceMemory vertexBufferMemoryTemp({});
-createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBufferTemp, vertexBufferMemoryTemp);
-vertexBuffer = std::make_unique<vk::raii::Buffer>(std::move(vertexBufferTemp));
-vertexBufferMemory = std::make_unique<vk::raii::DeviceMemory>(std::move(vertexBufferMemoryTemp));
+vk::BufferCreateInfo bufferInfo{ .size = bufferSize,  .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, .sharingMode = vk::SharingMode::eExclusive };
+vertexBuffer = vk::raii::Buffer(device, bufferInfo);
 
-copyBuffer(stagingBuffer, *vertexBuffer, bufferSize);
+vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
+vk::MemoryAllocateInfo memoryAllocateInfo{  .allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal) };
+vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
+
+vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
+
+copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 ----
 
 After copying the data from the staging buffer to the device buffer, the RAII

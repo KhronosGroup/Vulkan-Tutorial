@@ -39,7 +39,7 @@ Start by adding a `surface` class member right below the debug callback.
 
 [,c++]
 ----
-vk::raii::SurfaceKHR surface;
+vk::raii::SurfaceKHR surface = nullptr;
 ----
 
 Although the `VkSurfaceKHR` object and its usage is platform-agnostic, its
@@ -129,10 +129,10 @@ implementation of the function very straightforward:
 ----
 void createSurface() {
     VkSurfaceKHR       _surface;
-    if (glfwCreateWindowSurface(**instance, window, nullptr, &_surface) != 0) {
+    if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
         throw std::runtime_error("failed to create window surface!");
     }
-    surface = std::make_unique<vk::raii::SurfaceKHR>(*instance, _surface)
+    surface = vk::raii::SurfaceKHR(instance, _surface);
 }
 ----
 
@@ -167,7 +167,7 @@ in the same loop as the `VK_QUEUE_GRAPHICS_BIT`:
 
 [,c++]
 ----
-VkBool32 presentSupport = physicalDevice->getSurfaceSupportKHR( graphicsIndex, *surface );
+VkBool32 presentSupport = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface );
 ----
 
 Then check the value of the boolean and store the presentation family
@@ -195,6 +195,13 @@ variable for the handle:
 [,c++]
 ----
 vk::raii::Queue presentQueue;
+
+std::vector<const char*> deviceExtensions = {
+    vk::KHRSwapchainExtensionName,
+    vk::KHRSpirv14ExtensionName,
+    vk::KHRSynchronization2ExtensionName,
+    vk::KHRCreateRenderpass2ExtensionName
+};
 ----
 
 Next, we need to modify the filtering logic to find the best queue families
@@ -205,19 +212,17 @@ creation functions:
 ----
 void createLogicalDevice() {
     // find the index of the first queue family that supports graphics
-    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice->getQueueFamilyProperties();
+    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
     // get the first index into queueFamilyProperties which supports graphics
-    auto graphicsQueueFamilyProperty =
-      std::find_if( queueFamilyProperties.begin(),
-                    queueFamilyProperties.end(),
-                    []( vk::QueueFamilyProperties const & qfp ) { return qfp.queueFlags & vk::QueueFlagBits::eGraphics; } );
+    auto graphicsQueueFamilyProperty = std::ranges::find_if( queueFamilyProperties, []( auto const & qfp )
+                    { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); } );
 
-    autographicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
+    auto graphicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
 
     // determine a queueFamilyIndex that supports present
     // first check if the graphicsIndex is good enough
-    auto presentIndex = physicalDevice->getSurfaceSupportKHR( graphicsIndex, *surface )
+    auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface )
                                        ? graphicsIndex
                                        : static_cast<uint32_t>( queueFamilyProperties.size() );
     if ( presentIndex == queueFamilyProperties.size() )
@@ -227,7 +232,7 @@ void createLogicalDevice() {
         for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
         {
             if ( ( queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics ) &&
-                 physicalDevice->getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
+                 physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
             {
                 graphicsIndex = static_cast<uint32_t>( i );
                 presentIndex  = graphicsIndex;
@@ -240,7 +245,7 @@ void createLogicalDevice() {
             // family index that supports present
             for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
             {
-                if ( physicalDevice->getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
+                if ( physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
                 {
                     presentIndex = static_cast<uint32_t>( i );
                     break;
@@ -253,14 +258,24 @@ void createLogicalDevice() {
         throw std::runtime_error( "Could not find a queue for graphics or present -> terminating" );
     }
 
+    // query for Vulkan 1.3 features
+    auto features = physicalDevice.getFeatures2();
+    vk::PhysicalDeviceVulkan13Features vulkan13Features;
+    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
+    vulkan13Features.dynamicRendering = vk::True;
+    extendedDynamicStateFeatures.extendedDynamicState = vk::True;
+    vulkan13Features.pNext = &extendedDynamicStateFeatures;
+    features.pNext = &vulkan13Features;
     // create a Device
     float                     queuePriority = 0.0f;
-    vk::DeviceQueueCreateInfo deviceQueueCreateInfo( {}, graphicsIndex, 1, &queuePriority );
-    vk::DeviceCreateInfo      deviceCreateInfo( {}, deviceQueueCreateInfo );
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
+    vk::DeviceCreateInfo      deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
+    deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-    device = std::make_unique<vk::raii::Device>( *physicalDevice, deviceCreateInfo );
-    graphicsQueue = std::make_unique<vk::raii::Queue>( *device, graphicsIndex, 0 );
-    presentQueue = std::make_unique<vk::raii::Queue>( *device, presentIndex, 0 );
+    device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+    graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
+    presentQueue = vk::raii::Queue( device, presentIndex, 0 );
 }
 ----
 

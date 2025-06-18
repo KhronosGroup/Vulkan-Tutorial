@@ -93,9 +93,9 @@ Add the following class members:
 [,c++]
 ----
 ...
-std::unique_ptr<vk::raii::Image> colorImage;
-std::unique_ptr<vk::raii::DeviceMemory> colorImageMemory;
-std::unique_ptr<vk::raii::ImageView> colorImageView;
+vk::raii::Image colorImage = nullptr;
+vk::raii::DeviceMemory colorImageMemory = nullptr;
+vk::raii::ImageView colorImageView = nullptr;
 ...
 ----
 
@@ -129,12 +129,8 @@ Also, this color buffer doesn't need mipmaps since it's not going to be used as 
 void createColorResources() {
     vk::Format colorFormat = swapChainImageFormat;
 
-    vk::raii::Image colorImage_({});
-    vk::raii::DeviceMemory colorImageMemory_({});
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,  vk::MemoryPropertyFlagBits::eDeviceLocal, colorImage_, colorImageMemory_);
-    colorImage = std::make_unique<vk::raii::Image>(std::move(colorImage_));
-    colorImageMemory = std::make_unique<vk::raii::DeviceMemory>(std::move(colorImageMemory_));
-    colorImageView = createImageView(*colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
+    createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,  vk::MemoryPropertyFlagBits::eDeviceLocal, colorImage, colorImageMemory);
+    colorImageView = createImageView(colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
 }
 ----
 

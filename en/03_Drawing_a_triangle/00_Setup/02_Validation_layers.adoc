@@ -20,7 +20,7 @@ layers are optional components that hook into Vulkan function calls to apply
 additional operations. Common operations in validation layers are:
 
 * Checking the values of parameters against the specification to detect misuse
-* Tracking creation and destruction of objects to find resource leaks
+* Tracking the creation and destruction of objects to find resource leaks
 * Checking thread safety by tracking the threads that calls originate from
 * Logging every call and its parameters to the standard output
 * Tracing Vulkan calls for profiling and replaying

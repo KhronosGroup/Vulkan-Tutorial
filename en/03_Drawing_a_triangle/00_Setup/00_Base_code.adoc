@@ -5,7 +5,7 @@
 == General structure
 
 In the previous chapter, you've created a Vulkan project with all the proper
-configuration and tested it with the sample code. In this chapter, we're starting
+ configurations and tested it with the sample code. In this chapter, we're starting
 from scratch with the following code:
 
 [,c++]
@@ -143,6 +143,26 @@ can be directly replaced by this:
         vk::raii::instance = std::make_unique<vk::raii::Instance>(context, createInfo);
 ----
 
+As this can be a little hard to read when we look at the structures.  We have
+ opted to turn on VULKAN_HPP_NO_STRUCT_CONSTRUCTORS.  This option means that
+ the above code will look like this throughout the tutorial:
+
+[,c++]
+----
+    constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+        .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+        .pEngineName        = "No Engine",
+        .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+        .apiVersion         = vk::ApiVersion14 };
+    vk::InstanceCreateInfo createInfo{
+        .pApplicationInfo = &appInfo
+    };
+    instance = vk::raii::Instance(context, createInfo);
+----
+
+This provides a better meaning towards what each option relates to in the
+structures that we're depending upon.
+
 == Integrating GLFW
 
 Vulkan works perfectly fine without creating a window if you want to use it for
@@ -150,7 +170,7 @@ off-screen rendering, but it's a lot more exciting to actually show something!
 First, let's add GLFW: NB: we will continue to use the GLFW_INCLUDE_VULKAN as
 GLFW is designed to get a Vulkan Surface, but it uses the C surface directly.
 Other than that task, we can use GLFW_INCLUDE_NONE or not make that
-specification and everything else works perfectly fine.
+specification, and everything else works perfectly fine.
 
 [,c++]
 ----

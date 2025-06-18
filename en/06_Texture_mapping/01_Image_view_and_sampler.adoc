@@ -14,7 +14,7 @@ Add a class member to hold a `VkImageView` for the texture image and create a ne
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::ImageView> textureImageView;
+vk::raii::ImageView textureImageView = nullptr;
 
 ...
 
@@ -46,16 +46,16 @@ Finish creating the image view by calling `vkCreateImageView`:
 
 [,c++]
 ----
-std::make_unique<vk::raii::ImageView>( *device, viewInfo );
+vk::raii::ImageView( device, viewInfo );
 ----
 
 Because so much of the logic is duplicated from `createImageViews`, you may wish to abstract it into a new `createImageView` function:
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::ImageView> createImageView(vk::raii::Image& image, vk::Format format) {
+vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format) {
     vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-    return std::make_unique<vk::raii::ImageView>( *device, viewInfo );
+    return vk::raii::ImageView( device, viewInfo );
 }
 ----
 
@@ -64,7 +64,7 @@ The `createTextureImageView` function can now be simplified to:
 [,c++]
 ----
 void createTextureImageView() {
-    textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb);
+    textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb);
 }
 ----
 
@@ -164,7 +164,7 @@ However, the repeat mode is probably the most common mode, because it can be use
 
 [,c++]
 ----
-vk::PhysicalDeviceProperties properties = physicalDevice->getProperties();
+vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
         vk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
                                             vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0);
 ----
@@ -177,7 +177,7 @@ To figure out which value we can use, we need to retrieve the properties of the 
 
 [,c++]
 ----
-vk::PhysicalDeviceProperties properties = physicalDevice->getProperties();
+vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 ----
 
 If you look at the documentation for the `VkPhysicalDeviceProperties` structure, you'll see that it contains a `VkPhysicalDeviceLimits` member named `limits`.
@@ -186,7 +186,7 @@ If we want to go for maximum quality, we can simply use that value directly:
 
 [,c++]
 ----
-vk::PhysicalDeviceProperties properties = physicalDevice->getProperties();
+vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 vk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
                                     vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, 1,
                                     properties.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways);
@@ -239,15 +239,15 @@ Add a class member to hold the handle of the sampler object and create the sampl
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::ImageView> textureImageView;
-std::unique_ptr<vk::raii::Sampler> textureSampler;
+vk::raii::ImageView textureImageView = nullptr;
+vk::raii::Sampler textureSampler = nullptr;
 
 ...
 
 void createTextureSampler() {
     ...
 
-    textureSampler = std::make_unique<vk::raii::Sampler>(*device, samplerInfo);
+    textureSampler = vk::raii::Sampler(device, samplerInfo);
 }
 ----
 
@@ -278,7 +278,7 @@ And even though it is very unlikely that a modern graphics card will not support
 bool isDeviceSuitable(VkPhysicalDevice device) {
     ...
 
-    vk::PhysicalDeviceFeatures supportedFeatures = device->getPhysicalDeviceFeatures();
+    vk::PhysicalDeviceFeatures supportedFeatures = device.getPhysicalDeviceFeatures();
 
     return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
 }
@@ -296,4 +296,4 @@ samplerInfo.maxAnisotropy = 1.0f;
 
 In the xref:./02_Combined_image_sampler.adoc[next chapter] we will expose the image and sampler objects to the shaders to draw the texture onto the square.
 
-link:/attachments/25_sampler.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]
+link:/attachments/25_sampler.cpp[C{pp} code] / link:/attachments/22_shader_ubo.slang[Slang shader]

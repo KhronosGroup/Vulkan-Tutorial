@@ -53,10 +53,10 @@ Define two new class members to hold the resources for the index buffer:
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Buffer> vertexBuffer;
-std::unique_ptr<vk::raii::DeviceMemory> vertexBufferMemory;
-std::unique_ptr<vk::raii::Buffer> indexBuffer;
-std::unique_ptr<vk::raii::DeviceMemory> indexBufferMemory;
+vk::raii::Buffer vertexBuffer = nullptr;
+vk::raii::DeviceMemory vertexBufferMemory = nullptr;
+vk::raii::Buffer indexBuffer = nullptr;
+vk::raii::DeviceMemory indexBufferMemory = nullptr;
 ----
 
 The `createIndexBuffer` function that we'll add now is almost identical to `createVertexBuffer`:
@@ -81,13 +81,9 @@ void createIndexBuffer() {
     memcpy(data, indices.data(), (size_t) bufferSize);
     stagingBufferMemory.unmapMemory();
 
-    vk::raii::Buffer indexBufferTemp({});
-    vk::raii::DeviceMemory indexBufferMemoryTemp({});
-    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBufferTemp, indexBufferMemoryTemp);
-    indexBuffer = std::make_unique<vk::raii::Buffer>(std::move(indexBufferTemp));
-    indexBufferMemory = std::make_unique<vk::raii::DeviceMemory>(std::move(indexBufferMemoryTemp));
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
 
-    copyBuffer(stagingBuffer, *indexBuffer, bufferSize);
+    copyBuffer(stagingBuffer, indexBuffer, bufferSize);
 }
 ----
 
@@ -106,8 +102,8 @@ It's unfortunately not possible to use different indices for each vertex attribu
 
 [,c++]
 ----
-commandBuffers[currentFrame]->bindVertexBuffers(0, **vertexBuffer, {0});
-commandBuffers[currentFrame]->bindIndexBuffer( *indexBuffer, 0, vk::IndexType::eUint16 );
+commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
+commandBuffers[currentFrame].bindIndexBuffer( *indexBuffer, 0, vk::IndexType::eUint16 );
 ----
 
 An index buffer is bound with `vkCmdBindIndexBuffer` which has the index buffer, a byte offset into it, and the type of index data as parameters.
@@ -118,7 +114,7 @@ Remove the `vkCmdDraw` line and replace it with `vkCmdDrawIndexed`:
 
 [,c++]
 ----
-commandBuffers[currentFrame]->drawIndexed(indices.size(), 1, 0, 0, 0);
+commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
 ----
 
 A call to this function is very similar to `vkCmdDraw`.

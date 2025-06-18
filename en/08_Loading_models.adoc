@@ -54,8 +54,10 @@ Replace them with non-const containers as class members:
 ----
 std::vector<Vertex> vertices;
 std::vector<uint32_t> indices;
-std::unique_ptr<vk::raii::Buffer> vertexBuffer;
-std::unique_ptr<vk::raii::DeviceMemory> vertexBufferMemory;
+vk::raii::Buffer vertexBuffer = nullptr;
+vk::raii::DeviceMemory vertexBufferMemory = nullptr;
+vk::raii::Buffer indexBuffer = nullptr;
+vk::raii::DeviceMemory indexBufferMemory = nullptr;
 ----
 
 You should change the type of the indices from `uint16_t` to `uint32_t`, because there are going to be a lot more vertices than 65535.
@@ -284,4 +286,4 @@ This definitely saves us a lot of GPU memory.
 
 In the xref:09_Generating_Mipmaps.adoc[next chapter,] we'll learn about a technique to improve texture rendering.
 
-link:/attachments/28_model_loading.cpp[C{pp} code] / link:/attachments/27_shader_depth.vert[Vertex shader] / link:/attachments/27_shader_depth.frag[Fragment shader]
+link:/attachments/28_model_loading.cpp[C{pp} code] / link:/attachments/27_shader_depth.slang[Slang shader]

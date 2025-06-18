@@ -1,75 +1,85 @@
 :pp: {plus}{plus}
 
-= Framebuffers
+= Dynamic Rendering
 
-We've talked a lot about framebuffers in the past few chapters, and we've
-set up the render pass to expect a single framebuffer with the same format
-as the swap chain images, but we haven't created any yet.
+In previous versions of Vulkan, we would need to create framebuffers to bind our image views to a render pass. However, with the introduction of dynamic rendering in Vulkan 1.3, we can now render directly to image views without creating framebuffers or render passes.
 
-The attachments specified during render pass creation are bound by wrapping
-them into a `VkFramebuffer` object. A framebuffer object references all of
-the `VkImageView` objects that represent the attachments. In our case, that
-will be only a single one: the color attachment. However, the image that we
-have to use for the attachment depends on which image the swap chain returns
- when we retrieve one for presentation. That means that we have to create a
- framebuffer for all the images in the swap chain and use the one that
- corresponds to the retrieved image at drawing time.
+== Introduction to Dynamic Rendering
 
-To that end, create another `std::vector` class member to hold the framebuffers:
+Dynamic rendering simplifies the rendering process by eliminating the need for render pass and framebuffer objects. Instead, we can specify the color, depth, and stencil attachments directly when we begin rendering.
 
-[,c++]
-----
-std::vector<vk::raii::Framebuffer> swapChainFramebuffers;
-----
+This approach offers several advantages:
+- Simplified code with fewer objects to manage
+- More flexibility in changing attachments during rendering
+- Better compatibility with modern rendering techniques
 
-We'll create the objects for this array in a new function
-`createFramebuffers` that is called from `initVulkan` right after creating
-the graphics pipeline:
+Let's see how this works in practice. We'll be using the `vk::RenderingAttachmentInfo` and `vk::RenderingInfo` structures to specify our attachments and rendering parameters.
+
+== Command Buffer Recording with Dynamic Rendering
+
+In the next chapter, we'll create command buffers and record rendering commands. Here's a preview of how we'll use dynamic rendering:
 
 [,c++]
 ----
-void initVulkan() {
-    createInstance();
-    setupDebugMessenger();
-    createSurface();
-    pickPhysicalDevice();
-    createLogicalDevice();
-    createSwapChain();
-    createImageViews();
-    createRenderPass();
-    createGraphicsPipeline();
-    createFramebuffers();
-}
+void recordCommandBuffer(uint32_t imageIndex) {
+    commandBuffer.begin({});
 
-...
+    // Transition the image layout for rendering
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        {},
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
 
-void createFramebuffers() {
+    // Set up the color attachment
+    vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+    vk::RenderingAttachmentInfo attachmentInfo = {
+        .imageView = swapChainImageViews[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearColor
+    };
 
+    // Set up the rendering info
+    vk::RenderingInfo renderingInfo = {
+        .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &attachmentInfo
+    };
+
+    // Begin rendering
+    commandBuffer.beginRendering(renderingInfo);
+
+    // Rendering commands will go here
+
+    // End rendering
+    commandBuffer.endRendering();
+
+    // Transition the image layout for presentation
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe
+    );
+
+    commandBuffer.end();
 }
 ----
 
-Iterate through the image views and create framebuffers from them:
+As you can see, we directly specify the image view to render to in the `vk::RenderingAttachmentInfo` structure. We also specify the load and store operations, similar to what we would do in a render pass. The `vk::RenderingInfo` structure then combines this with other rendering parameters.
 
-[,c++]
-----
-for ( auto const & view : swapChainImageViews )
-{
-    vk::ImageView attachments[] = { view };
-    vk::FramebufferCreateInfo framebufferCreateInfo( {}, *renderPass, attachments, swapChainExtent.width, swapChainExtent.height, 1 );
-    swapChainFramebuffers.emplace_back( *device, framebufferCreateInfo );
-}
-----
+With this approach, we don't need to create framebuffers or render passes, which simplifies our code and gives us more flexibility.
 
-As you can see, the creation of framebuffers is quite straightforward.
-We first need to specify with which `renderPass` the framebuffer needs to be compatible.
-You can only use a framebuffer with the render passes that it is compatible with, which roughly means that they use the same number and type of attachments.
+In the xref:./01_Command_buffers.adoc[next chapter,] we'll create command buffers and write the first actual drawing commands using dynamic rendering.
 
-The `attachmentCount` and `pAttachments` parameters specify the `VkImageView` objects that should be bound to the respective attachment descriptions in the render pass `pAttachment` array.
-
-The `width` and `height` parameters are self-explanatory and `layers` refers to the number of layers in image arrays.
-Our swap chain images are single images, so the number of layers is `1`.
-
-We've now reached the milestone where we have all the objects that are required for rendering.
-In the xref:./01_Command_buffers.adoc[next chapter,] we're going to write the first actual drawing commands.
-
-link:/attachments/13_framebuffers.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]
+link:/attachments/14_command_buffers.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]

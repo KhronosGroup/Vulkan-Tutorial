@@ -8,7 +8,7 @@ Here are the types of objects we have now, as a quick recap:
 * Shader stages: the shader modules that define the functionality of the programmable stages of the graphics pipeline
 * Fixed-function state: all the structures that define the fixed-function stages of the pipeline, like input assembly, rasterizer, viewport and color blending
 * Pipeline layout: the uniform and push values referenced by the shader that can be updated at draw time
-* Render pass: the attachments referenced by the pipeline stages and their usage
+* Dynamic rendering: the formats of the attachments that will be used during rendering
 
 All of these combined fully define the functionality of the graphics pipeline, so we can now begin filling in the `VkGraphicsPipelineCreateInfo` structure at the end of the `createGraphicsPipeline` function.
 But before the calls to  `vkDestroyShaderModule` because these are still to be used during the creation.
@@ -38,13 +38,16 @@ After that comes the pipeline layout, which is a Vulkan handle rather than a str
 
 [,c++]
 ----
-vk::GraphicsPipelineCreateInfo pipelineInfo({}, 2, shaderStages, &vertexInputInfo, &inputAssembly, {}, &viewportState, &rasterizer, &multisampling, {}, &colorBlending,
-            &dynamicState, *pipelineLayout, *renderPass, 0);
+vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
+vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
+    .stageCount = 2, .pStages = shaderStages,
+    .pVertexInputState = &vertexInputInfo, .pInputAssemblyState = &inputAssembly,
+    .pViewportState = &viewportState, .pRasterizationState = &rasterizer,
+    .pMultisampleState = &multisampling, .pColorBlendState = &colorBlending,
+    .pDynamicState = &dynamicState, .layout = pipelineLayout, .renderPass = nullptr };
 ----
 
-And finally, we have the reference to the render pass and the index of the sub pass where this graphics pipeline will be used.
-It is also possible to use other render passes with this pipeline instead of this specific instance, but they have to be _compatible_ with `renderPass`.
-The requirements for compatibility are described https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap8.html#renderpass-compatibility[here], but we won't be using that feature in this tutorial.
+Note that we're using dynamic rendering instead of a traditional render pass, so we set the `renderPass` parameter to `nullptr` and include a `vk::PipelineRenderingCreateInfo` structure in the `pNext` chain. This structure specifies the formats of the attachments that will be used during rendering.
 
 [,c++]
 ----
@@ -63,14 +66,14 @@ Now prepare for the final step by creating a class member to hold the `VkPipelin
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Pipeline> graphicsPipeline;
+vk::raii::Pipeline graphicsPipeline = nullptr;
 ----
 
 And finally, create the graphics pipeline:
 
 [,c++]
 ----
-graphicsPipeline = std::make_unique<vk::raii::Pipeline>(*device, nullptr, pipelineInfo);
+graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
 ----
 
 The `vkCreateGraphicsPipelines` function actually has more parameters than the usual object creation functions in Vulkan.

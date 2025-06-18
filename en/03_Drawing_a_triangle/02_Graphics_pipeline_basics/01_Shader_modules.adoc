@@ -450,14 +450,14 @@ already ensures that the data satisfies the worst case alignment requirements.
 
 [,c++]
 ----
-vk::ShaderModuleCreateInfo createInfo({}, code.size(), reinterpret_cast<const uint32_t*>(code.data()) );
+vk::ShaderModuleCreateInfo createInfo{ .codeSize = code.size() * sizeof(char), .pCode = reinterpret_cast<const uint32_t*>(code.data()) };
 ----
 
 The `VkShaderModule` can then be created with a call to `vkCreateShaderModule`:
 
 [,c++]
 ----
-vk::raii::ShaderModule shaderModule(*device, createInfo);
+vk::raii::ShaderModule shaderModule{ device, createInfo };
 ----
 
 The parameters are the same as those in previous object creation functions: the
@@ -492,7 +492,7 @@ We'll start by filling in the structure for the vertex shader, again in the
 
 [,c++]
 ----
-vk::PipelineShaderStageCreateInfo vertShaderStageInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, "vertMain");
+vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule,  .pName = "vertMain" };
 ----
 
 The first two parameters are the flags and the stage that we're operating
@@ -517,7 +517,7 @@ Modifying the structure to suit the fragment shader is easy:
 
 [,c++]
 ----
-vk::PipelineShaderStageCreateInfo fragShaderStageInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, "fragMain");
+vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain" };
 ----
 
 Finish by defining an array that contains these two structs, which we'll later use to reference them in the actual pipeline creation step.

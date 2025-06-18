@@ -129,9 +129,9 @@ The depth image will again require the trifecta of resources: image, memory and 
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::Image> depthImage;
-std::unique_ptr<vk::raii::DeviceMemory> depthImageMemory;
-std::unique_ptr<vk::raii::ImageView> depthImageView;
+vk::raii::Image depthImage = nullptr;
+vk::raii::DeviceMemory depthImageMemory = nullptr;
+vk::raii::ImageView depthImageView = nullptr;
 ----
 
 Create a new function `createDepthResources` to set up these resources:
@@ -185,7 +185,7 @@ The support of a format can be queried using the `vkGetPhysicalDeviceFormatPrope
 [,c++]
 ----
 for (const auto format : candidates) {
-    vk::FormatProperties props = physicalDevice->getFormatProperties(format);
+    vk::FormatProperties props = physicalDevice.getFormatProperties(format);
 }
 ----
 
@@ -213,7 +213,7 @@ If none of the candidate formats support the desired usage, then we can either r
 ----
 vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features) {
     for (const auto format : candidates) {
-        vk::FormatProperties props = physicalDevice->getFormatProperties(format);
+        vk::FormatProperties props = physicalDevice.getFormatProperties(format);
 
         if (tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & features) == features) {
             return format;
@@ -263,19 +263,15 @@ We now have all the required information to invoke our `createImage` and `create
 
 [,c++]
 ----
-vk::raii::Image depthImage_({});
-vk::raii::DeviceMemory depthImageMemory_({});
-createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage_, depthImageMemory_);
-depthImage = std::make_unique<vk::raii::Image>(std::move(depthImage_));
-depthImageMemory = std::make_unique<vk::raii::DeviceMemory>(std::move(depthImageMemory_));
-depthImageView = createImageView(*depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage, depthImageMemory);
+depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
 ----
 
 However, the `createImageView` function currently assumes that the subresource is always the `VK_IMAGE_ASPECT_COLOR_BIT`, so we will need to turn that field into a parameter:
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::ImageView> createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
+vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
     ...
     viewInfo.subresourceRange.aspectMask = aspectFlags;
     ...
@@ -288,9 +284,9 @@ Update all calls to this function to use the right aspect:
 ----
 swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, vk::ImageAspectFlagBits::eColor);
 ...
-depthImageView = createImageView(*depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
 ...
-textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
 ----
 
 That's it for creating the depth image.
@@ -505,4 +501,4 @@ void recreateSwapChain() {
 Congratulations, your application is now finally ready to render arbitrary 3D geometry and have it look right.
 We're going to try this out in the xref:08_Loading_models.adoc[next chapter] by drawing a textured model!
 
-link:/attachments/27_depth_buffering.cpp[C{pp} code] / link:/attachments/27_shader_depth.vert[Vertex shader] / link:/attachments/27_shader_depth.frag[Fragment shader]
+link:/attachments/27_depth_buffering.cpp[C{pp} code] / link:/attachments/27_shader_depth.slang[Slang shader]

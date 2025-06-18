@@ -41,7 +41,7 @@ This pool size structure is referenced by the main `VkDescriptorPoolCreateInfo`:
 
 [,c++]
 ----
-vk::DescriptorPoolCreateInfo poolInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, MAX_FRAMES_IN_FLIGHT, 1, &poolSize);
+vk::DescriptorPoolCreateInfo poolInfo{ .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, .maxSets = MAX_FRAMES_IN_FLIGHT, .poolSizeCount = 1, .pPoolSizes = &poolSize };
 ----
 
 Aside from the maximum number of individual descriptors that are available, we also need to specify the maximum number of descriptor sets that may be allocated:
@@ -52,11 +52,11 @@ You can leave `flags` to its default value of `0`.
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::DescriptorPool> descriptorPool;
+vk::raii::DescriptorPool descriptorPool = nullptr;
 
 ...
 
-descriptorPool = std::make_unique<vk::raii::DescriptorPool>(*device, poolInfo);
+descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
 ----
 
 Add a new class member to store the handle of the descriptor pool and call `vkCreateDescriptorPool` to create it.
@@ -88,7 +88,7 @@ You need to specify the descriptor pool to allocate from, the number of descript
 [,c++]
 ----
 std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
-vk::DescriptorSetAllocateInfo allocInfo(*descriptorPool, layouts.size(), layouts.data());
+vk::DescriptorSetAllocateInfo allocInfo{ .descriptorPool = descriptorPool, .descriptorSetCount = static_cast<uint32_t>(layouts.size()), .pSetLayouts = layouts.data() };
 ----
 
 In our case, we will create one descriptor set for each frame in flight, all with the same layout.
@@ -98,16 +98,13 @@ Add a class member to hold the descriptor set handles and allocate them with `vk
 
 [,c++]
 ----
-std::unique_ptr<vk::raii::DescriptorPool> descriptorPool;
+vk::raii::DescriptorPool descriptorPool = nullptr;
 std::vector<vk::raii::DescriptorSet> descriptorSets;
 
 ...
 
 descriptorSets.clear();
-descriptorSets = device->allocateDescriptorSets(allocInfo);
-if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-    throw std::runtime_error("failed to allocate descriptor sets!");
-}
+descriptorSets = device.allocateDescriptorSets(allocInfo);
 ----
 
 The descriptor sets have been allocated now, but the descriptors within still need to be configured.
@@ -126,7 +123,7 @@ This structure specifies the buffer and the region within it that contains the d
 [,c++]
 ----
 for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vk::DescriptorBufferInfo bufferInfo(uniformBuffers[i], 0, sizeof(UniformBufferObject));
+    vk::DescriptorBufferInfo bufferInfo{ .buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject) };
 }
 ----
 
@@ -135,7 +132,7 @@ The configuration of descriptors is updated using the `vkUpdateDescriptorSets` f
 
 [,c++]
 ----
-vk::WriteDescriptorSet descriptorWrite(descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo, nullptr, nullptr);
+vk::WriteDescriptorSet descriptorWrite{ .dstSet = descriptorSets[i], .dstBinding = 0, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo };
 ----
 
 The first two fields specify the descriptor set to update and the binding.
@@ -154,7 +151,7 @@ Our descriptor is based on buffers, so we're using `pBufferInfo`.
 
 [,c++]
 ----
-device->updateDescriptorSets(descriptorWrite, {});
+device.updateDescriptorSets(descriptorWrite, {});
 ----
 
 The updates are applied using `vkUpdateDescriptorSets`.
@@ -168,8 +165,8 @@ This needs to be done before the `vkCmdDrawIndexed` call:
 
 [,c++]
 ----
-commandBuffers[currentFrame]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
-commandBuffers[currentFrame]->drawIndexed(indices.size(), 1, 0, 0, 0);
+commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
+commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
 ----
 
 Unlike vertex and index buffers, descriptor sets are not unique to graphics pipelines.

@@ -95,7 +95,7 @@ So for the particle vertex buffer to be used as a vertex buffer (in the graphics
 
 [,c++]
 ----
-VkBufferCreateInfo bufferInfo{};
+vk::BufferCreateInfo bufferInfo{};
 ...
 bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
 ...
@@ -103,9 +103,9 @@ bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagB
 shaderStorageBuffers[i] = vk::raii::Buffer(*device, bufferInfo);
 ----
 
-The two flags `VK_BUFFER_USAGE_VERTEX_BUFFER_BIT` and `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` set with `bufferInfo.usage` tell the implementation that we want to use this buffer for two different scenarios: as a vertex buffer in the vertex shader and as a store buffer.
-Note that we also added the `VK_BUFFER_USAGE_TRANSFER_DST_BIT` flag in here so we can transfer data from the host to the GPU.
-This is crucial as we want the shader storage buffer to stay in GPU memory only (`VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT`) we need to transfer data from the host to this buffer.
+The two flags `vk::BufferUsageFlagBits::eVertexBuffer` and `vk::BufferUsageFlagBits::eStorageBuffer` set with `bufferInfo.usage` tell the implementation that we want to use this buffer for two different scenarios: as a vertex buffer in the vertex shader and as a store buffer.
+Note that we also added the `vk::BufferUsageFlagBits::eTransferDst` flag in here so we can transfer data from the host to the GPU.
+This is crucial as we want the shader storage buffer to stay in GPU memory only (`vk::MemoryPropertyFlagBits::eDeviceLocal`) we need to transfer data from the host to this buffer.
 
 Here is the same code using the `createBuffer` helper function:
 
@@ -162,7 +162,7 @@ This is similar for images:
 
 [,c++]
 ----
-VkImageCreateInfo imageInfo {};
+vk::ImageCreateInfo imageInfo {};
 ...
 imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage;
 ...
@@ -170,7 +170,7 @@ imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eSt
 textureImage = std::make_unique<vk::raii::SwapchainKHR>( *device, swapChainCreateInfo );
 ----
 
-The two flags `VK_IMAGE_USAGE_SAMPLED_BIT` and `VK_IMAGE_USAGE_STORAGE_BIT` set with `imageInfo.usage` tell the implementation that we want to use this image for two different scenarios: as an image sampled in the fragment shader and as a storage image in the computer shader;
+The two flags `vk::ImageUsageFlagBits::eSampled` and `vk::ImageUsageFlagBits::eStorage` set with `imageInfo.usage` tell the implementation that we want to use this image for two different scenarios: as an image sampled in the fragment shader and as a storage image in the computer shader;
 
 The SLang shader declaration for storage image looks similar to sampled images
 used, e.g.,
@@ -201,7 +201,7 @@ outputImage[int2(gl_GlobalInvocationID.xy)] = pixel;
 
 In the link:03_Drawing_a_triangle/00_Setup/03_Physical_devices_and_queue_families.adoc[physical device and queue families chapter],
 we have already learned about queue families and how to select a graphics queue family.
-Compute uses the queue family properties flag bit `VK_QUEUE_COMPUTE_BIT`.
+Compute uses the queue family properties flag bit `vk::QueueFlagBits::eCompute`.
 So if we want to do compute work, we need to get a queue from a queue family that supports compute.
 
 Note that Vulkan requires an implementation which supports graphics operations to have at least one queue family that supports both graphics and compute operations, but it's also possible that implementations offer a dedicated compute queue.
@@ -235,15 +235,15 @@ computeQueue = std::make_unique<vk::raii::Queue>( *device, graphicsAndComputeInd
 == The compute shader stage
 
 In the graphics samples, we have used different pipeline stages to load shaders and access descriptors.
-Compute shaders are accessed in a similar way by using the `VK_SHADER_STAGE_COMPUTE_BIT` pipeline.
+Compute shaders are accessed in a similar way by using the `vk::ShaderStageFlagBits::eCompute` pipeline.
 So loading a compute shader is just the same as loading a vertex shader, but with a different shader stage.
 We'll talk about this in detail in the next paragraphs.
-Compute also introduces a new binding point type for descriptors and pipelines named `VK_PIPELINE_BIND_POINT_COMPUTE` that we'll have to use later on.
+Compute also introduces a new binding point type for descriptors and pipelines named `vk::PipelineBindPoint::eCompute` that we'll have to use later on.
 
 == Loading compute shaders
 
 Loading compute shaders in our application is the same as loading any other shader.
-The only real difference is that we'll need to use the `VK_SHADER_STAGE_COMPUTE_BIT` mentioned above.
+The only real difference is that we'll need to use the `vk::ShaderStageFlagBits::eCompute` mentioned above.
 
 [,c++]
 ----
@@ -333,7 +333,7 @@ Using this staging buffer as a source, we then create the per-frame shader stora
 == Descriptors
 
 Setting up descriptors for compute is almost identical to graphics.
-The only difference is that descriptors need to have the `VK_SHADER_STAGE_COMPUTE_BIT` set to make them accessible by the compute stage:
+The only difference is that descriptors need to have the `vk::ShaderStageFlagBits::eCompute` set to make them accessible by the compute stage:
 
 [,c++]
 ----
@@ -402,12 +402,12 @@ std::array poolSize {
 };
 ----
 
-We need to double the number of `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER` types requested from the pool by two because our sets reference the SSBOs of the last and current frame.
+We need to double the number of `vk::DescriptorType::eStorageBuffer` types requested from the pool by two because our sets reference the SSBOs of the last and current frame.
 
 == Compute pipelines
 
-As compute is not a part of the graphics pipeline, we can't use `vkCreateGraphicsPipelines`.
-Instead, we need to create a dedicated compute pipeline with `vkCreateComputePipelines` for running our compute commands.
+As compute is not a part of the graphics pipeline, we can't use `device->createGraphicsPipeline`.
+Instead, we need to create a dedicated compute pipeline with `device->createComputePipeline` for running our compute commands.
 Since a compute pipeline does not touch any of the rasterization state, it has a lot less state than a graphics pipeline:
 
 [,c++]
@@ -443,7 +443,7 @@ This image shows the relation between these two in three dimensions:
 
 image::/images/compute_space.svg[]
 
-The number of dimensions for work groups (defined by `vkCmdDispatch`) and invocations depends (defined by the local sizes in the compute shader) on how input data is structured.
+The number of dimensions for work groups (defined by `computeCommandBuffers[currentFrame]->dispatch`) and invocations depends (defined by the local sizes in the compute shader) on how input data is structured.
 If you e.g.,
 work on a one-dimensional array, like we do in this chapter, you only have to specify the x dimension for both.
 
@@ -535,8 +535,8 @@ We use this to index into our particle array.
 === Dispatch
 
 Now it's time to actually tell the GPU to do some compute.
-This is done by calling `vkCmdDispatch` inside a command buffer.
-While not perfectly true, a dispatch is for compute as a draw call like `vkCmdDraw` is for graphics.
+This is done by calling `computeCommandBuffers[currentFrame]->dispatch` inside a command buffer.
+While not perfectly true, a dispatch is for compute as a draw call like `commandBuffers[currentFrame]->draw` is for graphics.
 This dispatches a given number of compute work items in at max.
 three dimensions.
 
@@ -555,7 +555,7 @@ computeCommandBuffers[currentFrame]->dispatch( PARTICLE_COUNT / 256, 1, 1 );
 computeCommandBuffers[currentFrame]->end();
 ----
 
-The `vkCmdDispatch` will dispatch `PARTICLE_COUNT / 256` local work groups in the x dimension.
+The `computeCommandBuffers[currentFrame]->dispatch` will dispatch `PARTICLE_COUNT / 256` local work groups in the x dimension.
 As our particle array is linear, we leave the other two dimensions at one, resulting in a one-dimensional dispatch.
 But why do we divide the number of particles (in our array) by 256?
 That's because in the previous paragraph, we defined that every compute shader in a work group will do 256 invocations.
@@ -656,13 +656,140 @@ link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semapho
 Note that we're using scoping braces above to ensure that the RAII temporary
  variables we use get a chance to clean themselves up between the compute and
   the graphics stage.
-This is fine, as we are waiting for the compute command buffer of the current frame to finish execution before the compute submission with the `vkWaitForFences` command.
+This is fine, as we are waiting for the compute command buffer of the current frame to finish execution before the compute submission with the `device->waitForFences` command.
 
 The graphics submission, on the other hand, needs to wait for the compute work to finish so it doesn't start fetching vertices while the compute buffer is still updating them.
-So we wait on the `computeFinishedSemaphores` for the current frame and have the graphics submission wait on the `VK_PIPELINE_STAGE_VERTEX_INPUT_BIT` stage, where vertices are consumed.
+So we wait on the `computeFinishedSemaphores` for the current frame and have the graphics submission wait on the `vk::PipelineStageFlagBits::eVertexInput` stage, where vertices are consumed.
 
 But it also needs to wait for presentation, so the fragment shader won't output to the color attachments until the image has been presented.
-So we also wait on the `imageAvailableSemaphores` on the current frame at the `VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT` stage.
+So we also wait on the `imageAvailableSemaphores` on the current frame at the `vk::PipelineStageFlagBits::eColorAttachmentOutput` stage.
+
+=== Timeline semaphores: An improved synchronization mechanism
+
+The synchronization approach described above uses binary semaphores, which have a simple signaled/unsignaled state. While this works well for many scenarios, Vulkan also offers a more powerful synchronization primitive: timeline semaphores.
+
+Timeline semaphores were introduced as an extension and later promoted to core in Vulkan 1.2. Unlike binary semaphores, timeline semaphores have a 64-bit unsigned integer counter value that can be waited on and signaled to specific values. This provides several advantages over binary semaphores:
+
+1. *Reusability*: A single timeline semaphore can be used for multiple synchronization points, reducing the number of semaphores needed.
+2. *Host synchronization*: Timeline semaphores can be signaled and waited on from the host (CPU) without submitting commands to a queue.
+3. *Out-of-order signaling*: You can signal a timeline semaphore to a value higher than what's currently being waited on, allowing for more flexible synchronization patterns.
+4. *Multiple pending signals*: Unlike binary semaphores, which can only be pending-signaled once, timeline semaphores can have multiple pending signals.
+
+Let's see how we can modify our particle system example to use timeline semaphores instead of binary semaphores:
+
+First, we need to enable the timeline semaphore feature when creating the logical device:
+
+[,c++]
+----
+vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures;
+timelineSemaphoreFeatures.timelineSemaphore = vk::True;
+// Chain this to your device creation info
+----
+
+Instead of creating multiple binary semaphores, we create a single timeline semaphore:
+
+[,c++]
+----
+vk::SemaphoreTypeCreateInfo semaphoreType{ .semaphoreType = vk::SemaphoreType::eTimeline, .initialValue = 0 };
+semaphore = vk::raii::Semaphore(device, {.pNext = &semaphoreType});
+timelineValue = 0;
+----
+
+In our draw frame function, we use incrementing timeline values to coordinate work between compute and graphics:
+
+[,c++]
+----
+// Update timeline value for this frame
+uint64_t computeWaitValue = timelineValue;
+uint64_t computeSignalValue = ++timelineValue;
+uint64_t graphicsWaitValue = computeSignalValue;
+uint64_t graphicsSignalValue = ++timelineValue;
+----
+
+For the compute submission, we use a timeline semaphore submit info structure:
+
+[,c++]
+----
+vk::TimelineSemaphoreSubmitInfo computeTimelineInfo{
+    .waitSemaphoreValueCount = 1,
+    .pWaitSemaphoreValues = &computeWaitValue,
+    .signalSemaphoreValueCount = 1,
+    .pSignalSemaphoreValues = &computeSignalValue
+};
+
+vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eComputeShader};
+
+vk::SubmitInfo computeSubmitInfo{
+    .pNext = &computeTimelineInfo,
+    .waitSemaphoreCount = 1,
+    .pWaitSemaphores = &*semaphore,
+    .pWaitDstStageMask = waitStages,
+    .commandBufferCount = 1,
+    .pCommandBuffers = &*computeCommandBuffers[currentFrame],
+    .signalSemaphoreCount = 1,
+    .pSignalSemaphores = &*semaphore
+};
+
+computeQueue.submit(computeSubmitInfo, nullptr);
+----
+
+Similarly, for the graphics submission:
+
+[,c++]
+----
+vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eVertexInput;
+vk::TimelineSemaphoreSubmitInfo graphicsTimelineInfo{
+    .waitSemaphoreValueCount = 1,
+    .pWaitSemaphoreValues = &graphicsWaitValue,
+    .signalSemaphoreValueCount = 1,
+    .pSignalSemaphoreValues = &graphicsSignalValue
+};
+
+vk::SubmitInfo graphicsSubmitInfo{
+    .pNext = &graphicsTimelineInfo,
+    .waitSemaphoreCount = 1,
+    .pWaitSemaphores = &*semaphore,
+    .pWaitDstStageMask = &waitStage,
+    .commandBufferCount = 1,
+    .pCommandBuffers = &*commandBuffers[currentFrame],
+    .signalSemaphoreCount = 1,
+    .pSignalSemaphores = &*semaphore
+};
+
+graphicsQueue.submit(graphicsSubmitInfo, nullptr);
+----
+
+Before presenting, we wait for the graphics work to complete:
+
+[,c++]
+----
+vk::SemaphoreWaitInfo waitInfo{
+    .semaphoreCount = 1,
+    .pSemaphores = &*semaphore,
+    .pValues = &graphicsSignalValue
+};
+
+// Wait for graphics to complete before presenting
+while (vk::Result::eTimeout == device.waitSemaphores(waitInfo, UINT64_MAX))
+    ;
+
+vk::PresentInfoKHR presentInfo{
+    .waitSemaphoreCount = 0, // No binary semaphores needed
+    .pWaitSemaphores = nullptr,
+    .swapchainCount = 1,
+    .pSwapchains = &*swapChain,
+    .pImageIndices = &imageIndex
+};
+----
+
+This timeline semaphore approach offers several benefits over the binary semaphore implementation:
+
+1. *Simplified resource management*: We only need a single semaphore instead of multiple semaphores per frame in flight.
+2. *More explicit synchronization*: The timeline values make it clear which operations depend on each other.
+3. *Reduced overhead*: With fewer synchronization objects, there's less overhead in managing them.
+4. *More flexible synchronization patterns*: Timeline semaphores enable more complex synchronization scenarios that would be difficult with binary semaphores.
+
+Timeline semaphores are particularly useful in scenarios with multiple dependent operations, like our compute-then-graphics workflow, or when you need to synchronize between the host and device. They provide a more powerful and flexible synchronization mechanism that can simplify your code while enabling more complex synchronization patterns.
 
 == Drawing the particle system
 

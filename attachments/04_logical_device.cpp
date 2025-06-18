@@ -38,13 +38,20 @@ private:
     GLFWwindow* window = nullptr;
 
     vk::raii::Context  context;
-    std::unique_ptr<vk::raii::Instance> instance;
-    std::unique_ptr<vk::raii::DebugUtilsMessengerEXT> debugMessenger;
+    vk::raii::Instance instance = nullptr;
+    vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
 
-    std::unique_ptr<vk::raii::PhysicalDevice> physicalDevice;
-    std::unique_ptr<vk::raii::Device> device;
+    vk::raii::PhysicalDevice physicalDevice = nullptr;
+    vk::raii::Device device = nullptr;
 
-    std::unique_ptr<vk::raii::Queue> graphicsQueue;
+    vk::raii::Queue graphicsQueue = nullptr;
+
+    std::vector<const char*> deviceExtensions = {
+        vk::KHRSwapchainExtensionName,
+        vk::KHRSpirv14ExtensionName,
+        vk::KHRSynchronization2ExtensionName,
+        vk::KHRCreateRenderpass2ExtensionName
+    };
 
     void initWindow() {
         glfwInit();
@@ -79,14 +86,23 @@ private:
             throw std::runtime_error("validation layers requested, but not available!");
         }
 
-        constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion14);
+        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+                    .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+                    .pEngineName        = "No Engine",
+                    .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+                    .apiVersion         = vk::ApiVersion14 };
         auto extensions = getRequiredExtensions();
         std::vector<char const *> enabledLayers;
         if (enableValidationLayers) {
             enabledLayers.assign(validationLayers.begin(), validationLayers.end());
         }
-        vk::InstanceCreateInfo createInfo({}, &appInfo, enabledLayers.size(), enabledLayers.data(), extensions.size(), extensions.data());
-        instance = std::make_unique<vk::raii::Instance>(context, createInfo);
+        vk::InstanceCreateInfo createInfo{
+            .pApplicationInfo        = &appInfo,
+            .enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size()),
+            .ppEnabledLayerNames     = enabledLayers.data(),
+            .enabledExtensionCount   = static_cast<uint32_t>(extensions.size()),
+            .ppEnabledExtensionNames = extensions.data() };
+        instance = vk::raii::Instance(context, createInfo);
     }
 
     void setupDebugMessenger() {
@@ -94,33 +110,71 @@ private:
 
         vk::DebugUtilsMessageSeverityFlagsEXT severityFlags( vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError );
         vk::DebugUtilsMessageTypeFlagsEXT    messageTypeFlags( vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation );
-        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT({}, severityFlags, messageTypeFlags, &debugCallback);
-        debugMessenger = std::make_unique<vk::raii::DebugUtilsMessengerEXT>( *instance, debugUtilsMessengerCreateInfoEXT );
+        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
+            .messageSeverity = severityFlags,
+            .messageType = messageTypeFlags,
+            .pfnUserCallback = &debugCallback
+            };
+        debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
     }
 
     void pickPhysicalDevice() {
-        physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(vk::raii::PhysicalDevices( *instance ).front());
+        std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
+        const auto devIter = std::ranges::find_if(devices,
+        [&](auto const & device) {
+                auto queueFamilies = device.getQueueFamilyProperties();
+                bool isSuitable = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+                const auto qfpIter = std::ranges::find_if(queueFamilies,
+                []( vk::QueueFamilyProperties const & qfp )
+                        {
+                            return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
+                        } );
+                isSuitable = isSuitable && ( qfpIter != queueFamilies.end() );
+                auto extensions = device.enumerateDeviceExtensionProperties( );
+                bool found = true;
+                for (auto const & extension : deviceExtensions) {
+                    auto extensionIter = std::ranges::find_if(extensions, [extension](auto const & ext) {return strcmp(ext.extensionName, extension) == 0;});
+                    found = found &&  extensionIter != extensions.end();
+                }
+                isSuitable = isSuitable && found;
+                printf("\n");
+                if (isSuitable) {
+                    physicalDevice = device;
+                }
+                return isSuitable;
+        });
+        if (devIter == devices.end()) {
+            throw std::runtime_error("failed to find a suitable GPU!");
+        }
     }
 
     void createLogicalDevice() {
         // find the index of the first queue family that supports graphics
-        std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice->getQueueFamilyProperties();
+        std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-        // get the first index into queueFamiliyProperties which supports graphics
-        auto graphicsQueueFamilyProperty =
-          std::find_if( queueFamilyProperties.begin(),
-                        queueFamilyProperties.end(),
-                        []( vk::QueueFamilyProperties const & qfp ) { return qfp.queueFlags & vk::QueueFlagBits::eGraphics; } );
+        // get the first index into queueFamilyProperties which supports graphics
+        auto graphicsQueueFamilyProperty = std::ranges::find_if( queueFamilyProperties, []( auto const & qfp )
+                        { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); } );
 
         auto graphicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
 
+        // query for Vulkan 1.3 features
+        auto features = physicalDevice.getFeatures2();
+        vk::PhysicalDeviceVulkan13Features vulkan13Features;
+        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
+        vulkan13Features.dynamicRendering = vk::True;
+        extendedDynamicStateFeatures.extendedDynamicState = vk::True;
+        vulkan13Features.pNext = &extendedDynamicStateFeatures;
+        features.pNext = &vulkan13Features;
         // create a Device
         float                     queuePriority = 0.0f;
-        vk::DeviceQueueCreateInfo deviceQueueCreateInfo( {}, graphicsIndex, 1, &queuePriority );
-        vk::DeviceCreateInfo      deviceCreateInfo( {}, deviceQueueCreateInfo );
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
+        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
+        deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+        deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-        device = std::make_unique<vk::raii::Device>( *physicalDevice, deviceCreateInfo );
-        graphicsQueue = std::make_unique<vk::raii::Queue>( *device, graphicsIndex, 0 );
+        device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+        graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
     }
 
     std::vector<const char*> getRequiredExtensions() {

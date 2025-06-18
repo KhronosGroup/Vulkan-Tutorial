@@ -25,7 +25,7 @@ private:
     GLFWwindow* window = nullptr;
 
     vk::raii::Context  context;
-    std::unique_ptr<vk::raii::Instance> instance;
+    vk::raii::Instance instance = nullptr;
 
     void initWindow() {
         glfwInit();
@@ -53,11 +53,17 @@ private:
     }
 
     void createInstance() {
-        constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion14);
+        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+            .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+            .pEngineName        = "No Engine",
+            .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+            .apiVersion         = vk::ApiVersion14 };
         uint32_t glfwExtensionCount = 0;
         auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-        vk::InstanceCreateInfo createInfo({}, &appInfo, {}, glfwExtensions);
-        instance = std::make_unique<vk::raii::Instance>(context, createInfo);
+        vk::InstanceCreateInfo createInfo{
+            .pApplicationInfo = &appInfo,
+            .ppEnabledLayerNames = glfwExtensions};
+        instance = vk::raii::Instance(context, createInfo);
     }
 };
 

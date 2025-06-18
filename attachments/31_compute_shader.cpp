@@ -75,31 +75,29 @@ private:
     GLFWwindow* window = nullptr;
 
     vk::raii::Context  context;
-    std::unique_ptr<vk::raii::Instance> instance;
-    std::unique_ptr<vk::raii::DebugUtilsMessengerEXT> debugMessenger;
-    std::unique_ptr<vk::raii::SurfaceKHR> surface;
+    vk::raii::Instance instance = nullptr;
+    vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
+    vk::raii::SurfaceKHR surface = nullptr;
 
-    std::unique_ptr<vk::raii::PhysicalDevice> physicalDevice;
-    std::unique_ptr<vk::raii::Device> device;
+    vk::raii::PhysicalDevice physicalDevice = nullptr;
+    vk::raii::Device device = nullptr;
 
-    std::unique_ptr<vk::raii::Queue> graphicsQueue;
-    std::unique_ptr<vk::raii::Queue> computeQueue;
-    std::unique_ptr<vk::raii::Queue> presentQueue;
+    vk::raii::Queue graphicsQueue = nullptr;
+    vk::raii::Queue computeQueue = nullptr;
+    vk::raii::Queue presentQueue = nullptr;
 
-    std::unique_ptr<vk::raii::SwapchainKHR> swapChain;
+    vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
     vk::Format swapChainImageFormat = vk::Format::eUndefined;
     vk::Extent2D swapChainExtent;
     std::vector<vk::raii::ImageView> swapChainImageViews;
-    std::vector<vk::raii::Framebuffer> swapChainFramebuffers;
 
-    std::unique_ptr<vk::raii::RenderPass> renderPass;
-    std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout;
-    std::unique_ptr<vk::raii::Pipeline> graphicsPipeline;
+    vk::raii::PipelineLayout pipelineLayout = nullptr;
+    vk::raii::Pipeline graphicsPipeline = nullptr;
 
-    std::unique_ptr<vk::raii::DescriptorSetLayout> computeDescriptorSetLayout;
-    std::unique_ptr<vk::raii::PipelineLayout> computePipelineLayout;
-    std::unique_ptr<vk::raii::Pipeline> computePipeline;
+    vk::raii::DescriptorSetLayout computeDescriptorSetLayout = nullptr;
+    vk::raii::PipelineLayout computePipelineLayout = nullptr;
+    vk::raii::Pipeline computePipeline = nullptr;
 
 
     std::vector<vk::raii::Buffer> shaderStorageBuffers;
@@ -109,19 +107,17 @@ private:
     std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
 
-    std::unique_ptr<vk::raii::DescriptorPool> descriptorPool;
+    vk::raii::DescriptorPool descriptorPool = nullptr;
     std::vector<vk::raii::DescriptorSet> computeDescriptorSets;
 
-    std::unique_ptr<vk::raii::CommandPool> commandPool;
-    std::vector<std::unique_ptr<vk::raii::CommandBuffer>> commandBuffers;
-    std::vector<std::unique_ptr<vk::raii::CommandBuffer>> computeCommandBuffers;
+    vk::raii::CommandPool commandPool = nullptr;
+    std::vector<vk::raii::CommandBuffer> commandBuffers;
+    std::vector<vk::raii::CommandBuffer> computeCommandBuffers;
     uint32_t graphicsAndComputeIndex = 0;
 
-    std::vector<std::unique_ptr<vk::raii::Semaphore>> presentCompleteSemaphore;
-    std::vector<std::unique_ptr<vk::raii::Semaphore>> renderFinishedSemaphore;
-    std::vector<std::unique_ptr<vk::raii::Semaphore>> computeFinishedSemaphores;
-    std::vector<std::unique_ptr<vk::raii::Fence>> inFlightFences;
-    std::vector<std::unique_ptr<vk::raii::Fence>> computeInFlightFences;
+    vk::raii::Semaphore semaphore = nullptr;
+    uint64_t timelineValue = 0;
+    std::vector<vk::raii::Fence> inFlightFences;
     uint32_t currentFrame = 0;
 
     float lastFrameTime = 0.0f;
@@ -129,6 +125,13 @@ private:
     bool framebufferResized = false;
 
     double lastTime = 0.0f;
+
+    std::vector<const char*> deviceExtensions = {
+        vk::KHRSwapchainExtensionName,
+        vk::KHRSpirv14ExtensionName,
+        vk::KHRSynchronization2ExtensionName,
+        vk::KHRCreateRenderpass2ExtensionName
+    };
 
     void initWindow() {
         glfwInit();
@@ -155,11 +158,9 @@ private:
         createLogicalDevice();
         createSwapChain();
         createImageViews();
-        createRenderPass();
         createComputeDescriptorSetLayout();
         createGraphicsPipeline();
         createComputePipeline();
-        createFramebuffers();
         createCommandPool();
         createShaderStorageBuffers();
         createUniformBuffers();
@@ -180,12 +181,10 @@ private:
             lastTime = currentTime;
         }
 
-        device->waitIdle();
+        device.waitIdle();
     }
 
     void cleanupSwapChain() {
-        swapChainFramebuffers.clear();
-        swapChainImageViews.clear();
         swapChainImageViews.clear();
     }
 
@@ -203,13 +202,11 @@ private:
             glfwWaitEvents();
         }
 
-        device->waitIdle();
+        device.waitIdle();
 
         cleanupSwapChain();
-
         createSwapChain();
         createImageViews();
-        createFramebuffers();
     }
 
     void createInstance() {
@@ -217,14 +214,23 @@ private:
             throw std::runtime_error("validation layers requested, but not available!");
         }
 
-        constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion14);
+        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+                .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+                .pEngineName        = "No Engine",
+                .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+                .apiVersion         = vk::ApiVersion14 };
         auto extensions = getRequiredExtensions();
         std::vector<char const *> enabledLayers;
         if (enableValidationLayers) {
             enabledLayers.assign(validationLayers.begin(), validationLayers.end());
         }
-        vk::InstanceCreateInfo createInfo({}, &appInfo, enabledLayers.size(), enabledLayers.data(), extensions.size(), extensions.data());
-        instance = std::make_unique<vk::raii::Instance>(context, createInfo);
+        vk::InstanceCreateInfo createInfo{
+            .pApplicationInfo        = &appInfo,
+            .enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size()),
+            .ppEnabledLayerNames     = enabledLayers.data(),
+            .enabledExtensionCount   = static_cast<uint32_t>(extensions.size()),
+            .ppEnabledExtensionNames = extensions.data() };
+        instance = vk::raii::Instance(context, createInfo);
     }
 
     void setupDebugMessenger() {
@@ -232,25 +238,55 @@ private:
 
         vk::DebugUtilsMessageSeverityFlagsEXT severityFlags( vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError );
         vk::DebugUtilsMessageTypeFlagsEXT    messageTypeFlags( vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation );
-        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT({}, severityFlags, messageTypeFlags, &debugCallback);
-        debugMessenger = std::make_unique<vk::raii::DebugUtilsMessengerEXT>( *instance, debugUtilsMessengerCreateInfoEXT );
+        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
+            .messageSeverity = severityFlags,
+            .messageType = messageTypeFlags,
+            .pfnUserCallback = &debugCallback
+        };
+        debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
     }
 
     void createSurface() {
         VkSurfaceKHR       _surface;
-        if (glfwCreateWindowSurface(**instance, window, nullptr, &_surface) != 0) {
+        if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
             throw std::runtime_error("failed to create window surface!");
         }
-        surface = std::make_unique<vk::raii::SurfaceKHR>(*instance, _surface);
+        surface = vk::raii::SurfaceKHR(instance, _surface);
     }
 
     void pickPhysicalDevice() {
-        physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(vk::raii::PhysicalDevices( *instance ).front());
+        std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
+        const auto devIter = std::ranges::find_if(devices,
+        [&](auto const & device) {
+                auto queueFamilies = device.getQueueFamilyProperties();
+                bool isSuitable = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+                const auto qfpIter = std::ranges::find_if(queueFamilies,
+                []( vk::QueueFamilyProperties const & qfp )
+                        {
+                            return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
+                        } );
+                isSuitable = isSuitable && ( qfpIter != queueFamilies.end() );
+                auto extensions = device.enumerateDeviceExtensionProperties( );
+                bool found = true;
+                for (auto const & extension : deviceExtensions) {
+                    auto extensionIter = std::ranges::find_if(extensions, [extension](auto const & ext) {return strcmp(ext.extensionName, extension) == 0;});
+                    found = found &&  extensionIter != extensions.end();
+                }
+                isSuitable = isSuitable && found;
+                printf("\n");
+                if (isSuitable) {
+                    physicalDevice = device;
+                }
+                return isSuitable;
+        });
+        if (devIter == devices.end()) {
+            throw std::runtime_error("failed to find a suitable GPU!");
+        }
     }
 
     void createLogicalDevice() {
         // find the index of the first queue family that supports graphics
-        std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice->getQueueFamilyProperties();
+        std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
         // get the first index into queueFamilyProperties which supports graphics and compute
         auto graphicsAndComputeQueueFamilyProperty =
@@ -262,7 +298,7 @@ private:
 
         // determine a queueFamilyIndex that supports present
         // first check if the graphicsIndex is good enough
-        auto presentIndex = physicalDevice->getSurfaceSupportKHR( graphicsAndComputeIndex, *surface )
+        auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsAndComputeIndex, surface )
                                            ? graphicsAndComputeIndex
                                            : static_cast<uint32_t>( queueFamilyProperties.size() );
         if ( presentIndex == queueFamilyProperties.size() )
@@ -272,7 +308,7 @@ private:
             for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
             {
                 if ( ( (queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics && queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eCompute) ) &&
-                     physicalDevice->getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
+                     physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), surface ) )
                 {
                     graphicsAndComputeIndex = static_cast<uint32_t>( i );
                     presentIndex  = graphicsAndComputeIndex;
@@ -285,74 +321,76 @@ private:
                 // family index that supports present
                 for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
                 {
-                    if ( physicalDevice->getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
+                    if ( physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), surface ) )
                     {
                         presentIndex = static_cast<uint32_t>( i );
-                break;
+                        break;
+                    }
+                }
             }
         }
-        }
-    }
         if ( ( graphicsAndComputeIndex == queueFamilyProperties.size() ) || ( presentIndex == queueFamilyProperties.size() ) )
         {
             throw std::runtime_error( "Could not find a queue for graphics or present -> terminating" );
         }
 
+        // query for Vulkan 1.3 features
+        auto features = physicalDevice.getFeatures2();
+        features.features.samplerAnisotropy = vk::True;
+        vk::PhysicalDeviceVulkan13Features vulkan13Features;
+        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
+        vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures;
+        timelineSemaphoreFeatures.timelineSemaphore = vk::True;
+        vulkan13Features.dynamicRendering = vk::True;
+        vulkan13Features.synchronization2 = vk::True;
+        extendedDynamicStateFeatures.extendedDynamicState = vk::True;
+        extendedDynamicStateFeatures.pNext = &timelineSemaphoreFeatures;
+        vulkan13Features.pNext = &extendedDynamicStateFeatures;
+        features.pNext = &vulkan13Features;
         // create a Device
-        std::vector deviceExtensions = { vk::KHRSwapchainExtensionName, vk::KHRSpirv14ExtensionName };
         float                     queuePriority = 0.0f;
-        vk::DeviceQueueCreateInfo deviceQueueCreateInfo( {}, graphicsAndComputeIndex, 1, &queuePriority );
-        vk::DeviceCreateInfo      deviceCreateInfo( {}, deviceQueueCreateInfo );
-        vk::PhysicalDeviceFeatures deviceFeatures;
-        deviceFeatures.samplerAnisotropy = vk::True;
-        deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsAndComputeIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
+        vk::DeviceCreateInfo deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
         deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
         deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-        device = std::make_unique<vk::raii::Device>( *physicalDevice, deviceCreateInfo );
-        graphicsQueue = std::make_unique<vk::raii::Queue>( *device, graphicsAndComputeIndex, 0 );
-        computeQueue = std::make_unique<vk::raii::Queue>( *device, graphicsAndComputeIndex, 0 );
-        presentQueue = std::make_unique<vk::raii::Queue>( *device, presentIndex, 0 );
+        device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+        graphicsQueue = vk::raii::Queue( device, graphicsAndComputeIndex, 0 );
+        computeQueue = vk::raii::Queue( device, graphicsAndComputeIndex, 0 );
+        presentQueue = vk::raii::Queue( device, presentIndex, 0 );
     }
 
     void createSwapChain() {
-        auto surfaceCapabilities = physicalDevice->getSurfaceCapabilitiesKHR( *surface );
-        auto surfaceFormat = chooseSwapSurfaceFormat(physicalDevice->getSurfaceFormatsKHR( *surface ));
+        auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surface );
+        swapChainImageFormat = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR( surface ));
         swapChainExtent = chooseSwapExtent(surfaceCapabilities);
         auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
         minImageCount = ( surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount ) ? surfaceCapabilities.maxImageCount : minImageCount;
-        vk::SwapchainCreateInfoKHR swapChainCreateInfo( {}, *surface, minImageCount, surfaceFormat.format, surfaceFormat.colorSpace,
-                                                    swapChainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment,
-                                                    vk::SharingMode::eExclusive, {}, surfaceCapabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque,
-                                                    chooseSwapPresentMode(physicalDevice->getSurfacePresentModesKHR( *surface )), true, nullptr );
+        vk::SwapchainCreateInfoKHR swapChainCreateInfo{
+            .flags = vk::SwapchainCreateFlagsKHR(),
+            .surface = surface, .minImageCount = minImageCount,
+            .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
+            .imageExtent = swapChainExtent, .imageArrayLayers =1,
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive,
+            .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+            .presentMode = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR(surface)),
+            .clipped = true, .oldSwapchain = nullptr };
 
-        swapChain = std::make_unique<vk::raii::SwapchainKHR>( *device, swapChainCreateInfo );
-        swapChainImageFormat = surfaceFormat.format;
-        swapChainImages = swapChain->getImages();
+        swapChain = vk::raii::SwapchainKHR( device, swapChainCreateInfo );
+        swapChainImages = swapChain.getImages();
     }
 
     void createImageViews() {
-        vk::ImageViewCreateInfo imageViewCreateInfo( {}, {}, vk::ImageViewType::e2D, swapChainImageFormat, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } );
+        vk::ImageViewCreateInfo imageViewCreateInfo{
+            .viewType = vk::ImageViewType::e2D,
+            .format = swapChainImageFormat,
+            .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
+        };
         for ( auto image : swapChainImages )
         {
             imageViewCreateInfo.image = image;
-            swapChainImageViews.emplace_back( *device, imageViewCreateInfo );
+            swapChainImageViews.emplace_back( device, imageViewCreateInfo );
         }
-    }
-
-    void createRenderPass() {
-        vk::AttachmentDescription colorAttachment({}, swapChainImageFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-            vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-             vk::ImageLayout::ePresentSrcKHR);
-
-        vk::AttachmentReference colorAttachmentRef(0, vk::ImageLayout::eColorAttachmentOptimal);
-        vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, {colorAttachmentRef});
-        vk::SubpassDependency dependency(VK_SUBPASS_EXTERNAL, {},
-        vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        {}, vk::AccessFlagBits::eColorAttachmentWrite);
-
-        vk::RenderPassCreateInfo renderPassInfo({}, {colorAttachment}, {subpass}, {dependency});
-        renderPass = std::make_unique<vk::raii::RenderPass>( *device, renderPassInfo );
     }
 
     void createComputeDescriptorSetLayout() {
@@ -362,8 +400,8 @@ private:
             vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute, nullptr)
         };
 
-        vk::DescriptorSetLayoutCreateInfo layoutInfo({}, layoutBindings.size(), layoutBindings.data());
-        computeDescriptorSetLayout = std::make_unique<vk::raii::DescriptorSetLayout>( *device, layoutInfo );
+        vk::DescriptorSetLayoutCreateInfo layoutInfo{ .bindingCount = static_cast<uint32_t>(layoutBindings.size()), .pBindings = layoutBindings.data() };
+        computeDescriptorSetLayout = vk::raii::DescriptorSetLayout( device, layoutInfo );
     }
 
 
@@ -374,20 +412,25 @@ private:
 
         // vk::PipelineShaderStageCreateInfo vertShaderStageInfo({}, vk::ShaderStageFlagBits::eVertex, vertShaderModule, "main");
         // vk::PipelineShaderStageCreateInfo fragShaderStageInfo({}, vk::ShaderStageFlagBits::eFragment, fragShaderModule, "main");
-        vk::PipelineShaderStageCreateInfo vertShaderStageInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, "vertMain");
-        vk::PipelineShaderStageCreateInfo fragShaderStageInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, "fragMain");
+        vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain" };
+        vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain" };
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
         auto bindingDescription = Particle::getBindingDescription();
         auto attributeDescriptions = Particle::getAttributeDescriptions();
 
-        vk::PipelineVertexInputStateCreateInfo vertexInputInfo({}, { bindingDescription }, attributeDescriptions);
-        vk::PipelineInputAssemblyStateCreateInfo inputAssembly({}, vk::PrimitiveTopology::ePointList, vk::False);
-        vk::PipelineViewportStateCreateInfo viewportState({}, 1, {}, 1);
-        vk::PipelineRasterizationStateCreateInfo rasterizer({}, vk::False, vk::False, vk::PolygonMode::eFill,
-                        vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise, vk::False);
+        vk::PipelineVertexInputStateCreateInfo vertexInputInfo{ .vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &bindingDescription, .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()), .pVertexAttributeDescriptions = attributeDescriptions.data() };
+        vk::PipelineInputAssemblyStateCreateInfo inputAssembly{ .topology = vk::PrimitiveTopology::ePointList, .primitiveRestartEnable = vk::False };
+        vk::PipelineViewportStateCreateInfo viewportState{ .viewportCount = 1, .scissorCount = 1 };
+        vk::PipelineRasterizationStateCreateInfo rasterizer{};
+        rasterizer.depthClampEnable = vk::False;
+        rasterizer.rasterizerDiscardEnable = vk::False;
+        rasterizer.polygonMode = vk::PolygonMode::eFill;
+        rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+        rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
+        rasterizer.depthBiasEnable = vk::False;
         rasterizer.lineWidth = 1.0f;
-        vk::PipelineMultisampleStateCreateInfo multisampling({}, vk::SampleCountFlagBits::e1, vk::False);
+        vk::PipelineMultisampleStateCreateInfo multisampling{ .rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False };
 
         vk::PipelineColorBlendAttachmentState colorBlendAttachment;
         colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
@@ -399,45 +442,55 @@ private:
         colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
         colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
 
-        vk::PipelineColorBlendStateCreateInfo colorBlending({},vk::False, vk::LogicOp::eCopy, colorBlendAttachment);
+        vk::PipelineColorBlendStateCreateInfo colorBlending{ .logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments = &colorBlendAttachment };
 
         std::vector dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };
-        vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
+        vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data() };
 
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, 0, {});
-        pipelineLayout = std::make_unique<vk::raii::PipelineLayout>( *device, pipelineLayoutInfo );
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+        pipelineLayoutInfo.setLayoutCount = 0;
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
 
-        vk::GraphicsPipelineCreateInfo pipelineInfo({}, shaderStages, &vertexInputInfo, &inputAssembly, {}, &viewportState, &rasterizer, &multisampling, {}, &colorBlending,
-                            &dynamicState, *pipelineLayout, *renderPass, 0);
+        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
+        vk::GraphicsPipelineCreateInfo pipelineInfo{.pNext = &pipelineRenderingCreateInfo};
+                                    pipelineInfo.stageCount = 2;
+                                    pipelineInfo.pStages = shaderStages;
+                                    pipelineInfo.pVertexInputState = &vertexInputInfo;
+                                    pipelineInfo.pInputAssemblyState = &inputAssembly;
+                                    pipelineInfo.pViewportState = &viewportState;
+                                    pipelineInfo.pRasterizationState = &rasterizer;
+                                    pipelineInfo.pMultisampleState = &multisampling;
+                                    pipelineInfo.pColorBlendState = &colorBlending;
+                                    pipelineInfo.pDynamicState = &dynamicState;
+                                    pipelineInfo.layout = *pipelineLayout;
+                                    pipelineInfo.subpass = 0;
 
-        graphicsPipeline = std::make_unique<vk::raii::Pipeline>(*device, nullptr, pipelineInfo);
+        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
     }
 
     void createComputePipeline() {
         vk::raii::ShaderModule shaderModule = createShaderModule(readFile("shaders/slang.spv"));
 
-        vk::PipelineShaderStageCreateInfo computeShaderStageInfo({}, vk::ShaderStageFlagBits::eCompute, shaderModule, "compMain");
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, 1, &**computeDescriptorSetLayout);
-        computePipelineLayout = std::make_unique<vk::raii::PipelineLayout>( *device, pipelineLayoutInfo );
-        vk::ComputePipelineCreateInfo pipelineInfo({}, computeShaderStageInfo, *computePipelineLayout);
-        computePipeline = std::make_unique<vk::raii::Pipeline>(device->createComputePipeline( nullptr, pipelineInfo));
-    }
-
-    void createFramebuffers() {
-        for ( auto const & view : swapChainImageViews )
-        {
-            vk::ImageView attachments[] = {view };
-            vk::FramebufferCreateInfo framebufferCreateInfo( {}, *renderPass, attachments, swapChainExtent.width, swapChainExtent.height, 1 );
-            swapChainFramebuffers.emplace_back(*device, framebufferCreateInfo );
-        }
+        vk::PipelineShaderStageCreateInfo computeShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eCompute, .module = shaderModule, .pName = "compMain" };
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &*computeDescriptorSetLayout;
+        computePipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
+        vk::ComputePipelineCreateInfo pipelineInfo{ .stage = computeShaderStageInfo, .layout = *computePipelineLayout };
+        computePipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
     }
 
     void createCommandPool() {
-        vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsAndComputeIndex);
-        commandPool = std::make_unique<vk::raii::CommandPool>(*device, poolInfo);
+        vk::CommandPoolCreateInfo poolInfo{};
+        poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
+        poolInfo.queueFamilyIndex = graphicsAndComputeIndex;
+        commandPool = vk::raii::CommandPool(device, poolInfo);
     }
 
     void createShaderStorageBuffers() {
@@ -503,15 +556,22 @@ private:
             vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
             vk::DescriptorPoolSize(  vk::DescriptorType::eStorageBuffer, MAX_FRAMES_IN_FLIGHT * 2)
         };
-        vk::DescriptorPoolCreateInfo poolInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, MAX_FRAMES_IN_FLIGHT, poolSize);
-        descriptorPool = std::make_unique<vk::raii::DescriptorPool>(*device, poolInfo);
+        vk::DescriptorPoolCreateInfo poolInfo{};
+        poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+        poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
+        poolInfo.poolSizeCount = poolSize.size();
+        poolInfo.pPoolSizes = poolSize.data();
+        descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
     }
 
     void createComputeDescriptorSets() {
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *computeDescriptorSetLayout);
-        vk::DescriptorSetAllocateInfo allocInfo(*descriptorPool, layouts);
+        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, computeDescriptorSetLayout);
+        vk::DescriptorSetAllocateInfo allocInfo{};
+        allocInfo.descriptorPool = *descriptorPool;
+        allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+        allocInfo.pSetLayouts = layouts.data();
         computeDescriptorSets.clear();
-        computeDescriptorSets = device->allocateDescriptorSets(allocInfo);
+        computeDescriptorSets = device.allocateDescriptorSets(allocInfo);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             vk::DescriptorBufferInfo bufferInfo(uniformBuffers[i], 0, sizeof(UniformBufferObject));
@@ -519,30 +579,38 @@ private:
             vk::DescriptorBufferInfo storageBufferInfoLastFrame(shaderStorageBuffers[(i - 1) % MAX_FRAMES_IN_FLIGHT], 0, sizeof(Particle) * PARTICLE_COUNT);
             vk::DescriptorBufferInfo storageBufferInfoCurrentFrame(shaderStorageBuffers[i], 0, sizeof(Particle) * PARTICLE_COUNT);
             std::array descriptorWrites{
-                vk::WriteDescriptorSet( computeDescriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo ),
-                vk::WriteDescriptorSet( computeDescriptorSets[i], 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &storageBufferInfoLastFrame),
-                vk::WriteDescriptorSet( computeDescriptorSets[i], 2, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &storageBufferInfoCurrentFrame),
+                vk::WriteDescriptorSet{ .dstSet = *computeDescriptorSets[i], .dstBinding = 0, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pImageInfo = nullptr, .pBufferInfo = &bufferInfo, .pTexelBufferView = nullptr },
+                vk::WriteDescriptorSet{ .dstSet = *computeDescriptorSets[i], .dstBinding = 1, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pImageInfo = nullptr, .pBufferInfo = &storageBufferInfoLastFrame, .pTexelBufferView = nullptr },
+                vk::WriteDescriptorSet{ .dstSet = *computeDescriptorSets[i], .dstBinding = 2, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pImageInfo = nullptr, .pBufferInfo = &storageBufferInfoCurrentFrame, .pTexelBufferView = nullptr },
             };
-            device->updateDescriptorSets(descriptorWrites, {});
+            device.updateDescriptorSets(descriptorWrites, {});
         }
     }
 
 
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& bufferMemory) const {
-        vk::BufferCreateInfo bufferInfo({}, size, usage, vk::SharingMode::eExclusive);
-        buffer = vk::raii::Buffer(*device, bufferInfo);
+        vk::BufferCreateInfo bufferInfo{};
+        bufferInfo.size = size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+        buffer = vk::raii::Buffer(device, bufferInfo);
         vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements();
-        vk::MemoryAllocateInfo allocInfo(memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, properties));
-        bufferMemory = vk::raii::DeviceMemory(*device, allocInfo);
+        vk::MemoryAllocateInfo allocInfo{};
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+        bufferMemory = vk::raii::DeviceMemory(device, allocInfo);
         buffer.bindMemory(bufferMemory, 0);
     }
 
-    [[nodiscard]] std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands() const {
-        vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
-        std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = std::make_unique<vk::raii::CommandBuffer>(std::move(vk::raii::CommandBuffers( *device, allocInfo ).front()));
+    [[nodiscard]] vk::raii::CommandBuffer beginSingleTimeCommands() const {
+        vk::CommandBufferAllocateInfo allocInfo{};
+        allocInfo.commandPool = *commandPool;
+        allocInfo.level = vk::CommandBufferLevel::ePrimary;
+        allocInfo.commandBufferCount = 1;
+        vk::raii::CommandBuffer commandBuffer = std::move(vk::raii::CommandBuffers( device, allocInfo ).front());
 
-        vk::CommandBufferBeginInfo beginInfo( vk::CommandBufferUsageFlagBits::eOneTimeSubmit );
-        commandBuffer->begin(beginInfo);
+        vk::CommandBufferBeginInfo beginInfo{ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+        commandBuffer.begin(beginInfo);
 
         return commandBuffer;
     }
@@ -550,19 +618,21 @@ private:
     void endSingleTimeCommands(const vk::raii::CommandBuffer& commandBuffer) const {
         commandBuffer.end();
 
-        vk::SubmitInfo submitInfo( {}, {}, {*commandBuffer});
-        graphicsQueue->submit(submitInfo, nullptr);
-        graphicsQueue->waitIdle();
+        vk::SubmitInfo submitInfo{};
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &*commandBuffer;
+        graphicsQueue.submit(submitInfo, nullptr);
+        graphicsQueue.waitIdle();
     }
 
     void copyBuffer(const vk::raii::Buffer & srcBuffer, const vk::raii::Buffer & dstBuffer, vk::DeviceSize size) const {
-        std::unique_ptr<vk::raii::CommandBuffer> commandCopyBuffer = beginSingleTimeCommands();
-        commandCopyBuffer->copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy(0, 0, size));
-        endSingleTimeCommands(*commandCopyBuffer);
+        vk::raii::CommandBuffer commandCopyBuffer = beginSingleTimeCommands();
+        commandCopyBuffer.copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy(0, 0, size));
+        endSingleTimeCommands(commandCopyBuffer);
     }
 
     [[nodiscard]] uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const {
-        vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice->getMemoryProperties();
+        vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
 
         for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
             if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
@@ -574,58 +644,124 @@ private:
     }
 
     void createCommandBuffers() {
-        commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, commandBuffers.size());
-        auto commandBuffers_ = vk::raii::CommandBuffers( *device, allocInfo );
-        for (int i = 0; i < commandBuffers.size(); i++) {
-            commandBuffers[i] = std::make_unique<vk::raii::CommandBuffer>(std::move(commandBuffers_[i]));
-        }
+        commandBuffers.clear();
+        vk::CommandBufferAllocateInfo allocInfo{};
+        allocInfo.commandPool = *commandPool;
+        allocInfo.level = vk::CommandBufferLevel::ePrimary;
+        allocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
+        commandBuffers = vk::raii::CommandBuffers(device, allocInfo);
     }
 
     void createComputeCommandBuffers() {
-        computeCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, computeCommandBuffers.size());
-        auto commandBuffers_ = vk::raii::CommandBuffers( *device, allocInfo );
-        for (int i = 0; i < computeCommandBuffers.size(); i++) {
-            computeCommandBuffers[i] = std::make_unique<vk::raii::CommandBuffer>(std::move(commandBuffers_[i]));
-        }
+        computeCommandBuffers.clear();
+        vk::CommandBufferAllocateInfo allocInfo{};
+        allocInfo.commandPool = *commandPool;
+        allocInfo.level = vk::CommandBufferLevel::ePrimary;
+        allocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
+        computeCommandBuffers = vk::raii::CommandBuffers(device, allocInfo);
     }
 
     void recordCommandBuffer( uint32_t imageIndex) {
-        commandBuffers[currentFrame]->begin( {} );
-        vk::ClearValue clearColor[2] = { vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f), vk::ClearDepthStencilValue(1.0f, 0) };
-        vk::RenderPassBeginInfo renderPassInfo( *renderPass, swapChainFramebuffers[imageIndex], {{0, 0}, swapChainExtent}, clearColor);
-        commandBuffers[currentFrame]->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
-        commandBuffers[currentFrame]->bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-        commandBuffers[currentFrame]->setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-        commandBuffers[currentFrame]->setScissor( 0, vk::Rect2D( vk::Offset2D( 0, 0 ), swapChainExtent ) );
-        commandBuffers[currentFrame]->bindVertexBuffers(0, { *shaderStorageBuffers[currentFrame] }, {0});
-        commandBuffers[currentFrame]->draw( PARTICLE_COUNT, 1, 0, 0 );
-        commandBuffers[currentFrame]->endRenderPass();
-        commandBuffers[currentFrame]->end();
+        commandBuffers[currentFrame].reset();
+        commandBuffers[currentFrame].begin( {} );
+        // Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+        transition_image_layout(
+            imageIndex,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            {},                                                     // srcAccessMask (no need to wait for previous operations)
+            vk::AccessFlagBits2::eColorAttachmentWrite,                // dstAccessMask
+            vk::PipelineStageFlagBits2::eTopOfPipe,                   // srcStage
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput        // dstStage
+        );
+        vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+        vk::RenderingAttachmentInfo attachmentInfo = {
+            .imageView = swapChainImageViews[imageIndex],
+            .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+            .clearValue = clearColor
+        };
+        vk::RenderingInfo renderingInfo = {
+            .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &attachmentInfo
+        };
+        commandBuffers[currentFrame].beginRendering(renderingInfo);
+        commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+        commandBuffers[currentFrame].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+        commandBuffers[currentFrame].setScissor( 0, vk::Rect2D( vk::Offset2D( 0, 0 ), swapChainExtent ) );
+        commandBuffers[currentFrame].bindVertexBuffers(0, { shaderStorageBuffers[currentFrame] }, {0});
+        commandBuffers[currentFrame].draw( PARTICLE_COUNT, 1, 0, 0 );
+        commandBuffers[currentFrame].endRendering();
+        // After rendering, transition the swapchain image to PRESENT_SRC
+        transition_image_layout(
+            imageIndex,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::ePresentSrcKHR,
+            vk::AccessFlagBits2::eColorAttachmentWrite,                 // srcAccessMask
+            {},                                                      // dstAccessMask
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
+            vk::PipelineStageFlagBits2::eBottomOfPipe                  // dstStage
+        );
+        commandBuffers[currentFrame].end();
     }
 
+        void transition_image_layout(
+                uint32_t imageIndex,
+                vk::ImageLayout old_layout,
+                vk::ImageLayout new_layout,
+                vk::AccessFlags2 src_access_mask,
+                vk::AccessFlags2 dst_access_mask,
+                vk::PipelineStageFlags2 src_stage_mask,
+                vk::PipelineStageFlags2 dst_stage_mask
+                ) {
+            vk::ImageMemoryBarrier2 barrier = {
+                .srcStageMask = src_stage_mask,
+                .srcAccessMask = src_access_mask,
+                .dstStageMask = dst_stage_mask,
+                .dstAccessMask = dst_access_mask,
+                .oldLayout = old_layout,
+                .newLayout = new_layout,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = swapChainImages[imageIndex],
+                .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+            vk::DependencyInfo dependency_info = {
+                .dependencyFlags = {},
+                .imageMemoryBarrierCount = 1,
+                .pImageMemoryBarriers = &barrier
+            };
+            commandBuffers[currentFrame].pipelineBarrier2(dependency_info);
+        }
+
     void recordComputeCommandBuffer() {
-        computeCommandBuffers[currentFrame]->begin({});
-        computeCommandBuffers[currentFrame]->bindPipeline(vk::PipelineBindPoint::eCompute, *computePipeline);
-        computeCommandBuffers[currentFrame]->bindDescriptorSets(vk::PipelineBindPoint::eCompute, *computePipelineLayout, 0, {computeDescriptorSets[currentFrame]}, {});
-        computeCommandBuffers[currentFrame]->dispatch( PARTICLE_COUNT / 256, 1, 1 );
-        computeCommandBuffers[currentFrame]->end();
+        computeCommandBuffers[currentFrame].reset();
+        computeCommandBuffers[currentFrame].begin({});
+        computeCommandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline);
+        computeCommandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eCompute, computePipelineLayout, 0, {computeDescriptorSets[currentFrame]}, {});
+        computeCommandBuffers[currentFrame].dispatch( PARTICLE_COUNT / 256, 1, 1 );
+        computeCommandBuffers[currentFrame].end();
     }
 
     void createSyncObjects() {
-        presentCompleteSemaphore.resize(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphore.resize(MAX_FRAMES_IN_FLIGHT);
-        computeFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-        computeInFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+        inFlightFences.clear();
+
+        vk::SemaphoreTypeCreateInfo semaphoreType{ .semaphoreType = vk::SemaphoreType::eTimeline, .initialValue = 0 };
+        semaphore = vk::raii::Semaphore(device, {.pNext = &semaphoreType});
+        timelineValue = 0;
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            presentCompleteSemaphore[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-            renderFinishedSemaphore[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-            computeFinishedSemaphores[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-            inFlightFences[i] = std::make_unique<vk::raii::Fence>(*device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
-            computeInFlightFences[i] = std::make_unique<vk::raii::Fence>(*device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
+            vk::FenceCreateInfo fenceInfo{};
+            inFlightFences.emplace_back(device, fenceInfo);
         }
     }
 
@@ -637,42 +773,90 @@ private:
     }
 
     void drawFrame() {
+        auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, nullptr, *inFlightFences[currentFrame]);
+        while ( vk::Result::eTimeout == device.waitForFences( *inFlightFences[currentFrame], vk::True, UINT64_MAX ) )
+            ;
+        device.resetFences(*inFlightFences[currentFrame]);
+
+        // Update timeline value for this frame
+        uint64_t computeWaitValue = timelineValue;
+        uint64_t computeSignalValue = ++timelineValue;
+        uint64_t graphicsWaitValue = computeSignalValue;
+        uint64_t graphicsSignalValue = ++timelineValue;
+
+        updateUniformBuffer(currentFrame);
+
         {
-            // Compute submission
-            while ( vk::Result::eTimeout == device->waitForFences( **computeInFlightFences[currentFrame], vk::True, FenceTimeout ) )
-                ;
-
-            updateUniformBuffer(currentFrame);
-            device->resetFences( **computeInFlightFences[currentFrame] );
-            computeCommandBuffers[currentFrame]->reset();
             recordComputeCommandBuffer();
+            // Submit compute work
+            vk::TimelineSemaphoreSubmitInfo computeTimelineInfo{
+                .waitSemaphoreValueCount = 1,
+                .pWaitSemaphoreValues = &computeWaitValue,
+                .signalSemaphoreValueCount = 1,
+                .pSignalSemaphoreValues = &computeSignalValue
+            };
 
-            const vk::SubmitInfo submitInfo({}, {}, {**computeCommandBuffers[currentFrame]}, { **computeFinishedSemaphores[currentFrame]});
-            computeQueue->submit(submitInfo, **computeInFlightFences[currentFrame]);
+            vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eComputeShader};
+
+            vk::SubmitInfo computeSubmitInfo{
+                .pNext = &computeTimelineInfo,
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &*semaphore,
+                .pWaitDstStageMask = waitStages,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &*computeCommandBuffers[currentFrame],
+                .signalSemaphoreCount = 1,
+                .pSignalSemaphores = &*semaphore
+            };
+
+            computeQueue.submit(computeSubmitInfo, nullptr);
         }
         {
-            // Graphics submission
-            while ( vk::Result::eTimeout == device->waitForFences( **inFlightFences[currentFrame], vk::True, FenceTimeout ) )
-                ;
-            auto [result, imageIndex] = swapChain->acquireNextImage( UINT64_MAX, **presentCompleteSemaphore[currentFrame], nullptr );
-
-            if (result == vk::Result::eErrorOutOfDateKHR) {
-                recreateSwapChain();
-                return;
-            }
-            if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-                throw std::runtime_error("failed to acquire swap chain image!");
-            }
-            device->resetFences(  **inFlightFences[currentFrame] );
-            commandBuffers[currentFrame]->reset();
+            // Record graphics command buffer
             recordCommandBuffer(imageIndex);
-            vk::Semaphore waitSemaphores[] = {**presentCompleteSemaphore[currentFrame], **computeFinishedSemaphores[currentFrame]};
-            vk::PipelineStageFlags waitDestinationStageMask[] = { vk::PipelineStageFlagBits::eVertexInput, vk::PipelineStageFlagBits::eColorAttachmentOutput };
-            const vk::SubmitInfo submitInfo( waitSemaphores, waitDestinationStageMask, {**commandBuffers[currentFrame]}, {**renderFinishedSemaphore[currentFrame]} );
-            graphicsQueue->submit(submitInfo, **inFlightFences[currentFrame]);
 
-            const vk::PresentInfoKHR presentInfoKHR( **renderFinishedSemaphore[currentFrame], **swapChain, imageIndex );
-            result = presentQueue->presentKHR( presentInfoKHR );
+            // Submit graphics work (waits for compute to finish)
+            vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eVertexInput;
+            vk::TimelineSemaphoreSubmitInfo graphicsTimelineInfo{
+                .waitSemaphoreValueCount = 1,
+                .pWaitSemaphoreValues = &graphicsWaitValue,
+                .signalSemaphoreValueCount = 1,
+                .pSignalSemaphoreValues = &graphicsSignalValue
+            };
+
+            vk::SubmitInfo graphicsSubmitInfo{
+                .pNext = &graphicsTimelineInfo,
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &*semaphore,
+                .pWaitDstStageMask = &waitStage,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &*commandBuffers[currentFrame],
+                .signalSemaphoreCount = 1,
+                .pSignalSemaphores = &*semaphore
+            };
+
+            graphicsQueue.submit(graphicsSubmitInfo, nullptr);
+
+            // Present the image (wait for graphics to finish)
+            vk::SemaphoreWaitInfo waitInfo{
+                .semaphoreCount = 1,
+                .pSemaphores = &*semaphore,
+                .pValues = &graphicsSignalValue
+            };
+
+            // Wait for graphics to complete before presenting
+            while ( vk::Result::eTimeout ==device.waitSemaphores(waitInfo, UINT64_MAX) )
+                ;
+
+            vk::PresentInfoKHR presentInfo{
+                .waitSemaphoreCount = 0, // No binary semaphores needed
+                .pWaitSemaphores = nullptr,
+                .swapchainCount = 1,
+                .pSwapchains = &*swapChain,
+                .pImageIndices = &imageIndex
+            };
+
+            result = presentQueue.presentKHR(presentInfo);
             if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
                 framebufferResized = false;
                 recreateSwapChain();
@@ -684,20 +868,14 @@ private:
     }
 
     [[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const {
-        vk::ShaderModuleCreateInfo createInfo({}, code.size(), reinterpret_cast<const uint32_t*>(code.data()) );
-        vk::raii::ShaderModule shaderModule(*device, createInfo);
+        vk::ShaderModuleCreateInfo createInfo{ .codeSize = code.size(), .pCode = reinterpret_cast<const uint32_t*>(code.data()) };
+        vk::raii::ShaderModule shaderModule{ device, createInfo };
 
         return shaderModule;
     }
 
-    static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        for (const auto& availableFormat : availableFormats) {
-            if (availableFormat.format == vk::Format::eB8G8R8A8Srgb && availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-                return availableFormat;
-            }
-        }
-
-        return availableFormats[0];
+    static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
+        return (availableFormats[0].format == vk::Format::eUndefined) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
@@ -770,7 +948,7 @@ private:
 
 int main() {
     try {
-    ComputeShaderApplication app;
+        ComputeShaderApplication app;
         app.run();
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;

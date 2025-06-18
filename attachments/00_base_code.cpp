@@ -18,7 +18,7 @@ public:
     }
 
 private:
-    GLFWwindow* window;
+    GLFWwindow* window = nullptr;
 
     void initWindow() {
         glfwInit();
@@ -47,7 +47,7 @@ private:
 };
 
 int main() {
-    HelloTriangleApplication app;
+    HelloTriangleApplication app{};
 
     try {
         app.run();

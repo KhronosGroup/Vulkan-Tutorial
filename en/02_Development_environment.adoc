@@ -8,7 +8,31 @@ except for the compiler, are compatible with Windows, Linux and macOS, but the
 steps for installing them differ a bit, which is why they're described
 separately here.
 
-First, some common considerations for all platforms:
+== Dependency Install Scripts
+
+To make the setup process easier, we've provided dependency install scripts for Windows and Linux:
+
+=== Windows
+
+For Windows, we provide a script that uses vcpkg to install all the required dependencies:
+
+1. Make sure you have vcpkg installed. If not, follow the instructions at https://github.com/microsoft/vcpkg
+2. Run the `scripts/install_dependencies_windows.bat` script
+3. Follow the instructions to install the Vulkan SDK
+
+While we are using vcpkg to enable this install script; the entire
+process is outlined below in detail and can be achieved without using the
+install script or needing vcpkg.  That's just a convenience to make the setup
+ process easier.
+
+=== Linux
+
+For Linux, we provide a script that detects your package manager and installs all the required dependencies:
+
+1. Run the `scripts/install_dependencies_linux.sh` script
+2. Follow the instructions to install the Vulkan SDK
+
+If you prefer to install the dependencies manually, or if you're using macOS, follow the platform-specific instructions below.
 
 == Common considerations
 

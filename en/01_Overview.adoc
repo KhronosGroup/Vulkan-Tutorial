@@ -297,7 +297,7 @@ is the same code written with our modern API:
 [,c++]
 ----
 auto createInfo = vk::xxx();
-object = vk::raii::XXX(context, createInfo);
+auto object = vk::raii::XXX(context, createInfo);
 ----
 
 Failure of such calls is reported by C++ exceptions. The exception will

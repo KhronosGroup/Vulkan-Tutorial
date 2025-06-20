@@ -48,7 +48,7 @@ void createInstance() {
 
 While vk::ApiVersion10 or Vulkan 1.0 does exist, some functionality
 is older and doesn't work well with RAII, or as we'll link:../02_Graphics_pipeline_basics/01_Shader_modules.adoc[talk about later],
- the SLang language, so we're showing 1.4 as our baseline. If we were in the C
+ the Slang language, so we're showing 1.4 as our baseline. If we were in the C
 api, we'd need to specify the stype and the pnext and be overly verbose.
 You will likely see that in other Vulkan projects that use C api. This is
 handled for you by using the modern c{pp} module.
@@ -153,8 +153,8 @@ of how to check for errors in all of your calls.
 
 == Encountered VK_ERROR_INCOMPATIBLE_DRIVER:
 If using macOS with the latest MoltenVK sdk, you may get `VK_ERROR_INCOMPATIBLE_DRIVER`
-returned from `vkCreateInstance`. According to the [Getting Start Notes]
-(https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html).
+returned from `vkCreateInstance`. According to the
+(https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html)[Getting Start Notes].
 Beginning with the 1.3.216 Vulkan SDK, the `VK_KHR_PORTABILITY_subset`
 extension is mandatory.
 
@@ -220,6 +220,6 @@ that checks if all the extensions returned by
 list.
 
 Before continuing with the more complex steps after instance creation, it's time
-to evaluate our debugging options by checking out [validation layers](!en/Drawing_a_triangle/Setup/Validation_layers).
+to evaluate our debugging options by checking out (!en/Drawing_a_triangle/Setup/Validation_layers)[validation layers].
 
 link:/attachments/01_instance_creation.cpp[C{pp} code]

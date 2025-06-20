@@ -14,7 +14,6 @@ ConstantBuffer<UniformBuffer> ubo;
 struct VSOutput
 {
     float4 pos : SV_Position;
-    float3 fragColor;
     float2 fragTexCoord;
 };
 
@@ -22,7 +21,6 @@ struct VSOutput
 VSOutput vertMain(VSInput input) {
     VSOutput output;
     output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 0.0, 1.0))));
-    output.fragColor = input.inColor;
     output.fragTexCoord = input.inTexCoord;
     return output;
 }

@@ -271,6 +271,16 @@ void createTextureImage() {
 
 == Layout transitions
 
+As mentioned earlier, images in Vulkan can exist in different layouts that affect how the pixel data is organized in memory. These layouts are optimized for specific operations - some layouts are better for reading from shaders, others for being render targets, and yet others for being the source or destination of transfer operations.
+
+Layout transitions are a crucial aspect of Vulkan's design that gives you explicit control over these memory organizations. Unlike in some other graphics APIs where the driver automatically handles these transitions, Vulkan requires you to manage them explicitly. This approach allows for better performance optimization as you can schedule transitions exactly when needed and batch operations efficiently.
+
+For our texture image, we'll need to perform several transitions:
+1. From the initial undefined layout to a layout optimized for receiving data (transfer destination)
+2. From transfer destination to a layout optimized for shader reading, so our fragment shader can sample from it
+
+These transitions are performed using pipeline barriers, which not only change the image layout but also ensure proper synchronization between operations that access the image. Without proper synchronization, we might end up with race conditions where the shader tries to read from the texture before the copy operation has completed.
+
 The function we're going to write now involves recording and executing a command buffer again, so now's a good time to move that logic into a helper function or two:
 
 [,c++]

@@ -17,7 +17,7 @@ Start by adding a constant at the top of the program that defines how many frame
 
 [,c++]
 ----
-const int MAX_FRAMES_IN_FLIGHT = 2;
+constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 ----
 
 We choose the number 2 because we don't want the CPU to get _too_ far ahead of the GPU.

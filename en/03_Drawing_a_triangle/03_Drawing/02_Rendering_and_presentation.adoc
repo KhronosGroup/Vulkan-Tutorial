@@ -426,7 +426,7 @@ You'll see that the program now exits without problems when closing the window.
 
 == Conclusion
 
-A little over 900 lines of code later, we've finally gotten to the stage of seeing something pop up on the screen!
+A little over 500 lines of code later, we've finally gotten to the stage of seeing something pop up on the screen!
 Bootstrapping a Vulkan program is definitely a lot of work, but the take-away message is that Vulkan gives you an immense amount of control through its explicitness.
 I recommend you to take some time now to reread the code and build a mental model of the purpose of all the Vulkan objects in the program and how they relate to each other.
 We'll be building on top of that knowledge to extend the functionality of the program from this point on.

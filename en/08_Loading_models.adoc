@@ -11,6 +11,13 @@ Many graphics API tutorials have the reader write their own OBJ loader in a chap
 The problem with this is that any remotely interesting 3D application will soon require features that are not supported by this file format, like skeletal animation.
 We _will_ load mesh data from an OBJ model in this chapter, but we'll focus more on integrating the mesh data with the program itself rather than the details of loading it from a file.
 
+== Library
+We will use the https://github.com/syoyo/tinyobjloader[tinyobjloader] library to load vertices and faces from an OBJ file.
+It's fast and it's easy to integrate because it's a single file library like stb_image.
+This was mentioned in the link:02_Development_environment.adoc[Development
+Enviornment] chapter and should be part of the dependencies for this portion
+of the tutorial.
+
 == Sample mesh
 
 In this chapter, we won't be enabling lighting yet, so it helps to use a sample model that has lighting baked into the texture.

@@ -8,6 +8,8 @@ We looked at descriptors for the first time in the uniform buffers part of the t
 In this chapter, we will look at a new type of descriptor: _combined image sampler_.
 This descriptor makes it possible for shaders to access an image resource through a sampler object like the one we created in the previous chapter.
 
+It's worth noting that Vulkan provides flexibility in how textures are accessed in shaders through different descriptor types. While we'll be using a _combined image sampler_ in this tutorial, Vulkan also supports separate descriptors for samplers (`VK_DESCRIPTOR_TYPE_SAMPLER`) and sampled images (`VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE`). Using separate descriptors allows you to reuse the same sampler with multiple images or access the same image with different sampling parameters. This can be more efficient in scenarios where you have many textures that use identical sampling configurations. However, the combined image sampler is often more convenient and can offer better performance on some hardware due to optimized cache usage.
+
 We'll start by modifying the descriptor set layout, descriptor pool and descriptor set to include such a combined image sampler descriptor.
 After that, we're going to add texture coordinates to `Vertex` and modify the fragment shader to read colors from the texture instead of just interpolating the vertex colors.
 
@@ -131,7 +133,7 @@ We first need to modify the vertex shader to pass through the texture coordinate
 [,slang]
 ----
 struct VSInput {
-    float2 inPosition;
+    float2 inPos;
     float3 inColor;
     float2 inTexCoord;
 };
@@ -153,7 +155,7 @@ struct VSOutput
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
-    output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 0.0, 1.0))));
+    output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPos, 0.0, 1.0))));
     output.fragColor = input.inColor;
     output.fragTexCoord = input.inTexCoord;
     return output;
@@ -189,8 +191,9 @@ Make sure to use the correct binding here.
 
 [,slang]
 ----
-void main() {
-    outColor = texture(texSampler, fragTexCoord);
+[shader("fragment")]
+float4 fragMain(VSOutput vertIn) : SV_TARGET {
+   return texture.Sample(vertIn.fragTexCoord);
 }
 ----
 

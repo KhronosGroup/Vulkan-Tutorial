@@ -4,15 +4,15 @@
 
 == Attribution
 
-The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial .com/[Vulkan Tutorial]" by Alexander Overvoorde licensed under
+The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.com/[Vulkan Tutorial]" by Alexander Overvoorde licensed under
 link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
 
 == About
 
 This tutorial will teach you the basics of using the
 https://www.khronos.org/vulkan/[Vulkan] graphics and compute API.
-Vulkan is a new API by the https://www.khronos.org/[Khronos group] (known
-for OpenGL) that provides a much better abstraction of modern graphics cards.
+Vulkan is an API by the https://www.khronos.org/[Khronos group] that
+provides a much better abstraction of modern graphics cards.
 This new interface allows you to better describe what your application
 intends to do, which can lead to better performance and less surprising
 driver behavior compared to existing APIs like
@@ -82,10 +82,6 @@ different linear algebra library, and you will be on your own in terms of
   code structuring.
 We will use C{pp} features like classes and RAII to organize logic and
  resource lifetimes.
-There are also two alternative versions of this tutorial available for Rust
- developers:
-https://github.com/bwasty/vulkan-tutorial-rs[Vulkano based],
-https://kylemayes.github.io/vulkanalia[Vulkanalia based].
 
 To make it easier to learn to work with Vulkan, we'll be using the newer
 https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp] bindings that
@@ -133,8 +129,6 @@ certain Vulkan feature.
 That means that the site is also useful as a reference.
 All the Vulkan functions and types are linked to the specification, so you
 can click them to learn more.
-Vulkan is a very new API, so there may be some shortcomings in the
-specification itself.
 You are encouraged to submit feedback to https://github
 .com/KhronosGroup/Vulkan-Docs[this Khronos repository].
 

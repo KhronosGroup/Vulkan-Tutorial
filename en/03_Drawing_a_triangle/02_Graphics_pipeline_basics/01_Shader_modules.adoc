@@ -8,7 +8,7 @@ https://en.wikipedia.org/wiki/OpenGL_Shading_Language[GLSL]
 https://shader-slang.org/slang/user-guide/[SLANG], and
 https://en.wikipedia.org/wiki/High-Level_Shading_Language[HLSL].
 This bytecode format is called https://www.khronos.org/spir[SPIR-V] and is designed
-to be used with both Vulkan and OpenCL (both Khronos APIs). It is a format that
+to be used with Vulkan (a Khronos API). It is a format that
 can be used to write graphics and compute shaders, but we will focus on shaders
 used in Vulkan's graphics pipelines in this tutorial.
 
@@ -31,7 +31,7 @@ sometime in a future chapter. Although we can use this
 compiler directly via `slangc`, we will be using `slangc` in our cmake build
 process instead.
 
-SLang is a shading language with a C-style syntax. Programs written in it have a
+Slang is a shading language with a C-style syntax. Programs written in it have a
 main entry point which is invoked for every object. Like HLSL, Slang uses
 parameters and return values for input and output with annotations to help
 describe what those variables relate to. The language includes many features
@@ -126,16 +126,16 @@ built-in annotation `SV_Position` functions as
 the output. Within the VertexOutput struct.
 Something worth mentioning if you're familiar with other shading languages
 like GLSL or HLSL, there are no instructions for bindings.  This is a feature
- of SLang.  SLang is designed to automatically infer the bindings by the
+ of Slang.  Slang is designed to automatically infer the bindings by the
  order of declaration.  The struct for positions is a static to inform the
  compiler that we don't need any bindings in our shader.
 Studious observers will notice that we're calling our main function
-vertMain instead of main, this is because SLang and SPIR-V both support
+vertMain instead of main, this is because Slang and SPIR-V both support
 having multiple entry points in one file.  This is important when you're
 dealing with pipelines which have more than just a single vert/frag shader
 combo.  Ray-tracing for instance, for even simple demos would have four or
 more shaders all small yet needing their own file which can become cumbersome.
-Another major feature of SLang is the ability to create shader libraries
+Another major feature of Slang is the ability to create shader libraries
 or modules; an exercise left to the reader is to explore more about this
 feature rich shading language.
 
@@ -161,7 +161,7 @@ float4 fragMain() : SV_Target
 ----
 
 The `fragMain` entry point function is called for every fragment just like the
-vertex shader `vertMain` function is called for every vertex. Colors in SLang
+vertex shader `vertMain` function is called for every vertex. Colors in Slang
 are 4-component vectors with the R, G, B and alpha channels within the [0, 1] ranges. Unlike
 `SV_Position` in the vertex shader, there is no built-in variable to output a
 color for the current fragment. You have to specify your own output variable for
@@ -301,13 +301,13 @@ Vulkan SDK. Make the script executable with `chmod +x compile.sh` and run it.
 
 *End of platform-specific instructions*
 
-These two commands tell the compiler to read the SLang source file and output a
+These two commands tell the compiler to read the Slang source file and output a
 SPIR-V 1.4 bytecode file directly using the `-o` (output) flag.
 
 Note: At the time of writing SlangC will natively support SPIR-V 1.3 and above
 without needing to go through emitting GLSL to get to SPIR-V.  While
 everything in this tutorial could work in SPIR-V 1.0, it would require us to
-break the SLang shaders up into multiple files which begs the question,
+break the Slang shaders up into multiple files which begs the question,
 what's the point? Plus, SPIR-V 1.4 starting from 1.4 means you'll be
 familiar with the latest the standard has to offer rather than starting from
  an older version.

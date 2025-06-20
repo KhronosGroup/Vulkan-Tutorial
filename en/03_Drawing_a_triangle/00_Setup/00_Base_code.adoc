@@ -109,38 +109,38 @@ of code that looks like this:
 
 [,c++]
 ----
-        vkInstance instance;
-        VkApplicationInfo appInfo{};
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Hello Triangle";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName = "No Engine";
-        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
+vkInstance instance;
+VkApplicationInfo appInfo{};
+appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+appInfo.pApplicationName = "Hello Triangle";
+appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.pEngineName = "No Engine";
+appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.apiVersion = VK_API_VERSION_1_0;
 
-        VkInstanceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.pApplicationInfo = &appInfo;
-        createInfo.enabledExtensionCount = 0;
-        createInfo.ppEnabledExtensionNames = nullptr;
+VkInstanceCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+createInfo.pApplicationInfo = &appInfo;
+createInfo.enabledExtensionCount = 0;
+createInfo.ppEnabledExtensionNames = nullptr;
 
-        createInfo.enabledLayerCount = 0;
+createInfo.enabledLayerCount = 0;
 
-        if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create instance!");
-        }
+if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create instance!");
+}
 
-        vkDestroyInstance(instance, nullptr);
+vkDestroyInstance(instance, nullptr);
 ----
 
 can be directly replaced by this:
 
 [,c++]
 ----
-        vk::raii::Context context;
-        constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion11);
-        vk::InstanceCreateInfo createInfo({}, &appInfo, {}, {});
-        vk::raii::instance = std::make_unique<vk::raii::Instance>(context, createInfo);
+vk::raii::Context context;
+constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion11);
+vk::InstanceCreateInfo createInfo({}, &appInfo, {}, {});
+vk::raii::instance = std::make_unique<vk::raii::Instance>(context, createInfo);
 ----
 
 As this can be a little hard to read when we look at the structures.  We have
@@ -149,15 +149,15 @@ As this can be a little hard to read when we look at the structures.  We have
 
 [,c++]
 ----
-    constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
-        .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
-        .pEngineName        = "No Engine",
-        .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
-        .apiVersion         = vk::ApiVersion14 };
-    vk::InstanceCreateInfo createInfo{
-        .pApplicationInfo = &appInfo
-    };
-    instance = vk::raii::Instance(context, createInfo);
+constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+    .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+    .pEngineName        = "No Engine",
+    .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+    .apiVersion         = vk::ApiVersion14 };
+vk::InstanceCreateInfo createInfo{
+    .pApplicationInfo = &appInfo
+};
+instance = vk::raii::Instance(context, createInfo);
 ----
 
 This provides a better meaning towards what each option relates to in the
@@ -167,7 +167,7 @@ structures that we're depending upon.
 
 Vulkan works perfectly fine without creating a window if you want to use it for
 off-screen rendering, but it's a lot more exciting to actually show something!
-First, let's add GLFW: NB: we will continue to use the GLFW_INCLUDE_VULKAN as
+First, let's add GLFW: Note: we will continue to use the GLFW_INCLUDE_VULKAN as
 GLFW is designed to get a Vulkan Surface, but it uses the C surface directly.
 Other than that task, we can use GLFW_INCLUDE_NONE or not make that
 specification, and everything else works perfectly fine.
@@ -194,7 +194,6 @@ void run() {
 
 private:
     void initWindow() {
-
     }
 ----
 

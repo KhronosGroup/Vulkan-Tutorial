@@ -160,11 +160,7 @@ unsigned integers
 
 The `format` parameter implicitly defines the byte size of attribute data and the `offset` parameter has specified the number of bytes since the start of the per-vertex data to read from.
 The binding is loading one `Vertex` at a time and the position attribute (`pos`) is at an offset of `0` bytes from the beginning of this struct.
-This is automatically calculated using the `offsetof` macro.  However, it's
-usually best to do the math by hand rather than depend upon the offsetof
-C macro for C{pp} types.  Offsetof tends to quickly get one into
-undefined behavior when dealing with polymorphism (it's a C macro not a C{pp}
-function).
+This is automatically calculated using the `offsetof` macro.
 
 The color attribute is described in much the same way.
 

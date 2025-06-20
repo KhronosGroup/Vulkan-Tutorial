@@ -173,7 +173,7 @@ private:
         // first check if the graphicsIndex is good enough
         auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface )
                                            ? graphicsIndex
-                                           : static_cast<uint32_t>( queueFamilyProperties.size() );
+                                           : ~0 );
         if ( presentIndex == queueFamilyProperties.size() )
         {
             // the graphicsIndex doesn't support present -> look for another family index that supports both

@@ -230,9 +230,9 @@ private:
         vk::DeviceCreateInfo      deviceCreateInfo{
             .pNext =  &features,
             .queueCreateInfoCount = 1,
-            .pQueueCreateInfos = &deviceQueueCreateInfo
-            .enabledExtensionCount = deviceExtensions.size();
-            .ppEnabledExtensionNames = deviceExtensions.data();
+            .pQueueCreateInfos = &deviceQueueCreateInfo,
+            .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
+            .ppEnabledExtensionNames = deviceExtensions.data()
          };
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );

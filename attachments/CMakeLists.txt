@@ -151,13 +151,7 @@ add_chapter (09_shader_modules
 add_chapter (10_fixed_functions
   SHADER 09_shader_base)
 
-add_chapter (11_render_passes
-  SHADER 09_shader_base)
-
 add_chapter (12_graphics_pipeline_complete
-  SHADER 09_shader_base)
-
-add_chapter (13_framebuffers
   SHADER 09_shader_base)
 
 add_chapter (14_command_buffers
@@ -218,20 +212,20 @@ add_chapter (27_depth_buffering
 
 add_chapter (28_model_loading
   SHADER 27_shader_depth
-  MODELS ../resources/viking_room.obj
-  TEXTURES ../resources/viking_room.png
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (29_mipmapping
   SHADER 27_shader_depth
-  MODELS ../resources/viking_room.obj
-  TEXTURES ../resources/viking_room.png
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (30_multisampling
   SHADER 27_shader_depth
-  MODELS ../resources/viking_room.obj
-  TEXTURES ../resources/viking_room.png
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (31_compute_shader

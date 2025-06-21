@@ -120,7 +120,7 @@ private:
     std::vector<vk::raii::Fence> inFlightFences;
     uint32_t currentFrame = 0;
 
-    float lastFrameTime = 0.0f;
+    double lastFrameTime = 0.0;
 
     bool framebufferResized = false;
 
@@ -493,8 +493,8 @@ private:
 
     void createShaderStorageBuffers() {
         // Initialize particles
-        std::default_random_engine rndEngine((unsigned)time(nullptr));
-        std::uniform_real_distribution<float> rndDist(0.0f, 1.0f);
+        std::default_random_engine rndEngine(static_cast<unsigned>(time(nullptr)));
+        std::uniform_real_distribution rndDist(0.0f, 1.0f);
 
         // Initial particle positions on a circle
         std::vector<Particle> particles(PARTICLE_COUNT);
@@ -765,7 +765,7 @@ private:
 
     void updateUniformBuffer(uint32_t currentImage) {
         UniformBufferObject ubo{};
-        ubo.deltaTime = lastFrameTime * 2.0f;
+        ubo.deltaTime = static_cast<float>(lastFrameTime) * 2.0f;
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }

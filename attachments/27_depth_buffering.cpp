@@ -512,8 +512,8 @@ private:
     }
 
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features) {
-        auto formatIt = std::ranges::find_if(candidates, [&physicalDevice, &tiling, &features](auto const format){
-            vk::FormatProperties props = physicalDevice->getFormatProperties(format);
+        auto formatIt = std::ranges::find_if(candidates, [&](auto const format){
+            vk::FormatProperties props = physicalDevice.getFormatProperties(format);
             return (((tiling == vk::ImageTiling::eLinear) && ((props.linearTilingFeatures & features) == features)) ||
                     ((tiling == vk::ImageTiling::eOptimal) && ((props.optimalTilingFeatures & features) == features)));
         });
@@ -998,8 +998,7 @@ private:
     }
 
     static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        auto formatIt = std::ranges::find(availableFormats, vk::SurfaceFormatKHR(vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear));
-        return (formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
+        return (availableFormats[0].format == vk::Format::eUndefined) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {

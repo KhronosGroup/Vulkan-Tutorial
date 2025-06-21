@@ -260,7 +260,7 @@ private:
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
-        return std::ranges::contains( presentModes, vk::PresentModeKHR::eMailbox ) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
+        return std::ranges::find( availablePresentModes, vk::PresentModeKHR::eMailbox ) != availablePresentModes.end() ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
     }
 
     vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) {

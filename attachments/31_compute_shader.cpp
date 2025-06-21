@@ -88,7 +88,7 @@ private:
 
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
-    vk::Format swapChainImageFormat = vk::Format::eUndefined;
+    vk::SurfaceFormatKHR swapChainImageFormat;
     vk::Extent2D swapChainExtent;
     std::vector<vk::raii::ImageView> swapChainImageViews;
 
@@ -369,7 +369,7 @@ private:
         vk::SwapchainCreateInfoKHR swapChainCreateInfo{
             .flags = vk::SwapchainCreateFlagsKHR(),
             .surface = surface, .minImageCount = minImageCount,
-            .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
+            .imageFormat = swapChainImageFormat.format, .imageColorSpace = swapChainImageFormat.colorSpace,
             .imageExtent = swapChainExtent, .imageArrayLayers =1,
             .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive,
             .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -383,7 +383,8 @@ private:
     void createImageViews() {
         vk::ImageViewCreateInfo imageViewCreateInfo{
             .viewType = vk::ImageViewType::e2D,
-            .format = swapChainImageFormat,
+            .format = swapChainImageFormat.format,
+            .components = {vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity},
             .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
         };
         for ( auto image : swapChainImages )
@@ -406,8 +407,6 @@ private:
 
 
     void createGraphicsPipeline() {
-        vk::raii::ShaderModule vertShaderModule = createShaderModule(readFile("shaders/vert.spv"));
-        vk::raii::ShaderModule fragShaderModule = createShaderModule(readFile("shaders/frag.spv"));
         vk::raii::ShaderModule shaderModule = createShaderModule(readFile("shaders/slang.spv"));
 
         vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain" };
@@ -441,6 +440,10 @@ private:
         colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
 
         vk::PipelineColorBlendStateCreateInfo colorBlending{ .logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments = &colorBlendAttachment };
+        colorBlending.blendConstants[0] = 0.0f;
+        colorBlending.blendConstants[1] = 0.0f;
+        colorBlending.blendConstants[2] = 0.0f;
+        colorBlending.blendConstants[3] = 0.0f;
 
         std::vector dynamicStates = {
             vk::DynamicState::eViewport,
@@ -454,7 +457,7 @@ private:
         pipelineLayoutInfo.pushConstantRangeCount = 0;
         pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
 
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
+        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat.format };
         vk::GraphicsPipelineCreateInfo pipelineInfo{.pNext = &pipelineRenderingCreateInfo};
                                     pipelineInfo.stageCount = 2;
                                     pipelineInfo.pStages = shaderStages;
@@ -872,8 +875,14 @@ private:
         return shaderModule;
     }
 
-    static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        return (availableFormats[0].format == vk::Format::eUndefined) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
+    static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
+        for (const auto& availableFormat : availableFormats) {
+            if (availableFormat.format == vk::Format::eB8G8R8A8Srgb && availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+                return availableFormat;
+            }
+        }
+
+        return availableFormats[0];
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {

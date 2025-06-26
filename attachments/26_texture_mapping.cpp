@@ -134,7 +134,7 @@ private:
 
     bool framebufferResized = false;
 
-    std::vector<const char*> deviceExtensions = {
+    std::vector<const char*> requiredDeviceExtension = {
         vk::KHRSwapchainExtensionName,
         vk::KHRSpirv14ExtensionName,
         vk::KHRSynchronization2ExtensionName,
@@ -246,7 +246,7 @@ private:
             .messageSeverity = severityFlags,
             .messageType = messageTypeFlags,
             .pfnUserCallback = &debugCallback
-            };
+        };
         debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
     }
 
@@ -260,31 +260,42 @@ private:
 
     void pickPhysicalDevice() {
         std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-        const auto devIter = std::ranges::find_if(devices,
-        [&](auto const & device) {
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool isSuitable = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
-                const auto qfpIter = std::ranges::find_if(queueFamilies,
-                []( vk::QueueFamilyProperties const & qfp )
-                        {
-                            return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
-                        } );
-                isSuitable = isSuitable && ( qfpIter != queueFamilies.end() );
-                auto extensions = device.enumerateDeviceExtensionProperties( );
-                bool found = true;
-                for (auto const & extension : deviceExtensions) {
-                    auto extensionIter = std::ranges::find_if(extensions, [extension](auto const & ext) {return strcmp(ext.extensionName, extension) == 0;});
-                    found = found &&  extensionIter != extensions.end();
-                }
-                isSuitable = isSuitable && found;
-                printf("\n");
-                if (isSuitable) {
-                    physicalDevice = device;
-                }
-                return isSuitable;
-        });
-        if (devIter == devices.end()) {
-            throw std::runtime_error("failed to find a suitable GPU!");
+        const auto                            devIter = std::ranges::find_if(
+          devices,
+          [&]( auto const & device )
+          {
+            // Check if the device supports the Vulkan 1.3 API version
+            bool supportsVulkan1_3 = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+            // Check if any of the queue families support graphics operations
+            auto queueFamilies = device.getQueueFamilyProperties();
+            bool supportsGraphics =
+              std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
+
+            // Check if all required device extensions are available
+            auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
+            bool supportsAllRequiredExtensions =
+              std::ranges::all_of( requiredDeviceExtension,
+                                   [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
+                                   {
+                                     return std::ranges::any_of( availableDeviceExtensions,
+                                                                 [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                                 { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
+                                   } );
+
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+
+            return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+          } );
+        if ( devIter != devices.end() )
+        {
+            physicalDevice = *devIter;
+        }
+        else
+        {
+            throw std::runtime_error( "failed to find a suitable GPU!" );
         }
     }
 
@@ -302,7 +313,7 @@ private:
         // first check if the graphicsIndex is good enough
         auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface )
                                            ? graphicsIndex
-                                           : static_cast<uint32_t>( queueFamilyProperties.size() );
+                                           : ~0;
         if ( presentIndex == queueFamilyProperties.size() )
         {
             // the graphicsIndex doesn't support present -> look for another family index that supports both
@@ -348,9 +359,13 @@ private:
         // create a Device
         float                     queuePriority = 0.0f;
         vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
-        deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
-        deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+        vk::DeviceCreateInfo      deviceCreateInfo{
+            .pNext =  &features,
+            .queueCreateInfoCount = 1,
+            .pQueueCreateInfos = &deviceQueueCreateInfo,
+            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
+            .ppEnabledExtensionNames = requiredDeviceExtension.data()
+         };
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );
         graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
@@ -364,14 +379,13 @@ private:
         auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
         minImageCount = ( surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount ) ? surfaceCapabilities.maxImageCount : minImageCount;
         vk::SwapchainCreateInfoKHR swapChainCreateInfo{
-            .flags = vk::SwapchainCreateFlagsKHR(),
             .surface = surface, .minImageCount = minImageCount,
             .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
             .imageExtent = swapChainExtent, .imageArrayLayers =1,
             .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive,
             .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
             .presentMode = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR( surface )),
-            .clipped = true, .oldSwapchain = nullptr };
+            .clipped = true };
 
         swapChain = vk::raii::SwapchainKHR( device, swapChainCreateInfo );
         swapChainImages = swapChain.getImages();
@@ -407,7 +421,7 @@ private:
         auto bindingDescription = Vertex::getBindingDescription();
         auto attributeDescriptions = Vertex::getAttributeDescriptions();
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo {  .vertexBindingDescriptionCount =1, .pVertexBindingDescriptions = &bindingDescription,
-            .vertexAttributeDescriptionCount = attributeDescriptions.size(), .pVertexAttributeDescriptions = attributeDescriptions.data() };
+            .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()), .pVertexAttributeDescriptions = attributeDescriptions.data() };
         vk::PipelineInputAssemblyStateCreateInfo inputAssembly{  .topology = vk::PrimitiveTopology::eTriangleList };
         vk::PipelineViewportStateCreateInfo viewportState{ .viewportCount = 1, .scissorCount = 1 };
 
@@ -418,9 +432,9 @@ private:
 
         vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False};
 
-        vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-        colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-        colorBlendAttachment.blendEnable = vk::False;
+        vk::PipelineColorBlendAttachmentState colorBlendAttachment{ .blendEnable = vk::False,
+            .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
+        };
 
         vk::PipelineColorBlendStateCreateInfo colorBlending{.logicOpEnable = vk::False, .logicOp =  vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments =  &colorBlendAttachment };
 
@@ -454,7 +468,7 @@ private:
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        VkDeviceSize imageSize = texWidth * texHeight * 4;
+        vk::DeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
             throw std::runtime_error("failed to load texture image!");
@@ -728,7 +742,7 @@ private:
         vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1 };
         vk::raii::CommandBuffer commandCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
         commandCopyBuffer.begin(vk::CommandBufferBeginInfo{ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
-        commandCopyBuffer.copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy{ .size = size });
+        commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy{ .size = size });
         commandCopyBuffer.end();
         graphicsQueue.submit(vk::SubmitInfo{ .commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer }, nullptr);
         graphicsQueue.waitIdle();
@@ -917,12 +931,8 @@ private:
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
-        for (const auto& availablePresentMode : availablePresentModes) {
-            if (availablePresentMode == vk::PresentModeKHR::eMailbox) {
-                return availablePresentMode;
-            }
-        }
-        return vk::PresentModeKHR::eFifo;
+        return std::ranges::any_of(availablePresentModes,
+            [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; } ) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
     }
 
     vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) {

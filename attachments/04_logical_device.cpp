@@ -46,7 +46,7 @@ private:
 
     vk::raii::Queue graphicsQueue = nullptr;
 
-    std::vector<const char*> deviceExtensions = {
+    std::vector<const char*> requiredDeviceExtension = {
         vk::KHRSwapchainExtensionName,
         vk::KHRSpirv14ExtensionName,
         vk::KHRSynchronization2ExtensionName,
@@ -120,31 +120,42 @@ private:
 
     void pickPhysicalDevice() {
         std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-        const auto devIter = std::ranges::find_if(devices,
-        [&](auto const & device) {
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool isSuitable = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
-                const auto qfpIter = std::ranges::find_if(queueFamilies,
-                []( vk::QueueFamilyProperties const & qfp )
-                        {
-                            return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
-                        } );
-                isSuitable = isSuitable && ( qfpIter != queueFamilies.end() );
-                auto extensions = device.enumerateDeviceExtensionProperties( );
-                bool found = true;
-                for (auto const & extension : deviceExtensions) {
-                    auto extensionIter = std::ranges::find_if(extensions, [extension](auto const & ext) {return strcmp(ext.extensionName, extension) == 0;});
-                    found = found &&  extensionIter != extensions.end();
-                }
-                isSuitable = isSuitable && found;
-                printf("\n");
-                if (isSuitable) {
-                    physicalDevice = device;
-                }
-                return isSuitable;
-        });
-        if (devIter == devices.end()) {
-            throw std::runtime_error("failed to find a suitable GPU!");
+        const auto                            devIter = std::ranges::find_if(
+          devices,
+          [&]( auto const & device )
+          {
+            // Check if the device supports the Vulkan 1.3 API version
+            bool supportsVulkan1_3 = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+            // Check if any of the queue families support graphics operations
+            auto queueFamilies = device.getQueueFamilyProperties();
+            bool supportsGraphics =
+              std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
+
+            // Check if all required device extensions are available
+            auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
+            bool supportsAllRequiredExtensions =
+              std::ranges::all_of( requiredDeviceExtension,
+                                   [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
+                                   {
+                                     return std::ranges::any_of( availableDeviceExtensions,
+                                                                 [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                                 { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
+                                   } );
+
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+
+            return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+          } );
+        if ( devIter != devices.end() )
+        {
+            physicalDevice = *devIter;
+        }
+        else
+        {
+            throw std::runtime_error( "failed to find a suitable GPU!" );
         }
     }
 
@@ -170,8 +181,8 @@ private:
         float                     queuePriority = 0.0f;
         vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
         vk::DeviceCreateInfo      deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
-        deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
-        deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+        deviceCreateInfo.enabledExtensionCount = requiredDeviceExtension.size();
+        deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );
         graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );

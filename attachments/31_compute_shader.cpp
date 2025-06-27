@@ -126,7 +126,7 @@ private:
 
     double lastTime = 0.0f;
 
-    std::vector<const char*> deviceExtensions = {
+    std::vector<const char*> requiredDeviceExtension = {
         vk::KHRSwapchainExtensionName,
         vk::KHRSpirv14ExtensionName,
         vk::KHRSynchronization2ExtensionName,
@@ -256,30 +256,41 @@ private:
 
     void pickPhysicalDevice() {
         std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-        const auto devIter = std::ranges::find_if(devices,
-        [&](auto const & device) {
+        const auto                            devIter = std::ranges::find_if(
+          devices,
+          [&]( auto const & device )
+          {
+            // Check if the device supports the Vulkan 1.3 API version
+            bool supportsVulkan1_3 = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+            // Check if any of the queue families support graphics operations
                 auto queueFamilies = device.getQueueFamilyProperties();
-                bool isSuitable = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
-                const auto qfpIter = std::ranges::find_if(queueFamilies,
-                []( vk::QueueFamilyProperties const & qfp )
+            bool supportsGraphics =
+              std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
+
+            // Check if all required device extensions are available
+            auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
+            bool supportsAllRequiredExtensions =
+              std::ranges::all_of( requiredDeviceExtension,
+                                   [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
                         {
-                            return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
+                                     return std::ranges::any_of( availableDeviceExtensions,
+                                                                 [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                                 { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                         } );
-                isSuitable = isSuitable && ( qfpIter != queueFamilies.end() );
-                auto extensions = device.enumerateDeviceExtensionProperties( );
-                bool found = true;
-                for (auto const & extension : deviceExtensions) {
-                    auto extensionIter = std::ranges::find_if(extensions, [extension](auto const & ext) {return strcmp(ext.extensionName, extension) == 0;});
-                    found = found &&  extensionIter != extensions.end();
-                }
-                isSuitable = isSuitable && found;
-                printf("\n");
-                if (isSuitable) {
-                    physicalDevice = device;
-                }
-                return isSuitable;
+
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+
+            return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
         });
-        if (devIter == devices.end()) {
+        if ( devIter != devices.end() )
+        {
+            physicalDevice = *devIter;
+        }
+        else
+        {
             throw std::runtime_error("failed to find a suitable GPU!");
         }
     }
@@ -289,10 +300,8 @@ private:
         std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
         // get the first index into queueFamilyProperties which supports graphics and compute
-        auto graphicsAndComputeQueueFamilyProperty =
-          std::find_if( queueFamilyProperties.begin(),
-                        queueFamilyProperties.end(),
-                        []( vk::QueueFamilyProperties const & qfp ) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics && qfp.queueFlags & vk::QueueFlagBits::eCompute); } );
+        auto graphicsAndComputeQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, []( auto const & qfp )
+            { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics && qfp.queueFlags & vk::QueueFlagBits::eCompute); } );
 
         graphicsAndComputeIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsAndComputeQueueFamilyProperty ) );
 
@@ -300,7 +309,7 @@ private:
         // first check if the graphicsIndex is good enough
         auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsAndComputeIndex, surface )
                                            ? graphicsAndComputeIndex
-                                           : static_cast<uint32_t>( queueFamilyProperties.size() );
+                                           : ~0;
         if ( presentIndex == queueFamilyProperties.size() )
         {
             // the graphicsIndex doesn't support present -> look for another family index that supports both
@@ -350,9 +359,13 @@ private:
         // create a Device
         float                     queuePriority = 0.0f;
         vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsAndComputeIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-        vk::DeviceCreateInfo deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
-        deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
-        deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+        vk::DeviceCreateInfo      deviceCreateInfo{
+            .pNext =  &features,
+            .queueCreateInfoCount = 1,
+            .pQueueCreateInfos = &deviceQueueCreateInfo,
+            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
+            .ppEnabledExtensionNames = requiredDeviceExtension.data()
+         };
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );
         graphicsQueue = vk::raii::Queue( device, graphicsAndComputeIndex, 0 );
@@ -407,8 +420,10 @@ private:
 
 
     void createGraphicsPipeline() {
+        vk::raii::ShaderModule fragShaderModule = createShaderModule(readFile("shaders/frag.spv"));
         vk::raii::ShaderModule shaderModule = createShaderModule(readFile("shaders/slang.spv"));
 
+        // vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eFragment, .module = fragShaderModule, .pName ="main"};
         vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain" };
         vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain" };
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
@@ -419,31 +434,29 @@ private:
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{ .vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &bindingDescription, .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()), .pVertexAttributeDescriptions = attributeDescriptions.data() };
         vk::PipelineInputAssemblyStateCreateInfo inputAssembly{ .topology = vk::PrimitiveTopology::ePointList, .primitiveRestartEnable = vk::False };
         vk::PipelineViewportStateCreateInfo viewportState{ .viewportCount = 1, .scissorCount = 1 };
-        vk::PipelineRasterizationStateCreateInfo rasterizer{};
-        rasterizer.depthClampEnable = vk::False;
-        rasterizer.rasterizerDiscardEnable = vk::False;
-        rasterizer.polygonMode = vk::PolygonMode::eFill;
-        rasterizer.cullMode = vk::CullModeFlagBits::eBack;
-        rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
-        rasterizer.depthBiasEnable = vk::False;
-        rasterizer.lineWidth = 1.0f;
+        vk::PipelineRasterizationStateCreateInfo rasterizer{
+            .depthClampEnable = vk::False,
+            .rasterizerDiscardEnable = vk::False,
+            .polygonMode = vk::PolygonMode::eFill,
+            .cullMode = vk::CullModeFlagBits::eBack,
+            .frontFace = vk::FrontFace::eCounterClockwise,
+            .depthBiasEnable = vk::False,
+            .lineWidth = 1.0f
+        };
         vk::PipelineMultisampleStateCreateInfo multisampling{ .rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False };
 
-        vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-        colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-        colorBlendAttachment.blendEnable = vk::True;
-        colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-        colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-        colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-        colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
-        colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-        colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+        vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+            .blendEnable = vk::True,
+            .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
+            .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+            .colorBlendOp = vk::BlendOp::eAdd,
+            .srcAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+            .dstAlphaBlendFactor = vk::BlendFactor::eZero,
+            .alphaBlendOp = vk::BlendOp::eAdd,
+            .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
+        };
 
         vk::PipelineColorBlendStateCreateInfo colorBlending{ .logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments = &colorBlendAttachment };
-        colorBlending.blendConstants[0] = 0.0f;
-        colorBlending.blendConstants[1] = 0.0f;
-        colorBlending.blendConstants[2] = 0.0f;
-        colorBlending.blendConstants[3] = 0.0f;
 
         std::vector dynamicStates = {
             vk::DynamicState::eViewport,
@@ -451,25 +464,23 @@ private:
         };
         vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data() };
 
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-        pipelineLayoutInfo.sType = vk::StructureType::ePipelineLayoutCreateInfo;
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
         pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
 
         vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat.format };
-        vk::GraphicsPipelineCreateInfo pipelineInfo{.pNext = &pipelineRenderingCreateInfo};
-                                    pipelineInfo.stageCount = 2;
-                                    pipelineInfo.pStages = shaderStages;
-                                    pipelineInfo.pVertexInputState = &vertexInputInfo;
-                                    pipelineInfo.pInputAssemblyState = &inputAssembly;
-                                    pipelineInfo.pViewportState = &viewportState;
-                                    pipelineInfo.pRasterizationState = &rasterizer;
-                                    pipelineInfo.pMultisampleState = &multisampling;
-                                    pipelineInfo.pColorBlendState = &colorBlending;
-                                    pipelineInfo.pDynamicState = &dynamicState;
-                                    pipelineInfo.layout = *pipelineLayout;
-                                    pipelineInfo.subpass = 0;
+        vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
+            .stageCount = 2,
+            .pStages = shaderStages,
+            .pVertexInputState = &vertexInputInfo,
+            .pInputAssemblyState = &inputAssembly,
+            .pViewportState = &viewportState,
+            .pRasterizationState = &rasterizer,
+            .pMultisampleState = &multisampling,
+            .pColorBlendState = &colorBlending,
+            .pDynamicState = &dynamicState,
+            .layout = *pipelineLayout,
+            .subpass = 0
+        };
 
         graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
     }
@@ -478,10 +489,7 @@ private:
         vk::raii::ShaderModule shaderModule = createShaderModule(readFile("shaders/slang.spv"));
 
         vk::PipelineShaderStageCreateInfo computeShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eCompute, .module = shaderModule, .pName = "compMain" };
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-        pipelineLayoutInfo.sType = vk::StructureType::ePipelineLayoutCreateInfo;
-        pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &*computeDescriptorSetLayout;
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ .setLayoutCount = 1, .pSetLayouts = &*computeDescriptorSetLayout };
         computePipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
         vk::ComputePipelineCreateInfo pipelineInfo{ .stage = computeShaderStageInfo, .layout = *computePipelineLayout };
         computePipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);

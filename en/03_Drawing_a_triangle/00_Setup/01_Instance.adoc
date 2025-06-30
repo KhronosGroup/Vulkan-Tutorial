@@ -4,10 +4,13 @@
 
 == Creating an instance
 
-The very first thing you need to do is initialize the Vulkan library by creating an _instance_.
-The instance is the connection between your application and the Vulkan library and creating it involves specifying some details about your application to the driver.
+The very first thing you need to do is initialize the Vulkan library by creating
+an *instance*. The instance is the connection between your application and the
+Vulkan library, and creating it involves specifying some details about your
+application to the driver.
 
-Start by adding a `createInstance` function and invoking it in the `initVulkan` function.
+Start by adding a `createInstance` function and invoking it in the
+`initVulkan` function.
 
 [,c++]
 ----
@@ -16,51 +19,61 @@ void initVulkan() {
 }
 ----
 
-Additionally add a data member to hold the handle to the instance:
+Additionally, add a data member to hold the handle to the instance and the
+raii context:
 
 [,c++]
 ----
 private:
-VkInstance instance;
+vk::raii::Context  context;
+std::unique_ptr<vk::raii::Instance> instance;
 ----
 
-Now, to create an instance we'll first have to fill in a struct with some information about our application.
-This data is technically optional, but it may provide some useful information to the driver in order to optimize our specific application (e.g.
-because it uses a well-known graphics engine with certain special behavior).
-This struct is called `VkApplicationInfo`:
+Now, to create an instance, we'll first have to fill in a struct with some
+information about our application. This data is technically optional, but it may
+provide some useful information to the driver to optimize our specific
+ application, (e.g., because it uses a well-known graphics engine with
+certain special behavior). This struct is called `VkApplicationInfo`:
 
 [,c++]
 ----
 void createInstance() {
-    VkApplicationInfo appInfo{};
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = "No Engine";
-    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_0;
+    constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+            .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+            .pEngineName        = "No Engine",
+            .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+            .apiVersion         = vk::ApiVersion14 };
 }
 ----
 
-As mentioned before, many structs in Vulkan require you to explicitly specify the type in the `sType` member.
-This is also one of the many structs with a `pNext` member that can point to extension information in the future.
-We're using value initialization here to leave it as `nullptr`.
+While vk::ApiVersion10 or Vulkan 1.0 does exist, some functionality
+is older and doesn't work well with RAII, or as we'll link:../02_Graphics_pipeline_basics/01_Shader_modules.adoc[talk about later],
+ the Slang language, so we're showing 1.4 as our baseline. If we were in the C
+api, we'd need to specify the stype and the pnext and be overly verbose.
+You will likely see that in other Vulkan projects that use C api. This is
+handled for you by using the modern c{pp} module.
 
-A lot of information in Vulkan is passed through structs instead of function parameters and we'll have to fill in one more struct to provide sufficient information for creating an instance.
-This next struct is not optional and tells the Vulkan driver which global extensions and validation layers we want to use.
-Global here means that they apply to the entire program and not a specific device, which will become clear in the next few chapters.
+A lot of information in Vulkan is passed through structs instead of function
+parameters, and we'll have to fill in one more struct to provide sufficient
+information for creating an instance. This next struct is not optional and tells
+the Vulkan driver which global extensions and validation layers we want to use.
+Global here means that they apply to the entire program and not a specific
+device, which will become clear in the next few chapters.
 
 [,c++]
 ----
-VkInstanceCreateInfo createInfo{};
-createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-createInfo.pApplicationInfo = &appInfo;
+vk::InstanceCreateInfo createInfo{
+    .pApplicationInfo = &appInfo
+};
 ----
 
-The first two parameters are straightforward.
-The next two layers specify the desired global extensions.
-As mentioned in the overview chapter, Vulkan is a platform agnostic API, which means that you need an extension to interface with the window system.
-GLFW has a handy built-in function that returns the extension(s) it needs to do that which we can pass to the struct:
+The first parameter is the flags for the structure, the second is the
+appInfo that we just created. The next is an array of layers being
+requested, and the final is an array of the desired global extensions. As
+mentioned in the overview chapter, Vulkan is a platform-agnostic API, which
+means that you need an extension to interface with the window system. GLFW
+has a handy built-in function that returns the  extension(s) it needs to do
+that which we can pass to the struct:
 
 [,c++]
 ----
@@ -69,111 +82,127 @@ const char** glfwExtensions;
 
 glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-createInfo.enabledExtensionCount = glfwExtensionCount;
-createInfo.ppEnabledExtensionNames = glfwExtensions;
+vk::InstanceCreateInfo createInfo{
+    .pApplicationInfo = &appInfo,
+    .ppEnabledLayerNames = glfwExtensions};
 ----
 
-The last two members of the struct determine the global validation layers to enable.
-We'll talk about these more in-depth in the next chapter, so just leave these empty for now.
+The other missing piece is the Layers to enable. Here is where we'll talk
+about how to enable validation layers, which is one of the most useful and
+important layers to enable for any project. We'll talk about this more
+in-depth in the next chapter, so leave this empty for now.
+
+We've now specified everything Vulkan needs to create an instance, and we can
+finally issue the `vk:CreateInstance` call:
 
 [,c++]
 ----
-createInfo.enabledLayerCount = 0;
+instance = vk::raii::Instance(context, createInfo);
 ----
 
-We've now specified everything Vulkan needs to create an instance and we can finally issue the `vkCreateInstance` call:
-
-[,c++]
-----
-VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
-----
-
-As you'll see, the general pattern that object creation function parameters in Vulkan follow is:
+As you'll see, the general pattern that object creation function parameters in
+Vulkan follow is:
 
 * Pointer to struct with creation info
-* Pointer to custom allocator callbacks, always `nullptr` in this tutorial
-* Pointer to the variable that stores the handle to the new object
+* Pointer to custom allocator callbacks, always ignored in this tutorial as
+  it is optional if you're using the default.
+* Pointer to the device, instance, or context on which the constructor depends
+* Returns the pointer to the raii constructed object.
 
-If everything went well then the handle to the instance was stored in the `VkInstance` class member.
-Nearly all Vulkan functions return a value of type `VkResult` that is either `VK_SUCCESS` or an error code.
-To check if the instance was created successfully, we don't need to store the result and can just use a check for the success value instead:
+If everything went well, then the handle to the instance was returned. We can
+check that everything worked by use of c{pp} exceptions, or a more advanced
+way is to turn off exceptions by defining VULKAN_HPP_NO_EXCEPTIONS.  Then
+the calls will return a std::tuple with a VKResult and the returned object.
+Here's an example of checking for errors in Vulkan calls:
 
 [,c++]
 ----
-if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-    throw std::runtime_error("failed to create instance!");
-}
+    try {
+        vk::raii::Context context;
+        vk::raii::Instance instance(context, vk::InstanceCreateInfo{});
+        vk::raii::PhysicalDevice physicalDevice = instance.enumeratePhysicalDevices().front();
+        vk::raii::Device device(physicalDevice, vk::DeviceCreateInfo{});
+
+        // Use Vulkan objects
+        vk::raii::Buffer buffer(device, vk::BufferCreateInfo{});
+    } catch (const vk::SystemError& err) {
+        std::cerr << "Vulkan error: " << err.what() << std::endl;
+        return 1;
+    } catch (const std::exception& err) {
+        std::cerr << "Error: " << err.what() << std::endl;
+        return 1;
+    }
 ----
 
-Now run the program to make sure that the instance is created successfully.
+Or use the tuple:
+
+[,c++]
+----
+    auto [result, imageIndex] = swapChain->acquireNextImage( UINT64_MAX, **presentCompleteSemaphore[currentFrame], nullptr );
+    if (result == vk::Result::eErrorOutOfDateKHR) {
+        recreateSwapChain();
+        return;
+    }
+    if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+----
+
+Those examples are from later parts of our tutorial, this is just an example
+of how to check for errors in all of your calls.
 
 == Encountered VK_ERROR_INCOMPATIBLE_DRIVER:
+If using macOS with the latest MoltenVK sdk, you may get `VK_ERROR_INCOMPATIBLE_DRIVER`
+returned from `vkCreateInstance`. According to the
+(https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html)[Getting Start Notes].
+Beginning with the 1.3.216 Vulkan SDK, the `VK_KHR_PORTABILITY_subset`
+extension is mandatory.
 
-If using MacOS with the latest MoltenVK sdk, you may get `VK_ERROR_INCOMPATIBLE_DRIVER` returned from `vkCreateInstance`.
-According to the https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html[Getting Start Notes].
-Beginning with the 1.3.216 Vulkan SDK, the `VK_KHR_PORTABILITY_subset` extension is mandatory.
+To get over this error, first add the
+ `vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR` bit
+to `VkInstanceCreateInfo` struct flags, then add
+`vk::KHRPortabilityEnumerationExtensionName`to instance enabled
+extension list.
 
-To get over this error, first add the `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` bit to `VkInstanceCreateInfo` struct's flags, then add `VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME` to instance enabled extension list.
-
-Typically the code could be like this:
+Typically, the code could be like this:
 
 [,c++]
 ----
-...
-
-std::vector<const char*> requiredExtensions;
-
-for(uint32_t i = 0; i < glfwExtensionCount; i++) {
-    requiredExtensions.emplace_back(glfwExtensions[i]);
-}
-
-requiredExtensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-
-createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-
-createInfo.enabledExtensionCount = (uint32_t) requiredExtensions.size();
-createInfo.ppEnabledExtensionNames = requiredExtensions.data();
-
-if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-    throw std::runtime_error("failed to create instance!");
-}
+constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+            .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+            .pEngineName        = "No Engine",
+            .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+            .apiVersion         = vk::ApiVersion14 };
+vk::InstanceCreateInfo createInfo{
+    .flas = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
+    .pApplicationInfo = &appInfo,
+    .ppEnabledExtensionNames = { vk::KHRPortabilityEnumerationExtensionName }
+};
+instance = std::make_unique<vk::raii::Instance>(context, createInfo);
 ----
 
 == Checking for extension support
 
-If you look at the `vkCreateInstance` documentation then you'll see that one of the possible error codes is `VK_ERROR_EXTENSION_NOT_PRESENT`.
-We could simply specify the extensions we require and terminate if that error code comes back.
-That makes sense for essential extensions like the window system interface, but what if we want to check for optional functionality?
+If you look at the `vkCreateInstance` documentation then you'll see that one of
+the possible error codes is `VK_ERROR_EXTENSION_NOT_PRESENT`. We could simply
+specify the extensions we require and terminate if that error code comes back.
+That makes sense for essential extensions like the window system interface, but
+what if we want to check for optional functionality?
 
-To retrieve a list of supported extensions before creating an instance, there's the `vkEnumerateInstanceExtensionProperties` function.
-It takes a pointer to a variable that stores the number of extensions and an array of `VkExtensionProperties` to store details of the extensions.
-It also takes an optional first parameter that allows us to filter extensions by a specific validation layer, which we'll ignore for now.
-
-To allocate an array to hold the extension details we first need to know how many there are.
-You can request just the number of extensions by leaving the latter parameter empty:
-
-[,c++]
-----
-uint32_t extensionCount = 0;
-vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-----
-
-Now allocate an array to hold the extension details (`include <vector>`):
+To retrieve a list of supported extensions before creating an instance, there's
+the `vkEnumerateInstanceExtensionProperties` function. We can call it on the
+context object; it returns a vector of the extensions available, which
+allows us to filter extensions by a specific validation layer, which we'll
+ignore for now.
 
 [,c++]
 ----
-std::vector<VkExtensionProperties> extensions(extensionCount);
+auto extension = context.enumerateInstanceLayerProperties()
 ----
 
-Finally we can query the extension details:
-
-[,c++]
-----
-vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-----
-
-Each `VkExtensionProperties` struct contains the name and version of an extension.
-We can list them with a simple for loop (`\t` is a tab for indentation):
+Each `VkExtensionProperties` struct contains the name and version of an
+extension. We can list them with a simple for loop (`\t` is a tab for
+indentation):
 
 [,c++]
 ----
@@ -184,29 +213,13 @@ for (const auto& extension : extensions) {
 }
 ----
 
-You can add this code to the `createInstance` function if you'd like to provide some details about the Vulkan support.
-As a challenge, try to create a function that checks if all of the extensions returned by `glfwGetRequiredInstanceExtensions` are included in the supported extensions list.
+You can add this code to the `createInstance` function if you'd like to provide
+some details about the Vulkan support. As a challenge, try to create a function
+that checks if all the extensions returned by
+`glfwGetRequiredInstanceExtensions` are included in the supported extensions
+list.
 
-== Cleaning up
-
-The `VkInstance` should be only destroyed right before the program exits.
-It can be destroyed in `cleanup` with the `vkDestroyInstance` function:
-
-[,c++]
-----
-void cleanup() {
-    vkDestroyInstance(instance, nullptr);
-
-    glfwDestroyWindow(window);
-
-    glfwTerminate();
-}
-----
-
-The parameters for the `vkDestroyInstance` function are straightforward.
-As mentioned in the previous chapter, the allocation and deallocation functions in Vulkan have an optional allocator callback that we'll ignore by passing `nullptr` to it.
-All of the other Vulkan resources that we'll create in the following chapters should be cleaned up before the instance is destroyed.
-
-Before continuing with the more complex steps after instance creation, it's time to evaluate our debugging options by checking out xref:./02_Validation_layers.adoc[validation layers].
+Before continuing with the more complex steps after instance creation, it's time
+to evaluate our debugging options by checking out (!en/Drawing_a_triangle/Setup/Validation_layers)[validation layers].
 
 link:/attachments/01_instance_creation.cpp[C{pp} code]

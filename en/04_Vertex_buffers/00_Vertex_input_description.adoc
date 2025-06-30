@@ -9,39 +9,39 @@ We'll start with the easiest approach of creating a CPU visible buffer and using
 
 == Vertex shader
 
-First change the vertex shader to no longer include the vertex data in the shader code itself.
-The vertex shader takes input from a vertex buffer using the `in` keyword.
+First, change the vertex shader to no longer include the vertex data in the shader code itself.
+The vertex shader takes input from a vertex buffer by being declared in a
+struct in the proper order.
 
-[,glsl]
+[,slang]
 ----
-#version 450
+struct VSInput {
+    float2 inPosition;
+    float3 inColor;
+};
 
-layout(location = 0) in vec2 inPosition;
-layout(location = 1) in vec3 inColor;
+struct VSOutput
+{
+    float4 pos : SV_Position;
+    float3 color;
+};
 
-layout(location = 0) out vec3 fragColor;
+[shader("vertex")]
+VSOutput vertMain(VSInput input) {
+    VSOutput output;
+    output.pos = float4(input.inPosition, 0.0, 1.0);
+    output.color = input.inColor;
+    return output;
+}
 
-void main() {
-    gl_Position = vec4(inPosition, 0.0, 1.0);
-    fragColor = inColor;
+[shader("fragment")]
+float4 fragMain(VSOutput vertIn) : SV_TARGET {
+    return float4(vertIn.color, 1.0);
 }
 ----
 
 The `inPosition` and `inColor` variables are _vertex attributes_.
-They're properties that are specified per-vertex in the vertex buffer, just like we manually specified a position and color per vertex using the two arrays.
-Make sure to recompile the vertex shader!
-
-Just like `fragColor`, the `layout(location = x)` annotations assign indices to the inputs that we can later use to reference them.
-It is important to know that some types, like `dvec3` 64 bit vectors, use multiple _slots_.
-That means that the index after it must be at least 2 higher:
-
-[,glsl]
-----
-layout(location = 0) in dvec3 inPosition;
-layout(location = 2) in vec3 inColor;
-----
-
-You can find more info about the layout qualifier in the https://www.khronos.org/opengl/wiki/Layout_Qualifier_(GLSL)[OpenGL wiki].
+They're properties that are specified per-vertex in the vertex buffer just like we manually specified a position and color per vertex using the two arrays.
 
 == Vertex data
 
@@ -92,24 +92,14 @@ struct Vertex {
     glm::vec2 pos;
     glm::vec3 color;
 
-    static VkVertexInputBindingDescription getBindingDescription() {
-        VkVertexInputBindingDescription bindingDescription{};
-
-        return bindingDescription;
+    static vk::VertexInputBindingDescription getBindingDescription() {
+        return { 0, sizeof(Vertex), vk::VertexInputRate::eVertex };
     }
 };
 ----
 
 A vertex binding describes at which rate to load data from memory throughout the vertices.
 It specifies the number of bytes between data entries and whether to move to the next data entry after each vertex or after each instance.
-
-[,c++]
-----
-VkVertexInputBindingDescription bindingDescription{};
-bindingDescription.binding = 0;
-bindingDescription.stride = sizeof(Vertex);
-bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-----
 
 All of our per-vertex data is packed together in one array, so we're only going to have one binding.
 The `binding` parameter specifies the index of the binding in the array of bindings.
@@ -131,24 +121,17 @@ We're going to add another helper function to `Vertex` to fill in these structs.
 
 ...
 
-static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
-
-    return attributeDescriptions;
+static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions() {
+    return {
+        vk::VertexInputAttributeDescription( 0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos) ),
+        vk::VertexInputAttributeDescription( 1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color) )
+    };
 }
 ----
 
 As the function prototype indicates, there are going to be two of these structures.
 An attribute description struct describes how to extract a vertex attribute from a chunk of vertex data originating from a binding description.
 We have two attributes, position and color, so we need two attribute description structs.
-
-[,c++]
-----
-attributeDescriptions[0].binding = 0;
-attributeDescriptions[0].location = 0;
-attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
-attributeDescriptions[0].offset = offsetof(Vertex, pos);
-----
 
 The `binding` parameter tells Vulkan from which binding the per-vertex data comes.
 The `location` parameter references the `location` directive of the input in the vertex shader.
@@ -159,9 +142,9 @@ A bit confusingly, the formats are specified using the same enumeration as color
 The following shader types and formats are commonly used together:
 
 * `float`: `VK_FORMAT_R32_SFLOAT`
-* `vec2`: `VK_FORMAT_R32G32_SFLOAT`
-* `vec3`: `VK_FORMAT_R32G32B32_SFLOAT`
-* `vec4`: `VK_FORMAT_R32G32B32A32_SFLOAT`
+* `float2`: `VK_FORMAT_R32G32_SFLOAT`
+* `float3`: `VK_FORMAT_R32G32B32_SFLOAT`
+* `float4`: `VK_FORMAT_R32G32B32A32_SFLOAT`
 
 As you can see, you should use the format where the amount of color channels matches the number of components in the shader data type.
 It is allowed to use more channels than the number of components in the shader, but they will be silently discarded.
@@ -169,21 +152,15 @@ If the number of channels is lower than the number of components, then the BGA c
 The color type (`SFLOAT`, `UINT`, `SINT`) and bit width should also match the type of the shader input.
 See the following examples:
 
-* `ivec2`: `VK_FORMAT_R32G32_SINT`, a 2-component vector of 32-bit signed integers
-* `uvec4`: `VK_FORMAT_R32G32B32A32_UINT`, a 4-component vector of 32-bit unsigned integers
+* `int2`: `VK_FORMAT_R32G32_SINT`, a 2-component vector of 32-bit signed
+integers
+* `uint4`: `VK_FORMAT_R32G32B32A32_UINT`, a 4-component vector of 32-bit
+unsigned integers
 * `double`: `VK_FORMAT_R64_SFLOAT`, a double-precision (64-bit) float
 
-The `format` parameter implicitly defines the byte size of attribute data and the `offset` parameter specifies the number of bytes since the start of the per-vertex data to read from.
+The `format` parameter implicitly defines the byte size of attribute data and the `offset` parameter has specified the number of bytes since the start of the per-vertex data to read from.
 The binding is loading one `Vertex` at a time and the position attribute (`pos`) is at an offset of `0` bytes from the beginning of this struct.
 This is automatically calculated using the `offsetof` macro.
-
-[,c++]
-----
-attributeDescriptions[1].binding = 0;
-attributeDescriptions[1].location = 1;
-attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-attributeDescriptions[1].offset = offsetof(Vertex, color);
-----
 
 The color attribute is described in much the same way.
 
@@ -196,11 +173,8 @@ Find the `vertexInputInfo` struct and modify it to reference the two description
 ----
 auto bindingDescription = Vertex::getBindingDescription();
 auto attributeDescriptions = Vertex::getAttributeDescriptions();
-
-vertexInputInfo.vertexBindingDescriptionCount = 1;
-vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+vk::PipelineVertexInputStateCreateInfo vertexInputInfo {  .vertexBindingDescriptionCount =1, .pVertexBindingDescriptions = &bindingDescription,
+    .vertexAttributeDescriptionCount = attributeDescriptions.size(), .pVertexAttributeDescriptions = attributeDescriptions.data() };
 ----
 
 The pipeline is now ready to accept vertex data in the format of the `vertices` container and pass it on to our vertex shader.

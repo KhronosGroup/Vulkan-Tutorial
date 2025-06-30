@@ -1,4 +1,4 @@
-#define GLFW_INCLUDE_VULKAN
+import vulkan_hpp;
 #include <GLFW/glfw3.h>
 
 #include <iostream>
@@ -18,7 +18,7 @@ public:
     }
 
 private:
-    GLFWwindow* window;
+    GLFWwindow* window = nullptr;
 
     void initWindow() {
         glfwInit();
@@ -47,7 +47,7 @@ private:
 };
 
 int main() {
-    HelloTriangleApplication app;
+    HelloTriangleApplication app{};
 
     try {
         app.run();

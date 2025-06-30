@@ -42,14 +42,8 @@ for(uint32_t i = 0; i < glfwExtensionCount; i++) {
     requiredExtensions.emplace_back(glfwExtensions[i]);
 }
 
-requiredExtensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+requiredExtensions.emplace_back(vk::KHRPortabilityEnumerationExtensionName);
 
-createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-
-createInfo.enabledExtensionCount = (uint32_t) requiredExtensions.size();
-createInfo.ppEnabledExtensionNames = requiredExtensions.data();
-
-if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-    throw std::runtime_error("failed to create instance!");
-}
+vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo, {}, requiredExtensions);
+instance = std::make_unique<vk::raii::Instance>(context, createInfo);
 ----

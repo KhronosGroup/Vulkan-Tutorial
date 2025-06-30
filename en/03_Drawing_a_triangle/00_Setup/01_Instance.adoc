@@ -220,6 +220,6 @@ that checks if all the extensions returned by
 list.
 
 Before continuing with the more complex steps after instance creation, it's time
-to evaluate our debugging options by checking out (!en/Drawing_a_triangle/Setup/Validation_layers)[validation layers].
+to evaluate our debugging options by checking out xref:./02_Validation_layers.adoc[validation layers].
 
 link:/attachments/01_instance_creation.cpp[C{pp} code]

@@ -158,7 +158,7 @@ that order with an 8-bit unsigned integer for a total of 32 bits per pixel. The
 the `VK_COLOR_SPACE_SRGB_NONLINEAR_KHR` flag. Note that this flag used to be
 called `VK_COLORSPACE_SRGB_NONLINEAR_KHR` in old versions of the specification.
 
-For the color space we'll use SRGB if it is available, because it [results in more accurate perceived colors](http://stackoverflow.com/questions/12524623/). It is also pretty much the standard color space for images, like the textures we'll use later on.
+For the color space we'll use SRGB if it is available, because it link:http://stackoverflow.com/questions/12524623/[results in more accurate perceived colors]. It is also pretty much the standard color space for images, like the textures we'll use later on.
 Because of that we should also use an SRGB color format, of which one of the most common ones is `VK_FORMAT_B8G8R8A8_SRGB`.
 
 Let's go through the list and see if the preferred combination is available:
@@ -267,7 +267,7 @@ resolution that best matches the window within the `minImageExtent` and
 `maxImageExtent` bounds. But we must specify the resolution in the correct unit.
 
 GLFW uses two units when measuring sizes: pixels and
-[screen coordinates](https://www.glfw.org/docs/latest/intro_guide.html#coordinate_systems).
+link:https://www.glfw.org/docs/latest/intro_guide.html#coordinate_systems[screen coordinates].
 For example, the resolution `{WIDTH, HEIGHT}` that we specified earlier when
 creating the window is measured in screen coordinates. But Vulkan works with
 pixels, so the swap chain extent must be specified in pixels as well.
@@ -469,7 +469,7 @@ your swap chain becomes invalid or unoptimized while your application is
 running, for example, because the window was resized. In that case, the swap chain
 actually needs to be recreated from scratch, and a reference to the old one must
 be specified in this field. This is a complex topic that we'll learn more about
-in [a future chapter](!en/Drawing_a_triangle/Swap_chain_recreation). For now, we'll assume that we'll only ever create
+in xref:03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[a future chapter]. For now, we'll assume that we'll only ever create
 one swap chain.
 
 Now add a class member to store the `VkSwapchainKHR` object:
@@ -494,7 +494,7 @@ Now run the application to ensure that the swap chain is created
 successfully! If at this point you get an access violation error in
 `vkCreateSwapchainKHR` or see a message like `Failed to find
 'vkGetInstanceProcAddress' in layer SteamOverlayVulkanLayer.dll`, then see
-the [FAQ entry](!en/FAQ) about the Steam overlay layer.
+the xref:90_FAQ.adoc[FAQ entry] about the Steam overlay layer.
 
 Try removing the `createInfo.imageExtent = extent;` line with validation layers
 enabled. You'll see that one of the validation layers immediately catches the

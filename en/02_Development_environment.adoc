@@ -72,8 +72,8 @@ your auto-start for your terminal and IDE setup such that those environment
 variables work everywhere.
 
 If you receive an error message, then ensure that your drivers are up to date,
-include the Vulkan runtime and that your graphics card is supported. See the
-[introduction chapter](!en/Introduction) for links to drivers from the major
+include the Vulkan runtime and that your graphics card is supported. See the 
+xref:00_Introduction.adoc[introduction chapter] for links to drivers from the major
 vendors.
 
 === CMake
@@ -97,8 +97,7 @@ find_package(Slang CONFIG HINTS "$ENV{VULKAN_SDK}/lib/cmake").
 In the future, FindVulkan.cmake might migrate to the *-config.cmake standard,
 however at the time of writing it is recommended to grab FindVulkan.cmake
 from VulkanSamples, as the one from Kitware is both deprecated and has bugs
-in the macOS build.  You will find it in the code directory [FindVulkan.
-cmake](!../code/CMake/FindVulkan.cmake)
+in the macOS build. You will find it in the code directory link:/attachments/CMake/FindVulkan.cmake[FindVulkan.cmake].
 
 Using FindVulkan.cmake is a project-specific file, you can take it and make
 changes as necessary to work well in your build environment, and can craft
@@ -112,8 +111,8 @@ To use it, add it to your CMAKE_MODULE_PATH like this:
 ----
 
 This will allow other projects that distribute via Find*.cmake to be placed
-in that same folder. See the accompanying link:/attachments/CMakeLists
-.txt[Cmakelists.txt] for an example of a working project.
+in that same folder. See the accompanying link:/attachments/CMakeLists.txt[CMakeLists.txt]
+for an example of a working project.
 
 Vulkan has support for C{pp} modules which became available with c{pp}20. A
 large advantage of C{pp} modules is they give all the benefits of C{pp} without
@@ -298,7 +297,7 @@ The most important parts you'll need for developing Vulkan applications on
 Linux are the Vulkan loader, validation layers, and a couple of command-line
 utilities to test whether your machine is Vulkan-capable:
 
-Download the VulkanSDK tarball from (https://vulkan.lunarg.com/)[LunarG].
+Download the VulkanSDK tarball from https://vulkan.lunarg.com/[LunarG].
 Place the uncompressed VulkanSDK in a convenient path, and create a symbolic
 link to the latest on like so:
 
@@ -411,9 +410,9 @@ CMake project for Vulkan and write a little bit of code to make sure that
 everything works.
 
 I will assume that you already have some basic experience with CMake, like
-how variables and rules work. If not, you can get up to speed very quickly with (https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/)[this tutorial].
+how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
-You can now use the ink:/attachments/[attachments] directory in this tutorial as a template for your
+You can now use the link:/attachments/[attachments] directory in this tutorial as a template for your
 Vulkan projects. Make a copy, rename it to something like `HelloTriangle`
 and remove all the code in `main.cpp`.
 
@@ -466,7 +465,7 @@ Most of the instructions here are essentially a lot of "plumbing," so we can get
 Also, keep in mind that during the following instructions whenever we mention the folder `vulkansdk` we are referring to the folder where you extracted the Vulkan SDK.
 
 We recommend using CMake everywhere, and Apple is no different. An example
-of how to use CMake for Apple can be found (https://medium.com/practical-coding/migrating-to-cmake-in-c-and-getting-it-working-with-xcode-50b7bb80ae3d)[here]
+of how to use CMake for Apple can be found https://medium.com/practical-coding/migrating-to-cmake-in-c-and-getting-it-working-with-xcode-50b7bb80ae3d[here]
 We also have documentation for using a cmake project in Apple environments
 at the VulkanSamples project.  It targets both iOS and Desktop Apple.
 

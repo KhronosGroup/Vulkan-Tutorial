@@ -297,7 +297,7 @@ The most important parts you'll need for developing Vulkan applications on
 Linux are the Vulkan loader, validation layers, and a couple of command-line
 utilities to test whether your machine is Vulkan-capable:
 
-Download the VulkanSDK tarball from (https://vulkan.lunarg.com/)[LunarG].
+Download the VulkanSDK tarball from https://vulkan.lunarg.com/[LunarG].
 Place the uncompressed VulkanSDK in a convenient path, and create a symbolic
 link to the latest on like so:
 
@@ -410,9 +410,9 @@ CMake project for Vulkan and write a little bit of code to make sure that
 everything works.
 
 I will assume that you already have some basic experience with CMake, like
-how variables and rules work. If not, you can get up to speed very quickly with (https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/)[this tutorial].
+how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
-You can now use the ink:/attachments/[attachments] directory in this tutorial as a template for your
+You can now use the link:/attachments/[attachments] directory in this tutorial as a template for your
 Vulkan projects. Make a copy, rename it to something like `HelloTriangle`
 and remove all the code in `main.cpp`.
 
@@ -465,7 +465,7 @@ Most of the instructions here are essentially a lot of "plumbing," so we can get
 Also, keep in mind that during the following instructions whenever we mention the folder `vulkansdk` we are referring to the folder where you extracted the Vulkan SDK.
 
 We recommend using CMake everywhere, and Apple is no different. An example
-of how to use CMake for Apple can be found (https://medium.com/practical-coding/migrating-to-cmake-in-c-and-getting-it-working-with-xcode-50b7bb80ae3d)[here]
+of how to use CMake for Apple can be found https://medium.com/practical-coding/migrating-to-cmake-in-c-and-getting-it-working-with-xcode-50b7bb80ae3d[here]
 We also have documentation for using a cmake project in Apple environments
 at the VulkanSamples project.  It targets both iOS and Desktop Apple.
 

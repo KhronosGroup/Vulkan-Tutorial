@@ -129,8 +129,7 @@ certain Vulkan feature.
 That means that the site is also useful as a reference.
 All the Vulkan functions and types are linked to the specification, so you
 can click them to learn more.
-You are encouraged to submit feedback to https://github
-.com/KhronosGroup/Vulkan-Docs[this Khronos repository].
+You are encouraged to submit feedback to https://github.com/KhronosGroup/Vulkan-Docs[this Khronos repository].
 
 As mentioned before, the Vulkan API has a rather verbose API with many
 parameters to give you maximum control over the graphics hardware.

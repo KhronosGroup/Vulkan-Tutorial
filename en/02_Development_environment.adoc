@@ -97,8 +97,7 @@ find_package(Slang CONFIG HINTS "$ENV{VULKAN_SDK}/lib/cmake").
 In the future, FindVulkan.cmake might migrate to the *-config.cmake standard,
 however at the time of writing it is recommended to grab FindVulkan.cmake
 from VulkanSamples, as the one from Kitware is both deprecated and has bugs
-in the macOS build.  You will find it in the code directory [FindVulkan.
-cmake](!../code/CMake/FindVulkan.cmake)
+in the macOS build. You will find it in the code directory link:/attachments/CMake/FindVulkan.cmake[FindVulkan.cmake].
 
 Using FindVulkan.cmake is a project-specific file, you can take it and make
 changes as necessary to work well in your build environment, and can craft
@@ -112,8 +111,8 @@ To use it, add it to your CMAKE_MODULE_PATH like this:
 ----
 
 This will allow other projects that distribute via Find*.cmake to be placed
-in that same folder. See the accompanying link:/attachments/CMakeLists
-.txt[Cmakelists.txt] for an example of a working project.
+in that same folder. See the accompanying link:/attachments/CMakeLists.txt[CMakeLists.txt]
+for an example of a working project.
 
 Vulkan has support for C{pp} modules which became available with c{pp}20. A
 large advantage of C{pp} modules is they give all the benefits of C{pp} without

@@ -72,7 +72,7 @@ pipeline are known in advance, the driver can optimize for it much better.
 Some of the programmable stages are optional based on what you intend to do. For
 example, the tessellation and geometry stages can be disabled if you are just
 drawing simple geometry. If you are only interested in depth values, then you can
-disable the fragment shader stage, which is useful for [shadow map](https://en.wikipedia.org/wiki/Shadow_mapping)
+disable the fragment shader stage, which is useful for link:https://en.wikipedia.org/wiki/Shadow_mapping[shadow map]
 generation.
 
 In the next chapter, we'll first create the two programmable stages required to

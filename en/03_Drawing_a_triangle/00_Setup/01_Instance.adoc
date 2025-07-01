@@ -154,7 +154,7 @@ of how to check for errors in all of your calls.
 == Encountered VK_ERROR_INCOMPATIBLE_DRIVER:
 If using macOS with the latest MoltenVK sdk, you may get `VK_ERROR_INCOMPATIBLE_DRIVER`
 returned from `vkCreateInstance`. According to the
-(https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html)[Getting Start Notes].
+https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html[Getting Start Notes].
 Beginning with the 1.3.216 Vulkan SDK, the `VK_KHR_PORTABILITY_subset`
 extension is mandatory.
 

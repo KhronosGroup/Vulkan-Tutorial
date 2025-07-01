@@ -47,7 +47,7 @@ void createInstance() {
 ----
 
 While vk::ApiVersion10 or Vulkan 1.0 does exist, some functionality
-is older and doesn't work well with RAII, or as we'll link:../02_Graphics_pipeline_basics/01_Shader_modules.adoc[talk about later],
+is older and doesn't work well with RAII, or as we'll xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/01_Shader_modules.adoc[talk about later],
  the Slang language, so we're showing 1.4 as our baseline. If we were in the C
 api, we'd need to specify the stype and the pnext and be overly verbose.
 You will likely see that in other Vulkan projects that use C api. This is
@@ -154,7 +154,7 @@ of how to check for errors in all of your calls.
 == Encountered VK_ERROR_INCOMPATIBLE_DRIVER:
 If using macOS with the latest MoltenVK sdk, you may get `VK_ERROR_INCOMPATIBLE_DRIVER`
 returned from `vkCreateInstance`. According to the
-(https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html)[Getting Start Notes].
+https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html[Getting Start Notes].
 Beginning with the 1.3.216 Vulkan SDK, the `VK_KHR_PORTABILITY_subset`
 extension is mandatory.
 

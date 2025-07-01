@@ -234,7 +234,7 @@ uint32_t findQueueFamilies(VkPhysicalDevice device) {
 ----
 
 Great, that's all we need for now to find the right physical device! The next
-step is to link:04_Logical_device_and_queues.adoc[create a logical device]
+step is to xref:./04_Logical_device_and_queues.adoc[create a logical device]
 to interface with it.
 
 link:/attachments/03_physical_device_selection.cpp[C{pp} code]

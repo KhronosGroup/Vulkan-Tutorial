@@ -74,7 +74,7 @@ calls. The specification document still recommends that you enable validation
 layers at device level as well for compatibility, which is required by some
 implementations. We'll simply specify the same layers as the instance at logical
 device level, which we'll see
-link:04_Logical_device_and_queues.adoc[later on].
+xref:./04_Logical_device_and_queues.adoc[later on].
 
 == Using validation layers
 
@@ -350,6 +350,6 @@ assume that you're using the default settings.
 Throughout this tutorial, we will be making a couple of intentional mistakes
 to show you how helpful the validation layers are with catching them and to teach you
 how important it is to know exactly what you're doing with Vulkan. Now it's time
-to look at link:03_Physical_devices_and_queue_families.adoc[Vulkan devices in the system].
+to look at xref:./03_Physical_devices_and_queue_families.adoc[Vulkan devices in the system].
 
 link:/attachments/02_validation_layers.cpp[C{pp} code]

@@ -1,0 +1,146 @@
+name: CMake CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            vulkan-install: |
+              wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+              sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+              sudo apt-get update
+              sudo apt-get install -y vulkan-sdk
+            deps-install: |
+              sudo apt-get update
+              sudo apt-get install -y \
+                libglfw3-dev \
+                libglm-dev \
+                libtinyobjloader-dev \
+                libstb-dev
+            test-cmd: |
+              # Check if some of the expected executables were built
+              if [ -f "00_base_code/00_base_code" ]; then
+                echo "00_base_code built successfully"
+              else
+                echo "00_base_code build failed"
+                exit 1
+              fi
+
+              if [ -f "15_hello_triangle/15_hello_triangle" ]; then
+                echo "15_hello_triangle built successfully"
+              else
+                echo "15_hello_triangle build failed"
+                exit 1
+              fi
+
+              if [ -f "31_compute_shader/31_compute_shader" ]; then
+                echo "31_compute_shader built successfully"
+              else
+                echo "31_compute_shader build failed"
+                exit 1
+              fi
+          - os: windows-latest
+            vulkan-install: |
+              Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+              echo "VULKAN_SDK=$env:VULKAN_SDK" >> $env:GITHUB_ENV
+            deps-install: |
+              vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
+              echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+            test-cmd: |
+              # Check if some of the expected executables were built
+              if (Test-Path "00_base_code/Release/00_base_code.exe") {
+                echo "00_base_code built successfully"
+              } else {
+                echo "00_base_code build failed"
+                exit 1
+              }
+
+              if (Test-Path "15_hello_triangle/Release/15_hello_triangle.exe") {
+                echo "15_hello_triangle built successfully"
+              } else {
+                echo "15_hello_triangle build failed"
+                exit 1
+              }
+
+              if (Test-Path "31_compute_shader/Release/31_compute_shader.exe") {
+                echo "31_compute_shader built successfully"
+              } else {
+                echo "31_compute_shader build failed"
+                exit 1
+              }
+          - os: macos-latest
+            vulkan-install: |
+              brew install molten-vk
+              curl -L -o vulkansdk.dmg "https://sdk.lunarg.com/sdk/download/latest/mac/vulkan-sdk.dmg"
+              hdiutil attach vulkansdk.dmg
+              sudo /Volumes/vulkansdk/InstallVulkan.app/Contents/MacOS/InstallVulkan --accept-licenses --default-answer --confirm-command install
+              hdiutil detach /Volumes/vulkansdk
+            deps-install: |
+              brew install glfw glm tinyobjloader stb
+            test-cmd: |
+              # Check if some of the expected executables were built
+              if [ -f "00_base_code/00_base_code" ]; then
+                echo "00_base_code built successfully"
+              else
+                echo "00_base_code build failed"
+                exit 1
+              fi
+
+              if [ -f "15_hello_triangle/15_hello_triangle" ]; then
+                echo "15_hello_triangle built successfully"
+              else
+                echo "15_hello_triangle build failed"
+                exit 1
+              fi
+
+              if [ -f "31_compute_shader/31_compute_shader" ]; then
+                echo "31_compute_shader built successfully"
+              else
+                echo "31_compute_shader build failed"
+                exit 1
+              fi
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.vcpkg
+            ~/Library/Caches/Homebrew
+            ${{ env.VCPKG_INSTALLATION_ROOT }}
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install dependencies
+        run: ${{ matrix.deps-install }}
+
+      - name: Install Vulkan SDK
+        run: ${{ matrix.vulkan-install }}
+
+      - name: Configure CMake
+        working-directory: ${{github.workspace}}/attachments
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        working-directory: ${{github.workspace}}/attachments
+        run: cmake --build build --config Release
+
+      - name: Test Build Output
+        working-directory: ${{github.workspace}}/attachments/build
+        run: ${{ matrix.test-cmd }}

@@ -144,13 +144,23 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Cache dependencies
+      - name: Cache dependencies (Windows)
+        if: runner.os == 'Windows'
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cache/pip
-            ~/.vcpkg
             ${{ env.VCPKG_INSTALLATION_ROOT }}
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Cache dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ github.workspace }}/yaml-cpp/build
+            ${{ github.workspace }}/vulkan-sdk
           key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |
             ${{ runner.os }}-deps-

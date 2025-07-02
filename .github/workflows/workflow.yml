@@ -17,15 +17,26 @@ jobs:
             vulkan-install: |
               # Download and install Vulkan SDK using the tar.gz method
               VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
-              curl -O https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
-              tar xf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
-              cd $VULKAN_VERSION
-              ./vulkansdk
+              echo "Using Vulkan SDK version: $VULKAN_VERSION"
+
+              # Create a temporary directory for the SDK
+              mkdir -p vulkan-sdk
+              cd vulkan-sdk
+
+              # Download the SDK
+              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz"
+
+              # Extract the SDK
+              tar xzf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
+
               # Set up environment variables
               echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
               echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
               echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
               echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
+
+              # Return to the original directory
+              cd ..
             deps-install: |
               sudo apt-get update
               sudo apt-get install -y \
@@ -64,17 +75,42 @@ jobs:
               fi
           - os: windows-latest
             vulkan-install: |
+              # Download the Vulkan SDK installer
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
-              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+
+              # Run the installer with silent options
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+
+              # Find the actual installed SDK version
+              $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+
+              if (-not $vulkanPath) {
+                $vulkanPath = "C:\VulkanSDK\latest"
+              }
+
               # Set environment variables with correct Windows-style paths
-              $vulkanPath = "C:\VulkanSDK\latest"
-              echo "VULKAN_SDK=$vulkanPath" >> $env:GITHUB_ENV
+              echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
               # Add Vulkan SDK to system PATH
-              echo "$vulkanPath\Bin" >> $env:GITHUB_PATH
+              echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
               # Set explicit CMake variables
-              echo "CMAKE_PREFIX_PATH=$vulkanPath" >> $env:GITHUB_ENV
-              echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" >> $env:GITHUB_ENV
-              echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" >> $env:GITHUB_ENV
+              echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+              # Display debug information
+              Write-Host "Vulkan SDK path: $vulkanPath"
+              if (Test-Path "$vulkanPath\Lib") {
+                Write-Host "Lib directory exists"
+              } else {
+                Write-Host "Lib directory does not exist"
+              }
+              if (Test-Path "$vulkanPath\Include") {
+                Write-Host "Include directory exists"
+              } else {
+                Write-Host "Include directory does not exist"
+              }
             deps-install: |
               vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
@@ -102,15 +138,34 @@ jobs:
               }
           - os: macos-latest
             vulkan-install: |
+              # Install MoltenVK (Vulkan implementation for macOS)
               brew install molten-vk
-              curl -L -o vulkansdk.dmg "https://sdk.lunarg.com/sdk/download/latest/mac/vulkan-sdk.dmg"
-              hdiutil attach vulkansdk.dmg
-              sudo /Volumes/vulkansdk/InstallVulkan.app/Contents/MacOS/InstallVulkan --accept-licenses --default-answer --confirm-command install
-              hdiutil detach /Volumes/vulkansdk
+
+              # Get the latest SDK version
+              VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/mac.txt)
+              echo "Using Vulkan SDK version: $VULKAN_VERSION"
+
+              # Create a temporary directory for the SDK
+              mkdir -p vulkan-sdk
+              cd vulkan-sdk
+
+              # Download and extract the SDK tarball instead of using DMG
+              curl -L -o vulkansdk.tar.gz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/mac/vulkansdk-macos-$VULKAN_VERSION.tar.gz"
+              tar -xzf vulkansdk.tar.gz
+
+              # Set environment variables
+              echo "VULKAN_SDK=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS" >> $GITHUB_ENV
+              echo "PATH=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/bin:$PATH" >> $GITHUB_ENV
+              echo "DYLD_LIBRARY_PATH=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
+              echo "VK_LAYER_PATH=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/share/vulkan/explicit_layer.d" >> $GITHUB_ENV
+              echo "VK_ICD_FILENAMES=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/share/vulkan/icd.d/MoltenVK_icd.json" >> $GITHUB_ENV
+
+              # Return to the original directory
+              cd ..
             deps-install: |
               # Install available packages through brew
               brew install glfw glm
-              
+
               # Install tinyobjloader from source
               git clone https://github.com/tinyobjloader/tinyobjloader.git
               cd tinyobjloader
@@ -118,7 +173,7 @@ jobs:
               cmake --build build --config Release
               sudo cmake --install build
               cd ..
-              
+
               # Install stb headers
               git clone https://github.com/nothings/stb.git
               sudo mkdir -p /usr/local/include/stb
@@ -184,17 +239,25 @@ jobs:
             exit 1
           }
 
-      - name: Configure CMake
+      - name: Configure CMake (Windows)
         working-directory: ${{github.workspace}}/attachments
+        if: runner.os == 'Windows'
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release `
             -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
             -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
-            -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK"
-        if: runner.os == 'Windows'
+            -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE"
 
-      - name: Configure CMake
+          # Display CMake cache to debug Vulkan detection
+          if (Test-Path "build/CMakeCache.txt") {
+            Write-Host "CMake cache contents:"
+            Get-Content "build/CMakeCache.txt" | Select-String -Pattern "Vulkan"
+          }
+
+      - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments
+        if: runner.os != 'Windows'
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build

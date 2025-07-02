@@ -45,7 +45,8 @@ jobs:
               libtinyobjloader-dev \
               libstb-dev \
               cmake \
-              ninja-build
+              ninja-build \
+              clang
               # Build and install yaml-cpp from source
               git clone https://github.com/jbeder/yaml-cpp.git
               cd yaml-cpp
@@ -193,7 +194,14 @@ jobs:
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments
         if: runner.os != 'Windows'
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          # Use Clang for better C++20 module support
+          export CC=clang
+          export CXX=clang++
+
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_SCAN_FOR_MODULES=ON \
+            -DCMAKE_CXX_FLAGS="-std=c++20"
 
       - name: Build
         working-directory: ${{github.workspace}}/attachments

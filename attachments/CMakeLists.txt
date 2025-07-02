@@ -1,5 +1,8 @@
 cmake_minimum_required (VERSION 3.29)
 
+# Enable C++ module dependency scanning
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
@@ -25,7 +28,6 @@ target_link_libraries(VulkanCppModule
 )
 
 set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
-set_target_properties(VulkanCppModule PROPERTIES CXX_SCAN_FOR_MODULES ON)
 
 target_sources(VulkanCppModule
         PUBLIC
@@ -33,6 +35,12 @@ target_sources(VulkanCppModule
         BASE_DIRS
         "${Vulkan_INCLUDE_DIR}"
         FILES
+        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+)
+
+# Add the vulkan.cppm file directly as a source file
+target_sources(VulkanCppModule
+        PRIVATE
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
@@ -101,7 +109,6 @@ function (add_chapter CHAPTER_NAME)
   set_target_properties (${CHAPTER_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
-  set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_SCAN_FOR_MODULES ON)
   target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 

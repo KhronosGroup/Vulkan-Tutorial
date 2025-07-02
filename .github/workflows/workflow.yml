@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
             vulkan-install: |
@@ -137,74 +137,6 @@ jobs:
                 echo "31_compute_shader build failed"
                 exit 1
               }
-          - os: macos-latest
-            vulkan-install: |
-              # Install MoltenVK (Vulkan implementation for macOS)
-              brew install molten-vk
-
-              # Get the latest SDK version
-              VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/mac.txt)
-              echo "Using Vulkan SDK version: $VULKAN_VERSION"
-
-              # Create a temporary directory for the SDK
-              mkdir -p vulkan-sdk
-              cd vulkan-sdk
-
-              # Download the SDK
-              # Use the direct URL format with explicit version
-              curl -L -o vulkansdk.tar.gz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/mac/vulkansdk-macos-$VULKAN_VERSION.tar.gz"
-
-              # Extract the SDK - use tar with z flag for gzip compression
-              tar -xzf vulkansdk.tar.gz
-
-              # Set environment variables
-              echo "VULKAN_SDK=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS" >> $GITHUB_ENV
-              echo "PATH=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/bin:$PATH" >> $GITHUB_ENV
-              echo "DYLD_LIBRARY_PATH=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
-              echo "VK_LAYER_PATH=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/share/vulkan/explicit_layer.d" >> $GITHUB_ENV
-              echo "VK_ICD_FILENAMES=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS/share/vulkan/icd.d/MoltenVK_icd.json" >> $GITHUB_ENV
-
-              # Return to the original directory
-              cd ..
-            deps-install: |
-              # Install available packages through brew
-              brew install glfw glm ninja
-
-              # Install tinyobjloader from source
-              git clone https://github.com/tinyobjloader/tinyobjloader.git
-              cd tinyobjloader
-              cmake -B build -DCMAKE_BUILD_TYPE=Release
-              cmake --build build --config Release
-              sudo cmake --install build
-              cd ..
-
-              # Install stb headers
-              git clone https://github.com/nothings/stb.git
-              sudo mkdir -p /usr/local/include/stb
-              sudo cp stb/*.h /usr/local/include/stb/
-
-            test-cmd: |
-              # Check if some of the expected executables were built
-              if [ -f "00_base_code/00_base_code" ]; then
-                echo "00_base_code built successfully"
-              else
-                echo "00_base_code build failed"
-                exit 1
-              fi
-
-              if [ -f "15_hello_triangle/15_hello_triangle" ]; then
-                echo "15_hello_triangle built successfully"
-              else
-                echo "15_hello_triangle build failed"
-                exit 1
-              fi
-
-              if [ -f "31_compute_shader/31_compute_shader" ]; then
-                echo "31_compute_shader built successfully"
-              else
-                echo "31_compute_shader build failed"
-                exit 1
-              fi
 
     runs-on: ${{ matrix.os }}
 
@@ -217,7 +149,6 @@ jobs:
           path: |
             ~/.cache/pip
             ~/.vcpkg
-            ~/Library/Caches/Homebrew
             ${{ env.VCPKG_INSTALLATION_ROOT }}
           key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |

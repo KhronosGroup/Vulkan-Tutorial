@@ -15,17 +15,25 @@ jobs:
         include:
           - os: ubuntu-latest
             vulkan-install: |
-              wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-              sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
-              sudo apt-get update
-              sudo apt-get install -y vulkan-sdk
+              # Download and install Vulkan SDK using the tar.gz method
+              VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
+              curl -O https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
+              tar xf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
+              cd $VULKAN_VERSION
+              ./vulkansdk
+              # Set up environment variables
+              echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
+              echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
+              echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+              echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
             deps-install: |
               sudo apt-get update
               sudo apt-get install -y \
-                libglfw3-dev \
-                libglm-dev \
-                libtinyobjloader-dev \
-                libstb-dev
+              libglfw3-dev \
+              libglm-dev \
+              libtinyobjloader-dev \
+              libstb-dev \
+              libyaml-cpp0.7
             test-cmd: |
               # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then
@@ -52,7 +60,10 @@ jobs:
             vulkan-install: |
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
               Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
-              echo "VULKAN_SDK=$env:VULKAN_SDK" >> $env:GITHUB_ENV
+              # Add these environment variables
+              echo "VULKAN_SDK=C:\VulkanSDK\latest" >> $env:GITHUB_ENV
+              echo "VULKAN_INCLUDE_DIR=C:\VulkanSDK\latest\Include" >> $env:GITHUB_ENV
+              echo "VULKAN_LIBRARY=C:\VulkanSDK\latest\Lib\vulkan-1.lib" >> $env:GITHUB_ENV
             deps-install: |
               vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
@@ -86,7 +97,13 @@ jobs:
               sudo /Volumes/vulkansdk/InstallVulkan.app/Contents/MacOS/InstallVulkan --accept-licenses --default-answer --confirm-command install
               hdiutil detach /Volumes/vulkansdk
             deps-install: |
-              brew install glfw glm tinyobjloader stb
+              brew install glfw glm stb
+              # Install tinyobjloader from source since it's not available in brew
+              git clone https://github.com/tinyobjloader/tinyobjloader.git
+              cd tinyobjloader
+              cmake -B build -DCMAKE_BUILD_TYPE=Release
+              cmake --build build --config Release
+              sudo cmake --install build
             test-cmd: |
               # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then

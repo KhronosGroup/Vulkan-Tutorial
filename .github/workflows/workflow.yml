@@ -23,11 +23,11 @@ jobs:
               mkdir -p vulkan-sdk
               cd vulkan-sdk
 
-              # Download the SDK - try .tar.xz format instead of .tar.gz
-              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
+              # Download the SDK
+              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz"
 
-              # Extract the SDK - use tar with J flag for xz compression
-              tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
+              # Extract the SDK
+              tar -xzf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
 
               # Set up environment variables
               echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
@@ -38,28 +38,13 @@ jobs:
               # Return to the original directory
               cd ..
             deps-install: |
+              # GitHub runners already have cmake, ninja-build, and clang installed
               sudo apt-get update
               sudo apt-get install -y \
               libglfw3-dev \
               libglm-dev \
               libtinyobjloader-dev \
-              libstb-dev \
-              cmake \
-              ninja-build \
-              clang
-              # Build and install yaml-cpp from source
-              if [ ! -d "yaml-cpp" ] || [ -z "$(ls -A yaml-cpp)" ]; then
-                # Directory doesn't exist or is empty, clone the repository
-                rm -rf yaml-cpp  # Remove directory if it exists but is empty
-                git clone https://github.com/jbeder/yaml-cpp.git
-              fi
-              cd yaml-cpp
-              # Only create build directory if it doesn't exist
-              if [ ! -d "build" ]; then
-                cmake -B build -DCMAKE_BUILD_TYPE=Release -DYAML_BUILD_SHARED_LIBS=ON
-              fi
-              cmake --build build --config Release -j4
-              sudo cmake --install build
+              libstb-dev
             test-cmd: |
               # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then
@@ -84,42 +69,16 @@ jobs:
               fi
           - os: windows-latest
             vulkan-install: |
-              # Download the Vulkan SDK installer
-              Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
+              # Install Vulkan SDK using Chocolatey (pre-installed on GitHub runners)
+              choco install vulkan-sdk -y
 
-              # Run the installer with silent options
-              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
-
-              # Find the actual installed SDK version
-              $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
-
-              if (-not $vulkanPath) {
-                $vulkanPath = "C:\VulkanSDK\latest"
-              }
-
-              # Set environment variables with correct Windows-style paths
+              # Set environment variables
+              $vulkanPath = "C:\VulkanSDK\latest"
               echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-              # Add Vulkan SDK to system PATH
               echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-              # Set explicit CMake variables
               echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-              # Display debug information
-              Write-Host "Vulkan SDK path: $vulkanPath"
-              if (Test-Path "$vulkanPath\Lib") {
-                Write-Host "Lib directory exists"
-              } else {
-                Write-Host "Lib directory does not exist"
-              }
-              if (Test-Path "$vulkanPath\Include") {
-                Write-Host "Include directory exists"
-              } else {
-                Write-Host "Include directory does not exist"
-              }
             deps-install: |
               vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
@@ -151,26 +110,51 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Cache dependencies (Windows)
+      # Cache vcpkg packages for Windows
+      - name: Cache vcpkg packages (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v3
         with:
           path: |
-            ${{ env.VCPKG_INSTALLATION_ROOT }}
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/packages
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}
           restore-keys: |
-            ${{ runner.os }}-deps-
+            ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vcpkg-
 
-      - name: Cache dependencies (Ubuntu)
+      # Cache Vulkan SDK for Windows
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-
+
+      # Cache apt packages for Ubuntu
+      - name: Cache apt packages (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/workflow.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      # Cache Vulkan SDK for Ubuntu
+      - name: Cache Vulkan SDK (Ubuntu)
         if: runner.os == 'Linux'
         uses: actions/cache@v3
         with:
           path: |
-            ${{ github.workspace }}/yaml-cpp/build
             ${{ github.workspace }}/vulkan-sdk
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}
           restore-keys: |
-            ${{ runner.os }}-deps-
+            ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vulkan-sdk-
 
       - name: Install dependencies
         run: ${{ matrix.deps-install }}
@@ -183,14 +167,22 @@ jobs:
         run: |
           if (Test-Path $env:VULKAN_SDK) {
             echo "Vulkan SDK found at: $env:VULKAN_SDK"
-            echo "Contents of Lib directory:"
-            Get-ChildItem "$env:VULKAN_SDK\Lib"
-            echo "Contents of Include directory:"
-            Get-ChildItem "$env:VULKAN_SDK\Include"
+            echo "Vulkan SDK installation verified"
           } else {
             echo "Vulkan SDK not found!"
             exit 1
           }
+
+      # Cache CMake build directory for Windows
+      - name: Cache build artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: ${{github.workspace}}/attachments/build
+          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}-${{ hashFiles('**/*.h') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-build-
 
       - name: Configure CMake (Windows)
         working-directory: ${{github.workspace}}/attachments
@@ -207,6 +199,29 @@ jobs:
             Write-Host "CMake cache contents:"
             Get-Content "build/CMakeCache.txt" | Select-String -Pattern "Vulkan"
           }
+
+      # Verify Vulkan Installation for Ubuntu
+      - name: Verify Vulkan Installation (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          if [ -d "$VULKAN_SDK" ]; then
+            echo "Vulkan SDK found at: $VULKAN_SDK"
+            echo "Vulkan SDK installation verified"
+          else
+            echo "Vulkan SDK not found!"
+            exit 1
+          fi
+
+      # Cache CMake build directory for Ubuntu
+      - name: Cache build artifacts (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: ${{github.workspace}}/attachments/build
+          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}-${{ hashFiles('**/*.h') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-build-
 
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments

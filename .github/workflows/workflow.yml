@@ -33,7 +33,13 @@ jobs:
               libglm-dev \
               libtinyobjloader-dev \
               libstb-dev \
-              libyaml-cpp0.7
+              cmake
+              # Build and install yaml-cpp from source
+              git clone https://github.com/jbeder/yaml-cpp.git
+              cd yaml-cpp
+              cmake -B build -DCMAKE_BUILD_TYPE=Release -DYAML_BUILD_SHARED_LIBS=ON
+              cmake --build build --config Release -j4
+              sudo cmake --install build
             test-cmd: |
               # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then
@@ -60,10 +66,15 @@ jobs:
             vulkan-install: |
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
               Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
-              # Add these environment variables
-              echo "VULKAN_SDK=C:\VulkanSDK\latest" >> $env:GITHUB_ENV
-              echo "VULKAN_INCLUDE_DIR=C:\VulkanSDK\latest\Include" >> $env:GITHUB_ENV
-              echo "VULKAN_LIBRARY=C:\VulkanSDK\latest\Lib\vulkan-1.lib" >> $env:GITHUB_ENV
+              # Set environment variables with correct Windows-style paths
+              $vulkanPath = "C:\VulkanSDK\latest"
+              echo "VULKAN_SDK=$vulkanPath" >> $env:GITHUB_ENV
+              # Add Vulkan SDK to system PATH
+              echo "$vulkanPath\Bin" >> $env:GITHUB_PATH
+              # Set explicit CMake variables
+              echo "CMAKE_PREFIX_PATH=$vulkanPath" >> $env:GITHUB_ENV
+              echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" >> $env:GITHUB_ENV
+              echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" >> $env:GITHUB_ENV
             deps-install: |
               vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
@@ -97,13 +108,22 @@ jobs:
               sudo /Volumes/vulkansdk/InstallVulkan.app/Contents/MacOS/InstallVulkan --accept-licenses --default-answer --confirm-command install
               hdiutil detach /Volumes/vulkansdk
             deps-install: |
-              brew install glfw glm stb
-              # Install tinyobjloader from source since it's not available in brew
+              # Install available packages through brew
+              brew install glfw glm
+              
+              # Install tinyobjloader from source
               git clone https://github.com/tinyobjloader/tinyobjloader.git
               cd tinyobjloader
               cmake -B build -DCMAKE_BUILD_TYPE=Release
               cmake --build build --config Release
               sudo cmake --install build
+              cd ..
+              
+              # Install stb headers
+              git clone https://github.com/nothings/stb.git
+              sudo mkdir -p /usr/local/include/stb
+              sudo cp stb/*.h /usr/local/include/stb/
+
             test-cmd: |
               # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then
@@ -149,6 +169,29 @@ jobs:
 
       - name: Install Vulkan SDK
         run: ${{ matrix.vulkan-install }}
+
+      - name: Verify Vulkan Installation (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path $env:VULKAN_SDK) {
+            echo "Vulkan SDK found at: $env:VULKAN_SDK"
+            echo "Contents of Lib directory:"
+            Get-ChildItem "$env:VULKAN_SDK\Lib"
+            echo "Contents of Include directory:"
+            Get-ChildItem "$env:VULKAN_SDK\Include"
+          } else {
+            echo "Vulkan SDK not found!"
+            exit 1
+          }
+
+      - name: Configure CMake
+        working-directory: ${{github.workspace}}/attachments
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release `
+            -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
+            -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
+            -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK"
+        if: runner.os == 'Windows'
 
       - name: Configure CMake
         working-directory: ${{github.workspace}}/attachments

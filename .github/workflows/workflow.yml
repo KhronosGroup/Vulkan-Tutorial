@@ -24,10 +24,10 @@ jobs:
               cd vulkan-sdk
 
               # Download the SDK
-              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz"
+              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
 
-              # Extract the SDK
-              tar -xzf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
+              # Extract the SDK - use tar with J flag for xz compression
+              tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
 
               # Set up environment variables
               echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
@@ -69,11 +69,53 @@ jobs:
               fi
           - os: windows-latest
             vulkan-install: |
-              # Install Vulkan SDK using Chocolatey (pre-installed on GitHub runners)
-              choco install vulkan-sdk -y
+              # Get the latest Vulkan SDK version
+              $vulkanVersion = (Invoke-WebRequest -Uri "https://vulkan.lunarg.com/sdk/latest/windows.txt" -UseBasicParsing).Content.Trim()
+              echo "Using Vulkan SDK version: $vulkanVersion"
 
-              # Set environment variables
-              $vulkanPath = "C:\VulkanSDK\latest"
+              # Download the Vulkan SDK installer with progress
+              echo "Downloading Vulkan SDK installer..."
+              $downloadUrl = "https://sdk.lunarg.com/sdk/download/$vulkanVersion/windows/VulkanSDK-$vulkanVersion-Installer.exe"
+              echo "Download URL: $downloadUrl"
+
+              # Create a WebClient to show download progress
+              $webClient = New-Object System.Net.WebClient
+              $webClient.DownloadFile($downloadUrl, "$env:TEMP\vulkan-sdk.exe")
+              echo "Download completed to: $env:TEMP\vulkan-sdk.exe"
+
+              # Verify the installer exists
+              if (Test-Path "$env:TEMP\vulkan-sdk.exe") {
+                echo "Installer file exists and is ready"
+                echo "File size: $((Get-Item "$env:TEMP\vulkan-sdk.exe").Length) bytes"
+              } else {
+                echo "Installer file does not exist! Download failed."
+                exit 1
+              }
+
+              # Run the installer with silent options
+              $installArgs = "--accept-licenses --default-answer --confirm-command install"
+              echo "Running installer with arguments: $installArgs"
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList $installArgs -Wait -NoNewWindow
+              echo "Installer process completed"
+
+              # Find the actual installed SDK version
+              echo "Checking for installed SDK..."
+              if (Test-Path "C:\VulkanSDK") {
+                echo "VulkanSDK directory exists"
+                Get-ChildItem "C:\VulkanSDK" | ForEach-Object { echo "Found: $($_.FullName)" }
+                $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+              } else {
+                echo "VulkanSDK directory does not exist!"
+              }
+
+              if (-not $vulkanPath) {
+                echo "Could not find specific version directory, using latest"
+                $vulkanPath = "C:\VulkanSDK\latest"
+              }
+
+              echo "Using Vulkan SDK path: $vulkanPath"
+
+              # Set environment variables with correct Windows-style paths
               echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
               echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -167,7 +209,33 @@ jobs:
         run: |
           if (Test-Path $env:VULKAN_SDK) {
             echo "Vulkan SDK found at: $env:VULKAN_SDK"
-            echo "Vulkan SDK installation verified"
+
+            # Check for critical directories and files
+            $criticalPaths = @(
+              "$env:VULKAN_SDK\Include",
+              "$env:VULKAN_SDK\Lib",
+              "$env:VULKAN_SDK\Bin",
+              "$env:VULKAN_SDK\Include\vulkan\vulkan.h",
+              "$env:VULKAN_SDK\Lib\vulkan-1.lib",
+              "$env:VULKAN_SDK\Bin\glslangValidator.exe"
+            )
+
+            $allPathsExist = $true
+            foreach ($path in $criticalPaths) {
+              if (Test-Path $path) {
+                echo "✓ Found: $path"
+              } else {
+                echo "✗ Missing: $path"
+                $allPathsExist = $false
+              }
+            }
+
+            if ($allPathsExist) {
+              echo "Vulkan SDK installation verified successfully"
+            } else {
+              echo "Vulkan SDK installation is incomplete!"
+              exit 1
+            }
           } else {
             echo "Vulkan SDK not found!"
             exit 1

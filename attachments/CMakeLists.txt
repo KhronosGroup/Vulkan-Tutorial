@@ -103,6 +103,12 @@ function (add_chapter CHAPTER_NAME)
   target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 
+  if(WIN32)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+      set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
+    endif()
+  endif()  
+
   if (DEFINED CHAPTER_SHADER)
     set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)
     file (GLOB SHADER_SOURCES ${CHAPTER_SHADER}.frag ${CHAPTER_SHADER}.vert ${CHAPTER_SHADER}.comp)

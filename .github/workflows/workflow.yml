@@ -23,11 +23,11 @@ jobs:
               mkdir -p vulkan-sdk
               cd vulkan-sdk
 
-              # Download the SDK
-              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz"
+              # Download the SDK - try .tar.xz format instead of .tar.gz
+              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
 
-              # Extract the SDK
-              tar xzf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.gz
+              # Extract the SDK - use tar with J flag for xz compression
+              tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
 
               # Set up environment variables
               echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
@@ -149,9 +149,12 @@ jobs:
               mkdir -p vulkan-sdk
               cd vulkan-sdk
 
-              # Download and extract the SDK tarball instead of using DMG
-              curl -L -o vulkansdk.tar.gz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/mac/vulkansdk-macos-$VULKAN_VERSION.tar.gz"
-              tar -xzf vulkansdk.tar.gz
+              # Download the SDK
+              # Use the direct URL format with explicit version
+              curl -L -o vulkansdk.tar.xz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/mac/vulkansdk-macos-$VULKAN_VERSION.tar.xz"
+
+              # Extract the SDK - use tar with J flag for xz compression
+              tar -xJf vulkansdk.tar.xz
 
               # Set environment variables
               echo "VULKAN_SDK=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS" >> $GITHUB_ENV

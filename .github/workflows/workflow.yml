@@ -69,51 +69,18 @@ jobs:
               fi
           - os: windows-latest
             vulkan-install: |
-              # Get the latest Vulkan SDK version
-              $vulkanVersion = (Invoke-WebRequest -Uri "https://vulkan.lunarg.com/sdk/latest/windows.txt" -UseBasicParsing).Content.Trim()
-              echo "Using Vulkan SDK version: $vulkanVersion"
-
-              # Download the Vulkan SDK installer with progress
-              echo "Downloading Vulkan SDK installer..."
-              $downloadUrl = "https://sdk.lunarg.com/sdk/download/$vulkanVersion/windows/VulkanSDK-$vulkanVersion-Installer.exe"
-              echo "Download URL: $downloadUrl"
-
-              # Create a WebClient to show download progress
-              $webClient = New-Object System.Net.WebClient
-              $webClient.DownloadFile($downloadUrl, "$env:TEMP\vulkan-sdk.exe")
-              echo "Download completed to: $env:TEMP\vulkan-sdk.exe"
-
-              # Verify the installer exists
-              if (Test-Path "$env:TEMP\vulkan-sdk.exe") {
-                echo "Installer file exists and is ready"
-                echo "File size: $((Get-Item "$env:TEMP\vulkan-sdk.exe").Length) bytes"
-              } else {
-                echo "Installer file does not exist! Download failed."
-                exit 1
-              }
+              # Download the Vulkan SDK installer
+              Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
 
               # Run the installer with silent options
-              $installArgs = "--accept-licenses --default-answer --confirm-command install"
-              echo "Running installer with arguments: $installArgs"
-              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList $installArgs -Wait -NoNewWindow
-              echo "Installer process completed"
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
 
               # Find the actual installed SDK version
-              echo "Checking for installed SDK..."
-              if (Test-Path "C:\VulkanSDK") {
-                echo "VulkanSDK directory exists"
-                Get-ChildItem "C:\VulkanSDK" | ForEach-Object { echo "Found: $($_.FullName)" }
                 $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
-              } else {
-                echo "VulkanSDK directory does not exist!"
-              }
 
               if (-not $vulkanPath) {
-                echo "Could not find specific version directory, using latest"
                 $vulkanPath = "C:\VulkanSDK\latest"
               }
-
-              echo "Using Vulkan SDK path: $vulkanPath"
 
               # Set environment variables with correct Windows-style paths
               echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -121,6 +88,19 @@ jobs:
               echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+              # Display debug information
+              Write-Host "Vulkan SDK path: $vulkanPath"
+              if (Test-Path "$vulkanPath\Lib") {
+                Write-Host "Lib directory exists"
+              } else {
+                Write-Host "Lib directory does not exist"
+              }
+              if (Test-Path "$vulkanPath\Include") {
+                Write-Host "Include directory exists"
+              } else {
+                Write-Host "Include directory does not exist"
+              }
             deps-install: |
               vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV

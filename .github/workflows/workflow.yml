@@ -48,9 +48,16 @@ jobs:
               ninja-build \
               clang
               # Build and install yaml-cpp from source
-              git clone https://github.com/jbeder/yaml-cpp.git
+              if [ ! -d "yaml-cpp" ] || [ -z "$(ls -A yaml-cpp)" ]; then
+                # Directory doesn't exist or is empty, clone the repository
+                rm -rf yaml-cpp  # Remove directory if it exists but is empty
+                git clone https://github.com/jbeder/yaml-cpp.git
+              fi
               cd yaml-cpp
-              cmake -B build -DCMAKE_BUILD_TYPE=Release -DYAML_BUILD_SHARED_LIBS=ON
+              # Only create build directory if it doesn't exist
+              if [ ! -d "build" ]; then
+                cmake -B build -DCMAKE_BUILD_TYPE=Release -DYAML_BUILD_SHARED_LIBS=ON
+              fi
               cmake --build build --config Release -j4
               sudo cmake --install build
             test-cmd: |

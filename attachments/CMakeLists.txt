@@ -64,60 +64,43 @@ find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 function (add_shaders_target TARGET)
   cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
   set (SHADERS_DIR ${SHADER_CHAPTER_NAME}/shaders)
-  set (SHADERS_FULL_DIR ${CMAKE_CURRENT_BINARY_DIR}/${SHADERS_DIR})
   add_custom_command (
-    OUTPUT ${SHADERS_FULL_DIR}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_FULL_DIR}
+    OUTPUT ${SHADERS_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
     )
-  # Create a list to store the output files
-  set(SHADER_OUTPUTS "")
-
-  # Create separate commands for each shader file to ensure they are compiled to the correct location
-  foreach(SHADER_SOURCE ${SHADER_SOURCES})
-    get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME_WE)
-    get_filename_component(SHADER_EXT ${SHADER_SOURCE} EXT)
-    string(REPLACE "." "" SHADER_EXT ${SHADER_EXT})
-
-    # Add the output file to the list
-    list(APPEND SHADER_OUTPUTS ${SHADERS_FULL_DIR}/${SHADER_EXT}.spv)
-
-    add_custom_command(
-      OUTPUT ${SHADERS_FULL_DIR}/${SHADER_EXT}.spv
-      COMMAND glslang::validator
-      ARGS --target-env vulkan1.0 ${SHADER_SOURCE} --quiet -o ${SHADERS_FULL_DIR}/${SHADER_EXT}.spv
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-      DEPENDS ${SHADERS_FULL_DIR} ${SHADER_SOURCE}
-      COMMENT "Compiling ${SHADER_EXT} Shader"
-      VERBATIM
+  add_custom_command (
+    OUTPUT ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv
+    COMMAND glslang::validator
+    ARGS --target-env vulkan1.0 ${SHADER_SOURCES} --quiet
+    WORKING_DIRECTORY ${SHADERS_DIR}
+    DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
+    COMMENT "Compiling Shaders"
+    VERBATIM
     )
-  endforeach()
-
-  # Create the custom target that depends on all output files
-  add_custom_target (${TARGET} DEPENDS ${SHADER_OUTPUTS})
+  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv)
 endfunction ()
 
 function (add_slang_shader_target TARGET)
   cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
   set (SHADERS_DIR ${SHADER_CHAPTER_NAME}/shaders)
-  set (SHADERS_FULL_DIR ${CMAKE_CURRENT_BINARY_DIR}/${SHADERS_DIR})
   file(GLOB HAS_COMPUTE ${CHAPTER_SHADER}.comp)
   set (ENTRY_POINTS -entry vertMain -entry fragMain)
   if(HAS_COMPUTE)
     list(APPEND ENTRY_POINTS -entry compMain)
   endif()
   add_custom_command (
-          OUTPUT ${SHADERS_FULL_DIR}
-          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_FULL_DIR}
+          OUTPUT ${SHADERS_DIR}
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
   )
   add_custom_command (
-          OUTPUT  ${SHADERS_FULL_DIR}/slang.spv
-          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_FULL_DIR}
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o ${CMAKE_CURRENT_BINARY_DIR}/${SHADERS_DIR}/slang.spv
-          DEPENDS ${SHADER_SOURCES}
+          OUTPUT  ${SHADERS_DIR}/slang.spv
+          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+          WORKING_DIRECTORY ${SHADERS_DIR}
+          DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
           COMMENT "Compiling Slang Shaders"
           VERBATIM
   )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_FULL_DIR}/slang.spv)
+  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
 endfunction()
 
 function (add_chapter CHAPTER_NAME)

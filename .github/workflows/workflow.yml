@@ -44,7 +44,8 @@ jobs:
               libglm-dev \
               libtinyobjloader-dev \
               libstb-dev \
-              cmake
+              cmake \
+              ninja-build
               # Build and install yaml-cpp from source
               git clone https://github.com/jbeder/yaml-cpp.git
               cd yaml-cpp
@@ -151,10 +152,10 @@ jobs:
 
               # Download the SDK
               # Use the direct URL format with explicit version
-              curl -L -o vulkansdk.tar.xz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/mac/vulkansdk-macos-$VULKAN_VERSION.tar.xz"
+              curl -L -o vulkansdk.tar.gz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/mac/vulkansdk-macos-$VULKAN_VERSION.tar.gz"
 
-              # Extract the SDK - use tar with J flag for xz compression
-              tar -xJf vulkansdk.tar.xz
+              # Extract the SDK - use tar with z flag for gzip compression
+              tar -xzf vulkansdk.tar.gz
 
               # Set environment variables
               echo "VULKAN_SDK=$PWD/vulkansdk-macos-$VULKAN_VERSION/macOS" >> $GITHUB_ENV
@@ -167,7 +168,7 @@ jobs:
               cd ..
             deps-install: |
               # Install available packages through brew
-              brew install glfw glm
+              brew install glfw glm ninja
 
               # Install tinyobjloader from source
               git clone https://github.com/tinyobjloader/tinyobjloader.git
@@ -261,7 +262,7 @@ jobs:
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments
         if: runner.os != 'Windows'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         working-directory: ${{github.workspace}}/attachments

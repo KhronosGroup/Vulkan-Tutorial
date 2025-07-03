@@ -1,3 +1,4 @@
+#include <memory>
 import vulkan_hpp;
 #include <GLFW/glfw3.h>
 

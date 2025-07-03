@@ -1,5 +1,8 @@
 cmake_minimum_required (VERSION 3.29)
 
+# Enable C++ module dependency scanning
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
@@ -35,6 +38,13 @@ target_sources(VulkanCppModule
         BASE_DIRS
         "${Vulkan_INCLUDE_DIR}"
         FILES
+        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+)
+
+
+# Add the vulkan.cppm file directly as a source file
+target_sources(VulkanCppModule
+        PRIVATE
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
@@ -103,6 +113,12 @@ function (add_chapter CHAPTER_NAME)
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
   target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
+
+  if(WIN32)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+      set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
+    endif()
+  endif()  
 
   if (DEFINED CHAPTER_SHADER)
     set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)

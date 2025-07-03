@@ -37,6 +37,12 @@ case $PACKAGE_MANAGER in
         echo "Installing stb..."
         sudo apt-get install -y libstb-dev || echo "stb not found in apt, will need to be installed manually or via CMake FetchContent"
 
+        echo "Installing tinygltf..."
+        sudo apt-get install -y libtinygltf-dev || echo "tinygltf not found in apt, will need to be installed manually or via CMake FetchContent"
+
+        echo "Installing nlohmann-json..."
+        sudo apt-get install -y nlohmann-json3-dev || echo "nlohmann-json not found in apt, will need to be installed manually or via CMake FetchContent"
+
         echo "Installing X Window System dependencies..."
         sudo apt-get install -y libxxf86vm-dev libxi-dev
         ;;
@@ -54,6 +60,12 @@ case $PACKAGE_MANAGER in
         echo "Installing tinyobjloader..."
         sudo dnf install -y tinyobjloader-devel || echo "tinyobjloader not found in dnf, will need to be installed manually or via CMake FetchContent"
 
+        echo "Installing tinygltf..."
+        sudo dnf install -y tinygltf-devel || echo "tinygltf not found in dnf, will need to be installed manually or via CMake FetchContent"
+
+        echo "Installing nlohmann-json..."
+        sudo dnf install -y nlohmann-json-devel || echo "nlohmann-json not found in dnf, will need to be installed manually or via CMake FetchContent"
+
         echo "Installing X Window System dependencies..."
         sudo dnf install -y libXxf86vm-devel libXi-devel
         ;;
@@ -70,6 +82,12 @@ case $PACKAGE_MANAGER in
 
         echo "Installing tinyobjloader..."
         sudo pacman -S --needed tinyobjloader || echo "tinyobjloader not found in pacman, will need to be installed manually or via CMake FetchContent"
+
+        echo "Installing tinygltf..."
+        sudo pacman -S --needed tinygltf || echo "tinygltf not found in pacman, will need to be installed manually or via CMake FetchContent"
+
+        echo "Installing nlohmann-json..."
+        sudo pacman -S --needed nlohmann-json || echo "nlohmann-json not found in pacman, will need to be installed manually or via CMake FetchContent"
         ;;
     *)
         echo "Unsupported package manager. Please install the following packages manually:"
@@ -80,6 +98,8 @@ case $PACKAGE_MANAGER in
         echo "- libglm-dev or equivalent"
         echo "- libtinyobjloader-dev or equivalent"
         echo "- libstb-dev or equivalent"
+        echo "- libtinygltf-dev or equivalent"
+        echo "- nlohmann-json3-dev or equivalent"
         echo "- libxxf86vm-dev and libxi-dev or equivalent"
         exit 1
         ;;

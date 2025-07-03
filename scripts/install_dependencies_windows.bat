@@ -27,6 +27,15 @@ vcpkg install tinyobjloader:x64-windows
 echo Installing stb...
 vcpkg install stb:x64-windows
 
+echo Installing tinygltf...
+vcpkg install tinygltf:x64-windows
+
+echo Installing nlohmann-json...
+vcpkg install nlohmann-json:x64-windows
+
+echo Installing KTX...
+vcpkg install ktx:x64-windows
+
 :: Remind about Vulkan SDK
 echo.
 echo Don't forget to install the Vulkan SDK from https://vulkan.lunarg.com/

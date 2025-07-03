@@ -7,6 +7,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
+find_package (tinyobjloader REQUIRED)
+find_package (TinyGLTF REQUIRED)
+find_package (KTX REQUIRED)
 
 # set up Vulkan C++ module
 add_library(VulkanCppModule)
@@ -34,8 +37,6 @@ target_sources(VulkanCppModule
         FILES
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
-
-find_package (tinyobjloader REQUIRED)
 
 find_package (PkgConfig)
 pkg_get_variable (STB_INCLUDEDIR stb includedir)
@@ -249,3 +250,9 @@ add_chapter (34_android
   MODELS viking_room.obj
   TEXTURES viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
+
+add_chapter (35_gltf_ktx
+  SHADER 27_shader_depth
+  MODELS viking_room.glb
+  TEXTURES viking_room.ktx2
+  LIBS glm::glm tinygltf::tinygltf KTX::ktx)

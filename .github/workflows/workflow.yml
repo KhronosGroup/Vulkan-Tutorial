@@ -14,6 +14,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
+            ccache: ccache
             vulkan-install: |
               # Download and install Vulkan SDK using the tar.gz method
               VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
@@ -64,6 +65,7 @@ jobs:
                 exit 1
               fi
           - os: windows-latest
+            ccache: sccache
             vulkan-install: |
               # Download the Vulkan SDK installer
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
@@ -163,6 +165,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-apt-
 
+      # Cache ccache files
+      - name: Cache ccache files
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.ccache
+            ~/.cache/sccache
+          key: ${{ runner.os }}-${{ matrix.ccache }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.ccache }}-
+
       # Cache Vulkan SDK for Ubuntu
       - name: Cache Vulkan SDK (Ubuntu)
         if: runner.os == 'Linux'
@@ -174,6 +187,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
             ${{ runner.os }}-vulkan-sdk-
+
+      # Install ccache or sccache
+      - name: Install ccache (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache
+          ccache --max-size=2G
+          ccache -z
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+
+      - name: Install sccache (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz" -OutFile "sccache.tar.gz"
+          tar -xzf sccache.tar.gz
+          $sccachePath = Join-Path -Path (Get-Location) -ChildPath "sccache-v0.5.4-x86_64-pc-windows-msvc"
+          echo "$sccachePath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "SCCACHE_DIR=$HOME/.cache/sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_CACHE_SIZE=2G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install dependencies
         run: ${{ matrix.deps-install }}
@@ -237,7 +271,9 @@ jobs:
             -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
             -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
             -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK" `
-            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE"
+            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
           # Display CMake cache to debug Vulkan detection
           if (Test-Path "build/CMakeCache.txt") {
@@ -273,16 +309,27 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           # Use Clang for better C++20 module support
-          export CC=clang
-          export CXX=clang++
+          export CC="ccache clang"
+          export CXX="ccache clang++"
 
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_SCAN_FOR_MODULES=ON \
-            -DCMAKE_CXX_FLAGS="-std=c++20"
+            -DCMAKE_CXX_FLAGS="-std=c++20" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         working-directory: ${{github.workspace}}/attachments
         run: cmake --build build --config Release
+
+      # Display ccache/sccache statistics
+      - name: ccache statistics
+        if: runner.os == 'Linux'
+        run: ccache -s
+
+      - name: sccache statistics
+        if: runner.os == 'Windows'
+        run: sccache -s
 
       - name: Test Build Output
         working-directory: ${{github.workspace}}/attachments/build

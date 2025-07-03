@@ -36,6 +36,9 @@ import vulkan_hpp;
     #include <android/asset_manager.h>
     #include <android/asset_manager_jni.h>
 
+    // Define AAssetManager type for Android
+    typedef AAssetManager AssetManagerType;
+
     // Define logging macros for Android
     #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "VulkanTutorial", __VA_ARGS__))
     #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "VulkanTutorial", __VA_ARGS__))
@@ -43,11 +46,16 @@ import vulkan_hpp;
     #define LOG_INFO(msg) LOGI("%s", msg)
     #define LOG_ERROR(msg) LOGE("%s", msg)
 #else
+    // Define AAssetManager type for non-Android platforms
+    typedef void AssetManagerType;
     // Desktop-specific includes
     #define GLFW_INCLUDE_VULKAN
     #include <GLFW/glfw3.h>
 
     // Define logging macros for Desktop
+    #define LOGI(...) printf(__VA_ARGS__); printf("\n")
+    #define LOGW(...) printf(__VA_ARGS__); printf("\n")
+    #define LOGE(...) fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
     #define LOG_INFO(msg) std::cout << msg << std::endl
     #define LOG_ERROR(msg) std::cerr << msg << std::endl
 #endif
@@ -107,7 +115,7 @@ struct UniformBufferObject {
 };
 
 // Cross-platform file reading function
-std::vector<char> readFile(const std::string& filename, std::optional<AAssetManager*> assetManager = std::nullopt) {
+std::vector<char> readFile(const std::string& filename, std::optional<AssetManagerType*> assetManager = std::nullopt) {
 #if PLATFORM_ANDROID
     // On Android, use asset manager if provided
     if (assetManager.has_value() && *assetManager != nullptr) {
@@ -224,46 +232,12 @@ public:
     void cleanup() {
         if (initialized) {
             // Wait for device to finish operations
-            if (device) {
+            if (*device) {
                 device.waitIdle();
             }
 
             // Cleanup resources
             cleanupSwapChain();
-
-            // Cleanup other resources
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-                uniformBuffers[i] = nullptr;
-                uniformBuffersMemory[i] = nullptr;
-            }
-
-            descriptorPool = nullptr;
-            descriptorSetLayout = nullptr;
-
-            textureImageView = nullptr;
-            textureImage = nullptr;
-            textureImageMemory = nullptr;
-            textureSampler = nullptr;
-
-            indexBuffer = nullptr;
-            indexBufferMemory = nullptr;
-            vertexBuffer = nullptr;
-            vertexBufferMemory = nullptr;
-
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-                imageAvailableSemaphores[i] = nullptr;
-                renderFinishedSemaphores[i] = nullptr;
-                inFlightFences[i] = nullptr;
-            }
-
-            commandPool = nullptr;
-            graphicsPipeline = nullptr;
-            pipelineLayout = nullptr;
-            renderPass = nullptr;
-
-            device = nullptr;
-            surface = nullptr;
-            instance = nullptr;
 
             initialized = false;
         }
@@ -273,7 +247,7 @@ private:
 #if PLATFORM_ANDROID
     // Android-specific members
     android_app* androidApp = nullptr;
-    AAssetManager* assetManager = nullptr;
+    AssetManagerType* assetManager = nullptr;
 #else
     // Desktop-specific members
     GLFWwindow* window = nullptr;
@@ -466,7 +440,7 @@ private:
 
             // Print device information
             vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-            LOGI("Selected GPU: %s", deviceProperties.deviceName);
+            LOGI("Selected GPU: %s", deviceProperties.deviceName.data());
         } else {
             throw std::runtime_error("Failed to find a suitable GPU");
         }
@@ -711,9 +685,9 @@ private:
 
         // Load shader files using cross-platform function
 #if PLATFORM_ANDROID
-        std::optional<AAssetManager*> optionalAssetManager = assetManager;
+        std::optional<AssetManagerType*> optionalAssetManager = assetManager;
 #else
-        std::optional<AAssetManager*> optionalAssetManager = std::nullopt;
+        std::optional<void*> optionalAssetManager = std::nullopt;
 #endif
         std::vector<char> vertShaderCode = readFile("shaders/vert.spv", optionalAssetManager);
         std::vector<char> fragShaderCode = readFile("shaders/frag.spv", optionalAssetManager);
@@ -882,7 +856,7 @@ private:
 
 #if PLATFORM_ANDROID
         // Load image from Android assets
-        std::optional<AAssetManager*> optionalAssetManager = assetManager;
+        std::optional<AssetManagerType*> optionalAssetManager = assetManager;
         std::vector<char> imageData = readFile(TEXTURE_PATH, optionalAssetManager);
         pixels = stbi_load_from_memory(
             reinterpret_cast<const stbi_uc*>(imageData.data()),
@@ -990,7 +964,7 @@ private:
 
 #if PLATFORM_ANDROID
         // Load OBJ file from Android assets
-        std::optional<AAssetManager*> optionalAssetManager = assetManager;
+        std::optional<AssetManagerType*> optionalAssetManager = assetManager;
         std::vector<char> objData = readFile(MODEL_PATH, optionalAssetManager);
         std::string objString(objData.begin(), objData.end());
         std::istringstream objStream(objString);
@@ -1076,8 +1050,13 @@ private:
     void createUniformBuffers() {
         vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+        uniformBuffers.clear();
+        uniformBuffersMemory.clear();
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            uniformBuffers.push_back(nullptr);
+            uniformBuffersMemory.push_back(nullptr);
+        }
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             createBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, uniformBuffers[i], uniformBuffersMemory[i]);
@@ -1211,7 +1190,8 @@ private:
             }
         };
 
-        vk::ClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+        vk::ClearValue clearColor;
+        clearColor.color.float32 = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
 
@@ -1255,6 +1235,9 @@ private:
             recreateSwapChain();
             return;
         }
+
+        // Update uniform buffer with current transformation
+        updateUniformBuffer(currentFrame);
 
         device.resetFences({*inFlightFences[currentFrame]});
 

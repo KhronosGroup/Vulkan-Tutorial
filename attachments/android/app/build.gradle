@@ -13,6 +13,12 @@ android {
 
         // Define which chapter to build (default to 34_android)
         buildConfigField "String", "CHAPTER", "\"${project.findProperty('chapter') ?: '34_android'}\""
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DCHAPTER=${project.findProperty('chapter') ?: '34_android'}"
+            }
+        }
     }
 
     buildTypes {
@@ -31,7 +37,6 @@ android {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             version "3.22.1"
-            arguments "-DCHAPTER=${project.findProperty('chapter') ?: '34_android'}"
         }
     }
 

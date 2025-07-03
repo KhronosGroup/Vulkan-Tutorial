@@ -46,4 +46,6 @@
 * xref:09_Generating_Mipmaps.adoc[Generating Mipmaps]
 * xref:10_Multisampling.adoc[Multisampling]
 * xref:11_Compute_Shader.adoc[Compute Shader]
+* xref:12_Ecosystem_Utilities_and_Compatibility.adoc[Ecosystem Utilities and GPU Compatibility]
+* xref:13_Vulkan_Profiles.adoc[Vulkan Profiles]
 * xref:90_FAQ.adoc[FAQ]

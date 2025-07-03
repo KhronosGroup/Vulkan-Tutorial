@@ -37,15 +37,8 @@ const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
-const std::vector validationLayers = {
-    "VK_LAYER_KHRONOS_validation"
-};
-
-#ifdef NDEBUG
-constexpr bool enableValidationLayers = false;
-#else
-constexpr bool enableValidationLayers = true;
-#endif
+// Validation layers are now managed by vulkanconfig instead of being hard-coded
+// See the Ecosystem Utilities chapter for details on using vulkanconfig
 
 // Application info structure to store feature support flags
 struct AppInfo {
@@ -273,40 +266,56 @@ private:
     }
 
     void createInstance() {
-        if (enableValidationLayers && !checkValidationLayerSupport()) {
-            throw std::runtime_error("validation layers requested, but not available!");
-        }
+        // Validation layers are now managed by vulkanconfig instead of being hard-coded
 
-        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
-                    .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
-                    .pEngineName        = "No Engine",
-                    .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
-                    .apiVersion         = vk::ApiVersion14 };
+        constexpr vk::ApplicationInfo appInfo{
+            .pApplicationName   = "Hello Triangle",
+            .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+            .pEngineName        = "No Engine",
+            .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+            .apiVersion         = vk::ApiVersion14
+        };
+
         auto extensions = getRequiredExtensions();
-        std::vector<char const *> enabledLayers;
-        if (enableValidationLayers) {
-            enabledLayers.assign(validationLayers.begin(), validationLayers.end());
-        }
+
         vk::InstanceCreateInfo createInfo{
             .pApplicationInfo        = &appInfo,
-            .enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size()),
-            .ppEnabledLayerNames     = enabledLayers.data(),
             .enabledExtensionCount   = static_cast<uint32_t>(extensions.size()),
-            .ppEnabledExtensionNames = extensions.data() };
+            .ppEnabledExtensionNames = extensions.data()
+        };
+
         instance = vk::raii::Instance(context, createInfo);
     }
 
     void setupDebugMessenger() {
-        if (!enableValidationLayers) return;
+        // Always set up the debug messenger
+        // It will only be used if validation layers are enabled via vulkanconfig
 
-        vk::DebugUtilsMessageSeverityFlagsEXT severityFlags( vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError );
-        vk::DebugUtilsMessageTypeFlagsEXT    messageTypeFlags( vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation );
+        vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+        );
+
+        vk::DebugUtilsMessageTypeFlagsEXT messageTypeFlags(
+            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+            vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
+            vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
+        );
+
         vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
             .messageSeverity = severityFlags,
             .messageType = messageTypeFlags,
             .pfnUserCallback = &debugCallback
         };
-        debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
+
+        try {
+            debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
+        } catch (vk::SystemError& err) {
+            // If the debug utils extension is not available, this will fail
+            // That's okay, it just means validation layers aren't enabled
+            std::cout << "Debug messenger not available. Validation layers may not be enabled." << std::endl;
+        }
     }
 
     void createSurface() {
@@ -1377,9 +1386,9 @@ private:
                     vk::PipelineStageFlagBits::eTopOfPipe,
                     vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
                     vk::DependencyFlagBits::eByRegion,
-                    0, nullptr,
-                    0, nullptr,
-                    static_cast<uint32_t>(barriers.size()), barriers.data()
+                    {},
+                    {},
+                    barriers
                 );
             }
 
@@ -1474,9 +1483,9 @@ private:
                     vk::PipelineStageFlagBits::eColorAttachmentOutput,
                     vk::PipelineStageFlagBits::eBottomOfPipe,
                     vk::DependencyFlagBits::eByRegion,
-                    0, nullptr,
-                    0, nullptr,
-                    1, &barrier
+                    {},
+                    {},
+                    { barrier }
                 );
             }
         } else {
@@ -1655,27 +1664,28 @@ private:
     }
 
     [[nodiscard]] std::vector<const char*> getRequiredExtensions() const {
+        // Get the required extensions from GLFW
         uint32_t glfwExtensionCount = 0;
         auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-        std::vector<vk::ExtensionProperties> props = context.enumerateInstanceExtensionProperties();
-        if (const auto propsIterator = std::ranges::find_if(props, []( vk::ExtensionProperties const & ep ) { return strcmp( ep.extensionName, vk::EXTDebugUtilsExtensionName ) == 0; } ); propsIterator == props.end() )
-        {
-            std::cout << "Something went very wrong, cannot find VK_EXT_debug_utils extension" << std::endl;
-            exit( 1 );
-        }
         std::vector extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-        if (enableValidationLayers) {
-            extensions.push_back(vk::EXTDebugUtilsExtensionName );
+
+        // Check if the debug utils extension is available
+        std::vector<vk::ExtensionProperties> props = context.enumerateInstanceExtensionProperties();
+        bool debugUtilsAvailable = std::ranges::any_of(props,
+            [](vk::ExtensionProperties const & ep) {
+                return strcmp(ep.extensionName, vk::EXTDebugUtilsExtensionName) == 0;
+            });
+
+        // Always include the debug utils extension if available
+        // This allows validation layers to be enabled via vulkanconfig
+        if (debugUtilsAvailable) {
+            extensions.push_back(vk::EXTDebugUtilsExtensionName);
+        } else {
+            std::cout << "VK_EXT_debug_utils extension not available. Validation layers may not work." << std::endl;
         }
 
         return extensions;
     }
-
-    [[nodiscard]] bool checkValidationLayerSupport() const {
-        return (std::ranges::any_of(context.enumerateInstanceLayerProperties(),
-        []( vk::LayerProperties const & lp ) { return ( strcmp( "VK_LAYER_KHRONOS_validation", lp.layerName ) == 0 ); } ) );
-            }
 
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity, vk::DebugUtilsMessageTypeFlagsEXT type, const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData, void*) {
         if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {

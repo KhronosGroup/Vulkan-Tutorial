@@ -1,5 +1,8 @@
 cmake_minimum_required (VERSION 3.29)
 
+# Enable C++ module dependency scanning
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
@@ -32,6 +35,12 @@ target_sources(VulkanCppModule
         BASE_DIRS
         "${Vulkan_INCLUDE_DIR}"
         FILES
+        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+)
+
+# Add the vulkan.cppm file directly as a source file
+target_sources(VulkanCppModule
+        PRIVATE
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 

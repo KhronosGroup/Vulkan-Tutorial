@@ -1,0 +1,14 @@
+# Copyright 2024 Sascha Willems
+# SPDX-License-Identifier: CC-BY-4.0
+# This Antora playbook is used by the CI to make sure the Antora build works
+site:
+  title: Vulkan Tutorial Antora CI Playbook
+  start_page: tutorial::00_Introduction.adoc
+content:
+  sources:
+  - url: ./
+    branches: HEAD
+    start_path: antora
+ui:
+  bundle:
+    url: ui-bundle.zip

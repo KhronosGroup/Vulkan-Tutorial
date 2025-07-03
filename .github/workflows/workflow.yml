@@ -7,6 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
+
   build:
     strategy:
       fail-fast: false
@@ -16,34 +17,26 @@ jobs:
           - os: ubuntu-latest
             ccache: ccache
             vulkan-install: |
-              # Download and install Vulkan SDK using the tar.gz method
               VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
               echo "Using Vulkan SDK version: $VULKAN_VERSION"
 
-              # Create a temporary directory for the SDK
               mkdir -p vulkan-sdk
               cd vulkan-sdk
 
-              # Download the SDK
               curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
 
-              # Extract the SDK - use tar with J flag for xz compression
               tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
 
-              # Set up environment variables
               echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
               echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
               echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
               echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
 
-              # Return to the original directory
               cd ..
             deps-install: |
-              # Use our existing dependency installation script
               chmod +x scripts/install_dependencies_linux.sh
               ./scripts/install_dependencies_linux.sh
             test-cmd: |
-              # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then
                 echo "00_base_code built successfully"
               else
@@ -67,27 +60,22 @@ jobs:
           - os: windows-latest
             ccache: sccache
             vulkan-install: |
-              # Download the Vulkan SDK installer
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
 
-              # Run the installer with silent options
               Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
 
-              # Find the actual installed SDK version
-                $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+              $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
 
               if (-not $vulkanPath) {
                 $vulkanPath = "C:\VulkanSDK\latest"
               }
 
-              # Set environment variables with correct Windows-style paths
               echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
               echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-              # Display debug information
               Write-Host "Vulkan SDK path: $vulkanPath"
               if (Test-Path "$vulkanPath\Lib") {
                 Write-Host "Lib directory exists"
@@ -100,11 +88,9 @@ jobs:
                 Write-Host "Include directory does not exist"
               }
             deps-install: |
-              # Use our existing dependency installation script
               .\scripts\install_dependencies_windows.bat
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
             test-cmd: |
-              # Check if some of the expected executables were built
               if (Test-Path "00_base_code/Release/00_base_code.exe") {
                 echo "00_base_code built successfully"
               } else {
@@ -131,7 +117,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Cache vcpkg packages for Windows
       - name: Cache vcpkg packages (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v3
@@ -145,7 +130,6 @@ jobs:
             ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-
             ${{ runner.os }}-vcpkg-
 
-      # Cache Vulkan SDK for Windows
       - name: Cache Vulkan SDK (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v3
@@ -155,7 +139,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vulkan-sdk-
 
-      # Cache apt packages for Ubuntu
       - name: Cache apt packages (Ubuntu)
         if: runner.os == 'Linux'
         uses: actions/cache@v3
@@ -165,7 +148,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-apt-
 
-      # Cache ccache files
       - name: Cache ccache files
         uses: actions/cache@v3
         with:
@@ -176,7 +158,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ccache }}-
 
-      # Cache Vulkan SDK for Ubuntu
       - name: Cache Vulkan SDK (Ubuntu)
         if: runner.os == 'Linux'
         uses: actions/cache@v3
@@ -188,7 +169,6 @@ jobs:
             ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
             ${{ runner.os }}-vulkan-sdk-
 
-      # Install ccache or sccache
       - name: Install ccache (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -221,7 +201,6 @@ jobs:
           if (Test-Path $env:VULKAN_SDK) {
             echo "Vulkan SDK found at: $env:VULKAN_SDK"
 
-            # Check for critical directories and files
             $criticalPaths = @(
               "$env:VULKAN_SDK\Include",
               "$env:VULKAN_SDK\Lib",
@@ -252,7 +231,6 @@ jobs:
             exit 1
           }
 
-      # Cache CMake build directory for Windows
       - name: Cache build artifacts (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v3
@@ -275,13 +253,11 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
-          # Display CMake cache to debug Vulkan detection
           if (Test-Path "build/CMakeCache.txt") {
             Write-Host "CMake cache contents:"
             Get-Content "build/CMakeCache.txt" | Select-String -Pattern "Vulkan"
           }
 
-      # Verify Vulkan Installation for Ubuntu
       - name: Verify Vulkan Installation (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -293,7 +269,6 @@ jobs:
             exit 1
           fi
 
-      # Cache CMake build directory for Ubuntu
       - name: Cache build artifacts (Ubuntu)
         if: runner.os == 'Linux'
         uses: actions/cache@v3
@@ -308,7 +283,6 @@ jobs:
         working-directory: ${{github.workspace}}/attachments
         if: runner.os != 'Windows'
         run: |
-          # Use Clang for better C++20 module support
           export CC="ccache clang"
           export CXX="ccache clang++"
 
@@ -322,7 +296,6 @@ jobs:
         working-directory: ${{github.workspace}}/attachments
         run: cmake --build build --config Release
 
-      # Display ccache/sccache statistics
       - name: ccache statistics
         if: runner.os == 'Linux'
         run: ccache -s
@@ -334,3 +307,128 @@ jobs:
       - name: Test Build Output
         working-directory: ${{github.workspace}}/attachments/build
         run: ${{ matrix.test-cmd }}
+
+
+  android-build:
+    name: Android Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache ccache files
+        uses: actions/cache@v3
+        with:
+          path: ~/.ccache
+          key: android-ccache-${{ github.sha }}
+          restore-keys: |
+            android-ccache-
+
+      - name: Cache KTX and tinygltf
+        uses: actions/cache@v3
+        with:
+          path: |
+            /usr/local/include/ktx
+            /usr/local/lib/libktx*
+            /usr/local/include/tinygltf
+          key: android-libs-${{ hashFiles('**/workflow.yml') }}
+          restore-keys: |
+            android-libs-
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ${{github.workspace}}/attachments/android/.gradle
+            ${{github.workspace}}/attachments/android/app/build/intermediates
+            ${{github.workspace}}/attachments/android/app/build/outputs
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}-
+            ${{ runner.os }}-gradle-
+
+      - name: Install ccache
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache
+          ccache --max-size=2G
+          ccache -z
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+
+      - name: Set up Android SDK and NDK
+        run: |
+          echo "Using pre-installed Android SDK and NDK on GitHub runner"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
+          echo "Android SDK location: $ANDROID_SDK_ROOT"
+          echo "Android NDK location: $ANDROID_NDK_ROOT"
+
+      - name: Install KTX library
+        run: |
+          if [ -d "/usr/local/include/ktx" ] && [ -f "/usr/local/lib/libktx.so" ]; then
+            echo "KTX library already installed from cache"
+          else
+            echo "Installing KTX library..."
+            git clone https://github.com/KhronosGroup/KTX-Software.git
+            cd KTX-Software
+            git checkout v4.1.0
+            mkdir build && cd build
+            cmake .. -DCMAKE_BUILD_TYPE=Release -DKTX_FEATURE_TOOLS=OFF
+            cmake --build . --config Release
+            sudo cmake --install .
+            cd ../..
+          fi
+
+      - name: Install tinygltf
+        run: |
+          if [ -d "/usr/local/include/tinygltf" ]; then
+            echo "tinygltf library already installed from cache"
+          else
+            echo "Installing tinygltf..."
+            git clone https://github.com/syoyo/tinygltf.git
+            cd tinygltf
+            mkdir build && cd build
+            cmake .. -DCMAKE_BUILD_TYPE=Release -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF
+            cmake --build . --config Release
+            sudo cmake --install .
+            cd ../..
+          fi
+
+      - name: Build Android Chapters
+        working-directory: ${{github.workspace}}/attachments/android
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "Generating Gradle wrapper..."
+            gradle wrapper
+          fi
+
+          SUPPORTED_CHAPTERS=$(grep -A 20 "set(SUPPORTED_CHAPTERS" app/src/main/cpp/CMakeLists.txt | 
+                              sed -n '/set(SUPPORTED_CHAPTERS/,/)/p' | 
+                              grep -o '"[^"]*"' | 
+                              sed 's/"//g')
+
+          readarray -t CHAPTERS <<< "$SUPPORTED_CHAPTERS"
+
+          echo "Detected supported Android chapters: ${CHAPTERS[@]}"
+
+          for chapter in "${CHAPTERS[@]}"; do
+            if [ -n "$chapter" ]; then
+              echo "Building $chapter chapter..."
+
+              if [ "$chapter" != "${CHAPTERS[0]}" ]; then
+                ./gradlew clean
+              fi
+
+              ./gradlew assembleDebug -Pchapter=$chapter
+
+              if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+                echo "$chapter built successfully"
+              else
+                echo "$chapter build failed"
+                exit 1
+              fi
+            fi
+          done

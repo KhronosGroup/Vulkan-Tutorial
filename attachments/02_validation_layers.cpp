@@ -133,12 +133,6 @@ private:
         uint32_t glfwExtensionCount = 0;
         auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-        std::vector<vk::ExtensionProperties> props = context.enumerateInstanceExtensionProperties();
-        if (const auto propsIterator = std::ranges::find_if(props, []( vk::ExtensionProperties const & ep ) { return strcmp( ep.extensionName, vk::EXTDebugUtilsExtensionName ) == 0; } ); propsIterator == props.end() )
-        {
-            std::cout << "Something went very wrong, cannot find VK_EXT_debug_utils extension" << std::endl;
-            exit( 1 );
-        }
         std::vector extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
         if (enableValidationLayers) {
             extensions.push_back(vk::EXTDebugUtilsExtensionName );

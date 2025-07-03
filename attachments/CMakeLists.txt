@@ -243,3 +243,9 @@ add_chapter (33_vulkan_profiles
   MODELS viking_room.obj
   TEXTURES viking_room.png
   LIBS glm::glm tinyobjloader::tinyobjloader)
+
+add_chapter (34_android
+  SHADER 27_shader_depth
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
+  LIBS glm::glm tinyobjloader::tinyobjloader)

@@ -1,0 +1,64 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdkVersion 33
+    defaultConfig {
+        applicationId "com.vulkan.tutorial"
+        minSdkVersion 24
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    ndkVersion "25.2.9519653"
+
+    // Use assets from the main project and locally compiled shaders
+    sourceSets {
+        main {
+            assets {
+                srcDirs = [
+                    // Point to the main project's assets
+                    '../../../../',  // For models and textures in the attachments directory
+                    // Use locally compiled shaders from the build directory for all ABIs
+                    // These paths are relative to the app directory
+                    '.externalNativeBuild/cmake/debug/arm64-v8a/shaders',
+                    '.externalNativeBuild/cmake/debug/armeabi-v7a/shaders',
+                    '.externalNativeBuild/cmake/debug/x86/shaders',
+                    '.externalNativeBuild/cmake/debug/x86_64/shaders',
+                    // Also include release build paths
+                    '.externalNativeBuild/cmake/release/arm64-v8a/shaders',
+                    '.externalNativeBuild/cmake/release/armeabi-v7a/shaders',
+                    '.externalNativeBuild/cmake/release/x86/shaders',
+                    '.externalNativeBuild/cmake/release/x86_64/shaders'
+                ]
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'com.google.androidgamesdk:game-activity:1.2.0'
+}

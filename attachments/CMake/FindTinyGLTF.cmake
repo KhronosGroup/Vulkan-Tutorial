@@ -34,6 +34,7 @@ find_path(TinyGLTF_INCLUDE_DIR
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(TinyGLTF
   REQUIRED_VARS TinyGLTF_INCLUDE_DIR
+  FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
 )
 
 if(TinyGLTF_FOUND)

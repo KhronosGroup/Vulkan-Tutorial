@@ -38,13 +38,9 @@ jobs:
               # Return to the original directory
               cd ..
             deps-install: |
-              # GitHub runners already have cmake, ninja-build, and clang installed
-              sudo apt-get update
-              sudo apt-get install -y \
-              libglfw3-dev \
-              libglm-dev \
-              libtinyobjloader-dev \
-              libstb-dev
+              # Use our existing dependency installation script
+              chmod +x scripts/install_dependencies_linux.sh
+              ./scripts/install_dependencies_linux.sh
             test-cmd: |
               # Check if some of the expected executables were built
               if [ -f "00_base_code/00_base_code" ]; then
@@ -102,7 +98,8 @@ jobs:
                 Write-Host "Include directory does not exist"
               }
             deps-install: |
-              vcpkg install glfw3:x64-windows glm:x64-windows tinyobjloader:x64-windows stb:x64-windows
+              # Use our existing dependency installation script
+              .\scripts\install_dependencies_windows.bat
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
             test-cmd: |
               # Check if some of the expected executables were built

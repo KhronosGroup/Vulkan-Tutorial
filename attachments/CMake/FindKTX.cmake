@@ -54,6 +54,7 @@ else()
   include(FindPackageHandleStandardArgs)
   find_package_handle_standard_args(KTX
     REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
+    FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
   )
 
   # Debug output if KTX is not found (only on non-Linux platforms)

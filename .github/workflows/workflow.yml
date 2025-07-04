@@ -366,6 +366,11 @@ jobs:
           echo "Android SDK location: $ANDROID_SDK_ROOT"
           echo "Android NDK location: $ANDROID_NDK_ROOT"
 
+          # Install CMake 4.0.2 using sdkmanager
+          echo "Installing CMake 4.0.2 from Android SDK..."
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "cmake;4.0.2"
+          echo "CMake installation completed"
+
       - name: Install KTX library
         run: |
           if [ -d "/usr/local/include/ktx" ] && [ -f "/usr/local/lib/libktx.so" ]; then

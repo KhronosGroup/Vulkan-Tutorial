@@ -13,6 +13,10 @@
 
 import vulkan_hpp;
 #include <vulkan/vk_platform.h>
+#if defined(__ANDROID__)
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_android.h>
+#endif
 #include <vulkan/vulkan_profiles.hpp>
 
 // Platform detection
@@ -21,6 +25,7 @@ import vulkan_hpp;
 #else
     #define PLATFORM_DESKTOP 1
 #endif
+
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -32,9 +37,15 @@ import vulkan_hpp;
 #if PLATFORM_ANDROID
     // Android-specific includes
     #include <android/log.h>
-    #include <android_native_app_glue.h>
+    #include <game-activity/native_app_glue/android_native_app_glue.h>
     #include <android/asset_manager.h>
     #include <android/asset_manager_jni.h>
+
+    // Declare and implement app_dummy function from native_app_glue
+    extern "C" void app_dummy() {
+        // This is a dummy function that does nothing
+        // It's used to prevent the linker from stripping out the native_app_glue code
+    }
 
     // Define AAssetManager type for Android
     typedef AAssetManager AssetManagerType;
@@ -63,6 +74,7 @@ import vulkan_hpp;
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_CXX11
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
@@ -73,6 +85,26 @@ constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
+#if PLATFORM_ANDROID
+// Define VpProfileProperties structure if not already defined
+#ifndef VP_PROFILE_PROPERTIES_DEFINED
+#define VP_PROFILE_PROPERTIES_DEFINED
+struct VpProfileProperties {
+    char name[256];
+    uint32_t specVersion;
+};
+#endif
+
+// Define Vulkan Profile constants
+#ifndef VP_KHR_ROADMAP_2022_NAME
+#define VP_KHR_ROADMAP_2022_NAME "VP_KHR_roadmap_2022"
+#endif
+
+#ifndef VP_KHR_ROADMAP_2022_SPEC_VERSION
+#define VP_KHR_ROADMAP_2022_SPEC_VERSION 1
+#endif
+#endif
 
 // Application info structure to store profile support flags
 struct AppInfo {
@@ -170,7 +202,8 @@ public:
     HelloTriangleApplication(android_app* app) : androidApp(app) {
         androidApp->userData = this;
         androidApp->onAppCmd = handleAppCommand;
-        androidApp->onInputEvent = handleInputEvent;
+        // Note: onInputEvent is no longer a member of android_app in the current NDK version
+        // Input events are now handled differently
 
         // Get the asset manager
         assetManager = androidApp->activity->assetManager;
@@ -190,7 +223,7 @@ public:
             // Wait for app to initialize
             int events;
             android_poll_source* source;
-            if (ALooper_pollAll(0, nullptr, &events, (void**)&source) >= 0) {
+            if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
                 if (source != nullptr) {
                     source->process(androidApp, source);
                 }
@@ -381,14 +414,16 @@ private:
 
 #if PLATFORM_ANDROID
         // Create Android surface
+        VkAndroidSurfaceCreateInfoKHR createInfo = {
+            .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+            .pNext = nullptr,
+            .flags = 0,
+            .window = androidApp->window
+        };
+
         VkResult result = vkCreateAndroidSurfaceKHR(
             *instance,
-            &(VkAndroidSurfaceCreateInfoKHR{
-                .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
-                .pNext = nullptr,
-                .flags = 0,
-                .window = androidApp->window
-            }),
+            &createInfo,
             nullptr,
             &_surface
         );
@@ -456,14 +491,31 @@ private:
 
         // Check if the profile is supported
         VkBool32 supported = VK_FALSE;
-        VkResult result = vpGetPhysicalDeviceProfileSupport(
+
+#ifdef PLATFORM_ANDROID
+        // Create a vp::ProfileDesc from our VpProfileProperties
+        vp::ProfileDesc profileDesc = {
+            appInfo.profile.name,
+            appInfo.profile.specVersion
+        };
+
+        // Use vp::GetProfileSupport instead of vpGetPhysicalDeviceProfileSupport
+        bool result = vp::GetProfileSupport(
+            *physicalDevice,  // Pass the physical device directly
+            &profileDesc,     // Pass the profile description
+            &supported        // Output parameter for support status
+        );
+#else
+        VkResult vk_result = vpGetPhysicalDeviceProfileSupport(
             *instance,
             *physicalDevice,
             &appInfo.profile,
             &supported
-        );
+            );
+        bool result = vk_result == VK_SUCCESS;
+#endif
 
-        if (result == VK_SUCCESS && supported == VK_TRUE) {
+        if (result && supported == VK_TRUE) {
             appInfo.profileSupported = true;
             LOGI("Using KHR roadmap 2022 profile");
         } else {

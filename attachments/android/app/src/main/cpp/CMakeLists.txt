@@ -1,12 +1,21 @@
 cmake_minimum_required(VERSION 3.22.1)
 
+# Enable C++ module dependency scanning
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
 project(vulkan_tutorial_android)
 
 # Set the path to the main CMakeLists.txt relative to this file
 set(MAIN_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../CMakeLists.txt")
 
+# Add the parent project's cmake folder to the module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../attachments/CMake")
+
 # Find the Vulkan package
 find_package(Vulkan REQUIRED)
+
+# Find the Vulkan-Hpp package
+find_package(VulkanHpp REQUIRED)
 
 # Find the tinyobjloader package
 find_package(tinyobjloader REQUIRED)
@@ -20,11 +29,9 @@ find_package(tinygltf REQUIRED)
 # Find the KTX package (needed for 35_gltf_ktx)
 find_package(KTX REQUIRED)
 
-# Find the stb_image.h header
-find_path(STB_INCLUDEDIR stb_image.h PATH_SUFFIXES stb)
-if (NOT STB_INCLUDEDIR)
-  message(FATAL_ERROR "stb_image.h not found")
-endif()
+# Find the stb library (for stb_image.h)
+find_package(stb REQUIRED)
+set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 # Set up shader compilation tools
 add_executable(glslang::validator IMPORTED)
@@ -60,17 +67,22 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add the Vulkan C++ module
-add_library(VulkanCppModule SHARED)
+# Create a simple source file for VulkanCppModule
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/vulkan_cpp_module_stub.cpp" "// Auto-generated stub file for VulkanCppModule\n")
+
+add_library(VulkanCppModule SHARED "${CMAKE_CURRENT_BINARY_DIR}/vulkan_cpp_module_stub.cpp")
 target_compile_definitions(VulkanCppModule
     PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 )
 target_include_directories(VulkanCppModule
     PRIVATE
     "${Vulkan_INCLUDE_DIR}"
+    "${VulkanHpp_INCLUDE_DIRS}"
 )
 target_link_libraries(VulkanCppModule
     PUBLIC
     ${Vulkan_LIBRARIES}
+    VulkanHpp::VulkanHpp
 )
 set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
 
@@ -79,17 +91,23 @@ target_sources(VulkanCppModule
     PUBLIC
     FILE_SET cxx_modules TYPE CXX_MODULES
     BASE_DIRS
-    "${Vulkan_INCLUDE_DIR}"
+    "${VulkanHpp_CPPM_DIR}"
     FILES
-    "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+    "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
+)
+
+# Add the vulkan.cppm file directly as a source file
+target_sources(VulkanCppModule
+    PRIVATE
+    "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
 )
 
 # Set up shader compilation for all chapters
 set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../attachments")
-set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../assets")
 file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 
-# Copy shader source files to the build directory
+# Copy shader source files to the assets directory
 configure_file(
     "${SHADER_SOURCE_DIR}/27_shader_depth.frag"
     "${SHADER_OUTPUT_DIR}/27_shader_depth.frag"

@@ -48,15 +48,8 @@ target_sources(VulkanCppModule
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
-find_package (PkgConfig)
-pkg_get_variable (STB_INCLUDEDIR stb includedir)
-if (NOT STB_INCLUDEDIR)
-  unset (STB_INCLUDEDIR)
-  find_path (STB_INCLUDEDIR stb_image.h PATH_SUFFIXES stb)
-endif ()
-if (NOT STB_INCLUDEDIR)
-  message (FATAL_ERROR "stb_image.h not found")
-endif ()
+find_package(stb REQUIRED)
+set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 add_executable (glslang::validator IMPORTED)
 find_program (GLSLANG_VALIDATOR "glslangValidator" HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
@@ -137,10 +130,10 @@ function (add_chapter CHAPTER_NAME)
     target_link_libraries (${CHAPTER_NAME} ${CHAPTER_LIBS})
   endif ()
   if (DEFINED CHAPTER_MODELS)
-    file (COPY ${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
+    file (COPY assets/${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
   endif ()
   if (DEFINED CHAPTER_TEXTURES)
-    file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
+    file (COPY assets/${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
   endif ()
 endfunction ()
 
@@ -209,22 +202,22 @@ add_chapter (23_descriptor_sets
 
 add_chapter (24_texture_image
   SHADER 22_shader_ubo
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (25_sampler
   SHADER 22_shader_ubo
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (26_texture_mapping
   SHADER 26_shader_textures
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (27_depth_buffering
   SHADER 27_shader_depth
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (28_model_loading

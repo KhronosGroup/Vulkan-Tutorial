@@ -3,11 +3,12 @@ plugins {
 }
 
 android {
-    compileSdkVersion 33
+    namespace "com.vulkan.tutorial"
+    compileSdk 36
     defaultConfig {
         applicationId "com.vulkan.tutorial"
-        minSdkVersion 24
-        targetSdkVersion 33
+        minSdk 24
+        targetSdk 36
         versionCode 1
         versionName "1.0"
 
@@ -29,45 +30,38 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
-            version "3.22.1"
+            version "4.0.2"
         }
     }
 
-    ndkVersion "25.2.9519653"
+    ndkVersion "28.1.13356709"
 
-    // Use assets from the main project and locally compiled shaders
+    // Use assets from the dedicated assets directory and locally compiled shaders
     sourceSets {
         main {
             assets {
                 srcDirs = [
-                    // Point to the main project's assets
-                    '../../../../',  // For models and textures in the attachments directory
-                    // Use locally compiled shaders from the build directory for all ABIs
-                    // These paths are relative to the app directory
-                    '.externalNativeBuild/cmake/debug/arm64-v8a/shaders',
-                    '.externalNativeBuild/cmake/debug/armeabi-v7a/shaders',
-                    '.externalNativeBuild/cmake/debug/x86/shaders',
-                    '.externalNativeBuild/cmake/debug/x86_64/shaders',
-                    // Also include release build paths
-                    '.externalNativeBuild/cmake/release/arm64-v8a/shaders',
-                    '.externalNativeBuild/cmake/release/armeabi-v7a/shaders',
-                    '.externalNativeBuild/cmake/release/x86/shaders',
-                    '.externalNativeBuild/cmake/release/x86_64/shaders'
+                    // Point to the dedicated assets directory
+                    '../../assets/'
                 ]
             }
         }
     }
+    buildFeatures {
+        prefab true
+        buildConfig true
+    }
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
-    implementation 'com.google.androidgamesdk:game-activity:1.2.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.games:games-activity:4.0.0'
 }

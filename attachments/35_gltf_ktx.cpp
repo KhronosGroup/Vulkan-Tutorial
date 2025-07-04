@@ -13,6 +13,10 @@
 
 import vulkan_hpp;
 #include <vulkan/vk_platform.h>
+#if defined(__ANDROID__)
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_android.h>
+#endif
 #include <vulkan/vulkan_profiles.hpp>
 
 #if defined(__ANDROID__)
@@ -31,9 +35,18 @@ import vulkan_hpp;
 
 #if PLATFORM_ANDROID
     #include <android/log.h>
-    #include <android_native_app_glue.h>
+    #include <game-activity/native_app_glue/android_native_app_glue.h>
     #include <android/asset_manager.h>
     #include <android/asset_manager_jni.h>
+
+    // Declare and implement app_dummy function from native_app_glue
+    extern "C" void app_dummy() {
+        // This is a dummy function that does nothing
+        // It's used to prevent the linker from stripping out the native_app_glue code
+    }
+
+    // Define AAssetManager type for Android
+    typedef AAssetManager AssetManagerType;
 
     #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "VulkanTutorial", __VA_ARGS__))
     #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "VulkanTutorial", __VA_ARGS__))
@@ -41,9 +54,16 @@ import vulkan_hpp;
     #define LOG_INFO(msg) LOGI("%s", msg)
     #define LOG_ERROR(msg) LOGE("%s", msg)
 #else
+    // Define AAssetManager type for non-Android platforms
+    typedef void AssetManagerType;
+    // Desktop-specific includes
     #define GLFW_INCLUDE_VULKAN
     #include <GLFW/glfw3.h>
 
+    // Define logging macros for Desktop
+    #define LOGI(...) printf(__VA_ARGS__); printf("\n")
+    #define LOGW(...) printf(__VA_ARGS__); printf("\n")
+    #define LOGE(...) fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
     #define LOG_INFO(msg) std::cout << msg << std::endl
     #define LOG_ERROR(msg) std::cerr << msg << std::endl
 #endif
@@ -51,6 +71,7 @@ import vulkan_hpp;
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_CXX11
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
@@ -62,6 +83,26 @@ constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.glb";
 const std::string TEXTURE_PATH = "textures/viking_room.ktx2";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
+#if PLATFORM_ANDROID
+// Define VpProfileProperties structure if not already defined
+#ifndef VP_PROFILE_PROPERTIES_DEFINED
+#define VP_PROFILE_PROPERTIES_DEFINED
+struct VpProfileProperties {
+    char name[256];
+    uint32_t specVersion;
+};
+#endif
+
+// Define Vulkan Profile constants
+#ifndef VP_KHR_ROADMAP_2022_NAME
+#define VP_KHR_ROADMAP_2022_NAME "VP_KHR_roadmap_2022"
+#endif
+
+#ifndef VP_KHR_ROADMAP_2022_SPEC_VERSION
+#define VP_KHR_ROADMAP_2022_SPEC_VERSION 1
+#endif
+#endif
 
 struct AppInfo {
     bool profileSupported = false;
@@ -167,7 +208,7 @@ private:
             case APP_CMD_INIT_WINDOW:
                 if (app->window != nullptr) {
                     appState->nativeWindow = app->window;
-                    auto* vulkanApp = static_cast<VulkanApplication*>(app->userData);
+                    auto* vulkanApp = static_cast<VulkanApplication*>(appState);
                     vulkanApp->initVulkan();
                     appState->initialized = true;
                 }

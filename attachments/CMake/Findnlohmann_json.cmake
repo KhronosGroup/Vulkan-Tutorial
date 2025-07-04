@@ -60,7 +60,7 @@ if(NOT nlohmann_json_INCLUDE_DIR)
   if(NOT nlohmann_json_POPULATED)
     FetchContent_Populate(nlohmann_json)
 
-    if(android)
+    if(ANDROID)
     # Update the minimum required CMake version before including the CMakeLists.txt
     file(READ "${nlohmann_json_SOURCE_DIR}/CMakeLists.txt" NLOHMANN_JSON_CMAKE_CONTENT)
     string(REPLACE "cmake_minimum_required(VERSION 3.1"
@@ -115,7 +115,7 @@ endif()
 
 # Set the variables
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(nlohmann_json 
+find_package_handle_standard_args(nlohmann_json
   REQUIRED_VARS nlohmann_json_INCLUDE_DIR
 )
 

@@ -8,6 +8,18 @@ The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.co
 
 This repository hosts the contents of the link:https://docs.vulkan.org/tutorial/latest[Khronos Vulkan Tutorial]. The tutorial is part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project].
 
+== Differences
+
+Compared to the original tutorial, this version of the tutorial is teaching up-to-date concepts:
+
+* Vulkan 1.4 as a baseline
+* Dynamic rendering instead of render passes
+* link:https://shader-slang.org/[Slang] as the primary shading language
+* Modern C++ (20)
+* link:https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp] with link:https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization[RAII]
+
+It also contains Vulkan usage clarifications, improved synchronization and new content.
+
 == Project Structure
 
 The repository is organized into several important directories:

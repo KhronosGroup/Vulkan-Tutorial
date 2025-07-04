@@ -371,6 +371,37 @@ jobs:
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "cmake;4.0.2"
           echo "CMake installation completed"
 
+      - name: Install Vulkan SDK and glslangValidator
+        run: |
+          echo "Installing Vulkan SDK for Android build..."
+          VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
+          echo "Using Vulkan SDK version: $VULKAN_VERSION"
+
+          mkdir -p vulkan-sdk
+          cd vulkan-sdk
+
+          curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
+          tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
+
+          echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
+          echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
+
+          # Verify glslangValidator is available
+          if [ -f "$PWD/$VULKAN_VERSION/x86_64/bin/glslangValidator" ]; then
+            echo "glslangValidator found at: $PWD/$VULKAN_VERSION/x86_64/bin/glslangValidator"
+            $PWD/$VULKAN_VERSION/x86_64/bin/glslangValidator --version
+          else
+            echo "glslangValidator not found in Vulkan SDK, installing separately..."
+            sudo apt-get update
+            sudo apt-get install -y glslang-tools
+            which glslangValidator
+            glslangValidator --version
+          fi
+
+          cd ..
+
       - name: Install KTX library
         run: |
           if [ -d "/usr/local/include/ktx" ] && [ -f "/usr/local/lib/libktx.so" ]; then

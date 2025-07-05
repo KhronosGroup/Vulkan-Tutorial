@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace "com.vulkan.tutorial"
+    compileSdk 36
+    defaultConfig {
+        applicationId "com.vulkan.tutorial"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        // Define which chapter to build (default to 34_android)
+        buildConfigField "String", "CHAPTER", "\"${project.findProperty('chapter') ?: '34_android'}\""
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DCHAPTER=${project.findProperty('chapter') ?: '34_android'}"
+                abiFilters = project.findProperty('abiFilters')?.split(',') ?: ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "4.0.2"
+        }
+    }
+
+    ndkVersion "28.1.13356709"
+
+    // Use assets from the dedicated assets directory and locally compiled shaders
+    sourceSets {
+        main {
+            assets {
+                srcDirs = [
+                    // Point to the dedicated assets directory
+                    '../../assets/'
+                ]
+            }
+        }
+    }
+    buildFeatures {
+        prefab true
+        buildConfig true
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.games:games-activity:4.0.0'
+}

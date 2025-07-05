@@ -1,17 +1,5 @@
 name: CMake CI
 
-# Optimized workflow for faster builds
-# Optimizations include:
-# 1. Improved caching strategy with more specific cache keys
-# 2. Optimized ccache/sccache configuration for better performance
-# 3. Minimal Vulkan SDK installation (only necessary components)
-# 4. Parallel builds for all platforms
-# 5. Dynamic chapter detection from CMakeLists.txt for future extensibility
-# 6. Eliminated unnecessary clean steps between builds
-# 7. Optimized build configuration for better performance
-# 8. Linux: Using ccache with clang for faster builds
-# 9. Windows: Using MSVC for better performance and compatibility
-
 on:
   push:
     branches: [ main ]
@@ -72,33 +60,20 @@ jobs:
           - os: windows-latest
             ccache: sccache
             vulkan-install: |
-              # Download the Vulkan SDK installer
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
-
-              # Install only the necessary components of Vulkan SDK
-              # --components argument specifies only the components we need:
-              # - VulkanRT: Vulkan Runtime
-              # - VulkanSDK32: Core 32-bit SDK
-              # - VulkanSDK64: Core 64-bit SDK
-              # - VulkanDXC: DirectX Shader Compiler
-              # - VulkanTools: Vulkan Tools (includes glslangValidator)
               Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
 
-              # Find the installed Vulkan SDK path
               $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
-
               if (-not $vulkanPath) {
                 $vulkanPath = "C:\VulkanSDK\latest"
               }
 
-              # Set environment variables
               echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
               echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-              # Verify installation
               Write-Host "Vulkan SDK path: $vulkanPath"
               if (Test-Path "$vulkanPath\Lib") {
                 Write-Host "Lib directory exists"
@@ -195,47 +170,28 @@ jobs:
             ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
             ${{ runner.os }}-vulkan-sdk-
 
-      - name: Install and configure ccache (Ubuntu)
+      - name: Install ccache (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ccache clang clang-18
-
-          # Configure ccache for optimal performance
-          ccache --max-size=4G
-          ccache --set-config=compression=true
-          ccache --set-config=compression_level=9
-          ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime
-          ccache --set-config=hash_dir=false
+          sudo apt-get install -y ccache
+          ccache --max-size=2G
           ccache -z
-
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
 
-          # Set environment variables for better ccache performance
-          echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
-          echo "CCACHE_COMPRESSLEVEL=9" >> $GITHUB_ENV
-          echo "CCACHE_MAXSIZE=4G" >> $GITHUB_ENV
-
-      - name: Install and configure sccache (Windows)
+      - name: Install sccache (Windows)
         if: runner.os == 'Windows'
         run: |
-          # Download and extract sccache
           Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz" -OutFile "sccache.tar.gz"
           tar -xzf sccache.tar.gz
           $sccachePath = Join-Path -Path (Get-Location) -ChildPath "sccache-v0.5.4-x86_64-pc-windows-msvc"
           echo "$sccachePath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-          # Configure sccache for optimal performance
           echo "SCCACHE_DIR=$HOME/.cache/sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SCCACHE_ERROR_LOG=$HOME/.cache/sccache/sccache.log" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SCCACHE_LOG=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-          # Create cache directory if it doesn't exist
           New-Item -ItemType Directory -Force -Path "$HOME/.cache/sccache"
-
-          # Set environment variables for better sccache performance
           echo "RUST_LOG=sccache=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install dependencies
@@ -249,7 +205,6 @@ jobs:
         run: |
           if (Test-Path $env:VULKAN_SDK) {
             echo "Vulkan SDK found at: $env:VULKAN_SDK"
-
             $criticalPaths = @(
               "$env:VULKAN_SDK\Include",
               "$env:VULKAN_SDK\Lib",
@@ -296,7 +251,6 @@ jobs:
         working-directory: ${{github.workspace}}/attachments
         if: runner.os == 'Windows'
         run: |
-          # Configure CMake with MSVC generator for faster builds
           cmake -B build -DCMAKE_BUILD_TYPE=Release `
             -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
             -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
@@ -318,7 +272,6 @@ jobs:
         run: |
           if [ -d "$VULKAN_SDK" ]; then
             echo "Vulkan SDK found at: $VULKAN_SDK"
-            echo "Vulkan SDK installation verified"
           else
             echo "Vulkan SDK not found!"
             exit 1
@@ -328,15 +281,11 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/cache@v3
         with:
-          path: |
-            ${{github.workspace}}/attachments/build
-            ${{github.workspace}}/attachments/build/.ninja_deps
-            ${{github.workspace}}/attachments/build/.ninja_log
-          key: ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_linux.sh') }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.hpp') }}
+          path: ${{github.workspace}}/attachments/build
+          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}-${{ hashFiles('**/*.h') }}
           restore-keys: |
-            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_linux.sh') }}-
-            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt') }}-
-            ${{ runner.os }}-build-ninja-
+            ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-build-
 
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments
@@ -351,7 +300,7 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Build with parallel jobs
+      - name: Build
         working-directory: ${{github.workspace}}/attachments
         run: cmake --build build --config Release --parallel 4
 
@@ -415,7 +364,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ccache
-          # Configure ccache for optimal performance
           ccache --max-size=4G
           ccache --set-config=compression=true
           ccache --set-config=compression_level=9
@@ -424,42 +372,31 @@ jobs:
           ccache -z
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
-          # Set environment variables for better ccache performance
           echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
           echo "CCACHE_COMPRESSLEVEL=9" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=4G" >> $GITHUB_ENV
 
       - name: Set up Android SDK and NDK
         run: |
-          echo "Using pre-installed Android SDK and NDK on GitHub runner"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
           echo "Android SDK location: $ANDROID_SDK_ROOT"
           echo "Android NDK location: $ANDROID_NDK_ROOT"
 
-          # Install CMake 4.0.2 using sdkmanager
-          echo "Installing CMake 4.0.2 from Android SDK..."
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "cmake;4.0.2"
-          echo "CMake installation completed"
 
       - name: Install Vulkan SDK and glslangValidator
         run: |
-          echo "Installing Vulkan SDK for Android build..."
-
-          # Check if glslangValidator is already installed from cache
           if command -v glslangValidator &> /dev/null; then
             echo "glslangValidator already installed:"
             glslangValidator --version
           else
-            # Install only glslang-tools instead of full Vulkan SDK
-            echo "Installing glslang-tools package..."
             sudo apt-get update
             sudo apt-get install -y glslang-tools
             which glslangValidator
             glslangValidator --version
           fi
 
-          # Set minimal Vulkan environment variables needed for the build
           echo "VULKAN_SDK=/usr" >> $GITHUB_ENV
           echo "PATH=/usr/bin:$PATH" >> $GITHUB_ENV
 
@@ -472,14 +409,12 @@ jobs:
             git clone --depth 1 --branch v4.1.0 https://github.com/KhronosGroup/KTX-Software.git
             cd KTX-Software
             mkdir build && cd build
-            # Configure with minimal features and use ccache
             cmake .. -DCMAKE_BUILD_TYPE=Release \
                     -DKTX_FEATURE_TOOLS=OFF \
                     -DKTX_FEATURE_DOC=OFF \
                     -DKTX_FEATURE_LOADTEST_APPS=OFF \
                     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-            # Build with parallel jobs
             cmake --build . --config Release --parallel 4
             sudo cmake --install .
             cd ../..
@@ -494,14 +429,12 @@ jobs:
             git clone --depth 1 https://github.com/syoyo/tinygltf.git
             cd tinygltf
             mkdir build && cd build
-            # Configure with minimal features and use ccache
             cmake .. -DCMAKE_BUILD_TYPE=Release \
                     -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF \
                     -DTINYGLTF_BUILD_GL_EXAMPLES=OFF \
                     -DTINYGLTF_BUILD_VALIDATOR_EXAMPLE=OFF \
                     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-            # Build with parallel jobs
             cmake --build . --config Release --parallel 4
             sudo cmake --install .
             cd ../..
@@ -515,41 +448,28 @@ jobs:
             gradle wrapper
           fi
 
-          SUPPORTED_CHAPTERS=$(grep -A 20 "set(SUPPORTED_CHAPTERS" app/src/main/cpp/CMakeLists.txt | 
-                              sed -n '/set(SUPPORTED_CHAPTERS/,/)/p' | 
-                              grep -o '"[^"]*"' | 
-                              sed 's/"//g')
+          SUPPORTED_CHAPTERS=$(grep -A 20 "set(SUPPORTED_CHAPTERS" app/src/main/cpp/CMakeLists.txt | sed -n '/set(SUPPORTED_CHAPTERS/,/)/p' | grep -o '"[^"]*"' | sed 's/"//g')
 
           readarray -t CHAPTERS <<< "$SUPPORTED_CHAPTERS"
           echo "Detected supported Android chapters: ${CHAPTERS[@]}"
 
-          # Configure Gradle for optimal performance
           echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" > gradle.properties
           echo "org.gradle.parallel=true" >> gradle.properties
           echo "org.gradle.caching=true" >> gradle.properties
           echo "org.gradle.configureondemand=true" >> gradle.properties
-
-          # Enable AndroidX support (required for androidx.appcompat and other AndroidX dependencies)
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=false" >> gradle.properties
-
           echo "kotlin.incremental=true" >> gradle.properties
-
-          # Create directory for build outputs
           mkdir -p build-outputs
 
-          # Build each chapter without cleaning between builds
           for ((i=0; i<${#CHAPTERS[@]}; i++)); do
             chapter="${CHAPTERS[$i]}"
             if [ -n "$chapter" ]; then
               echo "Building $chapter chapter..."
-
-              # Build with parallel execution and caching
-              ./gradlew assembleDebug --parallel --max-workers=4 --build-cache -Pchapter=$chapter
+              ./gradlew assembleDebug --parallel --max-workers=4 --build-cache -Pchapter=$chapter -PabiFilters=x86_64
 
               if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
                 echo "$chapter built successfully"
-                # Rename the APK to avoid overwriting
                 cp app/build/outputs/apk/debug/app-debug.apk build-outputs/${chapter}.apk
               else
                 echo "$chapter build failed"
@@ -558,5 +478,4 @@ jobs:
             fi
           done
 
-          # Print ccache statistics after builds
           ccache -s

@@ -3,6 +3,20 @@ cmake_minimum_required (VERSION 3.29)
 # Enable C++ module dependency scanning
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
+# Option to use direct module import instead of VulkanCppModule
+# Set this to ON if you're having intellisense issues with VS2022
+#
+# To enable this option, use one of the following methods:
+# 1. Command line: cmake -DUSE_DIRECT_MODULE_IMPORT=ON ..
+# 2. CMake GUI: Check the USE_DIRECT_MODULE_IMPORT option
+# 3. Edit CMakeCache.txt: Set USE_DIRECT_MODULE_IMPORT:BOOL=ON
+#
+# This option changes how the Vulkan C++ module is included in the project:
+# - When OFF (default): Uses a shared VulkanCppModule library that all projects link to
+# - When ON: Adds the vulkan.cppm module directly to each project, which can help with
+#   intellisense in VS2022 and other IDEs that have issues with C++20 modules
+option(USE_DIRECT_MODULE_IMPORT "Use direct vulkan-hpp module import instead of VulkanCppModule" OFF)
+
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
@@ -12,6 +26,7 @@ find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 
 # set up Vulkan C++ module
+if(NOT USE_DIRECT_MODULE_IMPORT)
 add_library(VulkanCppModule)
 add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
@@ -43,6 +58,7 @@ target_sources(VulkanCppModule
         PRIVATE
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
+endif()
 
 find_package (tinyobjloader REQUIRED)
 

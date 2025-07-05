@@ -109,14 +109,36 @@ function (add_chapter CHAPTER_NAME)
   set_target_properties (${CHAPTER_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
-  target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
+
+  if(USE_DIRECT_MODULE_IMPORT)
+    # Direct module import approach - add vulkan.cppm directly to each project
+    target_sources(${CHAPTER_NAME}
+      PRIVATE
+      FILE_SET cxx_modules TYPE CXX_MODULES
+      BASE_DIRS
+      "${Vulkan_INCLUDE_DIR}"
+      FILES
+      "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+    )
+    target_compile_definitions(${CHAPTER_NAME}
+      PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    )
+    target_include_directories(${CHAPTER_NAME}
+      PRIVATE "${Vulkan_INCLUDE_DIR}"
+    )
+    target_link_libraries (${CHAPTER_NAME} Vulkan::Vulkan glfw)
+  else()
+    # Default approach - link to VulkanCppModule
+    target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
+  endif()
+
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
       set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
     endif()
-  endif()  
+  endif()
 
   if (DEFINED CHAPTER_SHADER)
     set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)

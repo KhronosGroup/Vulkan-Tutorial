@@ -60,22 +60,33 @@ jobs:
           - os: windows-latest
             ccache: sccache
             vulkan-install: |
+              # Download the Vulkan SDK installer
               Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
 
-              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+              # Install only the necessary components of Vulkan SDK
+              # --components argument specifies only the components we need:
+              # - VulkanRT: Vulkan Runtime
+              # - VulkanSDK32: Core 32-bit SDK
+              # - VulkanSDK64: Core 64-bit SDK
+              # - VulkanDXC: DirectX Shader Compiler
+              # - VulkanTools: Vulkan Tools (includes glslangValidator)
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
 
+              # Find the installed Vulkan SDK path
               $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
 
               if (-not $vulkanPath) {
                 $vulkanPath = "C:\VulkanSDK\latest"
               }
 
+              # Set environment variables
               echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
               echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+              # Verify installation
               Write-Host "Vulkan SDK path: $vulkanPath"
               if (Test-Path "$vulkanPath\Lib") {
                 Write-Host "Lib directory exists"
@@ -125,9 +136,11 @@ jobs:
             ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
             ${{ env.VCPKG_INSTALLATION_ROOT }}/packages
             ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat', '**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat', '**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat') }}-
             ${{ runner.os }}-vcpkg-
 
       - name: Cache Vulkan SDK (Windows)
@@ -135,8 +148,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: C:\VulkanSDK
-          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h') }}
           restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
             ${{ runner.os }}-vulkan-sdk-
 
       - name: Cache apt packages (Ubuntu)
@@ -169,25 +183,48 @@ jobs:
             ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
             ${{ runner.os }}-vulkan-sdk-
 
-      - name: Install ccache (Ubuntu)
+      - name: Install and configure ccache (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ccache
-          ccache --max-size=2G
+
+          # Configure ccache for optimal performance
+          ccache --max-size=4G
+          ccache --set-config=compression=true
+          ccache --set-config=compression_level=9
+          ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime
+          ccache --set-config=hash_dir=false
           ccache -z
+
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
 
-      - name: Install sccache (Windows)
+          # Set environment variables for better ccache performance
+          echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=9" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=4G" >> $GITHUB_ENV
+
+      - name: Install and configure sccache (Windows)
         if: runner.os == 'Windows'
         run: |
+          # Download and extract sccache
           Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz" -OutFile "sccache.tar.gz"
           tar -xzf sccache.tar.gz
           $sccachePath = Join-Path -Path (Get-Location) -ChildPath "sccache-v0.5.4-x86_64-pc-windows-msvc"
           echo "$sccachePath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Configure sccache for optimal performance
           echo "SCCACHE_DIR=$HOME/.cache/sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "SCCACHE_CACHE_SIZE=2G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_ERROR_LOG=$HOME/.cache/sccache/sccache.log" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_LOG=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          # Create cache directory if it doesn't exist
+          New-Item -ItemType Directory -Force -Path "$HOME/.cache/sccache"
+
+          # Set environment variables for better sccache performance
+          echo "RUST_LOG=sccache=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install dependencies
         run: ${{ matrix.deps-install }}
@@ -235,23 +272,39 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/cache@v3
         with:
-          path: ${{github.workspace}}/attachments/build
-          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}-${{ hashFiles('**/*.h') }}
+          path: |
+            ${{github.workspace}}/attachments/build
+            ${{github.workspace}}/attachments/build/.ninja_deps
+            ${{github.workspace}}/attachments/build/.ninja_log
+          key: ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.hpp') }}
           restore-keys: |
-            ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-
-            ${{ runner.os }}-build-
+            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-
+            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-build-ninja-
 
-      - name: Configure CMake (Windows)
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Install Ninja build system for faster builds
+          choco install ninja -y
+          # Verify installation
+          ninja --version
+
+      - name: Configure CMake with Ninja (Windows)
         working-directory: ${{github.workspace}}/attachments
         if: runner.os == 'Windows'
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release `
+          # Configure CMake with Ninja generator for faster builds
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
             -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
             -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_FLAGS="/MP /EHsc /Zi /W3" `
+            -DCMAKE_SHARED_LINKER_FLAGS="/DEBUG:FASTLINK" `
+            -DCMAKE_EXE_LINKER_FLAGS="/DEBUG:FASTLINK"
 
           if (Test-Path "build/CMakeCache.txt") {
             Write-Host "CMake cache contents:"
@@ -273,11 +326,15 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/cache@v3
         with:
-          path: ${{github.workspace}}/attachments/build
-          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}-${{ hashFiles('**/*.h') }}
+          path: |
+            ${{github.workspace}}/attachments/build
+            ${{github.workspace}}/attachments/build/.ninja_deps
+            ${{github.workspace}}/attachments/build/.ninja_log
+          key: ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_linux.sh') }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.hpp') }}
           restore-keys: |
-            ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-
-            ${{ runner.os }}-build-
+            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_linux.sh') }}-
+            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-build-ninja-
 
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments
@@ -292,9 +349,9 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Build
+      - name: Build with parallel jobs
         working-directory: ${{github.workspace}}/attachments
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --parallel 4
 
       - name: ccache statistics
         if: runner.os == 'Linux'
@@ -469,7 +526,6 @@ jobs:
           echo "org.gradle.parallel=true" >> gradle.properties
           echo "org.gradle.caching=true" >> gradle.properties
           echo "org.gradle.configureondemand=true" >> gradle.properties
-          echo "android.enableBuildCache=true" >> gradle.properties
           echo "kotlin.incremental=true" >> gradle.properties
 
           # Create directory for build outputs

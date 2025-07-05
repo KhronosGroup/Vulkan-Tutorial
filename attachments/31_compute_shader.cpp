@@ -174,11 +174,22 @@ private:
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
-            drawFrame();
-            // We want to animate the particle system using the last frames time to get smooth, frame-rate independent animation
-            double currentTime = glfwGetTime();
-            lastFrameTime = (currentTime - lastTime) * 1000.0;
-            lastTime = currentTime;
+            try {
+                drawFrame();
+                // We want to animate the particle system using the last frames time to get smooth, frame-rate independent animation
+                double currentTime = glfwGetTime();
+                lastFrameTime = (currentTime - lastTime) * 1000.0;
+                lastTime = currentTime;
+            } catch (const vk::SystemError& e) {
+                if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
+                    // Swapchain is out of date, this can happen during window close
+                    // Just ignore and continue to close
+                    std::cout << "Ignoring ErrorOutOfDateKHR during shutdown" << std::endl;
+                } else {
+                    // Rethrow other errors
+                    throw;
+                }
+            }
         }
 
         device.waitIdle();
@@ -888,12 +899,23 @@ private:
                 .pImageIndices = &imageIndex
             };
 
-            result = presentQueue.presentKHR(presentInfo);
-            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
-                framebufferResized = false;
-                recreateSwapChain();
-            } else if (result != vk::Result::eSuccess) {
-                throw std::runtime_error("failed to present swap chain image!");
+            try {
+                result = presentQueue.presentKHR(presentInfo);
+                if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+                    framebufferResized = false;
+                    recreateSwapChain();
+                } else if (result != vk::Result::eSuccess) {
+                    throw std::runtime_error("failed to present swap chain image!");
+                }
+            } catch (const vk::SystemError& e) {
+                if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
+                    // Swapchain is out of date, this can happen during window close
+                    // Just ignore and continue to close
+                    std::cout << "Ignoring ErrorOutOfDateKHR during presentation" << std::endl;
+                } else {
+                    // Rethrow other errors
+                    throw;
+                }
             }
         }
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

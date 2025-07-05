@@ -111,7 +111,7 @@ function (add_chapter CHAPTER_NAME)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
       set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
     endif()
-  endif()  
+  endif()
 
   if (DEFINED CHAPTER_SHADER)
     set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)
@@ -261,6 +261,12 @@ add_chapter (34_android
   LIBS glm::glm tinyobjloader::tinyobjloader)
 
 add_chapter (35_gltf_ktx
+  SHADER 27_shader_depth
+  MODELS viking_room.glb
+  TEXTURES viking_room.ktx2
+  LIBS glm::glm tinygltf::tinygltf KTX::ktx)
+
+add_chapter (36_multiple_objects
   SHADER 27_shader_depth
   MODELS viking_room.glb
   TEXTURES viking_room.ktx2

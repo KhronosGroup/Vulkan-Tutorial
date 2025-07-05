@@ -132,6 +132,7 @@ endif()
 set(SUPPORTED_CHAPTERS
     "34_android"
     "35_gltf_ktx"
+    "36_multiple_objects"
 )
 
 # Validate the chapter
@@ -174,7 +175,7 @@ if(CHAPTER STREQUAL "34_android")
     target_link_libraries(vulkan_tutorial_android
         tinyobjloader::tinyobjloader
     )
-elseif(CHAPTER STREQUAL "35_gltf_ktx")
+elseif(CHAPTER STREQUAL "35_gltf_ktx" OR CHAPTER STREQUAL "36_multiple_objects")
     target_link_libraries(vulkan_tutorial_android
         tinygltf::tinygltf
         KTX::ktx

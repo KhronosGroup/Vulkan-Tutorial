@@ -48,4 +48,7 @@
 * xref:11_Compute_Shader.adoc[Compute Shader]
 * xref:12_Ecosystem_Utilities_and_Compatibility.adoc[Ecosystem Utilities and GPU Compatibility]
 * xref:13_Vulkan_Profiles.adoc[Vulkan Profiles]
+* xref:14_Android.adoc[Android]
+* xref:15_GLTF_KTX2_Migration.adoc[Migrating to Modern Asset Formats: glTF and KTX2]
+* xref:16_Multiple_Objects.adoc[Rendering Multiple Objects]
 * xref:90_FAQ.adoc[FAQ]

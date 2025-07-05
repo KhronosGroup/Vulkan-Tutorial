@@ -171,26 +171,51 @@ private:
     }
 
     void createInstance() {
-        if (enableValidationLayers && !checkValidationLayerSupport()) {
-            throw std::runtime_error("validation layers requested, but not available!");
-        }
-
         constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
                     .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
                     .pEngineName        = "No Engine",
                     .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
                     .apiVersion         = vk::ApiVersion14 };
-        auto extensions = getRequiredExtensions();
-        std::vector<char const *> enabledLayers;
+
+        // Get the required layers
+        std::vector<char const*> requiredLayers;
         if (enableValidationLayers) {
-            enabledLayers.assign(validationLayers.begin(), validationLayers.end());
+          requiredLayers.assign(validationLayers.begin(), validationLayers.end());
         }
+
+        // Check if the required layers are supported by the Vulkan implementation.
+        auto layerProperties = context.enumerateInstanceLayerProperties();
+        for (auto const& requiredLayer : requiredLayers)
+        {
+            if (std::ranges::none_of(layerProperties,
+                                     [requiredLayer](auto const& layerProperty)
+                                     { return strcmp(layerProperty.layerName, requiredLayer) == 0; }))
+            {
+                throw std::runtime_error("Required layer not supported: " + std::string(requiredLayer));
+            }
+        }
+
+        // Get the required extensions.
+        auto requiredExtensions = getRequiredExtensions();
+
+        // Check if the required extensions are supported by the Vulkan implementation.
+        auto extensionProperties = context.enumerateInstanceExtensionProperties();
+        for (auto const& requiredExtension : requiredExtensions)
+        {
+            if (std::ranges::none_of(extensionProperties,
+                                     [requiredExtension](auto const& extensionProperty)
+                                     { return strcmp(extensionProperty.extensionName, requiredExtension) == 0; }))
+            {
+                throw std::runtime_error("Required extension not supported: " + std::string(requiredExtension));
+            }
+        }
+
         vk::InstanceCreateInfo createInfo{
             .pApplicationInfo        = &appInfo,
-            .enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size()),
-            .ppEnabledLayerNames     = enabledLayers.data(),
-            .enabledExtensionCount   = static_cast<uint32_t>(extensions.size()),
-            .ppEnabledExtensionNames = extensions.data() };
+            .enabledLayerCount       = static_cast<uint32_t>(requiredLayers.size()),
+            .ppEnabledLayerNames     = requiredLayers.data(),
+            .enabledExtensionCount   = static_cast<uint32_t>(requiredExtensions.size()),
+            .ppEnabledExtensionNames = requiredExtensions.data() };
         instance = vk::raii::Instance(context, createInfo);
     }
 
@@ -613,23 +638,12 @@ private:
         uint32_t glfwExtensionCount = 0;
         auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-        std::vector<vk::ExtensionProperties> props = context.enumerateInstanceExtensionProperties();
-        if (const auto propsIterator = std::ranges::find_if(props, []( vk::ExtensionProperties const & ep ) { return strcmp( ep.extensionName, vk::EXTDebugUtilsExtensionName ) == 0; } ); propsIterator == props.end() )
-        {
-            std::cout << "Something went very wrong, cannot find VK_EXT_debug_utils extension" << std::endl;
-            exit( 1 );
-        }
         std::vector extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
         if (enableValidationLayers) {
             extensions.push_back(vk::EXTDebugUtilsExtensionName );
         }
 
         return extensions;
-    }
-
-    bool checkValidationLayerSupport() {
-        return (std::ranges::any_of(context.enumerateInstanceLayerProperties(),
-        []( vk::LayerProperties const & lp ) { return ( strcmp( "VK_LAYER_KHRONOS_validation", lp.layerName ) == 0 ); } ) );
     }
 
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity, vk::DebugUtilsMessageTypeFlagsEXT type, const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData, void*) {

@@ -320,8 +320,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.ccache
-          key: android-ccache-${{ github.sha }}
+          key: android-ccache-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt', 'attachments/34_android.cpp', 'attachments/35_gltf_ktx.cpp') }}
           restore-keys: |
+            android-ccache-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt') }}
             android-ccache-
 
       - name: Cache KTX and tinygltf
@@ -331,7 +332,7 @@ jobs:
             /usr/local/include/ktx
             /usr/local/lib/libktx*
             /usr/local/include/tinygltf
-          key: android-libs-${{ hashFiles('**/workflow.yml') }}
+          key: android-libs-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt') }}
           restore-keys: |
             android-libs-
 
@@ -342,21 +343,32 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             ${{github.workspace}}/attachments/android/.gradle
+            ${{github.workspace}}/attachments/android/app/.cxx
             ${{github.workspace}}/attachments/android/app/build/intermediates
             ${{github.workspace}}/attachments/android/app/build/outputs
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
+            ${{github.workspace}}/attachments/android/app/build/generated
+          key: ${{ runner.os }}-gradle-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt', 'attachments/34_android.cpp', 'attachments/35_gltf_ktx.cpp', 'attachments/android/app/build.gradle') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}-
+            ${{ runner.os }}-gradle-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt') }}
             ${{ runner.os }}-gradle-
 
-      - name: Install ccache
+      - name: Install and configure ccache
         run: |
           sudo apt-get update
           sudo apt-get install -y ccache
-          ccache --max-size=2G
+          # Configure ccache for optimal performance
+          ccache --max-size=4G
+          ccache --set-config=compression=true
+          ccache --set-config=compression_level=9
+          ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime
+          ccache --set-config=hash_dir=false
           ccache -z
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+          # Set environment variables for better ccache performance
+          echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=9" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=4G" >> $GITHUB_ENV
 
       - name: Set up Android SDK and NDK
         run: |
@@ -374,33 +386,23 @@ jobs:
       - name: Install Vulkan SDK and glslangValidator
         run: |
           echo "Installing Vulkan SDK for Android build..."
-          VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
-          echo "Using Vulkan SDK version: $VULKAN_VERSION"
 
-          mkdir -p vulkan-sdk
-          cd vulkan-sdk
-
-          curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
-          tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
-
-          echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
-          echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
-
-          # Verify glslangValidator is available
-          if [ -f "$PWD/$VULKAN_VERSION/x86_64/bin/glslangValidator" ]; then
-            echo "glslangValidator found at: $PWD/$VULKAN_VERSION/x86_64/bin/glslangValidator"
-            $PWD/$VULKAN_VERSION/x86_64/bin/glslangValidator --version
+          # Check if glslangValidator is already installed from cache
+          if command -v glslangValidator &> /dev/null; then
+            echo "glslangValidator already installed:"
+            glslangValidator --version
           else
-            echo "glslangValidator not found in Vulkan SDK, installing separately..."
+            # Install only glslang-tools instead of full Vulkan SDK
+            echo "Installing glslang-tools package..."
             sudo apt-get update
             sudo apt-get install -y glslang-tools
             which glslangValidator
             glslangValidator --version
           fi
 
-          cd ..
+          # Set minimal Vulkan environment variables needed for the build
+          echo "VULKAN_SDK=/usr" >> $GITHUB_ENV
+          echo "PATH=/usr/bin:$PATH" >> $GITHUB_ENV
 
       - name: Install KTX library
         run: |
@@ -408,12 +410,18 @@ jobs:
             echo "KTX library already installed from cache"
           else
             echo "Installing KTX library..."
-            git clone https://github.com/KhronosGroup/KTX-Software.git
+            git clone --depth 1 --branch v4.1.0 https://github.com/KhronosGroup/KTX-Software.git
             cd KTX-Software
-            git checkout v4.1.0
             mkdir build && cd build
-            cmake .. -DCMAKE_BUILD_TYPE=Release -DKTX_FEATURE_TOOLS=OFF
-            cmake --build . --config Release
+            # Configure with minimal features and use ccache
+            cmake .. -DCMAKE_BUILD_TYPE=Release \
+                    -DKTX_FEATURE_TOOLS=OFF \
+                    -DKTX_FEATURE_DOC=OFF \
+                    -DKTX_FEATURE_LOADTEST_APPS=OFF \
+                    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            # Build with parallel jobs
+            cmake --build . --config Release --parallel 4
             sudo cmake --install .
             cd ../..
           fi
@@ -424,11 +432,18 @@ jobs:
             echo "tinygltf library already installed from cache"
           else
             echo "Installing tinygltf..."
-            git clone https://github.com/syoyo/tinygltf.git
+            git clone --depth 1 https://github.com/syoyo/tinygltf.git
             cd tinygltf
             mkdir build && cd build
-            cmake .. -DCMAKE_BUILD_TYPE=Release -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF
-            cmake --build . --config Release
+            # Configure with minimal features and use ccache
+            cmake .. -DCMAKE_BUILD_TYPE=Release \
+                    -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF \
+                    -DTINYGLTF_BUILD_GL_EXAMPLES=OFF \
+                    -DTINYGLTF_BUILD_VALIDATOR_EXAMPLE=OFF \
+                    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            # Build with parallel jobs
+            cmake --build . --config Release --parallel 4
             sudo cmake --install .
             cd ../..
           fi
@@ -447,24 +462,38 @@ jobs:
                               sed 's/"//g')
 
           readarray -t CHAPTERS <<< "$SUPPORTED_CHAPTERS"
-
           echo "Detected supported Android chapters: ${CHAPTERS[@]}"
 
-          for chapter in "${CHAPTERS[@]}"; do
+          # Configure Gradle for optimal performance
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" > gradle.properties
+          echo "org.gradle.parallel=true" >> gradle.properties
+          echo "org.gradle.caching=true" >> gradle.properties
+          echo "org.gradle.configureondemand=true" >> gradle.properties
+          echo "android.enableBuildCache=true" >> gradle.properties
+          echo "kotlin.incremental=true" >> gradle.properties
+
+          # Create directory for build outputs
+          mkdir -p build-outputs
+
+          # Build each chapter without cleaning between builds
+          for ((i=0; i<${#CHAPTERS[@]}; i++)); do
+            chapter="${CHAPTERS[$i]}"
             if [ -n "$chapter" ]; then
               echo "Building $chapter chapter..."
 
-              if [ "$chapter" != "${CHAPTERS[0]}" ]; then
-                ./gradlew clean
-              fi
-
-              ./gradlew assembleDebug -Pchapter=$chapter
+              # Build with parallel execution and caching
+              ./gradlew assembleDebug --parallel --max-workers=4 --build-cache -Pchapter=$chapter
 
               if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
                 echo "$chapter built successfully"
+                # Rename the APK to avoid overwriting
+                cp app/build/outputs/apk/debug/app-debug.apk build-outputs/${chapter}.apk
               else
                 echo "$chapter build failed"
                 exit 1
               fi
             fi
           done
+
+          # Print ccache statistics after builds
+          ccache -s

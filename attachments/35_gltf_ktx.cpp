@@ -51,8 +51,6 @@ import vulkan_hpp;
     #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "VulkanTutorial", __VA_ARGS__))
     #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "VulkanTutorial", __VA_ARGS__))
     #define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "VulkanTutorial", __VA_ARGS__))
-    #define LOG_INFO(msg) LOGI("%s", msg)
-    #define LOG_ERROR(msg) LOGE("%s", msg)
 #else
     // Define AAssetManager type for non-Android platforms
     typedef void AssetManagerType;
@@ -64,8 +62,6 @@ import vulkan_hpp;
     #define LOGI(...) printf(__VA_ARGS__); printf("\n")
     #define LOGW(...) printf(__VA_ARGS__); printf("\n")
     #define LOGE(...) fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
-    #define LOG_INFO(msg) std::cout << msg << std::endl
-    #define LOG_ERROR(msg) std::cerr << msg << std::endl
 #endif
 
 #define GLM_FORCE_RADIANS
@@ -291,7 +287,6 @@ private:
     std::vector<vk::raii::Semaphore> presentCompleteSemaphore;
     std::vector<vk::raii::Semaphore> renderFinishedSemaphore;
     std::vector<vk::raii::Fence> inFlightFences;
-    uint32_t semaphoreIndex = 0;
     uint32_t currentFrame = 0;
 
     bool framebufferResized = false;
@@ -404,7 +399,7 @@ private:
         };
 
         instance = vk::raii::Instance(context, createInfo);
-        LOG_INFO("Vulkan instance created");
+        LOGI("Vulkan instance created");
     }
 
     void setupDebugMessenger() {
@@ -412,7 +407,7 @@ private:
         // This is a simplified approach to get the code compiling
         if (!enableValidationLayers) return;
 
-        LOG_INFO("Debug messenger setup skipped for compatibility");
+        LOGI("Debug messenger setup skipped for compatibility");
     }
 
     void createSurface() {
@@ -502,23 +497,15 @@ private:
                 &profileProperties,
                 &supported
             );
-            result = vk_result == VK_SUCCESS;
+            result = vk_result == static_cast<int>(vk::Result::eSuccess);
 #endif
 
             if (result && supported == VK_TRUE) {
                 appInfo.profileSupported = true;
                 appInfo.profile = profileProperties;
-#if PLATFORM_ANDROID
-                LOG_INFO(("Device supports Vulkan profile: " + std::string(profileProperties.name)).c_str());
-#else
-                LOG_INFO("Device supports Vulkan profile: " + std::string(profileProperties.profileName));
-#endif
+                LOGI("Device supports Vulkan profile: %s", profileProperties.profileName);
             } else {
-#if PLATFORM_ANDROID
-                LOG_INFO(("Device does not support Vulkan profile: " + std::string(profileProperties.name)).c_str());
-#else
-                LOG_INFO("Device does not support Vulkan profile: " + std::string(profileProperties.profileName));
-#endif
+                LOGI("Device does not support Vulkan profile: %s", profileProperties.profileName);
             }
         } else {
             throw std::runtime_error("failed to find a suitable GPU!");
@@ -796,13 +783,10 @@ private:
         // Determine the Vulkan format from KTX format
         vk::Format textureFormat;
 
-        if (TEXTURE_PATH.find("viking_room.ktx2") != std::string::npos) {
-            textureFormat = vk::Format::eR8G8B8A8Unorm;
-        }
         // Check if the KTX texture has a format
-        else if (kTexture->classId == ktxTexture2_c) {
+        if (kTexture->classId == ktxTexture2_c) {
             // For KTX2 files, we can get the format directly
-            ktxTexture2* ktx2 = reinterpret_cast<ktxTexture2*>(kTexture);
+            auto* ktx2 = reinterpret_cast<ktxTexture2*>(kTexture);
             textureFormat = static_cast<vk::Format>(ktx2->vkFormat);
             if (textureFormat == vk::Format::eUndefined) {
                 // If the format is undefined, fall back to a reasonable default
@@ -1325,7 +1309,7 @@ private:
     void drawFrame() {
         while ( vk::Result::eTimeout == device.waitForFences( *inFlightFences[currentFrame], vk::True, UINT64_MAX ) )
             ;
-        auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore[semaphoreIndex], nullptr );
+        auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore[currentFrame], nullptr );
 
         if (result == vk::Result::eErrorOutOfDateKHR) {
             recreateSwapChain();
@@ -1341,7 +1325,7 @@ private:
         recordCommandBuffer(imageIndex);
 
         vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-        const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore[semaphoreIndex],
+        const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore[currentFrame],
                             .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame],
                             .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore[imageIndex] };
         graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
@@ -1356,7 +1340,6 @@ private:
         } else if (result != vk::Result::eSuccess) {
             throw std::runtime_error("failed to present swap chain image!");
         }
-        semaphoreIndex = (semaphoreIndex + 1) % presentCompleteSemaphore.size();
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
@@ -1475,7 +1458,7 @@ int main() {
         VulkanApplication app;
         app.run();
     } catch (const std::exception& e) {
-        LOG_ERROR(e.what());
+        LOGE("%s", e.what());
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

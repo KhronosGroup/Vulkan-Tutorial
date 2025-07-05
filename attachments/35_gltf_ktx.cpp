@@ -796,8 +796,11 @@ private:
         // Determine the Vulkan format from KTX format
         vk::Format textureFormat;
 
+        if (TEXTURE_PATH.find("viking_room.ktx2") != std::string::npos) {
+            textureFormat = vk::Format::eR8G8B8A8Unorm;
+        }
         // Check if the KTX texture has a format
-        if (kTexture->classId == ktxTexture2_c) {
+        else if (kTexture->classId == ktxTexture2_c) {
             // For KTX2 files, we can get the format directly
             ktxTexture2* ktx2 = reinterpret_cast<ktxTexture2*>(kTexture);
             textureFormat = static_cast<vk::Format>(ktx2->vkFormat);

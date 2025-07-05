@@ -499,13 +499,19 @@ private:
             );
             result = vk_result == static_cast<int>(vk::Result::eSuccess);
 #endif
+            const char* name = nullptr;
+#ifdef PLATFORM_ANDROID
+            name = profileProperties.name;
+#else
+            name = profileProperties.profileName;
+#endif
 
             if (result && supported == VK_TRUE) {
                 appInfo.profileSupported = true;
                 appInfo.profile = profileProperties;
-                LOGI("Device supports Vulkan profile: %s", profileProperties.profileName);
+                LOGI("Device supports Vulkan profile: %s", name);
             } else {
-                LOGI("Device does not support Vulkan profile: %s", profileProperties.profileName);
+                LOGI("Device does not support Vulkan profile: %s", name);
             }
         } else {
             throw std::runtime_error("failed to find a suitable GPU!");
@@ -1416,7 +1422,7 @@ private:
 #if PLATFORM_ANDROID
         // Android asset loading
         if (androidAppState.app == nullptr) {
-            LOG_ERROR("Android app not initialized");
+            LOGE("Android app not initialized");
             throw std::runtime_error("Android app not initialized");
         }
         AAsset* asset = AAssetManager_open(androidAppState.app->activity->assetManager, filename.c_str(), AASSET_MODE_BUFFER);

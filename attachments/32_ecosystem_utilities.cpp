@@ -158,7 +158,6 @@ private:
     std::vector<vk::raii::Fence> inFlightFences;
     vk::raii::Semaphore timelineSemaphore = nullptr;
     uint64_t timelineValue = 0;
-    uint32_t semaphoreIndex = 0;
     uint32_t currentFrame = 0;
 
     bool framebufferResized = false;
@@ -313,7 +312,7 @@ private:
             debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
         } catch (vk::SystemError& err) {
             // If the debug utils extension is not available, this will fail
-            // That's okay, it just means validation layers aren't enabled
+            // That's okay; it just means validation layers aren't enabled
             std::cout << "Debug messenger not available. Validation layers may not be enabled." << std::endl;
         }
     }
@@ -1300,9 +1299,6 @@ private:
         std::array<vk::ClearValue, 2> clearValues = { clearColor, clearDepth };
 
         if (appInfo.dynamicRenderingSupported) {
-            // Use dynamic rendering
-            std::cout << "Recording command buffer with dynamic rendering\n";
-
             // Transition attachments to the correct layout
             if (appInfo.synchronization2Supported) {
                 // Use Synchronization2 API for image transitions
@@ -1551,7 +1547,7 @@ private:
     void drawFrame() {
         while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, FenceTimeout))
             ;
-        auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore[semaphoreIndex], nullptr);
+        auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore[currentFrame], nullptr);
 
         if (result == vk::Result::eErrorOutOfDateKHR) {
             recreateSwapChain();
@@ -1577,11 +1573,11 @@ private:
                 .pSignalSemaphoreValues = &signalValue
             };
 
-            std::array<vk::Semaphore, 2> waitSemaphores = { *presentCompleteSemaphore[semaphoreIndex], *timelineSemaphore };
+            std::array<vk::Semaphore, 2> waitSemaphores = { *presentCompleteSemaphore[currentFrame], *timelineSemaphore };
             std::array<vk::PipelineStageFlags, 2> waitStages = { vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eVertexInput };
             std::array<uint64_t, 2> waitValues = { 0, waitValue }; // Binary semaphore value is ignored
 
-            std::array<vk::Semaphore, 2> signalSemaphores = { *renderFinishedSemaphore[imageIndex], *timelineSemaphore };
+            std::array<vk::Semaphore, 2> signalSemaphores = { *renderFinishedSemaphore[currentFrame], *timelineSemaphore };
             std::array<uint64_t, 2> signalValues = { 0, signalValue }; // Binary semaphore value is ignored
 
             timelineInfo.waitSemaphoreValueCount = 1;  // Only for the timeline semaphore
@@ -1606,19 +1602,19 @@ private:
             vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
             const vk::SubmitInfo submitInfo{
                 .waitSemaphoreCount = 1,
-                .pWaitSemaphores = &*presentCompleteSemaphore[semaphoreIndex],
+                .pWaitSemaphores = &*presentCompleteSemaphore[currentFrame],
                 .pWaitDstStageMask = &waitDestinationStageMask,
                 .commandBufferCount = 1,
                 .pCommandBuffers = &*commandBuffers[currentFrame],
                 .signalSemaphoreCount = 1,
-                .pSignalSemaphores = &*renderFinishedSemaphore[imageIndex]
+                .pSignalSemaphores = &*renderFinishedSemaphore[currentFrame]
             };
             graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
         }
 
         const vk::PresentInfoKHR presentInfoKHR{
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex],
+            .pWaitSemaphores = &*renderFinishedSemaphore[currentFrame],
             .swapchainCount = 1,
             .pSwapchains = &*swapChain,
             .pImageIndices = &imageIndex
@@ -1630,7 +1626,6 @@ private:
         } else if (result != vk::Result::eSuccess) {
             throw std::runtime_error("failed to present swap chain image!");
         }
-        semaphoreIndex = (semaphoreIndex + 1) % presentCompleteSemaphore.size();
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 

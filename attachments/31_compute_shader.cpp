@@ -14,6 +14,7 @@
 #include <chrono>
 #include <random>
 
+#include "vulkan_hpp_intellisense.h"
 import vulkan_hpp;
 #include <vulkan/vk_platform.h>
 

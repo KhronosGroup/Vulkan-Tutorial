@@ -1,3 +1,4 @@
+#include "vulkan_hpp_intellisense.h" // Include for intellisense support
 import vulkan_hpp;
 #include <GLFW/glfw3.h>
 

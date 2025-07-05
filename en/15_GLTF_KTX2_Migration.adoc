@@ -423,6 +423,230 @@ Example using obj2gltf:
 obj2gltf -i model.obj -o model.gltf
 ----
 
+== Working with KTX2 Files
+
+=== Creating KTX2 Files
+
+There are several ways to create KTX2 files:
+
+==== Using the KTX-Software Tools
+
+The KTX-Software package provides command-line tools for creating KTX2 files:
+
+* **toktx**: The primary tool for creating KTX2 files from existing images
+
+Basic usage:
+
+[,bash]
+----
+# Create a basic KTX2 file
+toktx texture.ktx2 texture.png
+
+# Create a KTX2 file with mipmaps
+toktx --mipmap texture.ktx2 texture.png
+
+# Create a KTX2 file with Basis Universal compression
+toktx --bcmp texture.ktx2 texture.png
+
+# Create a KTX2 file with specific GPU compression format (BC7)
+toktx --bcmp --format BC7_RGBA texture.ktx2 texture.png
+
+# Create a cubemap KTX2 file
+toktx --cubemap cubemap.ktx2 posx.png negx.png posy.png negy.png posz.png negz.png
+----
+
+==== Using the KTX Library API
+
+You can also create KTX2 files programmatically using the KTX library API:
+
+[,c{pp}]
+----
+#include <ktx.h>
+
+// Create a new KTX2 texture
+ktxTexture2* texture;
+ktxTextureCreateInfo createInfo = {
+    .vkFormat = VK_FORMAT_R8G8B8A8_SRGB,
+    .baseWidth = 512,
+    .baseHeight = 512,
+    .baseDepth = 1,
+    .numDimensions = 2,
+    .numLevels = 1,
+    .numLayers = 1,
+    .numFaces = 1,
+    .isArray = KTX_FALSE,
+    .generateMipmaps = KTX_FALSE
+};
+
+KTX_error_code result = ktxTexture2_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture);
+
+// Set image data
+uint32_t* imageData = new uint32_t[512 * 512];
+// ... fill image data ...
+ktxTexture_SetImageFromMemory(ktxTexture(texture), 0, 0, 0, imageData, 512 * 512 * 4);
+
+// Write to file
+ktxTexture_WriteToNamedFile(ktxTexture(texture), "output.ktx2");
+
+// Clean up
+ktxTexture_Destroy(ktxTexture(texture));
+delete[] imageData;
+----
+
+==== Using Image Editing Software
+
+Some image editing and 3D modeling software can export directly to KTX2:
+
+* **Substance Designer**: Can export textures directly to KTX2 format
+* **Blender**: With plugins, can export textures to KTX2
+* **GIMP**: With the KTX plugin, can save images as KTX2
+
+=== Converting from Other Formats to KTX2
+
+KTX2 files can be created from various popular image formats:
+
+==== From PNG/JPEG/TIFF
+
+The simplest conversion is from standard image formats using toktx:
+
+[,bash]
+----
+# Convert PNG to KTX2
+toktx texture.ktx2 texture.png
+
+# Convert JPEG to KTX2
+toktx texture.ktx2 texture.jpg
+
+# Convert TIFF to KTX2
+toktx texture.ktx2 texture.tiff
+----
+
+==== From DDS (DirectX Texture Format)
+
+DDS is another GPU-optimized texture format commonly used with DirectX:
+
+[,bash]
+----
+# Using texconv to convert DDS to PNG first
+texconv -ft png texture.dds
+
+# Then convert PNG to KTX2
+toktx texture.ktx2 texture.png
+----
+
+Alternatively, you can use the Khronos Texture Tools:
+
+[,bash]
+----
+ktx2ktx2 --convert texture.dds texture.ktx2
+----
+
+==== From HDR/EXR (High Dynamic Range Formats)
+
+For HDR textures:
+
+[,bash]
+----
+# Convert HDR to KTX2
+toktx --hdr texture.ktx2 texture.hdr
+
+# Convert EXR to KTX2 (may require intermediate conversion)
+toktx --hdr texture.ktx2 texture.exr
+----
+
+==== From PSD (Photoshop)
+
+For Photoshop files:
+
+[,bash]
+----
+# Export PSD as PNG first
+# Then convert to KTX2
+toktx texture.ktx2 texture.png
+----
+
+=== Optimizing KTX2 Files
+
+To get the most out of KTX2 files, consider these optimization techniques:
+
+==== Compression Options
+
+KTX2 supports various compression methods:
+
+[,bash]
+----
+# Basis Universal compression (highly portable)
+toktx --bcmp texture.ktx2 texture.png
+
+# ASTC compression (good for mobile)
+toktx --format ASTC_4x4_RGBA texture.ktx2 texture.png
+
+# BC7 compression (good for desktop)
+toktx --format BC7_RGBA texture.ktx2 texture.png
+
+# ETC2 compression (good for Android)
+toktx --format ETC2_RGBA texture.ktx2 texture.png
+----
+
+==== Mipmap Generation
+
+Mipmaps improve rendering performance and quality:
+
+[,bash]
+----
+# Generate mipmaps
+toktx --mipmap texture.ktx2 texture.png
+
+# Generate mipmaps with specific filter
+toktx --mipmap --filter lanczos texture.ktx2 texture.png
+----
+
+==== Metadata
+
+KTX2 files can include metadata:
+
+[,bash]
+----
+# Add key-value metadata
+toktx --mipmap --key "author" --value "Your Name" texture.ktx2 texture.png
+----
+
+=== Tools for Working with KTX2 Files
+
+Several tools are available for working with KTX2 files:
+
+==== Command-line Tools
+
+* **KTX-Software Suite**:
+  * `toktx`: Create KTX2 files
+  * `ktx2ktx2`: Convert between KTX versions
+  * `ktxinfo`: Display information about KTX files
+  * `ktxsc`: Apply supercompression to KTX2 files
+  * `ktxunpack`: Unpack a KTX file to individual images
+
+==== Libraries and SDKs
+
+* **KTX-Software Library**: C/C++ library for reading, writing, and processing KTX files
+* **libktx**: The core library used by KTX-Software
+* **Basis Universal**: Compression technology used in KTX2
+* **Vulkan SDK**: Includes KTX tools and libraries
+* **glTF-Transform**: JavaScript library that can process KTX2 textures in glTF files
+
+==== Viewers and Debuggers
+
+* **KTX Load Test**: Part of KTX-Software, for viewing KTX files
+* **RenderDoc**: Graphics debugger that can inspect KTX2 textures
+* **Khronos Texture Tools**: Includes viewers for KTX files
+* **glTF Viewer**: Many glTF viewers support KTX2 textures
+
+==== Integration with Game Engines
+
+* **Unity**: Supports KTX2 through plugins
+* **Unreal Engine**: Supports KTX2 through plugins
+* **Godot**: Has KTX2 support in development
+* **Three.js**: Supports KTX2 textures
+* **Babylon.js**: Supports KTX2 textures
+
 === Converting Images to KTX2
 
 To convert existing image files to KTX2, you can use:

@@ -1,5 +1,17 @@
 name: CMake CI
 
+# Optimized workflow for faster builds
+# Optimizations include:
+# 1. Improved caching strategy with more specific cache keys
+# 2. Optimized ccache/sccache configuration for better performance
+# 3. Minimal Vulkan SDK installation (only necessary components)
+# 4. Parallel builds for all platforms
+# 5. Dynamic chapter detection from CMakeLists.txt for future extensibility
+# 6. Eliminated unnecessary clean steps between builds
+# 7. Optimized build configuration for better performance
+# 8. Linux: Using ccache with clang for faster builds
+# 9. Windows: Using MSVC for better performance and compatibility
+
 on:
   push:
     branches: [ main ]
@@ -187,7 +199,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ccache
+          sudo apt-get install -y ccache clang clang-18
 
           # Configure ccache for optimal performance
           ccache --max-size=4G
@@ -274,35 +286,25 @@ jobs:
         with:
           path: |
             ${{github.workspace}}/attachments/build
-            ${{github.workspace}}/attachments/build/.ninja_deps
-            ${{github.workspace}}/attachments/build/.ninja_log
-          key: ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.hpp') }}
+          key: ${{ runner.os }}-build-msvc-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.hpp') }}
           restore-keys: |
-            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-
-            ${{ runner.os }}-build-ninja-${{ hashFiles('**/CMakeLists.txt') }}-
-            ${{ runner.os }}-build-ninja-
+            ${{ runner.os }}-build-msvc-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-
+            ${{ runner.os }}-build-msvc-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-build-msvc-
 
-      - name: Install Ninja (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          # Install Ninja build system for faster builds
-          choco install ninja -y
-          # Verify installation
-          ninja --version
-
-      - name: Configure CMake with Ninja (Windows)
+      - name: Configure CMake with MSVC (Windows)
         working-directory: ${{github.workspace}}/attachments
         if: runner.os == 'Windows'
         run: |
-          # Configure CMake with Ninja generator for faster builds
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+          # Configure CMake with MSVC generator for faster builds
+          cmake -B build -DCMAKE_BUILD_TYPE=Release `
             -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
             -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
             -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
-            -DCMAKE_CXX_FLAGS="/MP /EHsc /Zi /W3" `
+            -DCMAKE_CXX_FLAGS="/MP /EHsc /Zi /W3 /O2" `
             -DCMAKE_SHARED_LINKER_FLAGS="/DEBUG:FASTLINK" `
             -DCMAKE_EXE_LINKER_FLAGS="/DEBUG:FASTLINK"
 
@@ -526,6 +528,11 @@ jobs:
           echo "org.gradle.parallel=true" >> gradle.properties
           echo "org.gradle.caching=true" >> gradle.properties
           echo "org.gradle.configureondemand=true" >> gradle.properties
+
+          # Enable AndroidX support (required for androidx.appcompat and other AndroidX dependencies)
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=false" >> gradle.properties
+
           echo "kotlin.incremental=true" >> gradle.properties
 
           # Create directory for build outputs

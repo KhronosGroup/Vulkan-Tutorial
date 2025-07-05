@@ -18,6 +18,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments "-DCHAPTER=${project.findProperty('chapter') ?: '34_android'}"
+                abiFilters project.findProperty('abiFilters')?.split(',') ?: ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64']
             }
         }
     }

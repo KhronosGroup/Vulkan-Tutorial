@@ -60,8 +60,16 @@ jobs:
           - os: windows-latest
             ccache: sccache
             vulkan-install: |
-              Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "$env:TEMP\vulkan-sdk.exe"
-              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
+              if (Test-Path "C:\VulkanSDK") {
+                Write-Host "Using cached Vulkan SDK"
+              } else {
+                Write-Host "Downloading Vulkan SDK..."
+                choco install -y aria2
+                aria2c --split=16 --max-connection-per-server=16 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+
+                Write-Host "Installing minimal Vulkan SDK components..."
+                Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
+              }
 
               $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
               if (-not $vulkanPath) {
@@ -75,16 +83,6 @@ jobs:
               echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
               Write-Host "Vulkan SDK path: $vulkanPath"
-              if (Test-Path "$vulkanPath\Lib") {
-                Write-Host "Lib directory exists"
-              } else {
-                Write-Host "Lib directory does not exist"
-              }
-              if (Test-Path "$vulkanPath\Include") {
-                Write-Host "Include directory exists"
-              } else {
-                Write-Host "Include directory does not exist"
-              }
             deps-install: |
               .\scripts\install_dependencies_windows.bat
               echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
@@ -124,9 +122,9 @@ jobs:
             ${{ env.VCPKG_INSTALLATION_ROOT }}/packages
             ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees
             ${{ env.VCPKG_INSTALLATION_ROOT }}/downloads
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat', '**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
+            ${{ runner.temp }}/vcpkg-cache
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat', '**/CMakeLists.txt') }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat', '**/CMakeLists.txt') }}-
             ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat') }}-
             ${{ runner.os }}-vcpkg-
 
@@ -180,19 +178,37 @@ jobs:
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
 
+      - name: Cache sccache binary (Windows)
+        if: runner.os == 'Windows'
+        id: cache-sccache
+        uses: actions/cache@v3
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: ${{ runner.os }}-sccache-0.5.4
+
       - name: Install sccache (Windows)
         if: runner.os == 'Windows'
         run: |
-          Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz" -OutFile "sccache.tar.gz"
-          tar -xzf sccache.tar.gz
-          $sccachePath = Join-Path -Path (Get-Location) -ChildPath "sccache-v0.5.4-x86_64-pc-windows-msvc"
+          if (Test-Path "$env:RUNNER_TEMP\sccache\sccache.exe") {
+            Write-Host "Using cached sccache binary"
+            $sccachePath = "$env:RUNNER_TEMP\sccache"
+          } else {
+            Write-Host "Downloading and installing sccache..."
+            New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\sccache"
+            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:RUNNER_TEMP" --out="sccache.tar.gz" "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz"
+            tar -xzf "$env:RUNNER_TEMP\sccache.tar.gz" --strip-components=1 -C "$env:RUNNER_TEMP\sccache" "sccache-v0.5.4-x86_64-pc-windows-msvc/sccache.exe"
+            $sccachePath = "$env:RUNNER_TEMP\sccache"
+          }
+
           echo "$sccachePath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "SCCACHE_DIR=$HOME/.cache/sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SCCACHE_ERROR_LOG=$HOME/.cache/sccache/sccache.log" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SCCACHE_LOG=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          New-Item -ItemType Directory -Force -Path "$HOME/.cache/sccache"
           echo "RUST_LOG=sccache=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          New-Item -ItemType Directory -Force -Path "$HOME/.cache/sccache"
+          & "$sccachePath\sccache.exe" --version
 
       - name: Install dependencies
         run: ${{ matrix.deps-install }}

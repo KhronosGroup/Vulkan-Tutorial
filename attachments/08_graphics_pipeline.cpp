@@ -313,7 +313,12 @@ private:
     }
 
     static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        return ( availableFormats[0].format == vk::Format::eUndefined ) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
+        const auto formatIt = std::ranges::find_if(availableFormats,
+            [](const auto& format) {
+                return format.format == vk::Format::eB8G8R8A8Srgb &&
+                       format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+            });
+        return formatIt != availableFormats.end() ? formatIt->format : availableFormats[0].format;
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {

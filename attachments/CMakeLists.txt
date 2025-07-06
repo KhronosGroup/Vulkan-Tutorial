@@ -271,3 +271,7 @@ add_chapter (36_multiple_objects
   MODELS viking_room.glb
   TEXTURES viking_room.ktx2
   LIBS glm::glm tinygltf::tinygltf KTX::ktx)
+
+add_chapter (37_multithreading
+  SHADER 37_shader_compute
+  LIBS glm::glm)

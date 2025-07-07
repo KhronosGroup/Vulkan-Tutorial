@@ -72,7 +72,7 @@ your auto-start for your terminal and IDE setup such that those environment
 variables work everywhere.
 
 If you receive an error message, then ensure that your drivers are up to date,
-include the Vulkan runtime and that your graphics card is supported. See the 
+include the Vulkan runtime and that your graphics card is supported. See the
 xref:00_Introduction.adoc[introduction chapter] for links to drivers from the major
 vendors.
 
@@ -129,8 +129,9 @@ find_package (Vulkan REQUIRED)
 add_library(VulkanCppModule)
 add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
-target_compile_definitions(VulkanCppModule
-        PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+ttarget_compile_definitions(VulkanCppModule PUBLIC
+        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 )
 target_include_directories(VulkanCppModule
         PRIVATE

@@ -355,4 +355,7 @@ In that case, you avoid rebinding most of the descriptors across draw calls whic
 
 In the xref:06_Texture_mapping/00_Images.adoc[next chapters] we'll build upon what we just learned and add textures to our scene.
 
-link:/attachments/23_descriptor_sets.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]
+link:/attachments/23_descriptor_sets.cpp[C{pp} code]  /
+link:/attachments/22_shader_ubo.slang[slang shader] /
+link:/attachments/22_shader_ubo.vert[GLSL Vertex shader] /
+link:/attachments/22_shader_ubo.frag[GLSL Fragment shader]

@@ -440,4 +440,6 @@ This is how higher mip levels will be used when objects are further away from th
 The xref:10_Multisampling.adoc[next chapter] will walk us through multisampling to produce a smoother image.
 
 link:/attachments/29_mipmapping.cpp[C{pp} code] /
-link:/attachments/27_shader_depth.slang[Slang shader]
+link:/attachments/27_shader_depth.slang[slang shader] /
+link:/attachments/27_shader_depth.vert[GLSL Vertex shader] /
+link:/attachments/27_shader_depth.frag[GLSL Fragment shader]

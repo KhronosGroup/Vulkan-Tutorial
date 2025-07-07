@@ -281,10 +281,10 @@ Create a `compile.bat` file with the following contents:
 
 [,bash]
 ----
-C:/VulkanSDK/x.x.x.x/bin/slang.exe shader.slang -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -entry vertMain -entry fragMain -o slang.spv
+C:/VulkanSDK/x.x.x.x/bin/slangc.exe shader.slang -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -entry vertMain -entry fragMain -o slang.spv
 ----
 
-Replace the path to `slang.exe` with the path to where you installed
+Replace the path to `slangc.exe` with the path to where you installed
 the Vulkan SDK. Double-click the file to run it.
 
 *Linux*
@@ -530,4 +530,7 @@ vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragSha
 That's all there is describing the programmable stages of the pipeline.
 In the xref:./02_Fixed_functions.adoc[next chapter,] we'll look at the fixed-function stages.
 
-link:/attachments/09_shader_modules.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]
+link:/attachments/09_shader_modules.cpp[C{pp} code] /
+link:/attachments/09_shader_base.slang[Slang shader] /
+link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
+link:/attachments/09_shader_base.frag[GLSL Fragment shader]

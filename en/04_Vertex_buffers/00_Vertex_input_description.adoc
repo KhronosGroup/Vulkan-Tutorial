@@ -181,4 +181,7 @@ The pipeline is now ready to accept vertex data in the format of the `vertices` 
 If you run the program now with validation layers enabled, you'll see that it complains that there is no vertex buffer bound to the binding.
 The xref:./01_Vertex_buffer_creation.adoc[next step] is to create a vertex buffer and move the vertex data to it so the GPU is able to access it.
 
-link:/attachments/18_vertex_input.cpp[C{pp} code] / link:/attachments/18_shader_vertexbuffer.vert[Vertex shader] / link:/attachments/18_shader_vertexbuffer.frag[Fragment shader]
+link:/attachments/18_vertex_input.cpp[C{pp} code] /
+link:/attachments/18_shader_vertexbuffer.slang[slang shader] /
+link:/attachments/18_shader_vertexbuffer.vert[GLSL Vertex shader] /
+link:/attachments/18_shader_vertexbuffer.frag[GLSL Fragment shader]

@@ -146,4 +146,7 @@ To learn more about synchronization through examples, have a look at https://git
 In the xref:../03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[next
 chapter] we'll deal with one more small thing required for a well-behaved Vulkan program.
 
-link:/attachments/16_frames_in_flight.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]
+link:/attachments/16_frames_in_flight.cpp[C{pp} code] /
+link:/attachments/09_shader_base.slang[Slang shader] /
+link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
+link:/attachments/09_shader_base.frag[GLSL Fragment shader]

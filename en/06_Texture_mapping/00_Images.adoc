@@ -500,4 +500,7 @@ It's best to do this after the texture mapping works to check if the texture res
 The image now contains the texture, but we still need a way to access it from the graphics pipeline.
 We'll work on that in the xref:./01_Image_view_and_sampler.adoc[next chapter].
 
-link:/attachments/24_texture_image.cpp[C{pp} code] / link:/attachments/22_shader_ubo.slang[Slang shader]
+link:/attachments/24_texture_image.cpp[C{pp} code] /
+link:/attachments/22_shader_ubo.slang[slang shader] /
+link:/attachments/22_shader_ubo.vert[GLSL Vertex shader] /
+link:/attachments/22_shader_ubo.frag[GLSL Frag shader]

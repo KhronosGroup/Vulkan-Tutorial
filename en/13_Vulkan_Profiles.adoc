@@ -1,0 +1,321 @@
+:pp: {plus}{plus}
+
+= Vulkan Profiles: Simplifying Feature Detection
+
+== Introduction
+
+In this chapter, we'll explore Vulkan profiles, a powerful feature that builds upon the ecosystem utilities we discussed in the previous chapter. Vulkan profiles provide a standardized way to:
+
+1. Define a set of features, extensions, and limits that your application requires
+2. Automatically check for compatibility with the user's hardware
+3. Eliminate the need for manual feature detection and fallback paths
+4. Significantly reduce boilerplate code
+
+Vulkan profiles are particularly valuable for developers who want to ensure their applications work consistently across a wide range of hardware without the complexity of manually checking for feature support.
+
+== Understanding Vulkan Profiles
+
+=== What Are Vulkan Profiles?
+
+Vulkan profiles are predefined collections of features, extensions, limits, and formats that represent a specific target environment or set of best practices. They provide a higher-level abstraction over the low-level Vulkan API, making it easier to:
+
+* Target specific hardware capabilities
+* Ensure compatibility across different GPUs
+* Implement best practices consistently
+* Reduce boilerplate code for feature detection
+
+Instead of manually checking for each feature and extension and implementing fallback paths, you can simply specify a profile that your application requires. The Vulkan profiles library will handle the compatibility checks and provide appropriate error messages if the user's hardware doesn't meet the requirements.
+
+=== Types of Vulkan Profiles
+
+Several types of profiles are available:
+
+1. *API Profiles*: Represent specific Vulkan API versions (e.g., Vulkan 1.1, 1.2, 1.3)
+2. *Vendor Profiles*: Target specific hardware vendors (e.g., NVIDIA, AMD, Intel)
+3. *Platform Profiles*: Target specific platforms (e.g., Windows, Linux, Android)
+4. *Best Practices Profile*: Implements recommended practices for Vulkan development
+
+In this chapter, we'll use the Best Practices profile as an example,
+additionally, we will demonstrate how profiles can simplify your code by
+eliminating the need for manual feature detection.
+
+== How Profiles Simplify Your Code
+
+=== Eliminating Manual Feature Detection
+
+Up until now, we had to manually check for feature support and implement
+fallback paths:
+
+1. Check if the device supports Vulkan 1.3
+2. If not, check if it supports the dynamic rendering extension
+3. If neither is supported, fall back to traditional render passes
+4. Repeat this process for every feature (timeline semaphores, synchronization2, etc.)
+5. Maintain separate code paths for each feature
+
+This approach leads to complex, hard-to-maintain code with multiple conditional branches.
+
+With profiles, this entire process is simplified to:
+
+1. Check if the profile is supported
+2. If supported, use all features guaranteed by the profile
+3. If not, optionally fall back to a more basic approach
+
+=== Benefits of Using Profiles
+
+Using profiles offers several advantages:
+
+1. *Drastically reduced code complexity*: No need for multiple feature checks and conditional branches
+2. *Improved maintainability*: Fewer code paths to test and debug
+3. *Future-proofing*: As new Vulkan versions are released, profiles can be updated without changing your code
+4. *Clearer requirements*: Profiles provide a clear specification of what your application needs
+5. *Simplified error handling*: One check instead of many
+
+== Implementing Profiles in Your Application
+
+Let's see how to implement profiles in your Vulkan application. We'll use the Best Practices profile as an example to demonstrate how profiles can replace the manual feature detection we had to do in the previous chapter.
+
+=== Adding the Vulkan Profiles Library
+
+First, you need to include the Vulkan profiles header:
+
+[,c++]
+----
+#include <vulkan/vulkan_profiles.hpp>
+----
+
+This header provides the necessary functions and structures to work with Vulkan profiles.
+
+The Vulkan Profiles header is NOT part of the standard Vulkan headers.
+It is only available if you use the Vulkan SDK. Make sure you have the Vulkan SDK installed and properly configured in your development environment.
+
+=== Defining the Profile Requirements
+
+Instead of manually checking for features and extensions, you can define your profile requirements:
+
+[,c++]
+----
+// Define the Best Practices profile
+const VpProfileProperties bestPracticesProfile = {
+    VP_BEST_PRACTICES_PROFILE_NAME,
+    VP_BEST_PRACTICES_PROFILE_SPEC_VERSION
+};
+
+// Check if the profile is supported
+VkBool32 supported = false;
+vpGetPhysicalDeviceProfileSupport(instance, physicalDevice, &bestPracticesProfile, &supported);
+
+if (!supported) {
+    throw std::runtime_error("Best Practices profile is not supported on this device");
+}
+----
+
+=== Creating a Device with the Profile
+
+When creating a logical device, you can use the profile to automatically enable the required features and extensions:
+
+[,c++]
+----
+// Create device with Best Practices profile
+VkDeviceCreateInfo deviceCreateInfo = {};
+deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+// Set up queue create infos
+// ...
+
+// Apply the Best Practices profile to the device creation
+vpCreateDevice(physicalDevice, &deviceCreateInfo, &bestPracticesProfile, nullptr, &device);
+----
+
+This automatically enables all the features and extensions required by the Best Practices profile, without having to manually specify them.
+
+=== Using Profile-Specific Features
+
+The Best Practices profile may enable specific features that you can use in your application:
+
+[,c++]
+----
+// The profile guarantees these features are available
+// No need to check for support or provide fallback paths
+
+// Example: Using dynamic rendering (guaranteed by the profile)
+vk::RenderingAttachmentInfo colorAttachment{
+    .imageView = swapChainImageViews[imageIndex],
+    .imageLayout = vk::ImageLayout::eAttachmentOptimal,
+    .loadOp = vk::AttachmentLoadOp::eClear,
+    .storeOp = vk::AttachmentStoreOp::eStore,
+    .clearValue = clearColor
+};
+
+vk::RenderingInfo renderingInfo{
+    .renderArea = {{0, 0}, swapChainExtent},
+    .layerCount = 1,
+    .colorAttachmentCount = 1,
+    .pColorAttachments = &colorAttachment
+};
+
+commandBuffer.beginRendering(renderingInfo);
+// ... draw commands ...
+commandBuffer.endRendering();
+----
+
+=== Error Handling with Profiles
+
+When using profiles, error handling becomes more straightforward:
+
+[,c++]
+----
+try {
+    // Try to create a device with the Best Practices profile
+    vpCreateDevice(physicalDevice, &deviceCreateInfo, &bestPracticesProfile, nullptr, &device);
+} catch (const std::exception& e) {
+    // Profile is not supported, provide user-friendly error message
+    std::cerr << "Your GPU does not support the required Vulkan features for optimal performance." << std::endl;
+    std::cerr << "Error: " << e.what() << std::endl;
+
+    // Optionally, try with a more basic profile or exit gracefully
+    // ...
+}
+----
+
+== Comparing Manual Feature Detection vs. Profiles
+
+Let's compare the two approaches to understand just how much code and complexity profiles can eliminate:
+
+=== Manual Feature Detection (Previous Chapter)
+
+In the previous chapter, we had to write code like this for *each feature* we wanted to use:
+
+[,c++]
+----
+// Check if dynamic rendering is supported
+bool dynamicRenderingSupported = false;
+
+// Check for Vulkan 1.3 support
+if (deviceProperties.apiVersion >= VK_VERSION_1_3) {
+    dynamicRenderingSupported = true;
+} else {
+    // Check for the extension on older Vulkan versions
+    for (const auto& extension : availableExtensions) {
+        if (strcmp(extension.extensionName, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) == 0) {
+            dynamicRenderingSupported = true;
+            break;
+        }
+    }
+}
+
+// Store this information for later use
+appInfo.dynamicRenderingSupported = dynamicRenderingSupported;
+----
+
+And then we had to create conditional code paths throughout our application:
+
+[,c++]
+----
+// When creating the pipeline
+if (appInfo.dynamicRenderingSupported) {
+    // Use dynamic rendering
+    vk::PipelineRenderingCreateInfo renderingInfo{
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapChainImageFormat
+    };
+    pipelineInfo.pNext = &renderingInfo;
+    pipelineInfo.renderPass = nullptr;
+} else {
+    // Use traditional render pass
+    pipelineInfo.pNext = nullptr;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+}
+
+// When recording command buffers
+if (appInfo.dynamicRenderingSupported) {
+    // Begin dynamic rendering
+    vk::RenderingAttachmentInfo colorAttachment{/*...*/};
+    vk::RenderingInfo renderingInfo{/*...*/};
+    commandBuffer.beginRendering(renderingInfo);
+} else {
+    // Begin traditional render pass
+    vk::RenderPassBeginInfo renderPassInfo{/*...*/};
+    commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+}
+
+// And again at the end of the command buffer
+if (appInfo.dynamicRenderingSupported) {
+    commandBuffer.endRendering();
+} else {
+    commandBuffer.endRenderPass();
+}
+----
+
+We had to repeat this pattern for *every feature* we wanted to use conditionally (timeline semaphores, synchronization2, etc.), resulting in complex, branching code that's challenging to maintain.
+
+=== Using Profiles (This Chapter)
+
+With profiles, all of that complexity is reduced to:
+
+[,c++]
+----
+// Define the profile
+const VpProfileProperties bestPracticesProfile = {
+    VP_BEST_PRACTICES_PROFILE_NAME,
+    VP_BEST_PRACTICES_PROFILE_SPEC_VERSION
+};
+
+// Check if the profile is supported
+VkBool32 supported = false;
+vpGetPhysicalDeviceProfileSupport(instance, physicalDevice, &bestPracticesProfile, &supported);
+
+if (supported) {
+    // Create device with the profile - all features enabled automatically
+    vpCreateDevice(physicalDevice, &deviceCreateInfo, &bestPracticesProfile, nullptr, &device);
+
+    // Now we can use any feature guaranteed by the profile without checks
+    // For example, dynamic rendering is always available:
+    vk::RenderingAttachmentInfo colorAttachment{/*...*/};
+    vk::RenderingInfo renderingInfo{/*...*/};
+    commandBuffer.beginRendering(renderingInfo);
+    // ... draw commands ...
+    commandBuffer.endRendering();
+}
+----
+
+The profile approach eliminates:
+
+1. Multiple feature detection checks
+2. Conditional code paths throughout your application
+3. The need to track feature support in your application state
+4. The complexity of maintaining and testing multiple code paths
+
+This results in code that is:
+
+1. Significantly shorter
+2. Easier to read and understand
+3. Less prone to errors
+4. Easier to maintain and update
+
+== Best Practices for Using Profiles
+
+When using Vulkan profiles, consider these best practices:
+
+1. *Choose the right profile*: Select a profile that matches your application's requirements without being overly restrictive.
+
+2. *Provide fallback options*: If the Best Practices profile isn't supported, consider falling back to a more basic profile.
+
+3. *Communicate requirements clearly*: Inform users about the hardware requirements based on the profiles you support.
+
+4. *Test on various hardware*: Even with profiles, it's important to test your application on different GPUs.
+
+5. *Stay updated*: Profiles evolve with new Vulkan versions, so keep your implementation up to date.
+
+== Conclusion
+
+Vulkan profiles provide a powerful way to simplify your Vulkan code by eliminating the need for manual feature detection and conditional code paths. As we've seen in this chapter, profiles can dramatically reduce the amount of code you need to write and maintain, making your application:
+
+1. More concise and readable
+2. Easier to maintain and update
+3. Less prone to errors
+4. More consistent across different hardware
+
+The example we've explored in this chapter demonstrates how profiles can replace the complex feature detection and fallback paths we had to implement in the previous chapter. By using profiles, you can focus more on your application's core functionality and less on the intricacies of hardware compatibility.
+
+link:/attachments/33_vulkan_profiles.cpp[C{pp} code]

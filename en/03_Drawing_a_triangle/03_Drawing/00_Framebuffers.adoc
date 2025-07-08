@@ -82,4 +82,7 @@ With this approach, we don't need to create framebuffers or render passes, which
 
 In the xref:./01_Command_buffers.adoc[next chapter,] we'll create command buffers and write the first actual drawing commands using dynamic rendering.
 
-link:/attachments/14_command_buffers.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]
+link:/attachments/14_command_buffers.cpp[C{pp} code] /
+link:/attachments/09_shader_base.slang[Slang shader] /
+link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
+link:/attachments/09_shader_base.frag[GLSL Fragment shader]

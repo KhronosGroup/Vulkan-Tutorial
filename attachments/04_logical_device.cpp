@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -175,7 +176,7 @@ private:
 
             auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+                                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
           } );
@@ -196,25 +197,27 @@ private:
         // get the first index into queueFamilyProperties which supports graphics
         auto graphicsQueueFamilyProperty = std::ranges::find_if( queueFamilyProperties, []( auto const & qfp )
                         { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); } );
+        assert(graphicsQueueFamilyProperty != queueFamilyProperties.end() && "No graphics queue family found!");
 
         auto graphicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
 
         // query for Vulkan 1.3 features
-        auto features = physicalDevice.getFeatures2();
-        vk::PhysicalDeviceVulkan13Features vulkan13Features;
-        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
-        vulkan13Features.dynamicRendering = vk::True;
-        extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-        vulkan13Features.pNext = &extendedDynamicStateFeatures;
-        features.pNext = &vulkan13Features;
+        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+            {},                               // vk::PhysicalDeviceFeatures2
+            {.dynamicRendering = true },      // vk::PhysicalDeviceVulkan13Features
+            {.extendedDynamicState = true }   // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        };
+
         // create a Device
         float                     queuePriority = 0.0f;
-        vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
-        deviceCreateInfo.enabledExtensionCount = requiredDeviceExtension.size();
-        deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
+        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+                                                    .queueCreateInfoCount = 1,
+                                                    .pQueueCreateInfos = &deviceQueueCreateInfo,
+                                                    .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
+                                                    .ppEnabledExtensionNames = requiredDeviceExtension.data() };
 
-        device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+        device = vk::raii::Device(physicalDevice, deviceCreateInfo);
         graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
     }
 

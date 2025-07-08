@@ -186,6 +186,7 @@ private:
         setupDebugMessenger();
         createSurface();
         pickPhysicalDevice();
+        msaaSamples = getMaxUsableSampleCount();
         createLogicalDevice();
         createSwapChain();
         createImageViews();
@@ -339,8 +340,9 @@ private:
                         } );
 
             auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
+                                            features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
         });
@@ -403,24 +405,20 @@ private:
         }
 
         // query for Vulkan 1.3 features
-        auto features = physicalDevice.getFeatures2();
-        vk::PhysicalDeviceVulkan13Features vulkan13Features;
-        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
-        vulkan13Features.dynamicRendering = vk::True;
-        vulkan13Features.synchronization2 = vk::True;
-        extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-        vulkan13Features.pNext = &extendedDynamicStateFeatures;
-        features.pNext = &vulkan13Features;
+        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+            {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
+            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
+            {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        };
+
         // create a Device
         float                     queuePriority = 0.0f;
         vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-        vk::DeviceCreateInfo      deviceCreateInfo{
-            .pNext =  &features,
-            .queueCreateInfoCount = 1,
-            .pQueueCreateInfos = &deviceQueueCreateInfo,
-            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
-            .ppEnabledExtensionNames = requiredDeviceExtension.data()
-         };
+        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+                                                    .queueCreateInfoCount = 1,
+                                                    .pQueueCreateInfos = &deviceQueueCreateInfo,
+                                                    .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
+                                                    .ppEnabledExtensionNames = requiredDeviceExtension.data() };
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );
         graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
@@ -533,7 +531,12 @@ private:
 
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
+        vk::Format depthFormat = findDepthFormat();
+        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &swapChainImageFormat,
+            .depthAttachmentFormat = depthFormat
+        };
         vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
             .stageCount = 2,
             .pStages = shaderStages,
@@ -1024,7 +1027,8 @@ private:
 
     void recordCommandBuffer(uint32_t imageIndex) {
         commandBuffers[currentFrame].begin({});
-        // Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+        // Before starting rendering, transition the images to the appropriate layouts
+        // Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
         transition_image_layout(
             imageIndex,
             vk::ImageLayout::eUndefined,
@@ -1034,19 +1038,60 @@ private:
             vk::PipelineStageFlagBits2::eTopOfPipe,                   // srcStage
             vk::PipelineStageFlagBits2::eColorAttachmentOutput        // dstStage
         );
+
+        // Transition the multisampled color image to COLOR_ATTACHMENT_OPTIMAL
+        transition_image_layout_custom(
+            colorImage,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            {},
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::ImageAspectFlagBits::eColor
+        );
+
+        // Transition the depth image to DEPTH_ATTACHMENT_OPTIMAL
+        transition_image_layout_custom(
+            depthImage,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eDepthAttachmentOptimal,
+            {},
+            vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests,
+            vk::ImageAspectFlagBits::eDepth
+        );
         vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
-        vk::RenderingAttachmentInfo attachmentInfo = {
-            .imageView = swapChainImageViews[imageIndex],
+        vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
+
+        // Color attachment (multisampled) with resolve attachment
+        vk::RenderingAttachmentInfo colorAttachment = {
+            .imageView = colorImageView,
             .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+            .resolveMode = vk::ResolveModeFlagBits::eAverage,
+            .resolveImageView = swapChainImageViews[imageIndex],
+            .resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
             .clearValue = clearColor
         };
+
+        // Depth attachment
+        vk::RenderingAttachmentInfo depthAttachment = {
+            .imageView = depthImageView,
+            .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eDontCare,
+            .clearValue = clearDepth
+        };
+
         vk::RenderingInfo renderingInfo = {
             .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
             .layerCount = 1,
             .colorAttachmentCount = 1,
-            .pColorAttachments = &attachmentInfo
+            .pColorAttachments = &colorAttachment,
+            .pDepthAttachment = &depthAttachment
         };
         commandBuffers[currentFrame].beginRendering(renderingInfo);
         commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
@@ -1057,7 +1102,9 @@ private:
         commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
         commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
         commandBuffers[currentFrame].endRendering();
-        // After rendering, transition the swapchain image to PRESENT_SRC
+        // After rendering, transition the images to appropriate layouts
+
+        // Transition the swapchain image to PRESENT_SRC
         transition_image_layout(
             imageIndex,
             vk::ImageLayout::eColorAttachmentOptimal,
@@ -1091,6 +1138,42 @@ private:
             .image = swapChainImages[imageIndex],
             .subresourceRange = {
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        vk::DependencyInfo dependency_info = {
+            .dependencyFlags = {},
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &barrier
+        };
+        commandBuffers[currentFrame].pipelineBarrier2(dependency_info);
+    }
+
+    void transition_image_layout_custom(
+        vk::raii::Image& image,
+        vk::ImageLayout old_layout,
+        vk::ImageLayout new_layout,
+        vk::AccessFlags2 src_access_mask,
+        vk::AccessFlags2 dst_access_mask,
+        vk::PipelineStageFlags2 src_stage_mask,
+        vk::PipelineStageFlags2 dst_stage_mask,
+        vk::ImageAspectFlags aspect_mask
+        ) {
+        vk::ImageMemoryBarrier2 barrier = {
+            .srcStageMask = src_stage_mask,
+            .srcAccessMask = src_access_mask,
+            .dstStageMask = dst_stage_mask,
+            .dstAccessMask = dst_access_mask,
+            .oldLayout = old_layout,
+            .newLayout = new_layout,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = image,
+            .subresourceRange = {
+                .aspectMask = aspect_mask,
                 .baseMipLevel = 0,
                 .levelCount = 1,
                 .baseArrayLayer = 0,
@@ -1182,7 +1265,12 @@ private:
     }
 
     static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        return (availableFormats[0].format == vk::Format::eUndefined) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
+        const auto formatIt = std::ranges::find_if(availableFormats,
+        [](const auto& format) {
+            return format.format == vk::Format::eB8G8R8A8Srgb &&
+                   format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+        });
+        return formatIt != availableFormats.end() ? formatIt->format : availableFormats[0].format;
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {

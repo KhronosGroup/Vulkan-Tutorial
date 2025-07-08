@@ -309,9 +309,14 @@ private:
                                                                  { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                         } );
 
-            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2,
+                                                         vk::PhysicalDeviceVulkan13Features,
+                                                         vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+                                                         vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR>();
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
+                                            features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
+                                            features.template get<vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR>().timelineSemaphore;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
         });
@@ -374,28 +379,25 @@ private:
         }
 
         // query for Vulkan 1.3 features
-        auto features = physicalDevice.getFeatures2();
-        features.features.samplerAnisotropy = vk::True;
-        vk::PhysicalDeviceVulkan13Features vulkan13Features;
-        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
-        vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures;
-        timelineSemaphoreFeatures.timelineSemaphore = vk::True;
-        vulkan13Features.dynamicRendering = vk::True;
-        vulkan13Features.synchronization2 = vk::True;
-        extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-        extendedDynamicStateFeatures.pNext = &timelineSemaphoreFeatures;
-        vulkan13Features.pNext = &extendedDynamicStateFeatures;
-        features.pNext = &vulkan13Features;
+        vk::StructureChain<vk::PhysicalDeviceFeatures2,
+                           vk::PhysicalDeviceVulkan13Features,
+                           vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+                           vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR>
+          featureChain = {
+            {.features = {.samplerAnisotropy = true } },           // vk::PhysicalDeviceFeatures2
+            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
+            {.extendedDynamicState = true },                        // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+            {.timelineSemaphore = true }                            // vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR
+        };
+
         // create a Device
         float                     queuePriority = 0.0f;
         vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsAndComputeIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-        vk::DeviceCreateInfo      deviceCreateInfo{
-            .pNext =  &features,
-            .queueCreateInfoCount = 1,
-            .pQueueCreateInfos = &deviceQueueCreateInfo,
-            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
-            .ppEnabledExtensionNames = requiredDeviceExtension.data()
-         };
+        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+                                                    .queueCreateInfoCount = 1,
+                                                    .pQueueCreateInfos = &deviceQueueCreateInfo,
+                                                    .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
+                                                    .ppEnabledExtensionNames = requiredDeviceExtension.data() };
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );
         graphicsQueue = vk::raii::Queue( device, graphicsAndComputeIndex, 0 );

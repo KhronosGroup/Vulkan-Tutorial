@@ -10,6 +10,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
+find_package (tinyobjloader REQUIRED)
+find_package (TinyGLTF REQUIRED)
+find_package (KTX REQUIRED)
 
 # set up Vulkan C++ module
 if(NOT USE_DIRECT_MODULE_IMPORT)
@@ -39,6 +42,7 @@ target_sources(VulkanCppModule
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
+
 # Add the vulkan.cppm file directly as a source file
 target_sources(VulkanCppModule
         PRIVATE
@@ -46,17 +50,8 @@ target_sources(VulkanCppModule
 )
 endif()
 
-find_package (tinyobjloader REQUIRED)
-
-find_package (PkgConfig)
-pkg_get_variable (STB_INCLUDEDIR stb includedir)
-if (NOT STB_INCLUDEDIR)
-  unset (STB_INCLUDEDIR)
-  find_path (STB_INCLUDEDIR stb_image.h PATH_SUFFIXES stb)
-endif ()
-if (NOT STB_INCLUDEDIR)
-  message (FATAL_ERROR "stb_image.h not found")
-endif ()
+find_package(stb REQUIRED)
+set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 add_executable (glslang::validator IMPORTED)
 find_program (GLSLANG_VALIDATOR "glslangValidator" HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
@@ -138,10 +133,10 @@ function (add_chapter CHAPTER_NAME)
     target_link_libraries (${CHAPTER_NAME} ${CHAPTER_LIBS})
   endif ()
   if (DEFINED CHAPTER_MODELS)
-    file (COPY ${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
+    file (COPY assets/${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
   endif ()
   if (DEFINED CHAPTER_TEXTURES)
-    file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
+    file (COPY assets/${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
   endif ()
 endfunction ()
 
@@ -210,22 +205,22 @@ add_chapter (23_descriptor_sets
 
 add_chapter (24_texture_image
   SHADER 22_shader_ubo
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (25_sampler
   SHADER 22_shader_ubo
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (26_texture_mapping
   SHADER 26_shader_textures
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (27_depth_buffering
   SHADER 27_shader_depth
-  TEXTURES ../images/texture.jpg
+  TEXTURES ../../images/texture.jpg
   LIBS glm::glm)
 
 add_chapter (28_model_loading
@@ -248,4 +243,38 @@ add_chapter (30_multisampling
 
 add_chapter (31_compute_shader
   SHADER 31_shader_compute
+  LIBS glm::glm)
+
+add_chapter (32_ecosystem_utilities
+  SHADER 27_shader_depth
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
+  LIBS glm::glm tinyobjloader::tinyobjloader)
+
+add_chapter (33_vulkan_profiles
+  SHADER 27_shader_depth
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
+  LIBS glm::glm tinyobjloader::tinyobjloader)
+
+add_chapter (34_android
+  SHADER 27_shader_depth
+  MODELS viking_room.obj
+  TEXTURES viking_room.png
+  LIBS glm::glm tinyobjloader::tinyobjloader)
+
+add_chapter (35_gltf_ktx
+  SHADER 27_shader_depth
+  MODELS viking_room.glb
+  TEXTURES viking_room.ktx2
+  LIBS glm::glm tinygltf::tinygltf KTX::ktx)
+
+add_chapter (36_multiple_objects
+  SHADER 27_shader_depth
+  MODELS viking_room.glb
+  TEXTURES viking_room.ktx2
+  LIBS glm::glm tinygltf::tinygltf KTX::ktx)
+
+add_chapter (37_multithreading
+  SHADER 37_shader_compute
   LIBS glm::glm)

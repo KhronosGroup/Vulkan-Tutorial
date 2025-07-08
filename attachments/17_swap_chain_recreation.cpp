@@ -244,7 +244,7 @@ private:
 
             auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+                                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
           } );
@@ -307,24 +307,20 @@ private:
         }
 
         // query for Vulkan 1.3 features
-        auto features = physicalDevice.getFeatures2();
-        vk::PhysicalDeviceVulkan13Features vulkan13Features;
-        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
-        vulkan13Features.dynamicRendering = vk::True;
-        vulkan13Features.synchronization2 = vk::True;
-        extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-        vulkan13Features.pNext = &extendedDynamicStateFeatures;
-        features.pNext = &vulkan13Features;
+        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+            {},                                                     // vk::PhysicalDeviceFeatures2
+            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
+            {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        };
+
         // create a Device
         float                     queuePriority = 0.0f;
-        vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-        vk::DeviceCreateInfo      deviceCreateInfo{
-            .pNext =  &features,
-            .queueCreateInfoCount = 1,
-            .pQueueCreateInfos = &deviceQueueCreateInfo,
-            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
-            .ppEnabledExtensionNames = requiredDeviceExtension.data()
-         };
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
+        vk::DeviceCreateInfo      deviceCreateInfo{ .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+                                                    .queueCreateInfoCount = 1,
+                                                    .pQueueCreateInfos = &deviceQueueCreateInfo,
+                                                    .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
+                                                    .ppEnabledExtensionNames = requiredDeviceExtension.data() };
 
         device = vk::raii::Device( physicalDevice, deviceCreateInfo );
         graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
@@ -561,7 +557,12 @@ private:
     }
 
     static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        return ( availableFormats[0].format == vk::Format::eUndefined ) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
+        const auto formatIt = std::ranges::find_if(availableFormats,
+        [](const auto& format) {
+            return format.format == vk::Format::eB8G8R8A8Srgb &&
+                   format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+        });
+        return formatIt != availableFormats.end() ? formatIt->format : availableFormats[0].format;
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {

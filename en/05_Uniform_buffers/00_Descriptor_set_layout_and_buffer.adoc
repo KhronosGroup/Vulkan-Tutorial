@@ -367,4 +367,7 @@ We may look at these in a future chapter.
 
 In the xref:./01_Descriptor_pool_and_sets.adoc[next chapter] we'll look at descriptor sets, which will actually bind the ``VkBuffer``s to the uniform buffer descriptors so that the shader can access this transformation data.
 
-link:/attachments/22_descriptor_set_layout.cpp[C{pp} code] / link:/attachments/22_shader_ubo.vert[Vertex shader] / link:/attachments/22_shader_ubo.frag[Fragment shader]
+link:/attachments/22_descriptor_set_layout.cpp[C{pp} code] /
+link:/attachments/22_shader_ubo.slang[slang shader] /
+link:/attachments/22_shader_ubo.vert[GLSL Vertex shader] /
+link:/attachments/22_shader_ubo.frag[GLSL Fragment shader]

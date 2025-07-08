@@ -53,9 +53,8 @@ private:
 };
 
 int main() {
-    HelloTriangleApplication app{};
-
     try {
+        HelloTriangleApplication app;
         app.run();
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;

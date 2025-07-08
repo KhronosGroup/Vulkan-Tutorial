@@ -838,4 +838,7 @@ So now that you know how to use compute shaders, you may want to take a look at 
 You can find some advanced compute samples in the https://github.com/KhronosGroup/Vulkan-Samples/tree/master/samples/api[official Khronos Vulkan Samples repository].
 
 link:/attachments/31_compute_shader.cpp[C{pp} code] /
-link:/attachments/31_shader_compute.slang[Slang shader]
+link:/attachments/31_shader_compute.slang[slang shader] /
+link:/attachments/31_shader_compute.vert[GLSL Vertex shader] /
+link:/attachments/31_shader_compute.frag[GLSL Fragment shader] /
+link:/attachments/31_shader_compute.comp[GLSL Compute shader]

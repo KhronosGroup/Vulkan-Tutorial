@@ -1,0 +1,20 @@
+// For Gradle 9.0+, plugin repositories should be configured here
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+// For Gradle 9.0+, dependency repositories should be configured here
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+include ':app'
+rootProject.name = "VulkanTutorial"

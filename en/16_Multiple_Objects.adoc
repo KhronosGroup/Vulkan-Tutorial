@@ -1,0 +1,328 @@
+:pp: {plus}{plus}
+
+= Rendering Multiple Objects
+
+== Introduction
+
+In this chapter, we'll extend our Vulkan application to render multiple objects in the scene. So far, we've been rendering a single model, but real-world applications typically need to display many objects. This tutorial will show you how to efficiently manage and render multiple objects while reusing as many resources as possible.
+
+== Overview
+
+When rendering multiple objects, we need to consider which resources should be:
+1. *Shared across all objects* - to minimize memory usage and state changes
+2. *Duplicated for each object* - to allow for independent positioning and appearance
+
+Here's a quick reference for what typically falls into each category:
+
+*Shared resources:*
+
+* Vertex and index buffers (when objects use the same mesh)
+* Textures and samplers (when objects use the same textures)
+* Pipeline objects and pipeline layouts
+* Render passes
+* Command pools
+
+*Per-object resources:*
+
+* Transformation matrices (position, rotation, scale)
+* Uniform buffers containing those matrices
+* Descriptor sets that reference those uniform buffers
+* Push constants (for small, frequently changing data)
+
+== Implementation
+
+Let's walk through the key changes needed to render multiple objects:
+
+=== Define a GameObject Structure
+
+First, we'll create a structure to hold per-object data:
+
+[,c{pp}]
+----
+// Define a structure to hold per-object data
+struct GameObject {
+    // Transform properties
+    glm::vec3 position = {0.0f, 0.0f, 0.0f};
+    glm::vec3 rotation = {0.0f, 0.0f, 0.0f};
+    glm::vec3 scale = {1.0f, 1.0f, 1.0f};
+
+    // Uniform buffer for this object (one per frame in flight)
+    std::vector<vk::raii::Buffer> uniformBuffers;
+    std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
+    std::vector<void*> uniformBuffersMapped;
+
+    // Descriptor sets for this object (one per frame in flight)
+    std::vector<vk::raii::DescriptorSet> descriptorSets;
+
+    // Calculate model matrix based on position, rotation, and scale
+    glm::mat4 getModelMatrix() const {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, position);
+        model = glm::rotate(model, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+        model = glm::rotate(model, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::rotate(model, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::scale(model, scale);
+        return model;
+    }
+};
+----
+
+This structure encapsulates:
+* The object's transform (position, rotation, scale)
+* Per-object uniform buffers (one for each frame in flight)
+* Per-object descriptor sets (one for each frame in flight)
+* A helper method to calculate the model matrix
+
+=== Create an Array of GameObjects
+
+In our application class, we'll replace the single set of uniform buffers and descriptor sets with an array of GameObjects:
+
+[,c{pp}]
+----
+// Define the number of objects to render
+constexpr int MAX_OBJECTS = 3;
+
+// In the VulkanApplication class:
+// Array of game objects to render
+std::array<GameObject, MAX_OBJECTS> gameObjects;
+----
+
+=== Initialize the GameObjects
+
+We'll add a new method to set up our game objects with different positions, rotations, and scales:
+
+[,c{pp}]
+----
+// Initialize the game objects with different positions, rotations, and scales
+void setupGameObjects() {
+    // Object 1 - Center
+    gameObjects[0].position = {0.0f, 0.0f, 0.0f};
+    gameObjects[0].rotation = {0.0f, 0.0f, 0.0f};
+    gameObjects[0].scale = {1.0f, 1.0f, 1.0f};
+
+    // Object 2 - Left
+    gameObjects[1].position = {-2.0f, 0.0f, -1.0f};
+    gameObjects[1].rotation = {0.0f, glm::radians(45.0f), 0.0f};
+    gameObjects[1].scale = {0.75f, 0.75f, 0.75f};
+
+    // Object 3 - Right
+    gameObjects[2].position = {2.0f, 0.0f, -1.0f};
+    gameObjects[2].rotation = {0.0f, glm::radians(-45.0f), 0.0f};
+    gameObjects[2].scale = {0.75f, 0.75f, 0.75f};
+}
+----
+
+This method is called from `initVulkan()` after loading the model but before creating uniform buffers.
+
+=== Create Uniform Buffers for Each Object
+
+Instead of creating a single set of uniform buffers, we'll create them for each object:
+
+[,c{pp}]
+----
+// Create uniform buffers for each object
+void createUniformBuffers() {
+    // For each game object
+    for (auto& gameObject : gameObjects) {
+        gameObject.uniformBuffers.clear();
+        gameObject.uniformBuffersMemory.clear();
+        gameObject.uniformBuffersMapped.clear();
+
+        // Create uniform buffers for each frame in flight
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+            vk::raii::Buffer buffer({});
+            vk::raii::DeviceMemory bufferMem({});
+            createBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer,
+                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                         buffer, bufferMem);
+            gameObject.uniformBuffers.emplace_back(std::move(buffer));
+            gameObject.uniformBuffersMemory.emplace_back(std::move(bufferMem));
+            gameObject.uniformBuffersMapped.emplace_back(gameObject.uniformBuffersMemory[i].mapMemory(0, bufferSize));
+        }
+    }
+}
+----
+
+=== Update the Descriptor Pool Size
+
+We need to increase the descriptor pool size to accommodate all objects:
+
+[,c{pp}]
+----
+void createDescriptorPool() {
+    // We need MAX_OBJECTS * MAX_FRAMES_IN_FLIGHT descriptor sets
+    std::array poolSize {
+        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, MAX_OBJECTS * MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, MAX_OBJECTS * MAX_FRAMES_IN_FLIGHT)
+    };
+    vk::DescriptorPoolCreateInfo poolInfo{
+        .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets = MAX_OBJECTS * MAX_FRAMES_IN_FLIGHT,
+        .poolSizeCount = static_cast<uint32_t>(poolSize.size()),
+        .pPoolSizes = poolSize.data()
+    };
+    descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
+}
+----
+
+=== Create Descriptor Sets for Each Object
+
+Similarly, we'll create descriptor sets for each object:
+
+[,c{pp}]
+----
+void createDescriptorSets() {
+    // For each game object
+    for (auto& gameObject : gameObjects) {
+        // Create descriptor sets for each frame in flight
+        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
+        vk::DescriptorSetAllocateInfo allocInfo{
+            .descriptorPool = *descriptorPool,
+            .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+            .pSetLayouts = layouts.data()
+        };
+
+        gameObject.descriptorSets.clear();
+        gameObject.descriptorSets = device.allocateDescriptorSets(allocInfo);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vk::DescriptorBufferInfo bufferInfo{
+                .buffer = *gameObject.uniformBuffers[i],
+                .offset = 0,
+                .range = sizeof(UniformBufferObject)
+            };
+            vk::DescriptorImageInfo imageInfo{
+                .sampler = *textureSampler,
+                .imageView = *textureImageView,
+                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            };
+            std::array descriptorWrites{
+                vk::WriteDescriptorSet{
+                    .dstSet = *gameObject.descriptorSets[i],
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .pBufferInfo = &bufferInfo
+                },
+                vk::WriteDescriptorSet{
+                    .dstSet = *gameObject.descriptorSets[i],
+                    .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                    .pImageInfo = &imageInfo
+                }
+            };
+            device.updateDescriptorSets(descriptorWrites, {});
+        }
+    }
+}
+----
+
+=== Update Uniform Buffers for All Objects
+
+We'll modify the uniform buffer update to handle all objects:
+
+[,c{pp}]
+----
+void updateUniformBuffers() {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float>(currentTime - startTime).count();
+
+    // Camera and projection matrices (shared by all objects)
+    glm::mat4 view = glm::lookAt(glm::vec3(2.0f, 2.0f, 6.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f),
+                                     static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height),
+                                     0.1f, 20.0f);
+    proj[1][1] *= -1; // Flip Y for Vulkan
+
+    // Update uniform buffers for each object
+    for (auto& gameObject : gameObjects) {
+        // Apply continuous rotation to the object
+        gameObject.rotation.y += 0.001f; // Slow rotation around Y axis
+
+        // Get the model matrix for this object
+        glm::mat4 initialRotation = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::mat4 model = gameObject.getModelMatrix() * initialRotation;
+
+        // Create and update the UBO
+        UniformBufferObject ubo{
+            .model = model,
+            .view = view,
+            .proj = proj
+        };
+
+        // Copy the UBO data to the mapped memory
+        memcpy(gameObject.uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+    }
+}
+----
+
+Note that we're sharing the view and projection matrices across all objects, but each object has its own model matrix.
+
+=== Modify the Command Buffer Recording
+
+Finally, we'll update the command buffer recording to draw each object:
+
+[,c{pp}]
+----
+void recordCommandBuffer(uint32_t imageIndex) {
+    // ... (beginning of the method remains the same)
+
+    // Bind vertex and index buffers (shared by all objects)
+    commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
+    commandBuffers[currentFrame].bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
+
+    // Draw each object with its own descriptor set
+    for (const auto& gameObject : gameObjects) {
+        // Bind the descriptor set for this object
+        commandBuffers[currentFrame].bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            *pipelineLayout,
+            0,
+            *gameObject.descriptorSets[currentFrame],
+            nullptr
+        );
+
+        // Draw the object
+        commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
+    }
+
+    // ... (end of the method remains the same)
+}
+----
+
+== Performance Considerations
+
+When rendering multiple objects, keep these performance considerations in mind:
+
+1. *Minimize state changes*: Group objects by material/texture to reduce binding changes.
+2. *Use instancing* for many identical objects (not covered in this tutorial).
+3. *Consider push constants* for small, frequently changing data instead of uniform buffers.
+4. *Batch draw calls* where possible to reduce CPU overhead.
+5. *Use indirect drawing* for large numbers of objects (not covered here).
+
+== Conclusion
+
+You've now learned how to render multiple objects in Vulkan by:
+
+1. Creating a structure to hold per-object data
+2. Duplicating the necessary resources with (uniform buffers, descriptor sets) for each object
+3. Sharing resources that can be reused (vertex/index buffers, pipeline, textures)
+4. Updating the rendering loop to draw each object with its own transformation
+
+This approach gives you the flexibility to position, rotate, and scale objects independently while maintaining good performance by sharing resources where appropriate.
+
+In a real-world application, you might extend this system with:
+
+* Object hierarchies (parent-child relationships)
+* Different meshes and materials for different objects
+* Frustum culling to avoid rendering objects outside the camera view
+* Level-of-detail systems for objects at different distances
+
+The foundation you've built here will serve as a solid starting point for these more advanced techniques.
+
+link:/attachments/36_multiple_objects.cpp[C{pp} code]

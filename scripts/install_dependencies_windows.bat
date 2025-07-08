@@ -14,18 +14,16 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-:: Install dependencies using vcpkg
-echo Installing GLFW...
-vcpkg install glfw3:x64-windows
+:: Enable binary caching for vcpkg
+echo Enabling binary caching for vcpkg...
+set VCPKG_BINARY_SOURCES=clear;files,%TEMP%\vcpkg-cache,readwrite
 
-echo Installing GLM...
-vcpkg install glm:x64-windows
+:: Create cache directory if it doesn't exist
+if not exist %TEMP%\vcpkg-cache mkdir %TEMP%\vcpkg-cache
 
-echo Installing tinyobjloader...
-vcpkg install tinyobjloader:x64-windows
-
-echo Installing stb...
-vcpkg install stb:x64-windows
+:: Install all dependencies at once using vcpkg with parallel installation
+echo Installing all dependencies...
+vcpkg install --triplet=x64-windows --x-manifest-root=%~dp0\.. --feature-flags=binarycaching,manifests --x-install-root=%VCPKG_INSTALLATION_ROOT%/installed
 
 :: Remind about Vulkan SDK
 echo.

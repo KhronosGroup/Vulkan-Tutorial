@@ -1,0 +1,49 @@
+#version 450
+
+struct Particle {
+	vec2 position;
+	vec2 velocity;
+    vec4 color;
+};
+
+layout (binding = 0) uniform ParameterUBO {
+    float deltaTime;
+} ubo;
+
+layout(std140, binding = 1) readonly buffer ParticleSSBOIn {
+   Particle particlesIn[ ];
+};
+
+layout(std140, binding = 2) buffer ParticleSSBOOut {
+   Particle particlesOut[ ];
+};
+
+// Push constants for particle group information
+layout(push_constant) uniform PushConstants {
+    uint startIndex;
+    uint count;
+} pushConstants;
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    // Calculate the global particle index by adding the thread ID to the start index
+    uint localIndex = gl_GlobalInvocationID.x;
+
+    // Only process particles within the assigned range
+    if (localIndex < pushConstants.count) {
+        uint globalIndex = pushConstants.startIndex + localIndex;
+
+        particlesOut[globalIndex].position = particlesIn[globalIndex].position + particlesIn[globalIndex].velocity.xy * ubo.deltaTime;
+        particlesOut[globalIndex].velocity = particlesIn[globalIndex].velocity;
+
+        // Flip movement at window border
+        if ((particlesOut[globalIndex].position.x <= -1.0) || (particlesOut[globalIndex].position.x >= 1.0)) {
+            particlesOut[globalIndex].velocity.x = -particlesOut[globalIndex].velocity.x;
+        }
+        if ((particlesOut[globalIndex].position.y <= -1.0) || (particlesOut[globalIndex].position.y >= 1.0)) {
+            particlesOut[globalIndex].velocity.y = -particlesOut[globalIndex].velocity.y;
+        }
+    }
+}

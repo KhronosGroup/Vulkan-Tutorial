@@ -15,7 +15,6 @@ find_package (TinyGLTF REQUIRED)
 find_package (KTX REQUIRED)
 
 # set up Vulkan C++ module
-if(NOT USE_DIRECT_MODULE_IMPORT)
 add_library(VulkanCppModule)
 add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
@@ -48,7 +47,6 @@ target_sources(VulkanCppModule
         PRIVATE
         "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
-endif()
 
 find_package(stb REQUIRED)
 set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
@@ -107,7 +105,6 @@ function (add_chapter CHAPTER_NAME)
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
   target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
-
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 
   if(WIN32)

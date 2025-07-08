@@ -3,20 +3,6 @@ cmake_minimum_required (VERSION 3.29)
 # Enable C++ module dependency scanning
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
-# Option to use direct module import instead of VulkanCppModule
-# Set this to ON if you're having intellisense issues with VS2022
-#
-# To enable this option, use one of the following methods:
-# 1. Command line: cmake -DUSE_DIRECT_MODULE_IMPORT=ON ..
-# 2. CMake GUI: Check the USE_DIRECT_MODULE_IMPORT option
-# 3. Edit CMakeCache.txt: Set USE_DIRECT_MODULE_IMPORT:BOOL=ON
-#
-# This option changes how the Vulkan C++ module is included in the project:
-# - When OFF (default): Uses a shared VulkanCppModule library that all projects link to
-# - When ON: Adds the vulkan.cppm module directly to each project, which can help with
-#   intellisense in VS2022 and other IDEs that have issues with C++20 modules
-option(USE_DIRECT_MODULE_IMPORT "Use direct vulkan-hpp module import instead of VulkanCppModule" OFF)
-
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
@@ -125,28 +111,7 @@ function (add_chapter CHAPTER_NAME)
   set_target_properties (${CHAPTER_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
-
-  if(USE_DIRECT_MODULE_IMPORT)
-    # Direct module import approach - add vulkan.cppm directly to each project
-    target_sources(${CHAPTER_NAME}
-      PRIVATE
-      FILE_SET cxx_modules TYPE CXX_MODULES
-      BASE_DIRS
-      "${Vulkan_INCLUDE_DIR}"
-      FILES
-      "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-    )
-    target_compile_definitions(${CHAPTER_NAME}
-      PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
-    )
-    target_include_directories(${CHAPTER_NAME}
-      PRIVATE "${Vulkan_INCLUDE_DIR}"
-    )
-    target_link_libraries (${CHAPTER_NAME} Vulkan::Vulkan glfw)
-  else()
-    # Default approach - link to VulkanCppModule
-    target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
-  endif()
+  target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
 
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 

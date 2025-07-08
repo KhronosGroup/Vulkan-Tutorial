@@ -10,7 +10,12 @@
 #include <array>
 #include <chrono>
 
+#ifdef __INTELLISENSE__
+#include <vulkan/vulkan.hpp>
+#else
 import vulkan_hpp;
+#endif
+
 #include <vulkan/vk_platform.h>
 
 #define GLFW_INCLUDE_VULKAN // REQUIRED only for GLFW CreateWindowSurface.

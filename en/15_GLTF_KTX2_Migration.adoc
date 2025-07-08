@@ -23,7 +23,7 @@ Let's dive into the migration process and see how to adapt our Vulkan applicatio
 
 === What is glTF?
 
-glTF (GL Transmission Format) is a royalty-free specification for the efficient transmission and loading of 3D scenes and models. Developed by the Khronos Group, glTF is designed to be a "JPEG for 3D" - a common publishing format for 3D content.
+https://www.khronos.org/gltf/[glTF] (GL Transmission Format) is a royalty-free specification for the efficient transmission and loading of 3D scenes and models. Developed by the Khronos Group, glTF is designed to be a "JPEG for 3D" - a common publishing format for 3D content.
 
 Key features of glTF include:
 
@@ -70,7 +70,7 @@ Let's compare the OBJ format with glTF:
 
 === What is KTX2?
 
-KTX2 (Khronos Texture 2.0) is a container file format for storing texture data optimized for GPU usage. It's designed to work efficiently with modern graphics APIs like Vulkan, OpenGL, and DirectX.
+https://www.khronos.org/ktx/[KTX2] (Khronos Texture 2.0) is a container file format for storing texture data optimized for GPU usage. It's designed to work efficiently with modern graphics APIs like Vulkan, OpenGL, and DirectX.
 
 Key features of KTX2 include:
 

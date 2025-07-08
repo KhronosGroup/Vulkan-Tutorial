@@ -63,11 +63,15 @@ If you're considering using a specific extension:
 
 This helps you decide whether to require the extension or provide a fallback path.
 
-==== Example: Using the vulkanconfig Tool
+==== Example: Using the Vulkan Configurator Tool
 
-The `vulkanconfig` tool is included in the Vulkan SDK and provides a convenient way to configure Vulkan settings on your system. Here's how to use it:
+The Vulkan Configurator tool (executable name `vkconfig` on all platforms) is included in the Vulkan SDK and provides a convenient way to configure Vulkan settings on your system. Here's how to use it:
 
-1. *Launch vulkanconfig*: Open a terminal or command prompt and run `vulkanconfig`
+1. *Launch the Vulkan Configurator*:
+   - On Windows: It's recommended to start "Vulkan Configurator" from the Start menu, as running `vkconfig.exe` from the command line only shows limited options
+   - On other platforms: Open a terminal and run `vkconfig`
+
+   Note that the executable is called `vkconfig` on all platforms.
 
 2. *Configure Validation Layers*:
    - Navigate to the "Layers" tab
@@ -87,12 +91,12 @@ The `vulkanconfig` tool is included in the Vulkan SDK and provides a convenient 
    - Save your configuration for later use or to share with team members
    - This ensures consistent Vulkan environments across development machines
 
-Using `vulkanconfig` is particularly helpful when:
+Using the Vulkan Configurator is particularly helpful when:
 - Debugging Vulkan applications with different validation layer configurations
 - Testing your application with different Vulkan settings without modifying code
 - Setting up a development environment with specific Vulkan requirements
 
-==== Using vulkanconfig for Validation Layers Instead of Code
+==== Using Vulkan Configurator for Validation Layers Instead of Code
 
 In many Vulkan applications, validation layers are enabled programmatically during instance creation, typically only in debug builds. Here's how this is commonly done:
 
@@ -142,7 +146,7 @@ While this approach works, it has several drawbacks:
 2. It's harder to experiment with different validation layer configurations
 3. It adds complexity to your codebase
 
-A better approach is to use `vulkanconfig` to manage validation layers externally. Here's how to modify your code to take advantage of this:
+A better approach is to use the Vulkan Configurator to manage validation layers externally. Here's how to modify your code to take advantage of this:
 
 [,c++]
 ----
@@ -162,12 +166,12 @@ void createInstance() {
 With this approach:
 
 1. You remove all validation layer-specific code from your application
-2. You use `vulkanconfig` to enable validation layers when needed
+2. You use the Vulkan Configurator to enable validation layers when needed
 3. You can switch validation configurations without recompiling
 
-To enable validation layers with `vulkanconfig`:
+To enable validation layers with the Vulkan Configurator:
 
-1. Launch `vulkanconfig`
+1. Launch the Vulkan Configurator (from the Start menu on Windows, or run `vkconfig` from the terminal - the executable is called `vkconfig` on all platforms)
 2. Go to the "Layers" tab
 3. Enable the `VK_LAYER_KHRONOS_validation` layer
 4. Apply the settings
@@ -187,7 +191,7 @@ Besides GPUInfo.org, several other tools can help you develop and debug Vulkan a
 
 * *Vulkan SDK Tools*:
 ** `vulkaninfo`: Displays Vulkan capabilities of your local system
-** `vulkanconfig`: A configuration tool for managing Vulkan settings (see <<Example: Using the vulkanconfig Tool>> for details)
+** `vkconfig` (Vulkan Configurator): A configuration tool for managing Vulkan settings (see <<Example: Using the Vulkan Configurator Tool>> for details)
 ** Validation layers: Help identify API usage errors
 ** RenderDoc: Graphics debugging tool
 

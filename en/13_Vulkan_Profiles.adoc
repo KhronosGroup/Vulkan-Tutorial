@@ -85,6 +85,9 @@ First, you need to include the Vulkan profiles header:
 
 This header provides the necessary functions and structures to work with Vulkan profiles.
 
+The Vulkan Profiles header is NOT part of the standard Vulkan headers.
+It is only available if you use the Vulkan SDK. Make sure you have the Vulkan SDK installed and properly configured in your development environment.
+
 === Defining the Profile Requirements
 
 Instead of manually checking for features and extensions, you can define your profile requirements:

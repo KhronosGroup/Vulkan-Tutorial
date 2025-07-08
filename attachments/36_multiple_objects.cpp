@@ -1404,16 +1404,20 @@ private:
 
     void updateUniformBuffers() {
         static auto startTime = std::chrono::high_resolution_clock::now();
+        static auto lastFrameTime = startTime;
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float>(currentTime - startTime).count();
+        float deltaTime = std::chrono::duration<float>(currentTime - lastFrameTime).count();
+        lastFrameTime = currentTime;
 
         // Camera and projection matrices (shared by all objects)
         glm::mat4 view = glm::lookAt(glm::vec3(2.0f, 2.0f, 6.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 proj = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 20.0f);
         // Update uniform buffers for each object
         for (auto& gameObject : gameObjects) {
-            // Apply continuous rotation to the object
-            gameObject.rotation.y += 0.001f; // Slow rotation around Y axis
+            // Apply continuous rotation to the object based on frame time
+            const float rotationSpeed = 0.5f; // Rotation speed in radians per second
+            gameObject.rotation.y += rotationSpeed * deltaTime; // Slow rotation around Y axis scaled by frame time
 
             // Get the model matrix for this object
             glm::mat4 model = gameObject.getModelMatrix();

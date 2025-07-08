@@ -15,6 +15,7 @@ When rendering multiple objects, we need to consider which resources should be:
 Here's a quick reference for what typically falls into each category:
 
 *Shared resources:*
+
 * Vertex and index buffers (when objects use the same mesh)
 * Textures and samplers (when objects use the same textures)
 * Pipeline objects and pipeline layouts
@@ -22,6 +23,7 @@ Here's a quick reference for what typically falls into each category:
 * Command pools
 
 *Per-object resources:*
+
 * Transformation matrices (position, rotation, scale)
 * Uniform buffers containing those matrices
 * Descriptor sets that reference those uniform buffers
@@ -306,14 +308,16 @@ When rendering multiple objects, keep these performance considerations in mind:
 == Conclusion
 
 You've now learned how to render multiple objects in Vulkan by:
+
 1. Creating a structure to hold per-object data
-2. Duplicating the necessary resources (uniform buffers, descriptor sets) for each object
+2. Duplicating the necessary resources with (uniform buffers, descriptor sets) for each object
 3. Sharing resources that can be reused (vertex/index buffers, pipeline, textures)
 4. Updating the rendering loop to draw each object with its own transformation
 
 This approach gives you the flexibility to position, rotate, and scale objects independently while maintaining good performance by sharing resources where appropriate.
 
 In a real-world application, you might extend this system with:
+
 * Object hierarchies (parent-child relationships)
 * Different meshes and materials for different objects
 * Frustum culling to avoid rendering objects outside the camera view

@@ -30,7 +30,7 @@ Now that we understand the key differences, let's set up our Android project. Ou
 
 Before we begin, make sure you have the following tools installed:
 
-* *Android Studio*: The official IDE for Android development
+* *link:++https://developer.android.com/studio[Android Studio]++[Android Studio]*: The official IDE for Android development
 * *Android NDK (Native Development Kit)*: Enables native C++ development on Android
 * *Android SDK*: With a recent API level (24+, which corresponds to Android 7.0 or higher) for Vulkan support
 * *CMake and Ninja build tools*: For building native code (these can be installed through Android Studio)

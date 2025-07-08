@@ -6,7 +6,12 @@
 #include <memory>
 #include <algorithm>
 
+#ifdef __INTELLISENSE__
+#include <vulkan/vulkan_raii.hpp>
+#else
 import vulkan_hpp;
+#endif
+
 #include <vulkan/vk_platform.h>
 
 #define GLFW_INCLUDE_VULKAN // REQUIRED only for GLFW CreateWindowSurface.

@@ -11,7 +11,11 @@
 #include <chrono>
 #include <optional>
 
+#ifdef __INTELLISENSE__
+#include <vulkan/vulkan_raii.hpp>
+#else
 import vulkan_hpp;
+#endif
 #include <vulkan/vk_platform.h>
 #if defined(__ANDROID__)
 #include <vulkan/vulkan_core.h>

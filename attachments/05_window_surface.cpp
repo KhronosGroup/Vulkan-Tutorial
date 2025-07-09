@@ -201,51 +201,45 @@ private:
     }
 
     void createLogicalDevice() {
-        // find the index of the first queue family that supports graphics
         std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-        // get the first index into queueFamilyProperties which supports graphics
-        auto graphicsQueueFamilyProperty = std::ranges::find_if( queueFamilyProperties, []( auto const & qfp )
-                        { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); } );
-
-        auto graphicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
-
-        // determine a queueFamilyIndex that supports present
-        // first check if the graphicsIndex is good enough
-        auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface )
-                                           ? graphicsIndex
-                                           : ~0;
-        if ( presentIndex == queueFamilyProperties.size() )
+        // get the first index into queueFamilyProperties which supports both graphics and present
+        uint32_t graphicsIndex = ~0, presentIndex = ~0;
+        for (uint32_t queueIndex = 0; queueIndex < queueFamilyProperties.size(); queueIndex++)
         {
-            // the graphicsIndex doesn't support present -> look for another family index that supports both
-            // graphics and present
-            for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
-            {
-                if ( ( queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics ) &&
-                     physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
-                {
-                    graphicsIndex = static_cast<uint32_t>( i );
-                    presentIndex  = graphicsIndex;
-                    break;
-                }
-            }
-            if ( presentIndex == queueFamilyProperties.size() )
-            {
-                // there's nothing like a single family index that supports both graphics and present -> look for another
-                // family index that supports present
-                for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
-                {
-                    if ( physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
-                    {
-                        presentIndex = static_cast<uint32_t>( i );
-                        break;
-                    }
-                }
-            }
+          if ((queueFamilyProperties[queueIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+              physicalDevice.getSurfaceSupportKHR(queueIndex, *surface))
+          {
+            // found a queue family that supports both graphics and present
+            graphicsIndex = queueIndex;
+            presentIndex = queueIndex;
+            break;
+          }
         }
-        if ( ( graphicsIndex == queueFamilyProperties.size() ) || ( presentIndex == queueFamilyProperties.size() ) )
+        if (graphicsIndex == ~0)
         {
-            throw std::runtime_error( "Could not find a queue for graphics or present -> terminating" );
+          // no queue family that supports both graphics and present found -> look for a queue family that supports graphics only
+          auto graphicsQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, [](auto const& qfp)
+            { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
+          if (graphicsQueueFamilyProperty == queueFamilyProperties.end())
+          {
+            throw std::runtime_error("Could not find a queue for graphics -> terminating");
+          }
+          graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
+
+          // now look for a queue family that supports present
+          for (uint32_t queueIndex = 0; queueIndex < queueFamilyProperties.size(); queueIndex++)
+          {
+            if (physicalDevice.getSurfaceSupportKHR(queueIndex, *surface))
+            {
+              presentIndex = queueIndex;
+              break;
+            }
+          }
+          if (presentIndex == ~0)
+          {
+            throw std::runtime_error("Could not find a queue for present -> terminating");
+          }
         }
 
         // query for Vulkan 1.3 features

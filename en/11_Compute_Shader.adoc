@@ -518,8 +518,7 @@ An interesting thing is this compute-only declaration related to the compute spa
 
 This defines the number of invocations of this compute shader in the current work group.
 As noted earlier, this is the local part of the compute space.
-Hence, the `local_` prefix.
-As we work on a linear 1D array of particles, we only need to specify a number for x dimension in `local_size_x`.
+As we work on a linear 1D array of particles, we only need to specify a number for x dimension in `[numthreads(x,y,z)]`. 
 
 The `compMain` function then reads from the last frame's SSBO and writes the
 updated particle position to the SSBO for the current frame.

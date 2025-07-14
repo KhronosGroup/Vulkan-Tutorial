@@ -96,6 +96,544 @@ Modern rendering techniques often require multiple passes, each with a specific 
 
 In this tutorial, we use Vulkan's dynamic rendering feature with vk::raii instead of traditional render passes. Dynamic rendering simplifies the rendering process by allowing us to begin and end rendering operations with a single command, without explicitly creating VkRenderPass and VkFramebuffer objects. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Additionally, our engine uses C++20 modules for better code organization, faster compilation times, and improved encapsulation.
 
+=== Rendergraphs and Synchronization
+
+A rendergraph is a higher-level abstraction that represents the entire rendering process as a directed acyclic graph (DAG), where nodes are render passes and edges represent dependencies between them. This approach offers several advantages over traditional render pass management:
+
+==== What is a Rendergraph?
+
+A rendergraph is a data structure that:
+
+1. *Describes Resources*: Tracks all resources (textures, buffers) used in rendering.
+2. *Defines Operations*: Specifies what operations (render passes) will be performed.
+3. *Manages Dependencies*: Automatically determines the dependencies between operations.
+4. *Handles Synchronization*: Automatically inserts necessary synchronization primitives.
+5. *Optimizes Memory*: Can perform memory aliasing and other optimizations.
+
+[source,cpp]
+----
+// A simple rendergraph class
+class Rendergraph {
+private:
+    struct Resource {
+        std::string name;
+        vk::Format format;
+        vk::Extent2D extent;
+        vk::ImageUsageFlags usage;
+        vk::ImageLayout initialLayout;
+        vk::ImageLayout finalLayout;
+
+        // The actual Vulkan resources
+        vk::raii::Image image = nullptr;
+        vk::raii::DeviceMemory memory = nullptr;
+        vk::raii::ImageView view = nullptr;
+    };
+
+    struct Pass {
+        std::string name;
+        std::vector<std::string> inputs;  // Resources read by this pass
+        std::vector<std::string> outputs; // Resources written by this pass
+        std::function<void(vk::raii::CommandBuffer&)> executeFunc;
+    };
+
+    std::unordered_map<std::string, Resource> resources;
+    std::vector<Pass> passes;
+    std::vector<size_t> executionOrder; // Indices into passes
+
+    // Synchronization objects
+    std::vector<vk::raii::Semaphore> semaphores;
+    std::vector<std::pair<size_t, size_t>> semaphoreSignalWaitPairs; // (signaling pass, waiting pass)
+
+    vk::raii::Device& device;
+
+public:
+    explicit Rendergraph(vk::raii::Device& dev) : device(dev) {}
+
+    // Add a resource to the rendergraph
+    void AddResource(const std::string& name, vk::Format format, vk::Extent2D extent,
+                    vk::ImageUsageFlags usage, vk::ImageLayout initialLayout,
+                    vk::ImageLayout finalLayout) {
+        Resource resource;
+        resource.name = name;
+        resource.format = format;
+        resource.extent = extent;
+        resource.usage = usage;
+        resource.initialLayout = initialLayout;
+        resource.finalLayout = finalLayout;
+
+        resources[name] = resource;
+    }
+
+    // Add a pass to the rendergraph
+    void AddPass(const std::string& name,
+                const std::vector<std::string>& inputs,
+                const std::vector<std::string>& outputs,
+                std::function<void(vk::raii::CommandBuffer&)> executeFunc) {
+        Pass pass;
+        pass.name = name;
+        pass.inputs = inputs;
+        pass.outputs = outputs;
+        pass.executeFunc = executeFunc;
+
+        passes.push_back(pass);
+    }
+
+    // Compile the rendergraph
+    void Compile() {
+        // Build the dependency graph
+        std::vector<std::vector<size_t>> dependencies(passes.size());
+        std::vector<std::vector<size_t>> dependents(passes.size());
+
+        // Map resources to the passes that write to them
+        std::unordered_map<std::string, size_t> resourceWriters;
+
+        // Find dependencies based on resource usage
+        for (size_t i = 0; i < passes.size(); ++i) {
+            const auto& pass = passes[i];
+
+            // Check inputs
+            for (const auto& input : pass.inputs) {
+                auto it = resourceWriters.find(input);
+                if (it != resourceWriters.end()) {
+                    // This pass depends on the pass that writes to this resource
+                    dependencies[i].push_back(it->second);
+                    dependents[it->second].push_back(i);
+                }
+            }
+
+            // Record outputs
+            for (const auto& output : pass.outputs) {
+                resourceWriters[output] = i;
+            }
+        }
+
+        // Topological sort to determine execution order
+        std::vector<bool> visited(passes.size(), false);
+        std::vector<bool> inStack(passes.size(), false);
+        std::function<void(size_t)> visit = [&](size_t node) {
+            if (inStack[node]) {
+                throw std::runtime_error("Cycle detected in rendergraph");
+            }
+
+            if (visited[node]) {
+                return;
+            }
+
+            inStack[node] = true;
+
+            for (auto dependent : dependents[node]) {
+                visit(dependent);
+            }
+
+            inStack[node] = false;
+            visited[node] = true;
+            executionOrder.push_back(node);
+        };
+
+        for (size_t i = 0; i < passes.size(); ++i) {
+            if (!visited[i]) {
+                visit(i);
+            }
+        }
+
+        // Create synchronization objects
+        for (size_t i = 0; i < passes.size(); ++i) {
+            for (auto dep : dependencies[i]) {
+                // Create a semaphore for this dependency
+                semaphores.emplace_back(device.createSemaphore({}));
+                semaphoreSignalWaitPairs.emplace_back(dep, i);
+            }
+        }
+
+        // Allocate actual resources
+        for (auto& [name, resource] : resources) {
+            // Create image
+            vk::ImageCreateInfo imageInfo;
+            imageInfo.setImageType(vk::ImageType::e2D)
+                     .setFormat(resource.format)
+                     .setExtent({resource.extent.width, resource.extent.height, 1})
+                     .setMipLevels(1)
+                     .setArrayLayers(1)
+                     .setSamples(vk::SampleCountFlagBits::e1)
+                     .setTiling(vk::ImageTiling::eOptimal)
+                     .setUsage(resource.usage)
+                     .setSharingMode(vk::SharingMode::eExclusive)
+                     .setInitialLayout(vk::ImageLayout::eUndefined);
+
+            resource.image = device.createImage(imageInfo);
+
+            // Allocate memory
+            vk::MemoryRequirements memRequirements = resource.image.getMemoryRequirements();
+
+            vk::MemoryAllocateInfo allocInfo;
+            allocInfo.setAllocationSize(memRequirements.size)
+                     .setMemoryTypeIndex(FindMemoryType(memRequirements.memoryTypeBits,
+                                                       vk::MemoryPropertyFlagBits::eDeviceLocal));
+
+            resource.memory = device.allocateMemory(allocInfo);
+            resource.image.bindMemory(*resource.memory, 0);
+
+            // Create image view
+            vk::ImageViewCreateInfo viewInfo;
+            viewInfo.setImage(*resource.image)
+                    .setViewType(vk::ImageViewType::e2D)
+                    .setFormat(resource.format)
+                    .setSubresourceRange({vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+
+            resource.view = device.createImageView(viewInfo);
+        }
+    }
+
+    // Execute the rendergraph
+    void Execute(vk::raii::CommandBuffer& commandBuffer, vk::Queue queue) {
+        std::vector<vk::CommandBuffer> cmdBuffers;
+        std::vector<vk::Semaphore> waitSemaphores;
+        std::vector<vk::PipelineStageFlags> waitStages;
+        std::vector<vk::Semaphore> signalSemaphores;
+
+        // For each pass in the execution order
+        for (auto passIdx : executionOrder) {
+            const auto& pass = passes[passIdx];
+
+            // Collect wait semaphores for this pass
+            waitSemaphores.clear();
+            waitStages.clear();
+
+            for (size_t i = 0; i < semaphoreSignalWaitPairs.size(); ++i) {
+                if (semaphoreSignalWaitPairs[i].second == passIdx) {
+                    waitSemaphores.push_back(*semaphores[i]);
+                    waitStages.push_back(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+                }
+            }
+
+            // Collect signal semaphores for this pass
+            signalSemaphores.clear();
+
+            for (size_t i = 0; i < semaphoreSignalWaitPairs.size(); ++i) {
+                if (semaphoreSignalWaitPairs[i].first == passIdx) {
+                    signalSemaphores.push_back(*semaphores[i]);
+                }
+            }
+
+            // Begin command buffer
+            commandBuffer.begin({});
+
+            // Insert image memory barriers for layout transitions
+            for (const auto& input : pass.inputs) {
+                auto& resource = resources[input];
+
+                vk::ImageMemoryBarrier barrier;
+                barrier.setOldLayout(resource.initialLayout)
+                       .setNewLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
+                       .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                       .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                       .setImage(*resource.image)
+                       .setSubresourceRange({vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1})
+                       .setSrcAccessMask(vk::AccessFlagBits::eMemoryWrite)
+                       .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+
+                commandBuffer.pipelineBarrier(
+                    vk::PipelineStageFlagBits::eAllCommands,
+                    vk::PipelineStageFlagBits::eFragmentShader,
+                    vk::DependencyFlagBits::eByRegion,
+                    0, nullptr,
+                    0, nullptr,
+                    1, &barrier
+                );
+            }
+
+            for (const auto& output : pass.outputs) {
+                auto& resource = resources[output];
+
+                vk::ImageMemoryBarrier barrier;
+                barrier.setOldLayout(resource.initialLayout)
+                       .setNewLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                       .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                       .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                       .setImage(*resource.image)
+                       .setSubresourceRange({vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1})
+                       .setSrcAccessMask(vk::AccessFlagBits::eMemoryRead)
+                       .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+
+                commandBuffer.pipelineBarrier(
+                    vk::PipelineStageFlagBits::eAllCommands,
+                    vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                    vk::DependencyFlagBits::eByRegion,
+                    0, nullptr,
+                    0, nullptr,
+                    1, &barrier
+                );
+            }
+
+            // Execute the pass
+            pass.executeFunc(commandBuffer);
+
+            // Insert image memory barriers for final layout transitions
+            for (const auto& output : pass.outputs) {
+                auto& resource = resources[output];
+
+                vk::ImageMemoryBarrier barrier;
+                barrier.setOldLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                       .setNewLayout(resource.finalLayout)
+                       .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                       .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                       .setImage(*resource.image)
+                       .setSubresourceRange({vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1})
+                       .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+                       .setDstAccessMask(vk::AccessFlagBits::eMemoryRead);
+
+                commandBuffer.pipelineBarrier(
+                    vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                    vk::PipelineStageFlagBits::eAllCommands,
+                    vk::DependencyFlagBits::eByRegion,
+                    0, nullptr,
+                    0, nullptr,
+                    1, &barrier
+                );
+            }
+
+            // End command buffer
+            commandBuffer.end();
+
+            // Submit command buffer
+            vk::SubmitInfo submitInfo;
+            submitInfo.setWaitSemaphoreCount(static_cast<uint32_t>(waitSemaphores.size()))
+                      .setPWaitSemaphores(waitSemaphores.data())
+                      .setPWaitDstStageMask(waitStages.data())
+                      .setCommandBufferCount(1)
+                      .setPCommandBuffers(&*commandBuffer)
+                      .setSignalSemaphoreCount(static_cast<uint32_t>(signalSemaphores.size()))
+                      .setPSignalSemaphores(signalSemaphores.data());
+
+            queue.submit(1, &submitInfo, nullptr);
+        }
+    }
+
+private:
+    uint32_t FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) {
+        // Implementation to find suitable memory type
+        // ...
+        return 0; // Placeholder
+    }
+};
+----
+
+==== Vulkan Synchronization
+
+Vulkan provides several synchronization primitives to ensure correct execution order and memory visibility:
+
+1. *Semaphores*: Used for synchronization between queue operations (GPU-GPU synchronization).
+2. *Fences*: Used for synchronization between CPU and GPU.
+3. *Events*: Used for fine-grained synchronization within a command buffer.
+4. *Barriers*: Used to synchronize access to resources and perform layout transitions.
+
+Proper synchronization is crucial in Vulkan because:
+
+1. *No Implicit Synchronization*: Unlike OpenGL, Vulkan doesn't provide implicit synchronization between operations.
+2. *Parallel Execution*: Modern GPUs execute commands in parallel, which can lead to race conditions without proper synchronization.
+3. *Memory Visibility*: Changes made by one operation may not be visible to another without proper barriers.
+
+===== Pipeline Barriers
+
+Pipeline barriers are one of the most important synchronization primitives in Vulkan. They ensure that operations before the barrier complete before operations after the barrier begin, and they can also perform layout transitions for images.
+
+[source,cpp]
+----
+// Example of using a pipeline barrier for an image layout transition
+void TransitionImageLayout(vk::raii::CommandBuffer& commandBuffer,
+                          vk::Image image,
+                          vk::Format format,
+                          vk::ImageLayout oldLayout,
+                          vk::ImageLayout newLayout) {
+    vk::ImageMemoryBarrier barrier;
+    barrier.setOldLayout(oldLayout)
+           .setNewLayout(newLayout)
+           .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+           .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+           .setImage(image)
+           .setSubresourceRange({vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+
+    vk::PipelineStageFlags sourceStage;
+    vk::PipelineStageFlags destinationStage;
+
+    if (oldLayout == vk::ImageLayout::eUndefined &&
+        newLayout == vk::ImageLayout::eTransferDstOptimal) {
+        barrier.setSrcAccessMask(vk::AccessFlagBits::eNone)
+               .setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
+
+        sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        destinationStage = vk::PipelineStageFlagBits::eTransfer;
+    } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal &&
+               newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+        barrier.setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
+               .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+
+        sourceStage = vk::PipelineStageFlagBits::eTransfer;
+        destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+    } else {
+        throw std::invalid_argument("Unsupported layout transition!");
+    }
+
+    commandBuffer.pipelineBarrier(
+        sourceStage, destinationStage,
+        vk::DependencyFlagBits::eByRegion,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+}
+----
+
+===== Semaphores and Fences
+
+Semaphores and fences are used for coarser-grained synchronization:
+
+[source,cpp]
+----
+// Example of using semaphores and fences for queue synchronization
+void RenderFrame(vk::raii::Device& device, vk::Queue graphicsQueue, vk::Queue presentQueue) {
+    // Wait for the previous frame to finish
+    vk::Result result = device.waitForFences(1, &*inFlightFence, VK_TRUE, UINT64_MAX);
+    device.resetFences(1, &*inFlightFence);
+
+    // Acquire the next image from the swapchain
+    uint32_t imageIndex;
+    result = device.acquireNextImageKHR(*swapchain, UINT64_MAX,
+                                       *imageAvailableSemaphore, nullptr, &imageIndex);
+
+    // Record command buffer
+    // ...
+
+    // Submit command buffer
+    vk::SubmitInfo submitInfo;
+    vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+    submitInfo.setWaitSemaphoreCount(1)
+              .setPWaitSemaphores(&*imageAvailableSemaphore)
+              .setPWaitDstStageMask(waitStages)
+              .setCommandBufferCount(1)
+              .setPCommandBuffers(&*commandBuffer)
+              .setSignalSemaphoreCount(1)
+              .setPSignalSemaphores(&*renderFinishedSemaphore);
+
+    graphicsQueue.submit(1, &submitInfo, *inFlightFence);
+
+    // Present the image
+    vk::PresentInfoKHR presentInfo;
+    presentInfo.setWaitSemaphoreCount(1)
+               .setPWaitSemaphores(&*renderFinishedSemaphore)
+               .setSwapchainCount(1)
+               .setPSwapchains(&*swapchain)
+               .setPImageIndices(&imageIndex);
+
+    result = presentQueue.presentKHR(&presentInfo);
+}
+----
+
+==== How Rendergraphs Help with Synchronization
+
+Rendergraphs simplify synchronization by:
+
+1. *Automatic Dependency Tracking*: The rendergraph knows which passes depend on which resources, so it can automatically insert the necessary synchronization primitives.
+2. *Optimal Barrier Placement*: The rendergraph can analyze the entire rendering process and place barriers only where needed, reducing overhead.
+3. *Layout Transitions*: The rendergraph can automatically handle image layout transitions based on how resources are used.
+4. *Resource Aliasing*: The rendergraph can reuse memory for resources that aren't used simultaneously, reducing memory usage.
+
+===== Example: Implementing a Deferred Renderer with a Rendergraph
+
+Here's how you might implement a deferred renderer using a rendergraph:
+
+[source,cpp]
+----
+void SetupDeferredRenderer(Rendergraph& graph, uint32_t width, uint32_t height) {
+    // Add resources
+    graph.AddResource("GBuffer_Position", vk::Format::eR16G16B16A16Sfloat, {width, height},
+                     vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment,
+                     vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    graph.AddResource("GBuffer_Normal", vk::Format::eR16G16B16A16Sfloat, {width, height},
+                     vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment,
+                     vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    graph.AddResource("GBuffer_Albedo", vk::Format::eR8G8B8A8Unorm, {width, height},
+                     vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment,
+                     vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    graph.AddResource("Depth", vk::Format::eD32Sfloat, {width, height},
+                     vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eInputAttachment,
+                     vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+
+    graph.AddResource("FinalColor", vk::Format::eR8G8B8A8Unorm, {width, height},
+                     vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+                     vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal);
+
+    // Add geometry pass
+    graph.AddPass("GeometryPass",
+                 {}, // No inputs
+                 {"GBuffer_Position", "GBuffer_Normal", "GBuffer_Albedo", "Depth"},
+                 [&](vk::raii::CommandBuffer& cmd) {
+                     // Begin dynamic rendering
+                     std::array<vk::RenderingAttachmentInfoKHR, 3> colorAttachments;
+
+                     // Set up color attachments for G-buffer
+                     // ...
+
+                     // Set up depth attachment
+                     // ...
+
+                     vk::RenderingInfoKHR renderingInfo;
+                     renderingInfo.setRenderArea({{0, 0}, {width, height}})
+                                  .setLayerCount(1)
+                                  .setColorAttachmentCount(colorAttachments.size())
+                                  .setPColorAttachments(colorAttachments.data())
+                                  .setPDepthAttachment(&depthAttachment);
+
+                     cmd.beginRendering(renderingInfo);
+
+                     // Bind pipeline and draw geometry
+                     // ...
+
+                     cmd.endRendering();
+                 });
+
+    // Add lighting pass
+    graph.AddPass("LightingPass",
+                 {"GBuffer_Position", "GBuffer_Normal", "GBuffer_Albedo", "Depth"},
+                 {"FinalColor"},
+                 [&](vk::raii::CommandBuffer& cmd) {
+                     // Begin dynamic rendering
+                     vk::RenderingAttachmentInfoKHR colorAttachment;
+                     // Set up color attachment for final color
+                     // ...
+
+                     vk::RenderingInfoKHR renderingInfo;
+                     renderingInfo.setRenderArea({{0, 0}, {width, height}})
+                                  .setLayerCount(1)
+                                  .setColorAttachmentCount(1)
+                                  .setPColorAttachments(&colorAttachment);
+
+                     cmd.beginRendering(renderingInfo);
+
+                     // Bind pipeline and draw full-screen quad
+                     // ...
+
+                     cmd.endRendering();
+                 });
+
+    // Compile the rendergraph
+    graph.Compile();
+}
+----
+
+==== Best Practices for Rendergraphs and Synchronization
+
+1. *Minimize Synchronization*: Use the rendergraph to minimize the number of synchronization points.
+2. *Batch Similar Operations*: Group similar operations together to reduce state changes.
+3. *Use Appropriate Access Flags*: Be specific about which access types you need to synchronize.
+4. *Avoid Redundant Barriers*: Let the rendergraph eliminate redundant barriers.
+5. *Consider Memory Aliasing*: Use the rendergraph's memory aliasing capabilities to reduce memory usage.
+6. *Profile and Optimize*: Use GPU profiling tools to identify synchronization bottlenecks.
+7. *Handle Platform Differences*: Different GPUs may have different synchronization requirements.
+
 ==== Benefits of Dynamic Rendering
 
 Dynamic rendering offers several advantages over traditional render passes:

@@ -1,0 +1,434 @@
+::pp: {plus}{plus}
+
+= Camera & Transformations: Camera Implementation
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Camera Implementation
+
+Now that we understand the mathematical foundations, let's implement a flexible camera system for our Vulkan application. We'll create a camera class that can be used to navigate our 3D scenes.
+
+=== Camera Types
+
+There are several types of cameras commonly used in 3D applications:
+
+* *First-Person Camera*: Simulates viewing the world through the eyes of a character.
+* *Third-Person Camera*: Follows a character from behind or another fixed position.
+* *Orbit Camera*: Rotates around a fixed point, useful for object inspection.
+* *Free Camera*: Allows unrestricted movement in all directions.
+
+For our implementation, we'll focus on a versatile camera that can be configured for different use cases.
+
+=== Camera Class Design
+
+Let's design a camera class that encapsulates the necessary functionality:
+
+[source,cpp]
+----
+class Camera {
+private:
+    // Camera position and orientation
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+    glm::vec3 right;
+    glm::vec3 worldUp;
+
+    // Euler angles
+    float yaw;
+    float pitch;
+
+    // Camera options
+    float movementSpeed;
+    float mouseSensitivity;
+    float zoom;
+
+    // Update camera vectors based on Euler angles
+    void updateCameraVectors();
+
+public:
+    // Constructor with default values
+    Camera(
+        glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
+        float yaw = -90.0f,
+        float pitch = 0.0f
+    );
+
+    // Get view matrix
+    glm::mat4 getViewMatrix() const;
+
+    // Get projection matrix
+    glm::mat4 getProjectionMatrix(float aspectRatio, float nearPlane = 0.1f, float farPlane = 100.0f) const;
+
+    // Process keyboard input for camera movement
+    void processKeyboard(CameraMovement direction, float deltaTime);
+
+    // Process mouse movement for camera rotation
+    void processMouseMovement(float xOffset, float yOffset, bool constrainPitch = true);
+
+    // Process mouse scroll for zoom
+    void processMouseScroll(float yOffset);
+
+    // Getters for camera properties
+    glm::vec3 getPosition() const { return position; }
+    glm::vec3 getFront() const { return front; }
+    float getZoom() const { return zoom; }
+};
+----
+
+=== Camera Movement
+
+We'll define an enum for camera movement directions:
+
+[source,cpp]
+----
+enum class CameraMovement {
+    FORWARD,
+    BACKWARD,
+    LEFT,
+    RIGHT,
+    UP,
+    DOWN
+};
+----
+
+And implement the movement logic:
+
+[source,cpp]
+----
+void Camera::processKeyboard(CameraMovement direction, float deltaTime) {
+    float velocity = movementSpeed * deltaTime;
+
+    if (direction == CameraMovement::FORWARD)
+        position += front * velocity;
+    if (direction == CameraMovement::BACKWARD)
+        position -= front * velocity;
+    if (direction == CameraMovement::LEFT)
+        position -= right * velocity;
+    if (direction == CameraMovement::RIGHT)
+        position += right * velocity;
+    if (direction == CameraMovement::UP)
+        position += up * velocity;
+    if (direction == CameraMovement::DOWN)
+        position -= up * velocity;
+}
+----
+
+=== Camera Rotation
+
+For camera rotation, we'll use mouse input to adjust the yaw and pitch angles:
+
+[source,cpp]
+----
+void Camera::processMouseMovement(float xOffset, float yOffset, bool constrainPitch) {
+    xOffset *= mouseSensitivity;
+    yOffset *= mouseSensitivity;
+
+    yaw += xOffset;
+    pitch += yOffset;
+
+    // Constrain pitch to avoid flipping
+    if (constrainPitch) {
+        if (pitch > 89.0f)
+            pitch = 89.0f;
+        if (pitch < -89.0f)
+            pitch = -89.0f;
+    }
+
+    // Update camera vectors based on updated Euler angles
+    updateCameraVectors();
+}
+----
+
+=== Updating Camera Vectors
+
+After changing the camera's orientation, we need to recalculate the front, right, and up vectors:
+
+[source,cpp]
+----
+void Camera::updateCameraVectors() {
+    // Calculate the new front vector
+    glm::vec3 newFront;
+    newFront.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    newFront.y = sin(glm::radians(pitch));
+    newFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front = glm::normalize(newFront);
+
+    // Recalculate the right and up vectors
+    right = glm::normalize(glm::cross(front, worldUp));
+    up = glm::normalize(glm::cross(right, front));
+}
+----
+
+=== View Matrix
+
+The view matrix transforms world coordinates into view coordinates (camera space):
+
+[source,cpp]
+----
+glm::mat4 Camera::getViewMatrix() const {
+    return glm::lookAt(position, position + front, up);
+}
+----
+
+=== Projection Matrix
+
+The projection matrix transforms view coordinates into clip coordinates:
+
+[source,cpp]
+----
+glm::mat4 Camera::getProjectionMatrix(float aspectRatio, float nearPlane, float farPlane) const {
+    return glm::perspective(glm::radians(zoom), aspectRatio, nearPlane, farPlane);
+}
+----
+
+=== Advanced Topics: Third-Person Camera Implementation
+
+In this section, we'll explore advanced techniques for implementing a third-person camera that follows a character while avoiding occlusion and maintaining focus on the character.
+
+==== Third-Person Camera Design
+
+A third-person camera typically needs to:
+
+1. Follow the character at a specified distance
+2. Maintain a consistent view of the character
+3. Avoid being occluded by objects in the environment
+4. Provide smooth transitions during movement and rotation
+
+Let's extend our camera class to support these features:
+
+[source,cpp]
+----
+class ThirdPersonCamera : public Camera {
+private:
+    // Target (character) properties
+    glm::vec3 targetPosition;
+    glm::vec3 targetForward;
+
+    // Camera configuration
+    float followDistance;
+    float followHeight;
+    float followSmoothness;
+
+    // Occlusion avoidance
+    float minDistance;
+    float raycastDistance;
+
+    // Internal state
+    glm::vec3 desiredPosition;
+    glm::vec3 smoothDampVelocity;
+
+public:
+    ThirdPersonCamera(
+        float followDistance = 5.0f,
+        float followHeight = 2.0f,
+        float followSmoothness = 0.1f,
+        float minDistance = 1.0f
+    );
+
+    // Update camera position based on target
+    void updatePosition(const glm::vec3& targetPos, const glm::vec3& targetFwd, float deltaTime);
+
+    // Handle occlusion avoidance
+    void handleOcclusion(const Scene& scene);
+
+    // Orbit around target
+    void orbit(float horizontalAngle, float verticalAngle);
+
+    // Setters for camera properties
+    void setFollowDistance(float distance) { followDistance = distance; }
+    void setFollowHeight(float height) { followHeight = height; }
+    void setFollowSmoothness(float smoothness) { followSmoothness = smoothness; }
+};
+----
+
+==== Character Following Algorithm
+
+The core of a third-person camera is the algorithm that positions the camera relative to the character. Here's an implementation of the `updatePosition` method:
+
+[source,cpp]
+----
+void ThirdPersonCamera::updatePosition(
+    const glm::vec3& targetPos,
+    const glm::vec3& targetFwd,
+    float deltaTime
+) {
+    // Update target properties
+    targetPosition = targetPos;
+    targetForward = glm::normalize(targetFwd);
+
+    // Calculate the desired camera position
+    // Position the camera behind and above the character
+    glm::vec3 offset = -targetForward * followDistance;
+    offset.y = followHeight;
+
+    desiredPosition = targetPosition + offset;
+
+    // Smooth camera movement using exponential smoothing
+    position = glm::mix(position, desiredPosition, 1.0f - pow(followSmoothness, deltaTime * 60.0f));
+
+    // Update the camera to look at the target
+    front = glm::normalize(targetPosition - position);
+
+    // Recalculate right and up vectors
+    right = glm::normalize(glm::cross(front, worldUp));
+    up = glm::normalize(glm::cross(right, front));
+}
+----
+
+This implementation:
+
+1. Positions the camera behind the character based on the character's forward direction
+2. Adds height to give a better view of the character and surroundings
+3. Uses exponential smoothing to create natural camera movement
+4. Always keeps the camera focused on the character
+
+==== Occlusion Avoidance
+
+One of the most challenging aspects of a third-person camera is handling occlusion - when objects in the environment block the view of the character. Here's an implementation of occlusion avoidance:
+
+[source,cpp]
+----
+void ThirdPersonCamera::handleOcclusion(const Scene& scene) {
+    // Cast a ray from the target to the desired camera position
+    Ray ray;
+    ray.origin = targetPosition;
+    ray.direction = glm::normalize(desiredPosition - targetPosition);
+
+    // Check for intersections with scene objects
+    RaycastHit hit;
+    if (scene.raycast(ray, hit, glm::length(desiredPosition - targetPosition))) {
+        // If there's an intersection, move the camera to the hit point
+        // minus a small offset to avoid clipping
+        float offsetDistance = 0.2f;
+        position = hit.point - (ray.direction * offsetDistance);
+
+        // Ensure we don't get too close to the target
+        float currentDistance = glm::length(position - targetPosition);
+        if (currentDistance < minDistance) {
+            position = targetPosition + ray.direction * minDistance;
+        }
+
+        // Update the camera to look at the target
+        front = glm::normalize(targetPosition - position);
+        right = glm::normalize(glm::cross(front, worldUp));
+        up = glm::normalize(glm::cross(right, front));
+    }
+}
+----
+
+This implementation:
+
+1. Casts a ray from the character to the desired camera position
+2. If the ray hits an object, moves the camera to the hit point (with a small offset)
+3. Ensures the camera doesn't get too close to the character
+4. Updates the camera orientation to maintain focus on the character
+
+==== Implementing Orbit Controls
+
+Many third-person games allow the player to orbit the camera around the character. Here's how to implement this functionality:
+
+[source,cpp]
+----
+void ThirdPersonCamera::orbit(float horizontalAngle, float verticalAngle) {
+    // Update yaw and pitch based on input
+    yaw += horizontalAngle;
+    pitch += verticalAngle;
+
+    // Constrain pitch to avoid flipping
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+
+    // Calculate the new camera position based on spherical coordinates
+    float radius = followDistance;
+    float yawRad = glm::radians(yaw);
+    float pitchRad = glm::radians(pitch);
+
+    // Convert spherical coordinates to Cartesian
+    glm::vec3 offset;
+    offset.x = radius * cos(yawRad) * cos(pitchRad);
+    offset.y = radius * sin(pitchRad);
+    offset.z = radius * sin(yawRad) * cos(pitchRad);
+
+    // Set the desired position
+    desiredPosition = targetPosition + offset;
+
+    // Update camera vectors
+    front = glm::normalize(targetPosition - desiredPosition);
+    right = glm::normalize(glm::cross(front, worldUp));
+    up = glm::normalize(glm::cross(right, front));
+}
+----
+
+This implementation:
+
+1. Updates the camera's yaw and pitch based on user input
+2. Constrains the pitch to prevent the camera from flipping
+3. Calculates a new camera position using spherical coordinates
+4. Keeps the camera focused on the character
+
+==== Integrating with Character Movement
+
+To create a complete third-person camera system, we need to integrate it with character movement. Here's an example of how to use the third-person camera in a game loop:
+
+[source,cpp]
+----
+void gameLoop(float deltaTime) {
+    // Update character position and orientation based on input
+    character.update(deltaTime);
+
+    // Update camera position to follow the character
+    thirdPersonCamera.updatePosition(
+        character.getPosition(),
+        character.getForward(),
+        deltaTime
+    );
+
+    // Handle camera occlusion
+    thirdPersonCamera.handleOcclusion(scene);
+
+    // Process camera orbit input (if any)
+    if (mouseInputDetected) {
+        thirdPersonCamera.orbit(mouseDeltaX, mouseDeltaY);
+    }
+
+    // Get the view and projection matrices for rendering
+    glm::mat4 viewMatrix = thirdPersonCamera.getViewMatrix();
+    glm::mat4 projMatrix = thirdPersonCamera.getProjectionMatrix(aspectRatio);
+
+    // Use these matrices for rendering the scene
+    renderer.render(scene, viewMatrix, projMatrix);
+}
+----
+
+==== Advanced Techniques
+
+For even more sophisticated third-person cameras, consider these advanced techniques:
+
+* *Camera Collision*: Implement a collision volume for the camera to prevent it from passing through walls
+* *Context-Aware Positioning*: Adjust camera position based on the environment (e.g., zoom out in large open areas, zoom in in tight spaces)
+* *Intelligent Framing*: Adjust the camera to keep both the character and important objects in frame
+* *Predictive Following*: Anticipate character movement to reduce camera lag
+* *Camera Obstruction Transparency*: Make objects that obstruct the view partially transparent
+* *Dynamic Field of View*: Adjust the FOV based on movement speed or environmental context
+
+==== Performance Considerations
+
+When implementing occlusion avoidance, be mindful of performance:
+
+* Use simplified collision geometry for raycasting
+* Limit the frequency of occlusion checks
+* Consider using spatial partitioning structures (e.g., octrees) to accelerate raycasts
+* For mobile or performance-constrained platforms, simplify the occlusion algorithm
+
+In the next section, we'll explore how to use transformation matrices to position objects in our 3D scene.
+
+link:04_transformation_matrices.adoc[Next: Transformation Matrices]

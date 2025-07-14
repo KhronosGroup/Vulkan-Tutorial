@@ -1,0 +1,263 @@
+::pp: {plus}{plus}
+
+= Camera & Transformations: Vulkan Integration
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Integrating Camera with Vulkan
+
+Now that we have a camera system and understand transformation matrices, let's integrate them with our Vulkan application. We'll focus on how to set up uniform buffers for our matrices and update them each frame based on camera movement.
+
+=== Uniform Buffer Setup
+
+First, we need to define our uniform buffer structure:
+
+[source,cpp]
+----
+struct UniformBufferObject {
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+};
+----
+
+Next, we'll create the uniform buffer and its descriptor set:
+
+[source,cpp]
+----
+void createUniformBuffers() {
+    vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    uniformBuffers.resize(swapChainImages.size());
+    uniformBuffersMapped.resize(swapChainImages.size());
+
+    for (size_t i = 0; i < swapChainImages.size(); i++) {
+        // Create the buffer
+        vk::BufferCreateInfo bufferInfo{
+            .size = bufferSize,
+            .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+            .sharingMode = vk::SharingMode::eExclusive
+        };
+
+        uniformBuffers[i] = vk::raii::Buffer(device, bufferInfo);
+
+        // Allocate and bind memory
+        vk::MemoryRequirements memRequirements = uniformBuffers[i].getMemoryRequirements();
+
+        vk::MemoryAllocateInfo allocInfo{
+            .allocationSize = memRequirements.size,
+            .memoryTypeIndex = findMemoryType(
+                memRequirements.memoryTypeBits,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+            )
+        };
+
+        uniformBuffersMemory[i] = vk::raii::DeviceMemory(device, allocInfo);
+        uniformBuffers[i].bindMemory(*uniformBuffersMemory[i], 0);
+
+        // Persistently map the buffer memory
+        uniformBuffersMapped[i] = uniformBuffersMemory[i].mapMemory(0, bufferSize);
+    }
+}
+----
+
+=== Descriptor Set Layout
+
+We need to create a descriptor set layout that describes our uniform buffer:
+
+[source,cpp]
+----
+void createDescriptorSetLayout() {
+    vk::DescriptorSetLayoutBinding uboLayoutBinding{
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex,
+        .pImmutableSamplers = nullptr
+    };
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{
+        .bindingCount = 1,
+        .pBindings = &uboLayoutBinding
+    };
+
+    descriptorSetLayout = device.createDescriptorSetLayout(layoutInfo);
+}
+----
+
+=== Descriptor Sets
+
+Now we'll create descriptor sets that point to our uniform buffers:
+
+[source,cpp]
+----
+void createDescriptorSets() {
+    std::vector<vk::DescriptorSetLayout> layouts(swapChainImages.size(), *descriptorSetLayout);
+
+    vk::DescriptorSetAllocateInfo allocInfo{
+        .descriptorPool = *descriptorPool,
+        .descriptorSetCount = static_cast<uint32_t>(swapChainImages.size()),
+        .pSetLayouts = layouts.data()
+    };
+
+    descriptorSets = device.allocateDescriptorSets(allocInfo);
+
+    for (size_t i = 0; i < swapChainImages.size(); i++) {
+        vk::DescriptorBufferInfo bufferInfo{
+            .buffer = *uniformBuffers[i],
+            .offset = 0,
+            .range = sizeof(UniformBufferObject)
+        };
+
+        vk::WriteDescriptorSet descriptorWrite{
+            .dstSet = descriptorSets[i],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eUniformBuffer,
+            .pBufferInfo = &bufferInfo
+        };
+
+        device.updateDescriptorSets(1, &descriptorWrite, 0, nullptr);
+    }
+}
+----
+
+=== Updating Uniform Buffers
+
+In our main loop, we'll update the uniform buffer with the latest camera data:
+
+[source,cpp]
+----
+void updateUniformBuffer(uint32_t currentImage) {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+
+    // Model matrix: rotate the model around the Y axis
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // View matrix: get from our camera
+    ubo.view = camera.getViewMatrix();
+
+    // Projection matrix: get from our camera
+    ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
+
+    // Vulkan's Y coordinate is inverted compared to OpenGL
+    ubo.proj[1][1] *= -1;
+
+    // Copy the data to the uniform buffer
+    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+}
+----
+
+=== Handling Input for Camera Movement
+
+We need to handle user input to control the camera:
+
+[source,cpp]
+----
+void processInput() {
+    // Calculate delta time
+    static float lastFrame = 0.0f;
+    float currentFrame = glfwGetTime();
+    float deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
+
+    // Process keyboard input for camera movement
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.processKeyboard(CameraMovement::FORWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.processKeyboard(CameraMovement::BACKWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.processKeyboard(CameraMovement::LEFT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.processKeyboard(CameraMovement::RIGHT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        camera.processKeyboard(CameraMovement::UP, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+        camera.processKeyboard(CameraMovement::DOWN, deltaTime);
+}
+----
+
+=== Mouse Callback for Camera Rotation
+
+We'll also need to handle mouse movement for camera rotation:
+
+[source,cpp]
+----
+// Global variables for mouse handling
+float lastX = 0.0f, lastY = 0.0f;
+bool firstMouse = true;
+
+void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // Reversed: y ranges bottom to top
+
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.processMouseMovement(xoffset, yoffset);
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+    camera.processMouseScroll(yoffset);
+}
+----
+
+=== Setting Up Input Callbacks
+
+In our initialization code, we need to set up the input callbacks:
+
+[source,cpp]
+----
+void initWindow() {
+    // ... existing GLFW initialization code ...
+
+    // Set up input callbacks
+    glfwSetCursorPosCallback(window, mouseCallback);
+    glfwSetScrollCallback(window, scrollCallback);
+
+    // Capture the cursor for camera control
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+}
+----
+
+=== Main Loop Integration
+
+Finally, we integrate everything in our main loop:
+
+[source,cpp]
+----
+void mainLoop() {
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        processInput();
+
+        // Update uniform buffer with latest camera data
+        updateUniformBuffer(currentFrame);
+
+        // Draw frame
+        drawFrame();
+    }
+}
+----
+
+With these components in place, we now have a fully functional camera system integrated with our Vulkan application. Users can navigate the 3D scene using keyboard and mouse controls, and the view will update accordingly.
+
+In the next section, we'll wrap up with a conclusion and discuss potential improvements to our camera system.
+
+link:06_conclusion.adoc[Next: Conclusion]

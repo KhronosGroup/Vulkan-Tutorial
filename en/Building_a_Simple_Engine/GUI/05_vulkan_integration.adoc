@@ -1,0 +1,854 @@
+::pp: {plus}{plus}
+
+= GUI: Vulkan Integration
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Vulkan Integration
+
+In this section, we'll explore how to properly integrate ImGui rendering with the Vulkan rendering pipeline. While we've already covered the basic setup in the "Setting Up Dear ImGui" section, here we'll dive deeper into the technical details of how ImGui works with Vulkan and how to optimize the integration.
+
+=== Understanding the Rendering Flow
+
+Before we dive into the implementation details, let's understand how ImGui rendering fits into the Vulkan rendering pipeline:
+
+1. *Prepare Frame*: Begin a new frame in ImGui and create UI elements
+2. *Generate Draw Data*: ImGui generates vertex and index buffers for the UI
+3. *Record Commands*: Record Vulkan commands to render the ImGui draw data
+4. *Submit Commands*: Submit the commands to the Vulkan queue
+5. *Present*: Present the rendered frame to the screen
+
+This flow needs to be integrated with your existing Vulkan rendering pipeline, which typically involves:
+
+1. Acquiring the next swap chain image
+2. Recording command buffers for scene rendering
+3. Submitting command buffers
+4. Presenting the rendered image
+
+=== Dynamic Rendering Configuration
+
+ImGui can be integrated with Vulkan's dynamic rendering feature, which simplifies the rendering process by eliminating the need for explicit render passes and framebuffers:
+
+[source,cpp]
+----
+// When initializing ImGui, we set up our custom Vulkan renderer with dynamic rendering
+ImGuiVulkanRenderer renderer;
+// ... configure the renderer ...
+renderer.initialize(*device, *physicalDevice);
+
+// Set up dynamic rendering info
+vk::PipelineRenderingCreateInfo renderingInfo{};
+renderingInfo.colorAttachmentCount = 1;
+vk::Format formats[] = { vk::Format::eB8G8R8A8Unorm };
+renderingInfo.pColorAttachmentFormats = formats;
+renderer.setDynamicRenderingInfo(renderingInfo);
+----
+
+Dynamic rendering simplifies the integration by removing the dependency on render passes and framebuffers, making the code more flexible and easier to maintain.
+
+=== Command Buffer Integration
+
+There are two main approaches to integrating ImGui commands with your Vulkan command buffers:
+
+1. *Single Command Buffer*: Record both scene and ImGui rendering commands in the same command buffer
+2. *Multiple Command Buffers*: Use separate command buffers for scene and ImGui rendering
+
+Let's look at both approaches:
+
+==== Single Command Buffer Approach
+
+This is the simplest approach and works well for most applications. With dynamic rendering, the code becomes even cleaner:
+
+[source,cpp]
+----
+void drawFrame() {
+    // ... existing frame preparation code ...
+
+    // Start recording command buffer
+    vk::CommandBufferBeginInfo beginInfo{};
+    commandBuffer.begin(beginInfo);
+
+    // Begin dynamic rendering for scene
+    vk::RenderingAttachmentInfo colorAttachment{};
+    colorAttachment.imageView = *swapChainImageViews[imageIndex];
+    colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
+
+    vk::RenderingAttachmentInfo depthAttachment{};
+    depthAttachment.imageView = *depthImageView;
+    depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+    depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+    depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+
+    vk::RenderingInfo renderingInfo{};
+    renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.pDepthAttachment = &depthAttachment;
+
+    commandBuffer.beginRendering(renderingInfo);
+
+    // Render 3D scene
+    // ... your existing scene rendering code ...
+
+    commandBuffer.endRendering();
+
+    // Render ImGui using our custom renderer
+    // ImGui will handle its own dynamic rendering internally
+    renderer.render(ImGui::GetDrawData(), commandBuffer);
+
+    // End command buffer
+    commandBuffer.end();
+
+    // Submit command buffer
+    // ... your existing submission code ...
+}
+----
+
+==== Multiple Command Buffers Approach
+
+This approach gives you more flexibility and can be useful for more complex rendering pipelines. With dynamic rendering, it becomes even more straightforward:
+
+[source,cpp]
+----
+void drawFrame() {
+    // ... existing frame preparation code ...
+
+    // Record scene command buffer
+    vk::CommandBufferBeginInfo beginInfo{};
+    sceneCommandBuffer.begin(beginInfo);
+
+    // Begin dynamic rendering for scene
+    vk::RenderingAttachmentInfo colorAttachment{};
+    colorAttachment.imageView = *swapChainImageViews[imageIndex];
+    colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
+
+    vk::RenderingAttachmentInfo depthAttachment{};
+    depthAttachment.imageView = *depthImageView;
+    depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+    depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+    depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+
+    vk::RenderingInfo renderingInfo{};
+    renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.pDepthAttachment = &depthAttachment;
+
+    sceneCommandBuffer.beginRendering(renderingInfo);
+
+    // Render 3D scene
+    // ... your existing scene rendering code ...
+
+    sceneCommandBuffer.endRendering();
+    sceneCommandBuffer.end();
+
+    // Record ImGui command buffer
+    imguiCommandBuffer.begin(beginInfo);
+
+    // For ImGui, we want to preserve the contents of the previous rendering
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eLoad;
+
+    // No need for depth attachment for UI
+    renderingInfo.pDepthAttachment = nullptr;
+
+    // Render ImGui using our custom renderer
+    // ImGui will handle its own dynamic rendering internally
+    renderer.render(ImGui::GetDrawData(), imguiCommandBuffer);
+
+    imguiCommandBuffer.end();
+
+    // Submit command buffers in order
+    std::array<vk::CommandBuffer, 2> submitCommandBuffers = {
+        *sceneCommandBuffer,
+        *imguiCommandBuffer
+    };
+
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = static_cast<uint32_t>(submitCommandBuffers.size());
+    submitInfo.pCommandBuffers = submitCommandBuffers.data();
+
+    // ... rest of your submission code ...
+}
+----
+
+=== Handling Multiple Viewports
+
+ImGui supports multiple viewports, which allows UI windows to be detached from the main window. To support this feature, we need to handle additional steps:
+
+[source,cpp]
+----
+// In your main loop, after rendering ImGui
+if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+}
+----
+
+This will render any detached ImGui windows. Note that this feature requires additional platform-specific code and may not be necessary for all applications.
+
+=== Handling Window Resize
+
+When the window is resized, you need to recreate the swap chain and update ImGui:
+
+[source,cpp]
+----
+void recreateSwapChain() {
+    // ... existing swap chain recreation code ...
+
+    // Update ImGui display size
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(swapChainExtent.width),
+                           static_cast<float>(swapChainExtent.height));
+}
+----
+
+=== Performance Considerations
+
+Here are some tips to optimize ImGui rendering performance in Vulkan:
+
+1. *Minimize State Changes*: Try to render all ImGui elements in a single pass to minimize state changes.
+
+2. *Use Appropriate Descriptor Pool Sizes*: Allocate enough descriptors for ImGui to avoid running out of descriptors.
+
+3. *Consider Secondary Command Buffers*: For complex UIs, consider using secondary command buffers to record ImGui commands in parallel.
+
+4. *Optimize UI Updates*: Only update UI elements that change, and consider using ImGui's `Begin()` function with the `ImGuiWindowFlags_NoDecoration` flag for static UI elements.
+
+5. *Use ImGui's Memory Allocators*: ImGui allows you to provide custom memory allocators, which can be useful for controlling memory usage.
+
+=== Complete Integration Example
+
+Let's put everything together in a complete example that integrates ImGui with a Vulkan application:
+
+[source,cpp]
+----
+class VulkanApplication {
+private:
+    // ... existing Vulkan members ...
+
+    // ImGui-specific members
+    vk::raii::DescriptorPool imguiPool = nullptr;
+    bool showDemoWindow = true;
+    bool showMetricsWindow = false;
+
+public:
+    void initVulkan() {
+        // ... existing Vulkan initialization ...
+
+        // Initialize ImGui
+        createImGuiDescriptorPool();
+        initImGui();
+    }
+
+    void createImGuiDescriptorPool() {
+        vk::DescriptorPoolSize poolSizes[] =
+        {
+            { vk::DescriptorType::eSampler, 1000 },
+            { vk::DescriptorType::eCombinedImageSampler, 1000 },
+            { vk::DescriptorType::eSampledImage, 1000 },
+            { vk::DescriptorType::eStorageImage, 1000 },
+            { vk::DescriptorType::eUniformTexelBuffer, 1000 },
+            { vk::DescriptorType::eStorageTexelBuffer, 1000 },
+            { vk::DescriptorType::eUniformBuffer, 1000 },
+            { vk::DescriptorType::eStorageBuffer, 1000 },
+            { vk::DescriptorType::eUniformBufferDynamic, 1000 },
+            { vk::DescriptorType::eStorageBufferDynamic, 1000 },
+            { vk::DescriptorType::eInputAttachment, 1000 }
+        };
+
+        vk::DescriptorPoolCreateInfo poolInfo{
+            .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+            .maxSets = 1000,
+            .poolSizeCount = static_cast<uint32_t>(std::size(poolSizes)),
+            .pPoolSizes = poolSizes
+        };
+
+        imguiPool = vk::raii::DescriptorPool(device, poolInfo);
+    }
+
+    void initImGui() {
+        // Initialize ImGui context
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+        // Set up ImGui style
+        ImGui::StyleColorsDark();
+
+        // Initialize our custom backend
+        int width = static_cast<int>(swapChainExtent.width);
+        int height = static_cast<int>(swapChainExtent.height);
+        ImGuiPlatform::Init(width, height);
+
+        // Initialize our custom ImGui Vulkan renderer with dynamic rendering
+        ImGuiVulkanRenderer renderer;
+        renderer.initialize(
+            *instance,
+            *physicalDevice,
+            *device,
+            graphicsFamily,
+            *graphicsQueue,
+            *imguiPool,
+            static_cast<uint32_t>(swapChainImages.size()),
+            vk::SampleCountFlagBits::e1
+        );
+
+        // Set up dynamic rendering info
+        vk::PipelineRenderingCreateInfo renderingInfo{};
+        renderingInfo.colorAttachmentCount = 1;
+        vk::Format formats[] = { swapChainImageFormat };
+        renderingInfo.pColorAttachmentFormats = formats;
+        renderer.setDynamicRenderingInfo(renderingInfo);
+
+        // Upload ImGui fonts
+        vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
+        renderer.uploadFonts(commandBuffer);
+        endSingleTimeCommands(commandBuffer);
+    }
+
+    void drawFrame() {
+        // ... existing frame preparation code ...
+
+        // Start the ImGui frame
+        ImGui::NewFrame();
+
+        // Create ImGui UI
+        createImGuiUI();
+
+        // Render ImGui
+        ImGui::Render();
+
+        // ... existing command buffer recording code ...
+
+        // Begin dynamic rendering for scene
+        vk::RenderingAttachmentInfo colorAttachment{};
+        colorAttachment.imageView = *swapChainImageViews[imageIndex];
+        colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+        colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+        colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+        colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
+
+        vk::RenderingAttachmentInfo depthAttachment{};
+        depthAttachment.imageView = *depthImageView;
+        depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+        depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+        depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+        depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+
+        vk::RenderingInfo renderingInfo{};
+        renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};
+        renderingInfo.layerCount = 1;
+        renderingInfo.colorAttachmentCount = 1;
+        renderingInfo.pColorAttachments = &colorAttachment;
+        renderingInfo.pDepthAttachment = &depthAttachment;
+
+        commandBuffer.beginRendering(renderingInfo);
+
+        // Render 3D scene
+        // ... your existing scene rendering code ...
+
+        commandBuffer.endRendering();
+
+        // Render ImGui using our custom renderer
+        // ImGui will handle its own dynamic rendering internally
+        renderer.render(ImGui::GetDrawData(), commandBuffer);
+
+        // ... existing command buffer submission code ...
+    }
+
+    void createImGuiUI() {
+        // Menu bar
+        if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::BeginMenu("File")) {
+                if (ImGui::MenuItem("Exit", "Alt+F4")) {
+                    // Generic way to request application exit
+                    requestApplicationExit();
+                }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("View")) {
+                ImGui::MenuItem("Demo Window", nullptr, &showDemoWindow);
+                ImGui::MenuItem("Metrics", nullptr, &showMetricsWindow);
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMainMenuBar();
+        }
+
+        // Demo window
+        if (showDemoWindow) {
+            ImGui::ShowDemoWindow(&showDemoWindow);
+        }
+
+        // Metrics window
+        if (showMetricsWindow) {
+            ImGui::ShowMetricsWindow(&showMetricsWindow);
+        }
+
+        // Custom windows
+        ImGui::Begin("Settings");
+
+        static float color[3] = { 0.5f, 0.5f, 0.5f };
+        if (ImGui::ColorEdit3("Clear Color", color)) {
+            // Update clear color
+            clearColor = { color[0], color[1], color[2], 1.0f };
+        }
+
+        static int selectedModel = 0;
+        const char* models[] = { "Cube", "Sphere", "Teapot", "Custom Model" };
+        if (ImGui::Combo("Model", &selectedModel, models, IM_ARRAYSIZE(models))) {
+            // Change model
+            loadModel(models[selectedModel]);
+        }
+
+        ImGui::End();
+    }
+
+    void cleanup() {
+        // ... existing cleanup code ...
+
+        // Cleanup ImGui
+        renderer.cleanup();
+        ImGuiPlatform::Shutdown();  // Our custom platform backend
+        ImGui::DestroyContext();
+    }
+};
+----
+
+=== Advanced Topics
+
+==== Custom Shaders for ImGui
+
+ImGui uses its own shaders for rendering, but you can customize them if needed:
+
+[source,cpp]
+----
+// Create custom shader modules
+vk::raii::ShaderModule customVertShaderModule = createShaderModule("custom_imgui_vert.spv");
+vk::raii::ShaderModule customFragShaderModule = createShaderModule("custom_imgui_frag.spv");
+
+// Initialize our custom renderer with custom shaders and dynamic rendering
+ImGuiVulkanRenderer renderer;
+renderer.initialize(
+    *instance,
+    *physicalDevice,
+    *device,
+    queueFamily,
+    *queue,
+    *descriptorPool,
+    minImageCount,
+    imageCount,
+    vk::SampleCountFlagBits::e1
+);
+
+// Set up dynamic rendering info
+vk::PipelineRenderingCreateInfo renderingInfo{};
+renderingInfo.colorAttachmentCount = 1;
+vk::Format formats[] = { swapChainImageFormat };
+renderingInfo.pColorAttachmentFormats = formats;
+renderer.setDynamicRenderingInfo(renderingInfo);
+
+// Set custom shaders
+renderer.setCustomShaders(
+    customVertShaderModule,
+    customFragShaderModule
+);
+----
+
+==== Rendering ImGui to a Texture
+
+You can render ImGui to a texture instead of directly to the screen, which can be useful for creating in-game UI elements:
+
+[source,cpp]
+----
+// Create a texture to render ImGui to
+vk::raii::Image imguiTargetImage = createImage(
+    width, height,
+    vk::Format::eR8G8B8A8Unorm,
+    vk::ImageTiling::eOptimal,
+    vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
+);
+
+// Create image view
+vk::raii::ImageView imguiTargetImageView = createImageView(
+    imguiTargetImage,
+    vk::Format::eR8G8B8A8Unorm,
+    vk::ImageAspectFlagBits::eColor
+);
+
+// Render ImGui to the texture using dynamic rendering
+vk::RenderingAttachmentInfo colorAttachment{};
+colorAttachment.imageView = *imguiTargetImageView;
+colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f};
+
+vk::RenderingInfo renderingInfo{};
+renderingInfo.renderArea = vk::Rect2D{{0, 0}, {width, height}};
+renderingInfo.layerCount = 1;
+renderingInfo.colorAttachmentCount = 1;
+renderingInfo.pColorAttachments = &colorAttachment;
+
+commandBuffer.beginRendering(renderingInfo);
+renderer.render(ImGui::GetDrawData(), commandBuffer);
+commandBuffer.endRendering();
+
+// Later, use the texture in your 3D scene
+// ...
+----
+
+==== Handling High DPI Displays
+
+For high DPI displays, you need to handle scaling correctly across different platforms:
+
+[source,cpp]
+----
+// Cross-platform display scaling
+void updateDisplayScale(int width, int height, float scaleX, float scaleY) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+    io.DisplayFramebufferScale = ImVec2(scaleX, scaleY);
+
+    // Update our platform backend
+    ImGuiPlatform::SetDisplaySize(width, height);
+}
+
+// Platform-specific implementations
+// Here's an example using GLFW, but you can implement similar functions
+// for any windowing library you choose to use
+
+void updateDisplayScaleWithGLFW(GLFWwindow* window) {
+    // Get the framebuffer size (which may differ from window size on high DPI displays)
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    // Get the content scale (DPI scaling factor)
+    float xscale, yscale;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+
+    // Update ImGui with the correct display size and scale
+    updateDisplayScale(width, height, xscale, yscale);
+}
+
+// With other windowing libraries, you would use their equivalent APIs
+// to get the framebuffer size and DPI scaling factor
+
+----
+
+=== ImGui Utility Class
+
+To encapsulate all the ImGui functionality in a way that works across different platforms, let's create a utility class similar to the one mentioned in the Vulkan-Samples repository:
+
+[source,cpp]
+----
+// ImGuiUtil.h
+#pragma once
+
+import vulkan_hpp;
+#include <imgui.h>
+#include <functional>
+#include <memory>
+
+class ImGuiUtil {
+public:
+    // Initialize ImGui with Vulkan using dynamic rendering
+    static void Init(
+        vk::raii::Instance& instance,
+        vk::raii::PhysicalDevice& physicalDevice,
+        vk::raii::Device& device,
+        uint32_t queueFamily,
+        vk::raii::Queue& queue,
+        uint32_t minImageCount,
+        uint32_t imageCount,
+        vk::Format swapChainImageFormat,
+        vk::SampleCountFlagBits msaaSamples = vk::SampleCountFlagBits::e1
+    );
+
+    // Shutdown ImGui
+    static void Shutdown();
+
+    // Start a new frame
+    static void NewFrame();
+
+    // Render ImGui draw data to a command buffer
+    static void Render(vk::raii::CommandBuffer& commandBuffer);
+
+    // Update display size
+    static void UpdateDisplaySize(int width, int height, float scaleX = 1.0f, float scaleY = 1.0f);
+
+    // Process platform-specific input event
+    static bool ProcessInputEvent(void* event);
+
+    // Set input callback
+    static void SetInputCallback(std::function<void(ImGuiIO&)> callback);
+
+private:
+    // Create descriptor pool for ImGui
+    static void createDescriptorPool();
+
+    // Upload fonts
+    static void uploadFonts();
+
+    // Begin single-time commands
+    static vk::raii::CommandBuffer beginSingleTimeCommands();
+
+    // End single-time commands
+    static void endSingleTimeCommands(vk::raii::CommandBuffer& commandBuffer);
+
+    // Vulkan objects
+    static vk::raii::Instance* instance;
+    static vk::raii::PhysicalDevice* physicalDevice;
+    static vk::raii::Device* device;
+    static uint32_t queueFamily;
+    static vk::raii::Queue* queue;
+    static vk::raii::DescriptorPool descriptorPool;
+    static vk::raii::CommandPool commandPool;
+    static vk::PipelineRenderingCreateInfo renderingInfo;
+
+    // Input callback
+    static std::function<void(ImGuiIO&)> inputCallback;
+
+    // Initialization state
+    static bool initialized;
+};
+
+// ImGuiUtil.cpp
+#include "ImGuiUtil.h"
+
+// Static member initialization
+vk::raii::Instance* ImGuiUtil::instance = nullptr;
+vk::raii::PhysicalDevice* ImGuiUtil::physicalDevice = nullptr;
+vk::raii::Device* ImGuiUtil::device = nullptr;
+uint32_t ImGuiUtil::queueFamily = 0;
+vk::raii::Queue* ImGuiUtil::queue = nullptr;
+vk::raii::DescriptorPool ImGuiUtil::descriptorPool = nullptr;
+vk::raii::CommandPool ImGuiUtil::commandPool = nullptr;
+vk::PipelineRenderingCreateInfo ImGuiUtil::renderingInfo{};
+std::function<void(ImGuiIO&)> ImGuiUtil::inputCallback = nullptr;
+bool ImGuiUtil::initialized = false;
+
+void ImGuiUtil::Init(
+    vk::raii::Instance& instance,
+    vk::raii::PhysicalDevice& physicalDevice,
+    vk::raii::Device& device,
+    uint32_t queueFamily,
+    vk::raii::Queue& queue,
+    uint32_t minImageCount,
+    uint32_t imageCount,
+    vk::Format swapChainImageFormat,
+    vk::SampleCountFlagBits msaaSamples
+) {
+    ImGuiUtil::instance = &instance;
+    ImGuiUtil::physicalDevice = &physicalDevice;
+    ImGuiUtil::device = &device;
+    ImGuiUtil::queueFamily = queueFamily;
+    ImGuiUtil::queue = &queue;
+
+    // Set up dynamic rendering info
+    renderingInfo.colorAttachmentCount = 1;
+    vk::Format formats[] = { swapChainImageFormat };
+    renderingInfo.pColorAttachmentFormats = formats;
+
+    // Create command pool for font upload
+    vk::CommandPoolCreateInfo poolInfo{
+        .flags = vk::CommandPoolCreateFlagBits::eTransient,
+        .queueFamilyIndex = queueFamily
+    };
+    commandPool = vk::raii::CommandPool(device, poolInfo);
+
+    // Create descriptor pool
+    createDescriptorPool();
+
+    // Initialize ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Set up ImGui style
+    ImGui::StyleColorsDark();
+
+    // Initialize our custom Vulkan renderer with dynamic rendering
+    renderer = ImGuiVulkanRenderer();
+    renderer.initialize(
+        *instance,
+        *physicalDevice,
+        *device,
+        queueFamily,
+        *queue,
+        *descriptorPool,
+        minImageCount,
+        imageCount,
+        msaaSamples
+    );
+
+    // Set dynamic rendering info
+    renderer.setDynamicRenderingInfo(renderingInfo);
+
+    // Upload fonts
+    uploadFonts();
+
+    initialized = true;
+}
+
+void ImGuiUtil::Shutdown() {
+    if (!initialized) return;
+
+    // Wait for device to finish operations
+    device->waitIdle();
+
+    // Cleanup ImGui
+    renderer.cleanup();
+    ImGui::DestroyContext();
+
+    // Cleanup Vulkan resources
+    commandPool = nullptr;
+    descriptorPool = nullptr;
+
+    // Reset pointers
+    instance = nullptr;
+    physicalDevice = nullptr;
+    device = nullptr;
+    queue = nullptr;
+
+    initialized = false;
+}
+
+void ImGuiUtil::NewFrame() {
+    if (!initialized) return;
+
+    // Update ImGui IO with platform-specific input
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Call input callback if registered
+    if (inputCallback) {
+        inputCallback(io);
+    }
+
+    ImGui::NewFrame();
+}
+
+void ImGuiUtil::Render(vk::raii::CommandBuffer& commandBuffer) {
+    if (!initialized) return;
+
+    ImGui::Render();
+    renderer.render(ImGui::GetDrawData(), commandBuffer);
+}
+
+void ImGuiUtil::UpdateDisplaySize(int width, int height, float scaleX, float scaleY) {
+    if (!initialized) return;
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+    io.DisplayFramebufferScale = ImVec2(scaleX, scaleY);
+}
+
+bool ImGuiUtil::ProcessInputEvent(void* event) {
+    // Platform-specific event processing would go here
+    // This is a placeholder for the actual implementation
+    return false;
+}
+
+void ImGuiUtil::SetInputCallback(std::function<void(ImGuiIO&)> callback) {
+    inputCallback = callback;
+}
+
+void ImGuiUtil::createDescriptorPool() {
+    vk::DescriptorPoolSize poolSizes[] =
+    {
+        { vk::DescriptorType::eSampler, 1000 },
+        { vk::DescriptorType::eCombinedImageSampler, 1000 },
+        { vk::DescriptorType::eSampledImage, 1000 },
+        { vk::DescriptorType::eStorageImage, 1000 },
+        { vk::DescriptorType::eUniformTexelBuffer, 1000 },
+        { vk::DescriptorType::eStorageTexelBuffer, 1000 },
+        { vk::DescriptorType::eUniformBuffer, 1000 },
+        { vk::DescriptorType::eStorageBuffer, 1000 },
+        { vk::DescriptorType::eUniformBufferDynamic, 1000 },
+        { vk::DescriptorType::eStorageBufferDynamic, 1000 },
+        { vk::DescriptorType::eInputAttachment, 1000 }
+    };
+
+    vk::DescriptorPoolCreateInfo poolInfo{
+        .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets = 1000,
+        .poolSizeCount = static_cast<uint32_t>(std::size(poolSizes)),
+        .pPoolSizes = poolSizes
+    };
+
+    descriptorPool = vk::raii::DescriptorPool(*device, poolInfo);
+}
+
+void ImGuiUtil::uploadFonts() {
+    vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
+    renderer.uploadFonts(commandBuffer);
+    endSingleTimeCommands(commandBuffer);
+}
+
+vk::raii::CommandBuffer ImGuiUtil::beginSingleTimeCommands() {
+    vk::CommandBufferAllocateInfo allocInfo{
+        .commandPool = *commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+
+    vk::raii::CommandBuffer commandBuffer = vk::raii::CommandBuffers(*device, allocInfo).front();
+
+    vk::CommandBufferBeginInfo beginInfo{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    };
+
+    commandBuffer.begin(beginInfo);
+
+    return commandBuffer;
+}
+
+void ImGuiUtil::endSingleTimeCommands(vk::raii::CommandBuffer& commandBuffer) {
+    commandBuffer.end();
+
+    vk::SubmitInfo submitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*commandBuffer
+    };
+
+    queue->submit(submitInfo);
+    queue->waitIdle();
+}
+----
+
+=== Conclusion
+
+In this section, we've explored how to integrate ImGui with Vulkan, including command buffer integration, render pass configuration, and performance considerations. By creating a flexible implementation, we've ensured that our GUI system works well with any windowing system you choose.
+
+The key improvements we've made include:
+
+1. Creating a platform-agnostic integration approach
+2. Implementing a flexible input system that works with various windowing libraries
+3. Developing a versatile ImGui utility class
+4. Designing a window-system-independent integration
+
+With this knowledge, you can create a robust GUI system for your Vulkan application that provides a smooth user experience regardless of which windowing system you use.
+
+In the next section, we'll wrap up with a conclusion and discuss potential improvements to our GUI system.
+
+link:04_ui_elements.adoc[Previous: UI Elements] | link:06_conclusion.adoc[Next: Conclusion]

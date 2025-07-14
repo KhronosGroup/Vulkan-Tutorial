@@ -1,0 +1,695 @@
+:pp: {plus}{plus}
+
+= Engine Architecture: Rendering Pipeline
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Rendering Pipeline
+
+A well-designed rendering pipeline is essential for creating a flexible and efficient rendering engine. In this section, we'll explore how to structure your rendering pipeline to support various rendering techniques and effects.
+
+=== Rendering Pipeline Challenges
+
+When designing a rendering pipeline, you'll need to address several challenges:
+
+1. *Flexibility* - Support different rendering techniques and effects.
+2. *Performance* - Efficiently utilize the GPU and minimize state changes.
+3. *Extensibility* - Allow for easy addition of new rendering features.
+4. *Maintainability* - Keep the code organized and easy to understand.
+5. *Platform Independence* - Abstract away platform-specific details.
+
+=== Rendering Pipeline Architecture
+
+A modern rendering pipeline typically consists of several stages:
+
+1. *Scene Culling* - Determine which objects are visible and need to be rendered.
+2. *Render Pass Management* - Organize rendering into passes with specific purposes.
+3. *Command Generation* - Generate commands for the GPU to execute.
+4. *Execution* - Submit commands to the GPU for execution.
+5. *Post-Processing* - Apply effects to the rendered image.
+
+Let's explore each of these stages in detail.
+
+=== Scene Culling
+
+Before rendering, we need to determine which objects are visible to the camera. This process is called culling and can significantly improve performance by reducing the number of objects that need to be rendered.
+
+[source,cpp]
+----
+class CullingSystem {
+private:
+    Camera* camera;
+    std::vector<Entity*> visibleEntities;
+
+public:
+    explicit CullingSystem(Camera* cam) : camera(cam) {}
+
+    void SetCamera(Camera* cam) {
+        camera = cam;
+    }
+
+    void CullScene(const std::vector<Entity*>& allEntities) {
+        visibleEntities.clear();
+
+        if (!camera) return;
+
+        // Get camera frustum
+        Frustum frustum = camera->GetFrustum();
+
+        // Check each entity against the frustum
+        for (auto entity : allEntities) {
+            if (!entity->IsActive()) continue;
+
+            auto meshComponent = entity->GetComponent<MeshComponent>();
+            if (!meshComponent) continue;
+
+            auto transformComponent = entity->GetComponent<TransformComponent>();
+            if (!transformComponent) continue;
+
+            // Get bounding box of the mesh
+            BoundingBox boundingBox = meshComponent->GetBoundingBox();
+
+            // Transform bounding box by entity transform
+            boundingBox.Transform(transformComponent->GetTransformMatrix());
+
+            // Check if bounding box is visible
+            if (frustum.Intersects(boundingBox)) {
+                visibleEntities.push_back(entity);
+            }
+        }
+    }
+
+    const std::vector<Entity*>& GetVisibleEntities() const {
+        return visibleEntities;
+    }
+};
+----
+
+=== Render Pass Management
+
+Modern rendering techniques often require multiple passes, each with a specific purpose. A render pass manager helps organize these passes and their dependencies.
+
+In this tutorial, we use Vulkan's dynamic rendering feature with vk::raii instead of traditional render passes. Dynamic rendering simplifies the rendering process by allowing us to begin and end rendering operations with a single command, without explicitly creating VkRenderPass and VkFramebuffer objects. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Additionally, our engine uses C++20 modules for better code organization, faster compilation times, and improved encapsulation.
+
+==== Benefits of Dynamic Rendering
+
+Dynamic rendering offers several advantages over traditional render passes:
+
+1. *Simplified API*: No need to create and manage VkRenderPass and VkFramebuffer objects, reducing code complexity.
+2. *More Flexible Rendering*: Easier to change render targets and attachment formats at runtime.
+3. *Improved Compatibility*: Works better with modern rendering techniques that don't fit well into the traditional render pass model.
+4. *Reduced State Management*: Fewer objects to track and synchronize.
+5. *Easier Debugging*: Simpler rendering code is easier to debug and maintain.
+
+With dynamic rendering, we specify all rendering state (render targets, load/store operations, etc.) directly in the vkCmdBeginRendering call, rather than setting it up ahead of time in a VkRenderPass object. This allows for more dynamic rendering workflows and simplifies the implementation of techniques like deferred rendering.
+
+[source,cpp]
+----
+// Forward declarations
+class RenderPass;
+class RenderTarget;
+
+// Render pass manager
+class RenderPassManager {
+private:
+    std::unordered_map<std::string, std::unique_ptr<RenderPass>> renderPasses;
+    std::vector<RenderPass*> sortedPasses;
+    bool dirty = true;
+
+public:
+    template<typename T, typename... Args>
+    T* AddRenderPass(const std::string& name, Args&&... args) {
+        static_assert(std::is_base_of<RenderPass, T>::value, "T must derive from RenderPass");
+
+        auto it = renderPasses.find(name);
+        if (it != renderPasses.end()) {
+            return dynamic_cast<T*>(it->second.get());
+        }
+
+        auto pass = std::make_unique<T>(std::forward<Args>(args)...);
+        T* passPtr = pass.get();
+        renderPasses[name] = std::move(pass);
+        dirty = true;
+
+        return passPtr;
+    }
+
+    RenderPass* GetRenderPass(const std::string& name) {
+        auto it = renderPasses.find(name);
+        if (it != renderPasses.end()) {
+            return it->second.get();
+        }
+        return nullptr;
+    }
+
+    void RemoveRenderPass(const std::string& name) {
+        auto it = renderPasses.find(name);
+        if (it != renderPasses.end()) {
+            renderPasses.erase(it);
+            dirty = true;
+        }
+    }
+
+    void Execute(vk::raii::CommandBuffer& commandBuffer) {
+        if (dirty) {
+            SortPasses();
+            dirty = false;
+        }
+
+        for (auto pass : sortedPasses) {
+            pass->Execute(commandBuffer);
+        }
+    }
+
+private:
+    void SortPasses() {
+        // Topologically sort render passes based on dependencies
+        sortedPasses.clear();
+
+        // Create a copy of render passes for sorting
+        std::unordered_map<std::string, RenderPass*> passMap;
+        for (const auto& [name, pass] : renderPasses) {
+            passMap[name] = pass.get();
+        }
+
+        // Perform topological sort
+        std::unordered_set<std::string> visited;
+        std::unordered_set<std::string> visiting;
+
+        for (const auto& [name, pass] : passMap) {
+            if (visited.find(name) == visited.end()) {
+                TopologicalSort(name, passMap, visited, visiting);
+            }
+        }
+    }
+
+    void TopologicalSort(const std::string& name,
+                         const std::unordered_map<std::string, RenderPass*>& passMap,
+                         std::unordered_set<std::string>& visited,
+                         std::unordered_set<std::string>& visiting) {
+        visiting.insert(name);
+
+        auto pass = passMap.at(name);
+        for (const auto& dep : pass->GetDependencies()) {
+            if (visited.find(dep) == visited.end()) {
+                if (visiting.find(dep) != visiting.end()) {
+                    // Circular dependency detected
+                    throw std::runtime_error("Circular dependency detected in render passes");
+                }
+                TopologicalSort(dep, passMap, visited, visiting);
+            }
+        }
+
+        visiting.erase(name);
+        visited.insert(name);
+        sortedPasses.push_back(pass);
+    }
+};
+
+// Base render pass class
+class RenderPass {
+private:
+    std::string name;
+    std::vector<std::string> dependencies;
+    RenderTarget* target = nullptr;
+    bool enabled = true;
+
+public:
+    explicit RenderPass(const std::string& passName) : name(passName) {}
+    virtual ~RenderPass() = default;
+
+    const std::string& GetName() const { return name; }
+
+    void AddDependency(const std::string& dependency) {
+        dependencies.push_back(dependency);
+    }
+
+    const std::vector<std::string>& GetDependencies() const {
+        return dependencies;
+    }
+
+    void SetRenderTarget(RenderTarget* renderTarget) {
+        target = renderTarget;
+    }
+
+    RenderTarget* GetRenderTarget() const {
+        return target;
+    }
+
+    void SetEnabled(bool isEnabled) {
+        enabled = isEnabled;
+    }
+
+    bool IsEnabled() const {
+        return enabled;
+    }
+
+    virtual void Execute(vk::raii::CommandBuffer& commandBuffer) {
+        if (!enabled) return;
+
+        BeginPass(commandBuffer);
+        Render(commandBuffer);
+        EndPass(commandBuffer);
+    }
+
+protected:
+    // With dynamic rendering, BeginPass typically calls vkCmdBeginRendering
+    // instead of vkCmdBeginRenderPass
+    virtual void BeginPass(vk::raii::CommandBuffer& commandBuffer) = 0;
+    virtual void Render(vk::raii::CommandBuffer& commandBuffer) = 0;
+    // With dynamic rendering, EndPass typically calls vkCmdEndRendering
+    // instead of vkCmdEndRenderPass
+    virtual void EndPass(vk::raii::CommandBuffer& commandBuffer) = 0;
+};
+
+// Render target class
+class RenderTarget {
+private:
+    vk::raii::Image colorImage = nullptr;
+    vk::raii::DeviceMemory colorMemory = nullptr;
+    vk::raii::ImageView colorImageView = nullptr;
+
+    vk::raii::Image depthImage = nullptr;
+    vk::raii::DeviceMemory depthMemory = nullptr;
+    vk::raii::ImageView depthImageView = nullptr;
+
+    uint32_t width;
+    uint32_t height;
+
+public:
+    RenderTarget(uint32_t w, uint32_t h) : width(w), height(h) {
+        // Create color and depth images
+        CreateColorResources();
+        CreateDepthResources();
+
+        // Note: With dynamic rendering, we don't need to create VkRenderPass
+        // or VkFramebuffer objects. Instead, we just create the images and
+        // image views that will be used directly with vkCmdBeginRendering.
+    }
+
+    // No need for explicit destructor with RAII objects
+
+    vk::ImageView GetColorImageView() const { return *colorImageView; }
+    vk::ImageView GetDepthImageView() const { return *depthImageView; }
+
+    uint32_t GetWidth() const { return width; }
+    uint32_t GetHeight() const { return height; }
+
+private:
+    void CreateColorResources() {
+        // Implementation to create color image, memory, and view
+        // With dynamic rendering, we just need to create the image and image view
+        // that will be used with vkCmdBeginRendering
+        // ...
+    }
+
+    void CreateDepthResources() {
+        // Implementation to create depth image, memory, and view
+        // With dynamic rendering, we just need to create the image and image view
+        // that will be used with vkCmdBeginRendering
+        // ...
+    }
+
+    vk::raii::Device& GetDevice() {
+        // Get device from somewhere (e.g., singleton or parameter)
+        // ...
+        static vk::raii::Device device = nullptr; // Placeholder
+        return device;
+    }
+};
+----
+
+=== Implementing Specific Render Passes
+
+Now let's implement some specific render passes:
+
+[source,cpp]
+----
+// Geometry pass for deferred rendering
+class GeometryPass : public RenderPass {
+private:
+    CullingSystem* cullingSystem;
+
+    // G-buffer textures
+    RenderTarget* gBuffer;
+
+public:
+    GeometryPass(const std::string& name, CullingSystem* culling)
+        : RenderPass(name), cullingSystem(culling) {
+        // Create G-buffer render target
+        gBuffer = new RenderTarget(1920, 1080); // Example resolution
+        SetRenderTarget(gBuffer);
+    }
+
+    ~GeometryPass() override {
+        delete gBuffer;
+    }
+
+protected:
+    void BeginPass(vk::raii::CommandBuffer& commandBuffer) override {
+        // Begin rendering with dynamic rendering
+        vk::RenderingInfoKHR renderingInfo;
+
+        // Set up color attachment
+        vk::RenderingAttachmentInfoKHR colorAttachment;
+        colorAttachment.setImageView(gBuffer->GetColorImageView())
+                       .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                       .setLoadOp(vk::AttachmentLoadOp::eClear)
+                       .setStoreOp(vk::AttachmentStoreOp::eStore)
+                       .setClearValue(vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+
+        // Set up depth attachment
+        vk::RenderingAttachmentInfoKHR depthAttachment;
+        depthAttachment.setImageView(gBuffer->GetDepthImageView())
+                       .setImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal)
+                       .setLoadOp(vk::AttachmentLoadOp::eClear)
+                       .setStoreOp(vk::AttachmentStoreOp::eStore)
+                       .setClearValue(vk::ClearDepthStencilValue(1.0f, 0));
+
+        // Configure rendering info
+        renderingInfo.setRenderArea(vk::Rect2D({0, 0}, {gBuffer->GetWidth(), gBuffer->GetHeight()}))
+                     .setLayerCount(1)
+                     .setColorAttachmentCount(1)
+                     .setPColorAttachments(&colorAttachment)
+                     .setPDepthAttachment(&depthAttachment);
+
+        // Begin dynamic rendering
+        commandBuffer.beginRendering(renderingInfo);
+    }
+
+    void Render(vk::raii::CommandBuffer& commandBuffer) override {
+        // Get visible entities
+        const auto& visibleEntities = cullingSystem->GetVisibleEntities();
+
+        // Render each entity to G-buffer
+        for (auto entity : visibleEntities) {
+            auto meshComponent = entity->GetComponent<MeshComponent>();
+            auto transformComponent = entity->GetComponent<TransformComponent>();
+
+            if (meshComponent && transformComponent) {
+                // Bind pipeline for G-buffer rendering
+                // ...
+
+                // Set model matrix
+                // ...
+
+                // Draw mesh
+                // ...
+            }
+        }
+    }
+
+    void EndPass(vk::raii::CommandBuffer& commandBuffer) override {
+        // End dynamic rendering
+        commandBuffer.endRendering();
+    }
+};
+
+// Lighting pass for deferred rendering
+class LightingPass : public RenderPass {
+private:
+    GeometryPass* geometryPass;
+    std::vector<Light*> lights;
+
+public:
+    LightingPass(const std::string& name, GeometryPass* gPass)
+        : RenderPass(name), geometryPass(gPass) {
+        // Add dependency on geometry pass
+        AddDependency(gPass->GetName());
+    }
+
+    void AddLight(Light* light) {
+        lights.push_back(light);
+    }
+
+    void RemoveLight(Light* light) {
+        auto it = std::find(lights.begin(), lights.end(), light);
+        if (it != lights.end()) {
+            lights.erase(it);
+        }
+    }
+
+protected:
+    void BeginPass(vk::raii::CommandBuffer& commandBuffer) override {
+        // Begin rendering with dynamic rendering
+        vk::RenderingInfoKHR renderingInfo;
+
+        // Set up color attachment for the lighting pass
+        vk::RenderingAttachmentInfoKHR colorAttachment;
+        colorAttachment.setImageView(GetRenderTarget()->GetColorImageView())
+                       .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                       .setLoadOp(vk::AttachmentLoadOp::eClear)
+                       .setStoreOp(vk::AttachmentStoreOp::eStore)
+                       .setClearValue(vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+
+        // Configure rendering info
+        renderingInfo.setRenderArea(vk::Rect2D({0, 0}, {GetRenderTarget()->GetWidth(), GetRenderTarget()->GetHeight()}))
+                     .setLayerCount(1)
+                     .setColorAttachmentCount(1)
+                     .setPColorAttachments(&colorAttachment);
+
+        // Begin dynamic rendering
+        commandBuffer.beginRendering(renderingInfo);
+    }
+
+    void Render(vk::raii::CommandBuffer& commandBuffer) override {
+        // Bind G-buffer textures from the geometry pass
+        auto gBuffer = geometryPass->GetRenderTarget();
+
+        // Set up descriptor sets for G-buffer textures
+        // With dynamic rendering, we access the G-buffer textures directly as shader resources
+        // rather than as subpass inputs
+
+        // Render full-screen quad with lighting shader
+        // ...
+
+        // For each light
+        for (auto light : lights) {
+            // Set light properties
+            // ...
+
+            // Draw light volume
+            // ...
+        }
+    }
+
+    void EndPass(vk::raii::CommandBuffer& commandBuffer) override {
+        // End dynamic rendering
+        commandBuffer.endRendering();
+    }
+};
+
+// Post-process effect base class
+class PostProcessEffect {
+public:
+    virtual ~PostProcessEffect() = default;
+    virtual void Apply(vk::raii::CommandBuffer& commandBuffer) = 0;
+};
+
+// Post-processing pass
+class PostProcessPass : public RenderPass {
+private:
+    LightingPass* lightingPass;
+    std::vector<PostProcessEffect*> effects;
+
+public:
+    PostProcessPass(const std::string& name, LightingPass* lPass)
+        : RenderPass(name), lightingPass(lPass) {
+        // Add dependency on lighting pass
+        AddDependency(lPass->GetName());
+    }
+
+    void AddEffect(PostProcessEffect* effect) {
+        effects.push_back(effect);
+    }
+
+    void RemoveEffect(PostProcessEffect* effect) {
+        auto it = std::find(effects.begin(), effects.end(), effect);
+        if (it != effects.end()) {
+            effects.erase(it);
+        }
+    }
+
+protected:
+    void BeginPass(vk::raii::CommandBuffer& commandBuffer) override {
+        // Begin rendering with dynamic rendering
+        vk::RenderingInfoKHR renderingInfo;
+
+        // Set up color attachment for the post-processing pass
+        vk::RenderingAttachmentInfoKHR colorAttachment;
+        colorAttachment.setImageView(GetRenderTarget()->GetColorImageView())
+                       .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                       .setLoadOp(vk::AttachmentLoadOp::eClear)
+                       .setStoreOp(vk::AttachmentStoreOp::eStore)
+                       .setClearValue(vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+
+        // Configure rendering info
+        renderingInfo.setRenderArea(vk::Rect2D({0, 0}, {GetRenderTarget()->GetWidth(), GetRenderTarget()->GetHeight()}))
+                     .setLayerCount(1)
+                     .setColorAttachmentCount(1)
+                     .setPColorAttachments(&colorAttachment);
+
+        // Begin dynamic rendering
+        commandBuffer.beginRendering(renderingInfo);
+    }
+
+    void Render(vk::raii::CommandBuffer& commandBuffer) override {
+        // With dynamic rendering, each effect can set up its own rendering state
+        // and access input textures directly as shader resources
+
+        // Apply each post-process effect
+        for (auto effect : effects) {
+            effect->Apply(commandBuffer);
+        }
+    }
+
+    void EndPass(vk::raii::CommandBuffer& commandBuffer) override {
+        // End dynamic rendering
+        commandBuffer.endRendering();
+    }
+};
+----
+
+=== Command Generation and Execution
+
+Once we have our render passes set up, we need to generate and execute commands:
+
+[source,cpp]
+----
+class Renderer {
+private:
+    vk::raii::Device device = nullptr;
+    vk::Queue graphicsQueue;
+    vk::raii::CommandPool commandPool = nullptr;
+
+    RenderPassManager renderPassManager;
+    CullingSystem cullingSystem;
+
+    // Current frame resources
+    vk::raii::CommandBuffer commandBuffer = nullptr;
+    vk::raii::Fence fence = nullptr;
+    vk::raii::Semaphore imageAvailableSemaphore = nullptr;
+    vk::raii::Semaphore renderFinishedSemaphore = nullptr;
+
+public:
+    Renderer(vk::raii::Device& dev, vk::Queue queue) : device(dev), graphicsQueue(queue) {
+        // Create command pool
+        // ...
+
+        // Create synchronization objects
+        // ...
+
+        // Set up render passes
+        SetupRenderPasses();
+    }
+
+    // No need for explicit destructor with RAII objects
+
+    void SetCamera(Camera* camera) {
+        cullingSystem.SetCamera(camera);
+    }
+
+    void Render(const std::vector<Entity*>& entities) {
+        // Wait for previous frame to finish
+        fence.wait(UINT64_MAX);
+        fence.reset();
+
+        // Reset command buffer
+        commandBuffer.reset();
+
+        // Perform culling
+        cullingSystem.CullScene(entities);
+
+        // Record commands
+        vk::CommandBufferBeginInfo beginInfo;
+        commandBuffer.begin(beginInfo);
+
+        // Execute render passes
+        renderPassManager.Execute(commandBuffer);
+
+        commandBuffer.end();
+
+        // Submit command buffer
+        vk::SubmitInfo submitInfo;
+
+        // With vk::raii, we need to dereference the command buffer
+        vk::CommandBuffer rawCommandBuffer = *commandBuffer;
+        submitInfo.setCommandBufferCount(1);
+        submitInfo.setPCommandBuffers(&rawCommandBuffer);
+
+        // Set up wait and signal semaphores
+        vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+
+        // With vk::raii, we need to dereference the semaphores
+        vk::Semaphore rawImageAvailableSemaphore = *imageAvailableSemaphore;
+        vk::Semaphore rawRenderFinishedSemaphore = *renderFinishedSemaphore;
+
+        submitInfo.setWaitSemaphoreCount(1);
+        submitInfo.setPWaitSemaphores(&rawImageAvailableSemaphore);
+        submitInfo.setPWaitDstStageMask(waitStages);
+        submitInfo.setSignalSemaphoreCount(1);
+        submitInfo.setPSignalSemaphores(&rawRenderFinishedSemaphore);
+
+        // With vk::raii, we need to dereference the fence
+        vk::Fence rawFence = *fence;
+        graphicsQueue.submit(1, &submitInfo, rawFence);
+    }
+
+private:
+    void SetupRenderPasses() {
+        // Create geometry pass
+        auto geometryPass = renderPassManager.AddRenderPass<GeometryPass>("GeometryPass", &cullingSystem);
+
+        // Create lighting pass
+        auto lightingPass = renderPassManager.AddRenderPass<LightingPass>("LightingPass", geometryPass);
+
+        // Create post-process pass
+        auto postProcessPass = renderPassManager.AddRenderPass<PostProcessPass>("PostProcessPass", lightingPass);
+
+        // Add post-process effects
+        // ...
+    }
+};
+----
+
+=== Advanced Rendering Techniques
+
+==== Deferred Rendering
+
+Deferred rendering separates the geometry and lighting calculations into separate passes, which can be more efficient for scenes with many lights:
+
+1. *Geometry Pass* - Render scene geometry to G-buffer textures (position, normal, albedo, etc.).
+2. *Lighting Pass* - Apply lighting calculations using G-buffer textures.
+
+==== Forward+ Rendering
+
+Forward+ (or tiled forward) rendering combines the simplicity of forward rendering with some of the efficiency benefits of deferred rendering:
+
+1. *Light Culling Pass* - Divide the screen into tiles and determine which lights affect each tile.
+2. *Forward Rendering Pass* - Render scene geometry with only the lights that affect each tile.
+
+==== Physically Based Rendering (PBR)
+
+PBR aims to create more realistic materials by simulating how light interacts with surfaces in the real world:
+
+1. *Material Parameters* - Define materials using physically meaningful parameters (albedo, metalness, roughness, etc.).
+2. *BRDF* - Use a physically based bidirectional reflectance distribution function.
+3. *Image-Based Lighting* - Use environment maps for ambient lighting.
+
+=== Conclusion
+
+A well-designed rendering pipeline is essential for creating a flexible and efficient rendering engine. By implementing the techniques described in this section, you can create a system that:
+
+1. Efficiently culls invisible objects
+2. Organizes rendering into passes with clear dependencies
+3. Supports advanced rendering techniques like deferred rendering and PBR
+4. Can be easily extended with new effects and features
+
+In the next section, we'll explore event systems, which provide a flexible way for different parts of your engine to communicate with each other.
+
+link:04_resource_management.adoc[Previous: Resource Management] | link:06_event_systems.adoc[Next: Event Systems]

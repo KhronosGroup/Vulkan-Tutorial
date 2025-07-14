@@ -1,0 +1,339 @@
+#pragma once
+
+#include <string>
+#include <vector>
+#include <memory>
+#include <unordered_map>
+#include <glm/glm.hpp>
+#ifdef __INTELLISENSE__
+#include <vulkan/vulkan_raii.hpp>
+#else
+import vulkan_hpp;
+#endif
+#include <vulkan/vk_platform.h>
+
+class Entity;
+class Renderer;
+
+/**
+ * @brief Enum for different collision shapes.
+ */
+enum class CollisionShape {
+    Box,
+    Sphere,
+    Capsule,
+    Mesh
+};
+
+/**
+ * @brief Class representing a rigid body for physics simulation.
+ */
+class RigidBody {
+public:
+    /**
+     * @brief Default constructor.
+     */
+    RigidBody() = default;
+
+    /**
+     * @brief Destructor for proper cleanup.
+     */
+    virtual ~RigidBody() = default;
+
+    /**
+     * @brief Set the position of the rigid body.
+     * @param position The position.
+     */
+    virtual void SetPosition(const glm::vec3& position) = 0;
+
+    /**
+     * @brief Set the rotation of the rigid body.
+     * @param rotation The rotation quaternion.
+     */
+    virtual void SetRotation(const glm::quat& rotation) = 0;
+
+    /**
+     * @brief Set the scale of the rigid body.
+     * @param scale The scale.
+     */
+    virtual void SetScale(const glm::vec3& scale) = 0;
+
+    /**
+     * @brief Set the mass of the rigid body.
+     * @param mass The mass.
+     */
+    virtual void SetMass(float mass) = 0;
+
+    /**
+     * @brief Set the restitution (bounciness) of the rigid body.
+     * @param restitution The restitution (0.0f to 1.0f).
+     */
+    virtual void SetRestitution(float restitution) = 0;
+
+    /**
+     * @brief Set the friction of the rigid body.
+     * @param friction The friction (0.0f to 1.0f).
+     */
+    virtual void SetFriction(float friction) = 0;
+
+    /**
+     * @brief Apply a force to the rigid body.
+     * @param force The force vector.
+     * @param localPosition The local position to apply the force at.
+     */
+    virtual void ApplyForce(const glm::vec3& force, const glm::vec3& localPosition = glm::vec3(0.0f)) = 0;
+
+    /**
+     * @brief Apply an impulse to the rigid body.
+     * @param impulse The impulse vector.
+     * @param localPosition The local position to apply the impulse at.
+     */
+    virtual void ApplyImpulse(const glm::vec3& impulse, const glm::vec3& localPosition = glm::vec3(0.0f)) = 0;
+
+    /**
+     * @brief Set the linear velocity of the rigid body.
+     * @param velocity The linear velocity.
+     */
+    virtual void SetLinearVelocity(const glm::vec3& velocity) = 0;
+
+    /**
+     * @brief Set the angular velocity of the rigid body.
+     * @param velocity The angular velocity.
+     */
+    virtual void SetAngularVelocity(const glm::vec3& velocity) = 0;
+
+    /**
+     * @brief Get the position of the rigid body.
+     * @return The position.
+     */
+    virtual glm::vec3 GetPosition() const = 0;
+
+    /**
+     * @brief Get the rotation of the rigid body.
+     * @return The rotation quaternion.
+     */
+    virtual glm::quat GetRotation() const = 0;
+
+    /**
+     * @brief Get the linear velocity of the rigid body.
+     * @return The linear velocity.
+     */
+    virtual glm::vec3 GetLinearVelocity() const = 0;
+
+    /**
+     * @brief Get the angular velocity of the rigid body.
+     * @return The angular velocity.
+     */
+    virtual glm::vec3 GetAngularVelocity() const = 0;
+
+    /**
+     * @brief Set whether the rigid body is kinematic.
+     * @param kinematic Whether the rigid body is kinematic.
+     */
+    virtual void SetKinematic(bool kinematic) = 0;
+
+    /**
+     * @brief Check if the rigid body is kinematic.
+     * @return True if kinematic, false otherwise.
+     */
+    virtual bool IsKinematic() const = 0;
+};
+
+/**
+ * @brief Structure for GPU physics data.
+ */
+struct GPUPhysicsData {
+    glm::vec4 position;        // xyz = position, w = inverse mass
+    glm::vec4 rotation;        // quaternion
+    glm::vec4 linearVelocity;  // xyz = velocity, w = restitution
+    glm::vec4 angularVelocity; // xyz = angular velocity, w = friction
+    glm::vec4 force;           // xyz = force, w = is kinematic (0 or 1)
+    glm::vec4 torque;          // xyz = torque, w = use gravity (0 or 1)
+    glm::vec4 colliderData;    // type-specific data (e.g., radius for spheres)
+    glm::vec4 colliderData2;   // additional collider data (e.g., box half extents)
+};
+
+/**
+ * @brief Structure for GPU collision data.
+ */
+struct GPUCollisionData {
+    uint32_t bodyA;
+    uint32_t bodyB;
+    glm::vec4 contactNormal;   // xyz = normal, w = penetration depth
+    glm::vec4 contactPoint;    // xyz = contact point, w = unused
+};
+
+/**
+ * @brief Structure for physics simulation parameters.
+ */
+struct PhysicsParams {
+    float deltaTime;        // Time step
+    glm::vec3 gravity;      // Gravity vector
+    uint32_t numBodies;     // Number of rigid bodies
+    uint32_t maxCollisions; // Maximum number of collisions
+};
+
+/**
+ * @brief Class for managing physics simulation.
+ *
+ * This class implements the physics system as described in the Subsystems chapter:
+ * @see en/Building_a_Simple_Engine/Subsystems/04_physics_basics.adoc
+ * @see en/Building_a_Simple_Engine/Subsystems/05_vulkan_physics.adoc
+ */
+class PhysicsSystem {
+public:
+    /**
+     * @brief Default constructor.
+     */
+    PhysicsSystem();
+
+    /**
+     * @brief Destructor for proper cleanup.
+     */
+    ~PhysicsSystem();
+
+    /**
+     * @brief Initialize the physics system.
+     * @return True if initialization was successful, false otherwise.
+     */
+    bool Initialize();
+
+    /**
+     * @brief Update the physics system.
+     * @param deltaTime The time elapsed since the last update.
+     */
+    void Update(float deltaTime);
+
+    /**
+     * @brief Create a rigid body.
+     * @param entity The entity to attach the rigid body to.
+     * @param shape The collision shape.
+     * @param mass The mass.
+     * @return Pointer to the created rigid body, or nullptr if creation failed.
+     */
+    RigidBody* CreateRigidBody(Entity* entity, CollisionShape shape, float mass);
+
+    /**
+     * @brief Remove a rigid body.
+     * @param rigidBody The rigid body to remove.
+     * @return True if removal was successful, false otherwise.
+     */
+    bool RemoveRigidBody(RigidBody* rigidBody);
+
+    /**
+     * @brief Set the gravity of the physics world.
+     * @param gravity The gravity vector.
+     */
+    void SetGravity(const glm::vec3& gravity);
+
+    /**
+     * @brief Get the gravity of the physics world.
+     * @return The gravity vector.
+     */
+    glm::vec3 GetGravity() const;
+
+    /**
+     * @brief Perform a raycast.
+     * @param origin The origin of the ray.
+     * @param direction The direction of the ray.
+     * @param maxDistance The maximum distance of the ray.
+     * @param hitPosition Output parameter for the hit position.
+     * @param hitNormal Output parameter for the hit normal.
+     * @param hitEntity Output parameter for the hit entity.
+     * @return True if the ray hit something, false otherwise.
+     */
+    bool Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
+                glm::vec3* hitPosition, glm::vec3* hitNormal, Entity** hitEntity);
+
+    /**
+     * @brief Enable or disable GPU acceleration.
+     * @param enabled Whether GPU acceleration is enabled.
+     */
+    void SetGPUAccelerationEnabled(bool enabled) { gpuAccelerationEnabled = enabled; }
+
+    /**
+     * @brief Check if GPU acceleration is enabled.
+     * @return True if GPU acceleration is enabled, false otherwise.
+     */
+    bool IsGPUAccelerationEnabled() const { return gpuAccelerationEnabled; }
+
+    /**
+     * @brief Set the maximum number of objects that can be simulated on the GPU.
+     * @param maxObjects The maximum number of objects.
+     */
+    void SetMaxGPUObjects(uint32_t maxObjects) { maxGPUObjects = maxObjects; }
+
+    /**
+     * @brief Set the renderer to use for GPU acceleration.
+     * @param renderer The renderer.
+     */
+    void SetRenderer(Renderer* renderer) { this->renderer = renderer; }
+
+private:
+    // Rigid bodies
+    std::vector<std::unique_ptr<RigidBody>> rigidBodies;
+
+    // Gravity
+    glm::vec3 gravity = glm::vec3(0.0f, -9.81f, 0.0f);
+
+    // Whether the physics system is initialized
+    bool initialized = false;
+
+    // GPU acceleration
+    bool gpuAccelerationEnabled = false;
+    uint32_t maxGPUObjects = 1024;
+    uint32_t maxGPUCollisions = 4096;
+    Renderer* renderer = nullptr;
+
+    // Vulkan resources for physics simulation
+    struct VulkanResources {
+        // Shader modules
+        vk::raii::ShaderModule integrateShaderModule = nullptr;
+        vk::raii::ShaderModule broadPhaseShaderModule = nullptr;
+        vk::raii::ShaderModule narrowPhaseShaderModule = nullptr;
+        vk::raii::ShaderModule resolveShaderModule = nullptr;
+
+        // Pipeline layouts and compute pipelines
+        vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
+        vk::raii::PipelineLayout pipelineLayout = nullptr;
+        vk::raii::Pipeline integratePipeline = nullptr;
+        vk::raii::Pipeline broadPhasePipeline = nullptr;
+        vk::raii::Pipeline narrowPhasePipeline = nullptr;
+        vk::raii::Pipeline resolvePipeline = nullptr;
+
+        // Descriptor pool and sets
+        vk::raii::DescriptorPool descriptorPool = nullptr;
+        std::vector<vk::DescriptorSet> descriptorSets;
+
+        // Buffers for physics data
+        vk::raii::Buffer physicsBuffer = nullptr;
+        vk::raii::DeviceMemory physicsBufferMemory = nullptr;
+        vk::raii::Buffer collisionBuffer = nullptr;
+        vk::raii::DeviceMemory collisionBufferMemory = nullptr;
+        vk::raii::Buffer pairBuffer = nullptr;
+        vk::raii::DeviceMemory pairBufferMemory = nullptr;
+        vk::raii::Buffer counterBuffer = nullptr;
+        vk::raii::DeviceMemory counterBufferMemory = nullptr;
+        vk::raii::Buffer paramsBuffer = nullptr;
+        vk::raii::DeviceMemory paramsBufferMemory = nullptr;
+
+        // Command buffer for compute operations
+        vk::raii::CommandPool commandPool = nullptr;
+        vk::raii::CommandBuffer commandBuffer = nullptr;
+    };
+
+    VulkanResources vulkanResources;
+
+    // Initialize Vulkan resources for physics simulation
+    bool InitializeVulkanResources();
+    void CleanupVulkanResources();
+
+    // Update physics data on the GPU
+    void UpdateGPUPhysicsData();
+
+    // Read back physics data from the GPU
+    void ReadbackGPUPhysicsData();
+
+    // Perform GPU-accelerated physics simulation
+    void SimulatePhysicsOnGPU(float deltaTime);
+};

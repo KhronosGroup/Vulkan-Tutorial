@@ -1,0 +1,62 @@
+:pp: {plus}{plus}
+
+= Engine Architecture: Introduction
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Introduction
+
+Welcome to the "Engine Architecture" chapter of our "Building a Simple
+Engine" series! In this chapter, we'll explore the fundamental architectural
+patterns and design principles that form the backbone of a modern Vulkan
+rendering engine.
+
+We'll start by taking a step back and considering the overall structure of our engine. A
+well-designed architecture is crucial for creating a flexible, maintainable, and extensible rendering system.
+
+=== What You'll Learn
+
+In this chapter, we'll cover:
+
+* *Architectural Patterns* - Common design patterns used in game and rendering engines, including their strengths and trade-offs.
+
+* *Component Systems* - How to implement a flexible component-based architecture that allows for modular and reusable code.
+
+* *Resource Management* - Strategies for efficiently managing and accessing various resources like textures, models, and shaders.
+
+* *Rendering Pipeline* - Designing a flexible rendering pipeline that can accommodate different rendering techniques and effects.
+
+* *Event Systems* - Implementing communication between different parts of your engine through event-driven architecture.
+
+=== Prerequisites
+
+Before starting this chapter, you should have completed:
+
+* The main Vulkan tutorial series
+
+You should also be familiar with:
+
+* Object-oriented programming concepts
+* Basic design patterns (Observer, Factory, Singleton, etc.)
+* Modern C++ features (smart pointers, templates, etc.)
+
+=== Why Architecture Matters
+
+A well-designed engine architecture provides several benefits:
+
+1. *Maintainability* - Clean separation of concerns makes it easier to update and fix individual components without affecting the entire system.
+
+2. *Extensibility* - A modular design allows you to add new features without major refactoring.
+
+3. *Reusability* - Well-encapsulated components can be reused across different projects or parts of the same project.
+
+4. *Performance* - A thoughtful architecture can enable optimizations like multithreading, batching, and caching.
+
+Let's begin our exploration of engine architecture with an overview of common architectural patterns used in modern rendering engines.
+
+link:02_architectural_patterns.adoc[Next: Architectural Patterns]

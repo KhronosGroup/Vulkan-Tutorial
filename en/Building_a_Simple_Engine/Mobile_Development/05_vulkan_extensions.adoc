@@ -1,0 +1,326 @@
+::pp: {plus}{plus}
+
+= Mobile Development: Vulkan Extensions
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Vulkan Extensions for Mobile
+
+Vulkan's extensibility is one of its greatest strengths, allowing hardware vendors to expose specialized features that can significantly improve performance. For mobile development, several extensions are particularly valuable as they can help optimize for the unique characteristics of mobile GPUs. In this section, we'll explore key Vulkan extensions that can enhance performance on mobile devices.
+
+=== VK_KHR_dynamic_rendering
+
+Dynamic rendering is a game-changing extension that simplifies the Vulkan rendering workflow by eliminating the need for explicit render pass and framebuffer objects.
+
+==== Overview
+
+The `VK_KHR_dynamic_rendering` extension (now part of Vulkan 1.3 core) allows you to begin and end rendering operations directly within a command buffer, without creating render pass and framebuffer objects. This is particularly beneficial for mobile development as it:
+
+1. *Simplifies Code*: Reduces the complexity of managing render passes and framebuffers.
+2. *Enables More Flexible Rendering*: Makes it easier to implement techniques that don't fit well into the traditional render pass model.
+3. *Reduces API Overhead*: Fewer objects to create and manage means less CPU overhead.
+
+==== Implementation
+
+Here's how to use dynamic rendering:
+
+[source,cpp]
+----
+// Enable the extension when creating the device
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+};
+
+// Get function pointers (if not using Vulkan 1.3)
+PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR =
+    reinterpret_cast<PFN_vkCmdBeginRenderingKHR>(
+        vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"));
+PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR =
+    reinterpret_cast<PFN_vkCmdEndRenderingKHR>(
+        vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"));
+
+// Begin rendering
+VkRenderingAttachmentInfoKHR color_attachment{};
+color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+color_attachment.imageView = color_image_view;
+color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+color_attachment.clearValue = clear_value;
+
+VkRenderingAttachmentInfoKHR depth_attachment{};
+depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+depth_attachment.imageView = depth_image_view;
+depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+depth_attachment.clearValue = depth_clear_value;
+
+VkRenderingInfoKHR rendering_info{};
+rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+rendering_info.renderArea = render_area;
+rendering_info.layerCount = 1;
+rendering_info.colorAttachmentCount = 1;
+rendering_info.pColorAttachments = &color_attachment;
+rendering_info.pDepthAttachment = &depth_attachment;
+
+vkCmdBeginRenderingKHR(command_buffer, &rendering_info);
+
+// Record drawing commands
+vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
+
+// End rendering
+vkCmdEndRenderingKHR(command_buffer);
+----
+
+When using C++ bindings:
+
+[source,cpp]
+----
+// Using vulkan.hpp
+vk::RenderingAttachmentInfoKHR color_attachment;
+color_attachment.setImageView(color_image_view);
+color_attachment.setImageLayout(vk::ImageLayout::eColorAttachmentOptimal);
+color_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore);
+color_attachment.setClearValue(clear_value);
+
+vk::RenderingAttachmentInfoKHR depth_attachment;
+depth_attachment.setImageView(depth_image_view);
+depth_attachment.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal);
+depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare);
+depth_attachment.setClearValue(depth_clear_value);
+
+vk::RenderingInfoKHR rendering_info;
+rendering_info.setRenderArea(render_area);
+rendering_info.setLayerCount(1);
+rendering_info.setColorAttachments(color_attachment);
+rendering_info.setPDepthAttachment(&depth_attachment);
+
+command_buffer.beginRenderingKHR(rendering_info);
+
+// Record drawing commands
+command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+command_buffer.draw(vertex_count, 1, 0, 0);
+
+// End rendering
+command_buffer.endRenderingKHR();
+----
+
+=== VK_KHR_dynamic_rendering_local_read
+
+The `VK_KHR_dynamic_rendering_local_read` extension is particularly valuable for tile-based renderers as it allows shaders to read from attachments without forcing a tile to main memory and back.
+
+==== Overview
+
+This extension enhances dynamic rendering by allowing fragment shaders to read from color and depth/stencil attachments within the same rendering scope. On tile-based renderers, this means the reads can happen directly from tile memory, avoiding expensive round trips to main memory.
+
+Key benefits include:
+
+1. *Reduced Memory Bandwidth*: Reads happen from on-chip memory rather than main memory.
+2. *Improved Performance*: Particularly for algorithms that need to read from previously written attachments.
+3. *Power Efficiency*: Lower memory bandwidth means lower power consumption.
+
+==== Implementation
+
+To use this extension:
+
+[source,cpp]
+----
+// Enable the extension when creating the device
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME
+};
+
+// Create a pipeline that reads from attachments
+vk::PipelineRenderingCreateInfoKHR rendering_create_info;
+rendering_create_info.setColorAttachmentCount(1);
+rendering_create_info.setColorAttachmentFormats(color_format);
+rendering_create_info.setDepthAttachmentFormat(depth_format);
+
+// Set up the attachment local read info
+vk::AttachmentSampleCountInfoAMD sample_count_info;
+sample_count_info.setColorAttachmentSamples(vk::SampleCountFlagBits::e1);
+sample_count_info.setDepthStencilAttachmentSamples(vk::SampleCountFlagBits::e1);
+
+vk::RenderingAttachmentLocationInfoKHR location_info;
+location_info.setColorAttachmentLocations(0);  // Location 0 for the color attachment
+
+vk::RenderingInputAttachmentIndexInfoKHR input_index_info;
+input_index_info.setColorInputAttachmentIndices(0);  // Index 0 for the color attachment
+
+// Create the graphics pipeline
+vk::GraphicsPipelineCreateInfo pipeline_info;
+pipeline_info.setPNext(&rendering_create_info);
+// ... set other pipeline creation parameters
+
+// In your fragment shader, you can now read from the attachment
+// using subpassLoad() or texture sampling with the appropriate extension
+// Fragment shader example (GLSL):
+// #extension GL_EXT_shader_tile_image : require
+// layout(location = 0) out vec4 outColor;
+// layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput inputColor;
+// void main() {
+//     vec4 color = subpassLoad(inputColor);
+//     outColor = color * 2.0;  // Double the brightness
+// }
+----
+
+=== VK_EXT_shader_tile_image
+
+The `VK_EXT_shader_tile_image` extension provides direct access to tile memory in shaders, which can significantly improve performance on tile-based renderers.
+
+==== Overview
+
+This extension allows shaders to:
+
+1. *Access Tile Memory Directly*: Read and write to the current tile's memory without going through main memory.
+2. *Perform Tile-Local Operations*: Execute operations that stay entirely within the tile memory.
+3. *Optimize Bandwidth-Intensive Algorithms*: Particularly beneficial for post-processing effects.
+
+==== Implementation
+
+To use this extension:
+
+[source,cpp]
+----
+// Enable the extension when creating the device
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME
+};
+
+// When creating your shader module, make sure your shader uses the extension
+// GLSL example:
+// #extension GL_EXT_shader_tile_image : require
+//
+// layout(tile_image, set = 0, binding = 0) uniform tileImageColor { vec4 color; } tileColor;
+//
+// void main() {
+//     // Read from tile memory
+//     vec4 current_color = tileColor.color;
+//
+//     // Process the color
+//     vec4 new_color = process(current_color);
+//
+//     // Write back to tile memory
+//     tileColor.color = new_color;
+// }
+----
+
+=== Combining Extensions for Maximum Performance
+
+For the best mobile performance, consider using these extensions together:
+
+[source,cpp]
+----
+// Enable all relevant extensions
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME,
+    VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME
+};
+
+// Check which extensions are supported
+auto available_extensions = physical_device.enumerateDeviceExtensionProperties();
+std::vector<const char*> supported_extensions;
+
+for (const auto& requested_ext : device_extensions) {
+    for (const auto& available_ext : available_extensions) {
+        if (strcmp(requested_ext, available_ext.extensionName) == 0) {
+            supported_extensions.push_back(requested_ext);
+            break;
+        }
+    }
+}
+
+// Create device with supported extensions
+vk::DeviceCreateInfo device_create_info;
+device_create_info.setPEnabledExtensionNames(supported_extensions);
+// ... set other device creation parameters
+vk::Device device = physical_device.createDevice(device_create_info);
+
+// Now you can use the supported extensions in your rendering code
+// ...
+----
+
+=== Vendor-Specific Extension Support
+
+Different mobile vendors may have varying levels of support for Vulkan extensions. Understanding these differences can help you optimize your application for specific hardware.
+
+==== Huawei Extension Support
+
+Huawei devices, particularly those with newer Kirin SoCs, have strong support for Vulkan extensions that can significantly improve performance:
+
+1. *Dynamic Rendering Support*: Huawei's implementation of `VK_KHR_dynamic_rendering` is highly optimized for their Mali-based GPUs. This can lead to significant performance improvements compared to traditional render passes.
+
+2. *Tile-Based Optimizations*: As Huawei devices use tile-based renderers, extensions like `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are particularly effective. These extensions can reduce memory bandwidth by up to 30% in some scenarios on Huawei hardware.
+
+3. *Checking for Huawei-Specific Support*:
+
+[source,cpp]
+----
+bool check_huawei_extension_support(vk::PhysicalDevice physical_device) {
+    vk::PhysicalDeviceProperties props = physical_device.getProperties();
+    bool is_huawei = (props.vendorID == 0x19E5);
+
+    if (!is_huawei) {
+        return false;
+    }
+
+    // Check for extensions that work particularly well on Huawei devices
+    auto available_extensions = physical_device.enumerateDeviceExtensionProperties();
+    bool has_dynamic_rendering = false;
+    bool has_dynamic_rendering_local_read = false;
+    bool has_shader_tile_image = false;
+
+    for (const auto& ext : available_extensions) {
+        std::string ext_name = ext.extensionName;
+        if (ext_name == VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) {
+            has_dynamic_rendering = true;
+        } else if (ext_name == VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME) {
+            has_dynamic_rendering_local_read = true;
+        } else if (ext_name == VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME) {
+            has_shader_tile_image = true;
+        }
+    }
+
+    // Log the extension support
+    std::cout << "Huawei device detected with extension support:" << std::endl;
+    std::cout << "  Dynamic Rendering: " << (has_dynamic_rendering ? "Yes" : "No") << std::endl;
+    std::cout << "  Dynamic Rendering Local Read: " << (has_dynamic_rendering_local_read ? "Yes" : "No") << std::endl;
+    std::cout << "  Shader Tile Image: " << (has_shader_tile_image ? "Yes" : "No") << std::endl;
+
+    return has_dynamic_rendering || has_dynamic_rendering_local_read || has_shader_tile_image;
+}
+----
+
+4. *Huawei-Specific Optimizations*: When developing for Huawei devices, consider these optimizations:
+   - Prioritize the use of dynamic rendering over traditional render passes
+   - Use tile-based extensions whenever available
+   - Test different configurations to find the optimal settings for specific Huawei models
+
+=== Best Practices for Using Extensions
+
+1. *Check for Support*: Always check if an extension is supported before using it.
+
+2. *Fallback Paths*: Implement fallback paths for when extensions aren't available.
+
+3. *Test on Real Devices*: Extensions may behave differently across vendors and devices, particularly between different Huawei models.
+
+4. *Stay Updated*: Keep track of new extensions that could benefit mobile performance, especially as Huawei continues to enhance their Vulkan support.
+
+In the next section, we'll conclude our exploration of mobile development with a summary of key takeaways and best practices.
+
+link:04_rendering_approaches.adoc[Previous: Rendering Approaches] | link:06_conclusion.adoc[Next: Conclusion]

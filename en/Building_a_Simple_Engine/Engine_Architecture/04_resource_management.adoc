@@ -1,0 +1,685 @@
+:pp: {plus}{plus}
+
+= Engine Architecture: Resource Management
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Resource Management
+
+Efficient resource management is a critical aspect of any rendering engine. In this section, we'll explore strategies for managing various types of resources, such as textures, meshes, shaders, and materials.
+
+=== Resource Management Challenges
+
+When designing a resource management system, you'll need to address several challenges:
+
+1. *Loading and Unloading* - Resources need to be loaded from disk and unloaded when no longer needed.
+2. *Caching* - Frequently used resources should be cached to avoid redundant loading.
+3. *Reference Counting* - Track how many objects are using a resource to know when it can be safely unloaded.
+4. *Hot Reloading* - Allow resources to be updated while the application is running (useful during development).
+5. *Streaming* - Load resources asynchronously to avoid blocking the main thread.
+6. *Memory Management* - Efficiently allocate and deallocate memory for resources.
+
+=== Resource Handles
+
+Instead of directly exposing resource pointers, it's often better to use resource handles:
+
+[source,cpp]
+----
+// Resource handle
+template<typename T>
+class ResourceHandle {
+private:
+    std::string resourceId;
+    ResourceManager* resourceManager;
+
+public:
+    ResourceHandle() : resourceManager(nullptr) {}
+
+    ResourceHandle(const std::string& id, ResourceManager* manager)
+        : resourceId(id), resourceManager(manager) {}
+
+    T* Get() const {
+        if (!resourceManager) return nullptr;
+        return resourceManager->GetResource<T>(resourceId);
+    }
+
+    bool IsValid() const {
+        return resourceManager && resourceManager->HasResource<T>(resourceId);
+    }
+
+    const std::string& GetId() const {
+        return resourceId;
+    }
+
+    // Convenience operators
+    T* operator->() const {
+        return Get();
+    }
+
+    T& operator*() const {
+        return *Get();
+    }
+
+    operator bool() const {
+        return IsValid();
+    }
+};
+----
+
+Using handles instead of direct pointers provides several benefits:
+
+1. *Indirection* - The resource manager can move resources in memory without invalidating references.
+2. *Validation* - Handles can be checked for validity before use.
+3. *Automatic Resource Management* - The resource manager can track which resources are in use.
+
+=== Basic Resource Manager
+
+Let's implement a basic resource manager that can handle different types of resources:
+
+[source,cpp]
+----
+// Resource base class
+class Resource {
+private:
+    std::string resourceId;
+    bool loaded = false;
+
+public:
+    explicit Resource(const std::string& id) : resourceId(id) {}
+    virtual ~Resource() = default;
+
+    const std::string& GetId() const { return resourceId; }
+    bool IsLoaded() const { return loaded; }
+
+    virtual bool Load() {
+        loaded = true;
+        return true;
+    }
+
+    virtual void Unload() {
+        loaded = false;
+    }
+};
+
+// Resource manager
+class ResourceManager {
+private:
+    // Store resources by type and ID
+    std::unordered_map<std::type_index,
+                       std::unordered_map<std::string, std::shared_ptr<Resource>>> resources;
+
+    // Reference counts for resources
+    std::unordered_map<std::string, int> refCounts;
+
+public:
+    template<typename T>
+    ResourceHandle<T> Load(const std::string& resourceId) {
+        static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
+
+        // Check if resource already exists
+        auto& typeResources = resources[std::type_index(typeid(T))];
+        auto it = typeResources.find(resourceId);
+
+        if (it != typeResources.end()) {
+            // Resource exists, increment reference count
+            refCounts[resourceId]++;
+            return ResourceHandle<T>(resourceId, this);
+        }
+
+        // Create and load new resource
+        auto resource = std::make_shared<T>(resourceId);
+        if (!resource->Load()) {
+            // Failed to load
+            return ResourceHandle<T>();
+        }
+
+        // Store resource and set reference count
+        typeResources[resourceId] = resource;
+        refCounts[resourceId] = 1;
+
+        return ResourceHandle<T>(resourceId, this);
+    }
+
+    template<typename T>
+    T* GetResource(const std::string& resourceId) {
+        auto& typeResources = resources[std::type_index(typeid(T))];
+        auto it = typeResources.find(resourceId);
+
+        if (it != typeResources.end()) {
+            return static_cast<T*>(it->second.get());
+        }
+
+        return nullptr;
+    }
+
+    template<typename T>
+    bool HasResource(const std::string& resourceId) {
+        auto& typeResources = resources[std::type_index(typeid(T))];
+        return typeResources.find(resourceId) != typeResources.end();
+    }
+
+    void Release(const std::string& resourceId) {
+        auto it = refCounts.find(resourceId);
+        if (it != refCounts.end()) {
+            it->second--;
+
+            if (it->second <= 0) {
+                // No more references, unload the resource
+                for (auto& [type, typeResources] : resources) {
+                    auto resourceIt = typeResources.find(resourceId);
+                    if (resourceIt != typeResources.end()) {
+                        resourceIt->second->Unload();
+                        typeResources.erase(resourceIt);
+                        break;
+                    }
+                }
+
+                refCounts.erase(it);
+            }
+        }
+    }
+
+    void UnloadAll() {
+        for (auto& [type, typeResources] : resources) {
+            for (auto& [id, resource] : typeResources) {
+                resource->Unload();
+            }
+            typeResources.clear();
+        }
+        refCounts.clear();
+    }
+};
+----
+
+=== Implementing Specific Resource Types
+
+Now let's implement some specific resource types:
+
+[source,cpp]
+----
+// Texture resource
+class Texture : public Resource {
+private:
+    vk::Image image;
+    vk::DeviceMemory memory;
+    vk::ImageView imageView;
+    vk::Sampler sampler;
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+
+public:
+    explicit Texture(const std::string& id) : Resource(id) {}
+
+    ~Texture() override {
+        Unload();
+    }
+
+    bool Load() override {
+        // Load texture from file
+        std::string filePath = "textures/" + GetId() + ".ktx";
+
+        // Load image data using a library like stb_image or ktx
+        unsigned char* data = LoadImageData(filePath, &width, &height, &channels);
+        if (!data) {
+            return false;
+        }
+
+        // Create Vulkan image, allocate memory, and upload data
+        CreateVulkanImage(data, width, height, channels);
+
+        // Free image data
+        FreeImageData(data);
+
+        return Resource::Load();
+    }
+
+    void Unload() override {
+        // Destroy Vulkan resources
+        if (IsLoaded()) {
+            // Get device from somewhere (e.g., singleton or parameter)
+            vk::Device device = GetDevice();
+
+            device.destroySampler(sampler);
+            device.destroyImageView(imageView);
+            device.destroyImage(image);
+            device.freeMemory(memory);
+
+            Resource::Unload();
+        }
+    }
+
+    // Getters for Vulkan resources
+    vk::Image GetImage() const { return image; }
+    vk::ImageView GetImageView() const { return imageView; }
+    vk::Sampler GetSampler() const { return sampler; }
+
+private:
+    unsigned char* LoadImageData(const std::string& filePath, int* width, int* height, int* channels) {
+        // Implementation using stb_image or ktx library
+        // ...
+        return nullptr; // Placeholder
+    }
+
+    void FreeImageData(unsigned char* data) {
+        // Implementation using stb_image or ktx library
+        // ...
+    }
+
+    void CreateVulkanImage(unsigned char* data, int width, int height, int channels) {
+        // Implementation to create Vulkan image, allocate memory, and upload data
+        // ...
+    }
+
+    vk::Device GetDevice() {
+        // Get device from somewhere (e.g., singleton or parameter)
+        // ...
+        return vk::Device(); // Placeholder
+    }
+};
+
+// Mesh resource
+class Mesh : public Resource {
+private:
+    vk::Buffer vertexBuffer;
+    vk::DeviceMemory vertexBufferMemory;
+    uint32_t vertexCount = 0;
+
+    vk::Buffer indexBuffer;
+    vk::DeviceMemory indexBufferMemory;
+    uint32_t indexCount = 0;
+
+public:
+    explicit Mesh(const std::string& id) : Resource(id) {}
+
+    ~Mesh() override {
+        Unload();
+    }
+
+    bool Load() override {
+        // Load mesh from file
+        std::string filePath = "models/" + GetId() + ".gltf";
+
+        // Load mesh data using a library like tinygltf
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        if (!LoadMeshData(filePath, vertices, indices)) {
+            return false;
+        }
+
+        // Create Vulkan buffers and upload data
+        CreateVertexBuffer(vertices);
+        CreateIndexBuffer(indices);
+
+        vertexCount = static_cast<uint32_t>(vertices.size());
+        indexCount = static_cast<uint32_t>(indices.size());
+
+        return Resource::Load();
+    }
+
+    void Unload() override {
+        // Destroy Vulkan resources
+        if (IsLoaded()) {
+            // Get device from somewhere (e.g., singleton or parameter)
+            vk::Device device = GetDevice();
+
+            device.destroyBuffer(indexBuffer);
+            device.freeMemory(indexBufferMemory);
+
+            device.destroyBuffer(vertexBuffer);
+            device.freeMemory(vertexBufferMemory);
+
+            Resource::Unload();
+        }
+    }
+
+    // Getters for Vulkan resources
+    vk::Buffer GetVertexBuffer() const { return vertexBuffer; }
+    vk::Buffer GetIndexBuffer() const { return indexBuffer; }
+    uint32_t GetVertexCount() const { return vertexCount; }
+    uint32_t GetIndexCount() const { return indexCount; }
+
+private:
+    bool LoadMeshData(const std::string& filePath, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices) {
+        // Implementation using tinygltf or similar library
+        // ...
+        return true; // Placeholder
+    }
+
+    void CreateVertexBuffer(const std::vector<Vertex>& vertices) {
+        // Implementation to create Vulkan buffer, allocate memory, and upload data
+        // ...
+    }
+
+    void CreateIndexBuffer(const std::vector<uint32_t>& indices) {
+        // Implementation to create Vulkan buffer, allocate memory, and upload data
+        // ...
+    }
+
+    vk::Device GetDevice() {
+        // Get device from somewhere (e.g., singleton or parameter)
+        // ...
+        return vk::Device(); // Placeholder
+    }
+};
+
+// Shader resource
+class Shader : public Resource {
+private:
+    vk::ShaderModule shaderModule;
+    vk::ShaderStageFlagBits stage;
+
+public:
+    Shader(const std::string& id, vk::ShaderStageFlagBits shaderStage)
+        : Resource(id), stage(shaderStage) {}
+
+    ~Shader() override {
+        Unload();
+    }
+
+    bool Load() override {
+        // Determine file extension based on shader stage
+        std::string extension;
+        switch (stage) {
+            case vk::ShaderStageFlagBits::eVertex: extension = ".vert"; break;
+            case vk::ShaderStageFlagBits::eFragment: extension = ".frag"; break;
+            case vk::ShaderStageFlagBits::eCompute: extension = ".comp"; break;
+            default: return false;
+        }
+
+        // Load shader from file
+        std::string filePath = "shaders/" + GetId() + extension + ".spv";
+
+        // Read shader code
+        std::vector<char> shaderCode;
+        if (!ReadFile(filePath, shaderCode)) {
+            return false;
+        }
+
+        // Create shader module
+        CreateShaderModule(shaderCode);
+
+        return Resource::Load();
+    }
+
+    void Unload() override {
+        // Destroy Vulkan resources
+        if (IsLoaded()) {
+            // Get device from somewhere (e.g., singleton or parameter)
+            vk::Device device = GetDevice();
+
+            device.destroyShaderModule(shaderModule);
+
+            Resource::Unload();
+        }
+    }
+
+    // Getters for Vulkan resources
+    vk::ShaderModule GetShaderModule() const { return shaderModule; }
+    vk::ShaderStageFlagBits GetStage() const { return stage; }
+
+private:
+    bool ReadFile(const std::string& filePath, std::vector<char>& buffer) {
+        // Implementation to read binary file
+        // ...
+        return true; // Placeholder
+    }
+
+    void CreateShaderModule(const std::vector<char>& code) {
+        // Implementation to create Vulkan shader module
+        // ...
+    }
+
+    vk::Device GetDevice() {
+        // Get device from somewhere (e.g., singleton or parameter)
+        // ...
+        return vk::Device(); // Placeholder
+    }
+};
+----
+
+=== Using the Resource Manager
+
+Here's how you might use the resource manager in your application:
+
+[source,cpp]
+----
+// Create resource manager
+ResourceManager resourceManager;
+
+// Load resources
+auto texture = resourceManager.Load<Texture>("brick");
+auto mesh = resourceManager.Load<Mesh>("cube");
+auto vertexShader = resourceManager.Load<Shader>("basic", vk::ShaderStageFlagBits::eVertex);
+auto fragmentShader = resourceManager.Load<Shader>("basic", vk::ShaderStageFlagBits::eFragment);
+
+// Use resources
+if (texture && mesh && vertexShader && fragmentShader) {
+    // Create material using shaders
+    Material material(vertexShader, fragmentShader);
+
+    // Set texture in material
+    material.SetTexture("diffuse", texture);
+
+    // Create entity with mesh and material
+    Entity entity("MyEntity");
+    auto meshComponent = entity.AddComponent<MeshComponent>(mesh.Get(), &material);
+}
+
+// Resources will be automatically released when handles go out of scope
+// or you can explicitly release them
+resourceManager.Release(texture.GetId());
+----
+
+=== Advanced Resource Management Techniques
+
+==== Asynchronous Loading
+
+For large resources, it's often beneficial to load them asynchronously to avoid blocking the main thread:
+
+[source,cpp]
+----
+class AsyncResourceManager {
+private:
+    ResourceManager resourceManager;
+    std::thread workerThread;
+    std::queue<std::function<void()>> taskQueue;
+    std::mutex queueMutex;
+    std::condition_variable condition;
+    bool running = false;
+
+public:
+    AsyncResourceManager() {
+        Start();
+    }
+
+    ~AsyncResourceManager() {
+        Stop();
+    }
+
+    void Start() {
+        running = true;
+        workerThread = std::thread([this]() {
+            WorkerThread();
+        });
+    }
+
+    void Stop() {
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            running = false;
+        }
+        condition.notify_one();
+        if (workerThread.joinable()) {
+            workerThread.join();
+        }
+    }
+
+    template<typename T>
+    void LoadAsync(const std::string& resourceId, std::function<void(ResourceHandle<T>)> callback) {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        taskQueue.push([this, resourceId, callback]() {
+            auto handle = resourceManager.Load<T>(resourceId);
+            callback(handle);
+        });
+        condition.notify_one();
+    }
+
+private:
+    void WorkerThread() {
+        while (running) {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(queueMutex);
+                condition.wait(lock, [this]() {
+                    return !taskQueue.empty() || !running;
+                });
+
+                if (!running && taskQueue.empty()) {
+                    return;
+                }
+
+                task = std::move(taskQueue.front());
+                taskQueue.pop();
+            }
+
+            task();
+        }
+    }
+};
+
+// Usage example
+AsyncResourceManager asyncResourceManager;
+
+asyncResourceManager.LoadAsync<Texture>("large_texture", [](ResourceHandle<Texture> texture) {
+    // This callback will be called when the texture is loaded
+    if (texture) {
+        std::cout << "Texture loaded successfully!" << std::endl;
+    } else {
+        std::cout << "Failed to load texture." << std::endl;
+    }
+});
+----
+
+==== Resource Streaming
+
+For very large resources like high-resolution textures or detailed meshes, you might want to implement streaming:
+
+1. *Level of Detail (LOD)* - Load lower-resolution versions first, then progressively load higher-resolution versions.
+2. *Texture Streaming* - Load mipmap levels progressively, starting with the smallest.
+3. *Mesh Streaming* - Load simplified versions of meshes first, then add detail.
+
+==== Hot Reloading
+
+During development, it's useful to be able to update resources without restarting the application:
+
+[source,cpp]
+----
+class HotReloadResourceManager : public ResourceManager {
+private:
+    std::unordered_map<std::string, std::filesystem::file_time_type> fileTimestamps;
+    std::thread watcherThread;
+    bool running = false;
+
+public:
+    HotReloadResourceManager() {
+        StartWatcher();
+    }
+
+    ~HotReloadResourceManager() {
+        StopWatcher();
+    }
+
+    void StartWatcher() {
+        running = true;
+        watcherThread = std::thread([this]() {
+            WatcherThread();
+        });
+    }
+
+    void StopWatcher() {
+        running = false;
+        if (watcherThread.joinable()) {
+            watcherThread.join();
+        }
+    }
+
+    template<typename T>
+    ResourceHandle<T> Load(const std::string& resourceId) {
+        auto handle = ResourceManager::Load<T>(resourceId);
+
+        // Store file timestamp
+        std::string filePath = GetFilePath<T>(resourceId);
+        try {
+            fileTimestamps[filePath] = std::filesystem::last_write_time(filePath);
+        } catch (const std::filesystem::filesystem_error& e) {
+            // File doesn't exist or can't be accessed
+        }
+
+        return handle;
+    }
+
+private:
+    template<typename T>
+    std::string GetFilePath(const std::string& resourceId) {
+        // Determine file path based on resource type and ID
+        if constexpr (std::is_same_v<T, Texture>) {
+            return "textures/" + resourceId + ".ktx";
+        } else if constexpr (std::is_same_v<T, Mesh>) {
+            return "models/" + resourceId + ".gltf";
+        } else if constexpr (std::is_same_v<T, Shader>) {
+            // Simplified for example
+            return "shaders/" + resourceId + ".spv";
+        } else {
+            return "";
+        }
+    }
+
+    void WatcherThread() {
+        while (running) {
+            // Check for file changes
+            for (auto& [filePath, timestamp] : fileTimestamps) {
+                try {
+                    auto currentTimestamp = std::filesystem::last_write_time(filePath);
+                    if (currentTimestamp != timestamp) {
+                        // File has changed, reload resource
+                        ReloadResource(filePath);
+                        timestamp = currentTimestamp;
+                    }
+                } catch (const std::filesystem::filesystem_error& e) {
+                    // File doesn't exist or can't be accessed
+                }
+            }
+
+            // Sleep to avoid high CPU usage
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+
+    void ReloadResource(const std::string& filePath) {
+        // Extract resource ID and type from file path
+        // Reload the resource
+        // ...
+    }
+};
+----
+
+=== Conclusion
+
+A well-designed resource management system is crucial for efficiently handling assets in your rendering engine. By implementing the techniques described in this section, you can create a system that:
+
+1. Efficiently loads and unloads resources
+2. Prevents redundant loading through caching
+3. Manages memory usage through reference counting
+4. Supports asynchronous loading for better performance
+5. Enables hot reloading for faster development
+
+In the next section, we'll explore rendering pipeline design, which will build upon the resource management system to create a flexible and efficient rendering system.
+
+link:03_component_systems.adoc[Previous: Component Systems] | link:05_rendering_pipeline.adoc[Next: Rendering Pipeline]

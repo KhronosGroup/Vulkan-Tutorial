@@ -1,0 +1,72 @@
+:pp: {plus}{plus}
+
+= Conclusion
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c{pp}
+
+== Conclusion
+
+Congratulations on completing the Core Vulkan tutorial series! You've built a
+ solid foundation in Vulkan development that will serve you well in your graphics programming journey.
+
+=== What You've Learned
+
+Throughout this tutorial series, you've gained knowledge and practical experience in:
+
+1. *Vulkan Fundamentals* - Understanding the core concepts of Vulkan, its architecture, and how it differs from other graphics APIs.
+
+2. *Setting Up a Vulkan Application* - Creating instances, selecting physical devices, creating logical devices, and establishing the rendering pipeline.
+
+3. *Drawing Operations* - Rendering triangles, working with vertex buffers, and understanding the Vulkan rendering process.
+
+4. *Advanced Rendering Techniques* - Implementing depth buffering, texture mapping, mipmaps, and multisampling.
+
+5. *Asset Management* - Loading 3D models and textures for use in your Vulkan applications.
+
+6. *Performance Optimization* - Using compute shaders and multithreading to improve application performance.
+
+7. *Ecosystem Integration* - Working with utilities, ensuring compatibility, and understanding Vulkan profiles.
+
+8. *Platform-Specific Development* - Adapting your Vulkan application for Android.
+
+9. *Modern Graphics Techniques* - Migrating to glTF and KTX2 formats for improved asset management.
+
+=== Where to Go From Here
+
+This tutorial series has provided you with the essential tools for more
+advanced Vulkan development. With these fundamentals mastered, you're now ready to explore more complex topics and build more sophisticated applications.
+
+Future tutorial series will build upon these fundamentals to help you create
+more structured and reusable rendering solutions. Future, planned
+tutorials will assume you've completed all the chapters in this series and
+will guide you through implementing more sophisticated rendering techniques
+and architectures.
+
+Remember that Vulkan development is a continuous learning process. The graphics programming landscape is constantly evolving, and there's always more to learn and explore.
+
+=== Community Resources and Getting Help
+
+As you continue your Vulkan journey, you may encounter challenges or have questions. Fortunately, there are several active communities where you can get help:
+
+1. *Khronos Slack* - Join the official Khronos Group Slack workspace and the #vulkan channel for direct interaction with Vulkan developers and experts. You can get an invitation at https://khr.io/slack[khr.io/slack].
+
+2. *Vulkan Discord* - The community-run Vulkan Discord server is a great place for real-time discussions, troubleshooting, and connecting with other Vulkan developers. Join at https://discord.gg/vulkan[discord.gg/vulkan].
+
+3. *Reddit* - The r/vulkan subreddit (https://www.reddit.com/r/vulkan/[reddit.com/r/vulkan]) is an active community for sharing news, asking questions, and discussing Vulkan development.
+
+4. *Stack Overflow* - For specific programming questions, use the
+https://stackoverflow.com/questions/tagged/vulkan[vulkan] tag on Stack Overflow.
+
+5. *Vulkan Specification* - When in doubt, refer to the official https://docs.vulkan.org/spec/latest/[Vulkan Specification] for authoritative information.
+
+Don't hesitate to reach out to these communities - they're filled with developers who are passionate about Vulkan and eager to help others succeed.
+
+Thank you for following along with this tutorial series. You've taken a big
+first step in a long journey.
+
+link:17_Multithreading.adoc[Previous: Multithreading] | link:Building_a_Simple_Engine/introduction.adoc[Next: Building a Simple Engine]

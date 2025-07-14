@@ -1,0 +1,40 @@
+::pp: {plus}{plus}
+
+= Tooling: Introduction
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Introduction to Engine Tooling
+
+In previous chapters, we've built the foundation of our simple engine, implementing core components like the rendering pipeline, camera systems, model loading, and essential subsystems like audio and physics. Now, we're ready to explore the tooling ecosystem that supports the development, debugging, and distribution of a professional Vulkan application.
+
+Effective tooling is critical for maintaining productivity, ensuring quality, and delivering a robust final product. While these tools may seem separate from the engine itself, they are integral to the development process and can significantly impact the quality and maintainability of your code.
+
+=== What We'll Cover
+
+In this chapter, we'll explore:
+
+* *CI/CD for Vulkan Projects*: We'll implement a continuous integration and continuous deployment pipeline specifically tailored for Vulkan applications, ensuring consistent builds and automated testing across different platforms.
+
+* *Debugging with VK_KHR_debug_utils and RenderDoc*: We'll explore how to use Vulkan's debugging extensions and external tools like RenderDoc to identify and fix issues in your rendering pipeline.
+
+* *Crash Handling and Minidumps*: We'll implement robust crash handling mechanisms and learn how to generate and analyze minidumps to diagnose issues in production environments.
+
+* *Vulkan Extensions for Robustness*: We'll explore extensions like VK_EXT_robustness2 that can help make your application more resilient to undefined behavior.
+
+=== Prerequisites
+
+Before diving into this chapter, you should be familiar with:
+
+* The basics of Vulkan and our engine architecture from previous chapters
+* Modern C++ concepts, particularly those introduced in C++17 and C++20
+* Basic understanding of software development workflows and tools
+
+Let's begin by exploring how to set up a CI/CD pipeline for Vulkan projects.
+
+link:../Subsystems/06_conclusion.adoc[Previous: Subsystems Conclusion] | link:02_cicd.adoc[Next: CI/CD for Vulkan Projects]

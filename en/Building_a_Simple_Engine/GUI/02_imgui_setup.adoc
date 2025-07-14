@@ -1,0 +1,696 @@
+::pp: {plus}{plus}
+
+= GUI: Setting Up Dear ImGui
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Setting Up Dear ImGui
+
+In this section, we'll set up Dear ImGui in our Vulkan application. Dear ImGui (also known simply as ImGui) is a bloat-free graphical user interface library for C++. It outputs optimized vertex buffers that you can render with your 3D-pipeline-enabled application. It's particularly well-suited for integration with graphics APIs like Vulkan.
+
+=== Adding ImGui to Your Project
+
+First, we need to add ImGui to our project. There are several ways to do this:
+
+1. *Git Submodule*: Add ImGui as a Git submodule to your project
+2. *Package Manager*: Use a package manager like vcpkg or Conan
+3. *Manual Integration*: Download and include the ImGui source files directly
+
+For this tutorial, we'll use the manual integration approach for simplicity:
+
+[source,bash]
+----
+# Clone ImGui repository
+git clone https://github.com/ocornut/imgui.git external/imgui
+
+# Copy necessary files to your project
+cp external/imgui/imgui.h include/
+cp external/imgui/imgui.cpp src/
+cp external/imgui/imgui_draw.cpp src/
+cp external/imgui/imgui_widgets.cpp src/
+cp external/imgui/imgui_tables.cpp src/
+cp external/imgui/imgui_demo.cpp src/
+----
+
+
+Next, update your CMakeLists.txt to include these files:
+
+[source,cmake]
+----
+# ImGui files
+set(IMGUI_SOURCES
+    src/imgui.cpp
+    src/imgui_draw.cpp
+    src/imgui_widgets.cpp
+    src/imgui_tables.cpp
+    src/imgui_demo.cpp
+)
+
+# Our custom ImGui Vulkan integration
+set(IMGUI_VULKAN_SOURCES
+    src/imgui_vulkan_util.cpp
+)
+
+add_executable(VulkanApp
+    src/main.cpp
+    ${IMGUI_SOURCES}
+    ${IMGUI_VULKAN_SOURCES}
+)
+
+target_include_directories(VulkanApp PRIVATE include)
+----
+
+=== Creating an ImGui Integration
+
+Let's implement the ImGuiVulkanUtil class to handle the integration between ImGui and Vulkan.
+
+Let's start by defining our ImGuiVulkanUtil class:
+
+[source,cpp]
+----
+// ImGuiVulkanUtil.h
+#pragma once
+
+#include <vulkan/vulkan_raii.hpp>
+#include <imgui.h>
+
+class ImGuiVulkanUtil {
+private:
+    // Vulkan resources for rendering the UI
+    vk::raii::Sampler sampler{nullptr};
+    Buffer vertexBuffer;
+    Buffer indexBuffer;
+    uint32_t vertexCount = 0;
+    uint32_t indexCount = 0;
+    Image fontImage;
+    ImageView fontImageView;
+    vk::raii::PipelineCache pipelineCache{nullptr};
+    vk::raii::PipelineLayout pipelineLayout{nullptr};
+    vk::raii::Pipeline pipeline{nullptr};
+    vk::raii::DescriptorPool descriptorPool{nullptr};
+    vk::raii::DescriptorSetLayout descriptorSetLayout{nullptr};
+    vk::raii::DescriptorSet descriptorSet{nullptr};
+
+    // Device references
+    vk::raii::Device* device = nullptr;
+    vk::raii::PhysicalDevice* physicalDevice = nullptr;
+    vk::raii::Queue* graphicsQueue = nullptr;
+    uint32_t graphicsQueueFamily = 0;
+
+    // UI style
+    ImGuiStyle vulkanStyle;
+
+    // Push constants for UI rendering
+    struct PushConstBlock {
+        glm::vec2 scale;
+        glm::vec2 translate;
+    } pushConstBlock;
+
+    // Flag to track if buffers need updating
+    bool needsUpdateBuffers = false;
+
+    // Pipeline state for dynamic rendering
+    vk::PipelineRenderingCreateInfo renderingInfo{};
+    vk::Format colorFormat = vk::Format::eB8G8R8A8Unorm;
+
+public:
+    ImGuiVulkanUtil(vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice,
+                   vk::raii::Queue& graphicsQueue, uint32_t graphicsQueueFamily);
+    ~ImGuiVulkanUtil();
+
+    // Initialize ImGui context and style
+    void init(float width, float height);
+
+    // Initialize all Vulkan resources
+    void initResources();
+
+    // Set UI style
+    void setStyle(uint32_t index);
+
+    // Start a new ImGui frame
+    bool newFrame();
+
+    // Update vertex and index buffers
+    void updateBuffers();
+
+    // Draw ImGui elements to command buffer
+    void drawFrame(vk::raii::CommandBuffer& commandBuffer);
+
+    // Input handling
+    void handleKey(int key, int scancode, int action, int mods);
+    bool getWantKeyCapture();
+    void charPressed(uint32_t key);
+};
+----
+
+=== Implementing the ImGuiVulkanUtil Class
+
+Now let's implement the methods of our ImGuiVulkanUtil class for the Vulkan implementation.
+
+==== Constructor and Destructor
+
+First, let's implement the constructor and destructor:
+
+[source,cpp]
+----
+ImGuiVulkanUtil::ImGuiVulkanUtil(vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice,
+                               vk::raii::Queue& graphicsQueue, uint32_t graphicsQueueFamily)
+    : device(&device), physicalDevice(&physicalDevice),
+      graphicsQueue(&graphicsQueue), graphicsQueueFamily(graphicsQueueFamily),
+      // Initialize buffers directly
+      vertexBuffer(*device, 1,
+                 vk::BufferUsageFlagBits::eVertexBuffer,
+                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent),
+      indexBuffer(*device, 1,
+                vk::BufferUsageFlagBits::eIndexBuffer,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) {
+
+    // Set up dynamic rendering info
+    renderingInfo.colorAttachmentCount = 1;
+    vk::Format formats[] = { colorFormat };
+    renderingInfo.pColorAttachmentFormats = formats;
+}
+
+ImGuiVulkanUtil::~ImGuiVulkanUtil() {
+    // Wait for device to finish operations before destroying resources
+    if (device) {
+        device->waitIdle();
+    }
+
+    // All resources are automatically cleaned up by their destructors
+    // No manual cleanup needed
+
+    // ImGui context is destroyed separately
+}
+----
+
+==== Initialization
+
+Next, let's implement the initialization methods:
+
+[source,cpp]
+----
+void ImGuiVulkanUtil::init(float width, float height) {
+    // Initialize ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    // Configure ImGui
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable keyboard controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // Enable docking
+
+    // Set display size
+    io.DisplaySize = ImVec2(width, height);
+    io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+
+    // Set up style
+    vulkanStyle = ImGui::GetStyle();
+    vulkanStyle.Colors[ImGuiCol_TitleBg] = ImVec4(1.0f, 0.0f, 0.0f, 0.6f);
+    vulkanStyle.Colors[ImGuiCol_TitleBgActive] = ImVec4(1.0f, 0.0f, 0.0f, 0.8f);
+    vulkanStyle.Colors[ImGuiCol_MenuBarBg] = ImVec4(1.0f, 0.0f, 0.0f, 0.4f);
+    vulkanStyle.Colors[ImGuiCol_Header] = ImVec4(1.0f, 0.0f, 0.0f, 0.4f);
+    vulkanStyle.Colors[ImGuiCol_CheckMark] = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+    // Apply default style
+    setStyle(0);
+}
+
+void ImGuiVulkanUtil::setStyle(uint32_t index) {
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    switch (index) {
+        case 0:
+            // Custom Vulkan style
+            style = vulkanStyle;
+            break;
+        case 1:
+            // Classic style
+            ImGui::StyleColorsClassic();
+            break;
+        case 2:
+            // Dark style
+            ImGui::StyleColorsDark();
+            break;
+        case 3:
+            // Light style
+            ImGui::StyleColorsLight();
+            break;
+    }
+}
+----
+
+==== Resource Initialization
+
+Now let's implement the method to initialize all Vulkan resources needed for ImGui rendering:
+
+[source,cpp]
+----
+void ImGuiVulkanUtil::initResources() {
+    // Create font texture
+    ImGuiIO& io = ImGui::GetIO();
+    unsigned char* fontData;
+    int texWidth, texHeight;
+    io.Fonts->GetTexDataAsRGBA32(&fontData, &texWidth, &texHeight);
+    vk::DeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
+
+    // Create the font image
+    vk::Extent3D fontExtent{
+        static_cast<uint32_t>(texWidth),
+        static_cast<uint32_t>(texHeight),
+        1
+    };
+
+    // Create image for font texture
+    fontImage = Image(*device, fontExtent, vk::Format::eR8G8B8A8Unorm,
+                    vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+                    vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    // Create image view
+    fontImageView = ImageView(*device, fontImage.getHandle(), vk::Format::eR8G8B8A8Unorm,
+                           vk::ImageAspectFlagBits::eColor);
+
+    // Upload font data to the image
+    Buffer stagingBuffer(*device, uploadSize, vk::BufferUsageFlagBits::eTransferSrc,
+                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    void* data = stagingBuffer.map();
+    memcpy(data, fontData, uploadSize);
+    stagingBuffer.unmap();
+
+    // Transition image layout and copy data
+    transitionImageLayout(fontImage.getHandle(), vk::Format::eR8G8B8A8Unorm,
+                         vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+    copyBufferToImage(stagingBuffer.getHandle(), fontImage.getHandle(),
+                     static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+
+    transitionImageLayout(fontImage.getHandle(), vk::Format::eR8G8B8A8Unorm,
+                         vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    // Create sampler for font texture
+    vk::SamplerCreateInfo samplerInfo{};
+    samplerInfo.magFilter = vk::Filter::eLinear;
+    samplerInfo.minFilter = vk::Filter::eLinear;
+    samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+    samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+    samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+    samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+    samplerInfo.borderColor = vk::BorderColor::eFloatOpaqueWhite;
+
+    sampler = device->createSampler(samplerInfo);
+
+    // Create descriptor pool
+    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eCombinedImageSampler, 1};
+
+    vk::DescriptorPoolCreateInfo poolInfo{};
+    poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+    poolInfo.maxSets = 2;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+
+    descriptorPool = device->createDescriptorPool(poolInfo);
+
+    // Create descriptor set layout
+    vk::DescriptorSetLayoutBinding binding{};
+    binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    binding.descriptorCount = 1;
+    binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+    binding.binding = 0;
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &binding;
+
+    descriptorSetLayout = device->createDescriptorSetLayout(layoutInfo);
+
+    // Allocate descriptor set
+    vk::DescriptorSetAllocateInfo allocInfo{};
+    allocInfo.descriptorPool = *descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    vk::DescriptorSetLayout layouts[] = {*descriptorSetLayout};
+    allocInfo.pSetLayouts = layouts;
+
+    descriptorSet = std::move(device->allocateDescriptorSets(allocInfo).front());
+
+    // Update descriptor set
+    vk::DescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    imageInfo.imageView = fontImageView.getHandle();
+    imageInfo.sampler = *sampler;
+
+    vk::WriteDescriptorSet writeSet{};
+    writeSet.dstSet = *descriptorSet;
+    writeSet.descriptorCount = 1;
+    writeSet.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    writeSet.pImageInfo = &imageInfo;
+    writeSet.dstBinding = 0;
+
+    device->updateDescriptorSets(1, &writeSet, 0, nullptr);
+
+    // Create pipeline cache
+    vk::PipelineCacheCreateInfo pipelineCacheInfo{};
+    pipelineCache = device->createPipelineCache(pipelineCacheInfo);
+
+    // Create pipeline layout
+    vk::PushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(PushConstBlock);
+
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.setLayoutCount = 1;
+    vk::DescriptorSetLayout setLayouts[] = {*descriptorSetLayout};
+    pipelineLayoutInfo.pSetLayouts = setLayouts;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+    pipelineLayout = device->createPipelineLayout(pipelineLayoutInfo);
+
+    // Create the graphics pipeline with dynamic rendering
+    // ... (shader loading, pipeline state setup, etc.)
+
+    // For brevity, we're omitting the full pipeline creation code here
+    // In a real implementation, you would:
+    // 1. Load the vertex and fragment shaders
+    // 2. Set up all the pipeline state (vertex input, input assembly, rasterization, etc.)
+    // 3. Include the renderingInfo in the pipeline creation to enable dynamic rendering
+}
+----
+
+==== Frame Management and Rendering
+
+Finally, let's implement the methods for frame management and rendering:
+
+[source,cpp]
+----
+bool ImGuiVulkanUtil::newFrame() {
+    // Start a new ImGui frame
+    ImGui::NewFrame();
+
+    // Create your UI elements here
+    // For example:
+    ImGui::Begin("Vulkan ImGui Demo");
+    ImGui::Text("Hello, Vulkan!");
+    if (ImGui::Button("Click me!")) {
+        // Handle button click
+    }
+    ImGui::End();
+
+    // End the frame
+    ImGui::EndFrame();
+
+    // Render to generate draw data
+    ImGui::Render();
+
+    // Check if buffers need updating
+    ImDrawData* drawData = ImGui::GetDrawData();
+    if (drawData && drawData->CmdListsCount > 0) {
+        if (drawData->TotalVtxCount > vertexCount || drawData->TotalIdxCount > indexCount) {
+            needsUpdateBuffers = true;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ImGuiVulkanUtil::updateBuffers() {
+    ImDrawData* drawData = ImGui::GetDrawData();
+    if (!drawData || drawData->CmdListsCount == 0) {
+        return;
+    }
+
+    // Calculate required buffer sizes
+    vk::DeviceSize vertexBufferSize = drawData->TotalVtxCount * sizeof(ImDrawVert);
+    vk::DeviceSize indexBufferSize = drawData->TotalIdxCount * sizeof(ImDrawIdx);
+
+    // Resize buffers if needed
+    if (drawData->TotalVtxCount > vertexCount) {
+        // Recreate vertex buffer with new size
+        vertexBuffer = Buffer(*device, vertexBufferSize,
+                            vk::BufferUsageFlagBits::eVertexBuffer,
+                            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        vertexCount = drawData->TotalVtxCount;
+    }
+
+    if (drawData->TotalIdxCount > indexCount) {
+        // Recreate index buffer with new size
+        indexBuffer = Buffer(*device, indexBufferSize,
+                           vk::BufferUsageFlagBits::eIndexBuffer,
+                           vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        indexCount = drawData->TotalIdxCount;
+    }
+
+    // Upload data to buffers
+    ImDrawVert* vtxDst = static_cast<ImDrawVert*>(vertexBuffer.map());
+    ImDrawIdx* idxDst = static_cast<ImDrawIdx*>(indexBuffer.map());
+
+    for (int n = 0; n < drawData->CmdListsCount; n++) {
+        const ImDrawList* cmdList = drawData->CmdLists[n];
+        memcpy(vtxDst, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+        memcpy(idxDst, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+        vtxDst += cmdList->VtxBuffer.Size;
+        idxDst += cmdList->IdxBuffer.Size;
+    }
+
+    vertexBuffer.unmap();
+    indexBuffer.unmap();
+}
+
+void ImGuiVulkanUtil::drawFrame(vk::raii::CommandBuffer& commandBuffer) {
+    ImDrawData* drawData = ImGui::GetDrawData();
+    if (!drawData || drawData->CmdListsCount == 0) {
+        return;
+    }
+
+    // Begin dynamic rendering
+    vk::RenderingAttachmentInfo colorAttachment{};
+    // Note: In a real implementation, you would set the imageView, imageLayout,
+    // loadOp, storeOp, and clearValue based on your swapchain image
+
+    vk::RenderingInfo renderingInfo{};
+    renderingInfo.renderArea = vk::Rect2D{{0, 0}, {static_cast<uint32_t>(drawData->DisplaySize.x),
+                                                   static_cast<uint32_t>(drawData->DisplaySize.y)}};
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+
+    commandBuffer.beginRendering(renderingInfo);
+
+    // Bind the pipeline
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+
+    // Set viewport
+    vk::Viewport viewport{};
+    viewport.width = drawData->DisplaySize.x;
+    viewport.height = drawData->DisplaySize.y;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    commandBuffer.setViewport(0, viewport);
+
+    // Set push constants
+    pushConstBlock.scale = glm::vec2(2.0f / drawData->DisplaySize.x, 2.0f / drawData->DisplaySize.y);
+    pushConstBlock.translate = glm::vec2(-1.0f);
+    commandBuffer.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eVertex,
+                              0, sizeof(PushConstBlock), &pushConstBlock);
+
+    // Bind vertex and index buffers
+    vk::Buffer vertexBuffers[] = { vertexBuffer.getHandle() };
+    vk::DeviceSize offsets[] = { 0 };
+    commandBuffer.bindVertexBuffers(0, 1, vertexBuffers, offsets);
+    commandBuffer.bindIndexBuffer(indexBuffer.getHandle(), 0, vk::IndexType::eUint16);
+
+    // Render command lists
+    int vertexOffset = 0;
+    int indexOffset = 0;
+
+    for (int i = 0; i < drawData->CmdListsCount; i++) {
+        const ImDrawList* cmdList = drawData->CmdLists[i];
+
+        for (int j = 0; j < cmdList->CmdBuffer.Size; j++) {
+            const ImDrawCmd* pcmd = &cmdList->CmdBuffer[j];
+
+            // Set scissor rectangle
+            vk::Rect2D scissor{};
+            scissor.offset.x = std::max(static_cast<int32_t>(pcmd->ClipRect.x), 0);
+            scissor.offset.y = std::max(static_cast<int32_t>(pcmd->ClipRect.y), 0);
+            scissor.extent.width = static_cast<uint32_t>(pcmd->ClipRect.z - pcmd->ClipRect.x);
+            scissor.extent.height = static_cast<uint32_t>(pcmd->ClipRect.w - pcmd->ClipRect.y);
+            commandBuffer.setScissor(0, scissor);
+
+            // Bind descriptor set (font texture)
+            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                           *pipelineLayout, 0, *descriptorSet, {});
+
+            // Draw
+            commandBuffer.drawIndexed(pcmd->ElemCount, 1, indexOffset, vertexOffset, 0);
+            indexOffset += pcmd->ElemCount;
+        }
+
+        vertexOffset += cmdList->VtxBuffer.Size;
+    }
+
+    // End dynamic rendering
+    commandBuffer.endRendering();
+}
+----
+
+=== Input Handling
+
+Let's implement the input handling methods:
+
+[source,cpp]
+----
+void ImGuiVulkanUtil::handleKey(int key, int scancode, int action, int mods) {
+    ImGuiIO& io = ImGui::GetIO();
+
+    // This example uses GLFW key codes and actions, but you can adapt this
+    // to work with any windowing library's input system
+
+    // Map the platform-specific key action to ImGui's key state
+    // In GLFW: GLFW_PRESS = 1, GLFW_RELEASE = 0
+    const int KEY_PRESSED = 1;  // Generic key pressed value
+    const int KEY_RELEASED = 0; // Generic key released value
+
+    if (action == KEY_PRESSED)
+        io.KeysDown[key] = true;
+    if (action == KEY_RELEASED)
+        io.KeysDown[key] = false;
+
+    // Update modifier keys
+    // These key codes are GLFW-specific, but you would use your windowing library's
+    // equivalent key codes for other libraries
+    const int KEY_LEFT_CTRL = 341;   // GLFW_KEY_LEFT_CONTROL
+    const int KEY_RIGHT_CTRL = 345;  // GLFW_KEY_RIGHT_CONTROL
+    const int KEY_LEFT_SHIFT = 340;  // GLFW_KEY_LEFT_SHIFT
+    const int KEY_RIGHT_SHIFT = 344; // GLFW_KEY_RIGHT_SHIFT
+    const int KEY_LEFT_ALT = 342;    // GLFW_KEY_LEFT_ALT
+    const int KEY_RIGHT_ALT = 346;   // GLFW_KEY_RIGHT_ALT
+    const int KEY_LEFT_SUPER = 343;  // GLFW_KEY_LEFT_SUPER
+    const int KEY_RIGHT_SUPER = 347; // GLFW_KEY_RIGHT_SUPER
+
+    io.KeyCtrl = io.KeysDown[KEY_LEFT_CTRL] || io.KeysDown[KEY_RIGHT_CTRL];
+    io.KeyShift = io.KeysDown[KEY_LEFT_SHIFT] || io.KeysDown[KEY_RIGHT_SHIFT];
+    io.KeyAlt = io.KeysDown[KEY_LEFT_ALT] || io.KeysDown[KEY_RIGHT_ALT];
+    io.KeySuper = io.KeysDown[KEY_LEFT_SUPER] || io.KeysDown[KEY_RIGHT_SUPER];
+}
+
+bool ImGuiVulkanUtil::getWantKeyCapture() {
+    return ImGui::GetIO().WantCaptureKeyboard;
+}
+
+void ImGuiVulkanUtil::charPressed(uint32_t key) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddInputCharacter(key);
+}
+----
+
+=== Using the ImGuiVulkanUtil Class
+
+Now that we've implemented our ImGuiVulkanUtil class, let's see how to use it in a Vulkan application:
+
+[source,cpp]
+----
+// In your application class
+ImGuiVulkanUtil imGui;
+
+// During initialization
+void initImGui() {
+    // Initialize ImGui directly
+    imGui = ImGuiVulkanUtil(
+        device,
+        physicalDevice,
+        graphicsQueue,
+        graphicsQueueFamily
+    );
+
+    imGui.init(swapChainExtent.width, swapChainExtent.height);
+    imGui.initResources(); // No renderPass needed with dynamic rendering
+}
+
+// In your render loop
+void drawFrame() {
+    // ... existing frame preparation code ...
+
+    // Update ImGui
+    if (imGui.newFrame()) {
+        imGui.updateBuffers();
+    }
+
+    // Begin command buffer recording
+    // Note: With dynamic rendering, we don't need to begin a render pass
+    // The ImGui drawFrame method will handle dynamic rendering internally
+
+    // Render scene using dynamic rendering
+    // ...
+
+    // Render ImGui
+    imGui.drawFrame(commandBuffer);
+
+    // ... submit command buffer ...
+}
+
+// Input handling
+// This example shows how to handle input with GLFW, but you can adapt this
+// to work with any windowing library's input system
+
+// Example key callback function for GLFW
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    // First check if ImGui wants to capture this input
+    imGui.handleKey(key, scancode, action, mods);
+
+    // If ImGui doesn't want to capture the keyboard, process for your application
+    if (!imGui.getWantKeyCapture()) {
+        // Process key for your application
+    }
+}
+
+// Example character input callback for GLFW
+void charCallback(GLFWwindow* window, unsigned int codepoint) {
+    imGui.charPressed(codepoint);
+}
+
+// With other windowing libraries, you would implement similar callback functions
+// using their equivalent APIs and event systems
+
+// Cleanup
+void cleanup() {
+    // ... existing cleanup code ...
+
+    // ImGui will be automatically cleaned up when the application exits
+    // No manual cleanup needed
+}
+----
+
+=== Testing the Integration
+
+To verify that our ImGui integration is working correctly, we can use the ImGui demo window, which showcases all of ImGui's features:
+
+[source,cpp]
+----
+// In your ImGuiVulkanUtil::newFrame method
+bool ImGuiVulkanUtil::newFrame() {
+    ImGui::NewFrame();
+
+    // Show the demo window
+    ImGui::ShowDemoWindow();
+
+    ImGui::EndFrame();
+    ImGui::Render();
+
+    // Check if buffers need updating
+    // ...
+}
+----
+
+With this implementation, you have a Vulkan implementation for ImGui that allows you to customize the rendering process to fit your specific needs.
+
+In the next section, we'll explore how to handle input for both the GUI and the 3D scene.
+
+link:01_introduction.adoc[Previous: Introduction] | link:03_input_handling.adoc[Next: Input Handling]

@@ -1,0 +1,51 @@
+= Conclusion
+
+In this chapter, we've explored the fundamentals of lighting and materials in 3D rendering and introduced Physically Based Rendering (PBR) using the metallic-roughness workflow. We've covered the theory behind PBR and implemented a shader that can be used with glTF models. We've also learned how to use push constants to efficiently pass material properties to our shaders.
+
+Throughout our engine implementation, we've used vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
+
+== What We've Learned
+
+Throughout this chapter, we've covered:
+
+1. *Physically Based Rendering*: We've deepened our understanding of the core principles of PBR, including energy conservation, microfacet theory, and the Fresnel effect, and how they combine to create physically accurate lighting.
+
+2. *glTF Material Integration*: We've learned how to leverage the PBR materials defined in glTF files, taking advantage of the metallic-roughness workflow that glTF uses.
+
+3. *Push Constants*: We've explored push constants, a powerful feature in Vulkan that allows us to efficiently pass material properties to shaders without the overhead of descriptor sets.
+
+4. *Advanced Shader Techniques*: We've examined and extended the PBR shader implementation, understanding how each component contributes to realistic rendering.
+
+5. *Vulkan Integration*: We've integrated our enhanced PBR understanding with the rest of the Vulkan rendering pipeline, updating our renderer class to work seamlessly with glTF models and their PBR materials.
+
+== Potential Improvements
+
+While our PBR implementation is functional, there are several ways it could be improved:
+
+1. *Image-Based Lighting (IBL)*: Adding environment maps for ambient lighting would greatly enhance the realism of our scenes, especially for reflective materials.
+
+2. *Shadow Mapping*: Adding shadow mapping would greatly enhance the realism of our scenes.
+
+3. *Advanced Material Features*: Implementing features like clear coat, anisotropy, and subsurface scattering would allow for a wider range of material types.
+
+4. *Optimizations*: Implementing techniques like deferred rendering or clustered forward rendering would improve performance with many light sources.
+
+5. *HDR Pipeline*: Expanding our HDR pipeline with features like bloom, lens flares, and more sophisticated tone mapping operators.
+
+== Next Steps
+
+Now that you have a solid understanding of PBR and materials, you might want to explore:
+
+1. *Advanced Lighting Techniques*: Research more advanced lighting techniques like global illumination, ambient occlusion, and volumetric lighting.
+
+2. *Material Systems*: Develop a more sophisticated material system that can handle a wider range of material properties and effects.
+
+3. *Shader Effects*: Experiment with different shader effects like fog, bloom, and depth of field.
+
+4. *Performance Optimization*: Optimize your lighting calculations for better performance, especially for mobile devices or scenes with many light sources.
+
+Remember that lighting is a complex topic with many approaches and techniques. The implementation we've covered in this chapter is just the beginning. As you continue to develop your engine, you'll likely want to refine and expand your lighting system to meet the specific needs of your projects.
+
+In the next chapter, we'll explore GUI implementation, which will allow us to create interactive user interfaces for our applications.
+
+link:05_vulkan_integration.adoc[Previous: Vulkan Integration] | link:../GUI/01_introduction.adoc[Next: GUI - Introduction]

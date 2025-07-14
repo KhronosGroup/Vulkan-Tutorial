@@ -1,0 +1,43 @@
+::pp: {plus}{plus}
+
+= GUI: Introduction
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Introduction
+
+Welcome to the "GUI" chapter of our "Building a Simple Engine" series! After implementing a camera system in the previous chapter, we'll now focus on adding a graphical user interface (GUI) to our Vulkan application. A well-designed GUI is essential for creating interactive applications that allow users to control settings, display information, and interact with the 3D scene.
+
+In this chapter, we'll integrate a popular immediate-mode GUI library called Dear ImGui with our Vulkan engine. ImGui is widely used in the game and graphics industry due to its simplicity, performance, and flexibility. It allows developers to quickly create debug interfaces, tools, and in-game menus without the complexity of traditional retained-mode GUI systems.
+
+In this chapter, we'll focus on:
+
+* Setting up Dear ImGui with Vulkan
+* Creating and managing Vulkan resources for GUI rendering (buffers, textures, pipeline)
+* Handling user input for both 3D navigation and GUI interaction
+* Understanding key GUI integration concepts rather than exhaustive widget examples
+* Integrating the GUI rendering with our Vulkan rendering pipeline
+* Implementing object picking for 3D scene interaction
+
+By the end of this chapter, you'll have a functional GUI system that you can use to control your camera, adjust rendering settings, and interact with your 3D scene. This will serve as a foundation for more advanced features in later chapters, such as material editors, scene hierarchies, and debugging tools.
+
+== Prerequisites
+
+Before starting this chapter, you should have completed:
+
+* The Camera & Transformations chapter, as we'll build upon the camera system we developed there
+* Solid understanding of Vulkan concepts, particularly:
+  ** Rendering pipeline and command buffers
+  ** Buffer and image creation
+  ** Descriptor sets and layouts
+  ** Pipeline creation
+* Basic understanding of input handling concepts
+
+Let's begin by exploring how to implement a professional GUI system with Dear ImGui and Vulkan.
+
+link:../Lighting_Materials/06_conclusion.adoc[Previous: Lighting & Materials Conclusion] | link:02_imgui_setup.adoc[Next: Setting Up Dear ImGui]

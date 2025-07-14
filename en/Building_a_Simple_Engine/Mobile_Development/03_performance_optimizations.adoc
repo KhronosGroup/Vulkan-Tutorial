@@ -309,16 +309,17 @@ Different mobile GPU vendors have specific architectures that may benefit from t
 
 Different mobile GPU vendors have specific architectures that benefit from targeted optimizations:
 
-1. *GPU Technologies*: Many vendors implement custom GPU technologies to improve performance and power efficiency:
+* *GPU Technologies*: Many vendors implement custom GPU technologies to improve performance and power efficiency:
    - Maintain stable frame rates rather than pushing for maximum frames
    - Avoid unnecessary GPU state changes
    - Use efficient rendering techniques appropriate for the GPU architecture
 
-2. *Memory Management*: Many mobile SoCs have unified memory architecture:
+* *Memory Management*: Many mobile SoCs have unified memory architecture:
    - Use `VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT` memory when possible
    - Take advantage of fast CPU-GPU memory transfers in unified memory architectures
 
-3. *Texture Compression*: Different devices support different texture compression formats:
+* *Texture Compression*: Different devices support different texture
+compression formats:
 
 [source,cpp]
 ----
@@ -352,7 +353,8 @@ vk::Format get_optimal_texture_format(vk::PhysicalDevice physical_device) {
 }
 ----
 
-4. *Performance Monitoring*: Most vendors provide performance monitoring tools that can help identify bottlenecks specific to their hardware.
+* *Performance Monitoring*: Most vendors provide performance monitoring tools
+ that can help identify bottlenecks specific to their hardware.
 
 === Best Practices for Mobile Performance
 

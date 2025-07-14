@@ -305,36 +305,46 @@ Mobile GPUs are particularly sensitive to draw call overhead:
 
 Different mobile GPU vendors have specific architectures that may benefit from targeted optimizations.
 
-==== Huawei Kirin GPU Optimizations
+==== Vendor-Specific GPU Optimizations
 
-Huawei's Kirin SoCs typically use ARM Mali GPUs, but with custom configurations and optimizations:
+Different mobile GPU vendors have specific architectures that benefit from targeted optimizations:
 
-1. *GPU Turbo Technology*: Huawei's GPU Turbo technology can significantly improve performance and power efficiency. To take advantage of this:
+1. *GPU Technologies*: Many vendors implement custom GPU technologies to improve performance and power efficiency:
    - Maintain stable frame rates rather than pushing for maximum frames
    - Avoid unnecessary GPU state changes
-   - Use efficient rendering techniques that work well with Mali GPUs
+   - Use efficient rendering techniques appropriate for the GPU architecture
 
-2. *Memory Management*: Kirin SoCs often have unified memory architecture:
+2. *Memory Management*: Many mobile SoCs have unified memory architecture:
    - Use `VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT` memory when possible
-   - Take advantage of the fast CPU-GPU memory transfers
+   - Take advantage of fast CPU-GPU memory transfers in unified memory architectures
 
-3. *Texture Compression*: Huawei devices support ASTC texture compression:
+3. *Texture Compression*: Different devices support different texture compression formats:
 
 [source,cpp]
 ----
-// Check for ASTC support on Huawei devices
-bool supports_astc(vk::PhysicalDevice physical_device) {
-    vk::PhysicalDeviceFeatures features = physical_device.getFeatures();
-    return features.textureCompressionASTC_LDR;
+// Check for texture compression format support
+bool supports_texture_format(vk::PhysicalDevice physical_device, vk::Format format) {
+    vk::FormatProperties props = physical_device.getFormatProperties(format);
+    return (props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImage);
 }
 
-// Prioritize ASTC for Huawei devices
+// Get optimal texture format based on device capabilities
 vk::Format get_optimal_texture_format(vk::PhysicalDevice physical_device) {
     vk::PhysicalDeviceProperties props = physical_device.getProperties();
+    vk::PhysicalDeviceFeatures features = physical_device.getFeatures();
 
-    // If it's a Huawei device and supports ASTC, prioritize it
-    if (props.vendorID == 0x19E5 && supports_astc(physical_device)) {
-        return vk::Format::eAstc8x8SrgbBlock;  // Or another ASTC format based on your needs
+    // Check for ASTC support (widely supported on modern mobile GPUs)
+    if (features.textureCompressionASTC_LDR) {
+        return vk::Format::eAstc8x8SrgbBlock;
+    }
+
+    // Check for vendor-specific optimizations
+    // Huawei devices (Mali GPUs)
+    if (props.vendorID == 0x19E5) {
+        // Check for ETC2 support as fallback
+        if (supports_texture_format(physical_device, vk::Format::eEtc2R8G8B8A8SrgbBlock)) {
+            return vk::Format::eEtc2R8G8B8A8SrgbBlock;
+        }
     }
 
     // Otherwise, fall back to the general format selection
@@ -342,11 +352,11 @@ vk::Format get_optimal_texture_format(vk::PhysicalDevice physical_device) {
 }
 ----
 
-4. *Performance Monitoring*: Huawei provides performance monitoring tools that can help identify bottlenecks specific to their hardware.
+4. *Performance Monitoring*: Most vendors provide performance monitoring tools that can help identify bottlenecks specific to their hardware.
 
 === Best Practices for Mobile Performance
 
-1. *Profile on Target Devices*: Performance characteristics vary widely across mobile devices. Test on a range of hardware, including different Huawei models.
+1. *Profile on Target Devices*: Performance characteristics vary widely across mobile devices. Test on a range of hardware from different manufacturers and with different GPU architectures.
 
 2. *Monitor Temperature*: Mobile devices throttle performance when they get hot. Design your engine to adapt to thermal throttling.
 

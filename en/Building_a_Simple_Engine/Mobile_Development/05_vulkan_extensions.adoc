@@ -259,27 +259,40 @@ vk::Device device = physical_device.createDevice(device_create_info);
 
 Different mobile vendors may have varying levels of support for Vulkan extensions. Understanding these differences can help you optimize your application for specific hardware.
 
-==== Huawei Extension Support
+==== Vendor-Specific Extension Support Details
 
-Huawei devices, particularly those with newer Kirin SoCs, have strong support for Vulkan extensions that can significantly improve performance:
+Different mobile GPU vendors have varying levels of support for Vulkan extensions:
 
-1. *Dynamic Rendering Support*: Huawei's implementation of `VK_KHR_dynamic_rendering` is highly optimized for their Mali-based GPUs. This can lead to significant performance improvements compared to traditional render passes.
+1. *Dynamic Rendering Support*: Many mobile GPUs have optimized implementations of `VK_KHR_dynamic_rendering`. This can lead to significant performance improvements compared to traditional render passes, especially on tile-based renderers.
 
-2. *Tile-Based Optimizations*: As Huawei devices use tile-based renderers, extensions like `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are particularly effective. These extensions can reduce memory bandwidth by up to 30% in some scenarios on Huawei hardware.
+2. *Tile-Based Optimizations*: For devices with tile-based renderers (including Mali, PowerVR, and many others), extensions like `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are particularly effective. These extensions can reduce memory bandwidth by up to 30% in some scenarios.
 
-3. *Checking for Huawei-Specific Support*:
+3. *Checking for Vendor-Specific Extension Support*:
 
 [source,cpp]
 ----
-bool check_huawei_extension_support(vk::PhysicalDevice physical_device) {
-    vk::PhysicalDeviceProperties props = physical_device.getProperties();
-    bool is_huawei = (props.vendorID == 0x19E5);
+// Common vendor IDs
+const uint32_t VENDOR_ID_QUALCOMM = 0x5143; // Adreno
+const uint32_t VENDOR_ID_ARM = 0x13B5;      // Mali
+const uint32_t VENDOR_ID_IMAGINATION = 0x1010; // PowerVR
+const uint32_t VENDOR_ID_HUAWEI = 0x19E5;   // Kirin
+const uint32_t VENDOR_ID_APPLE = 0x106B;    // Apple
 
-    if (!is_huawei) {
-        return false;
+bool check_vendor_extension_support(vk::PhysicalDevice physical_device) {
+    vk::PhysicalDeviceProperties props = physical_device.getProperties();
+    std::string vendor_name;
+
+    // Identify vendor
+    switch (props.vendorID) {
+        case VENDOR_ID_QUALCOMM: vendor_name = "Qualcomm"; break;
+        case VENDOR_ID_ARM: vendor_name = "ARM Mali"; break;
+        case VENDOR_ID_IMAGINATION: vendor_name = "PowerVR"; break;
+        case VENDOR_ID_HUAWEI: vendor_name = "Huawei"; break;
+        case VENDOR_ID_APPLE: vendor_name = "Apple"; break;
+        default: vendor_name = "Unknown"; break;
     }
 
-    // Check for extensions that work particularly well on Huawei devices
+    // Check for extensions that work well on mobile devices
     auto available_extensions = physical_device.enumerateDeviceExtensionProperties();
     bool has_dynamic_rendering = false;
     bool has_dynamic_rendering_local_read = false;
@@ -297,7 +310,7 @@ bool check_huawei_extension_support(vk::PhysicalDevice physical_device) {
     }
 
     // Log the extension support
-    std::cout << "Huawei device detected with extension support:" << std::endl;
+    std::cout << vendor_name << " device detected with extension support:" << std::endl;
     std::cout << "  Dynamic Rendering: " << (has_dynamic_rendering ? "Yes" : "No") << std::endl;
     std::cout << "  Dynamic Rendering Local Read: " << (has_dynamic_rendering_local_read ? "Yes" : "No") << std::endl;
     std::cout << "  Shader Tile Image: " << (has_shader_tile_image ? "Yes" : "No") << std::endl;
@@ -306,10 +319,10 @@ bool check_huawei_extension_support(vk::PhysicalDevice physical_device) {
 }
 ----
 
-4. *Huawei-Specific Optimizations*: When developing for Huawei devices, consider these optimizations:
-   - Prioritize the use of dynamic rendering over traditional render passes
+4. *Vendor-Specific Optimizations*: When developing for mobile devices, consider these optimizations:
+   - Prioritize the use of dynamic rendering over traditional render passes on tile-based renderers
    - Use tile-based extensions whenever available
-   - Test different configurations to find the optimal settings for specific Huawei models
+   - Test different configurations to find the optimal settings for various device models
 
 === Best Practices for Using Extensions
 
@@ -317,9 +330,9 @@ bool check_huawei_extension_support(vk::PhysicalDevice physical_device) {
 
 2. *Fallback Paths*: Implement fallback paths for when extensions aren't available.
 
-3. *Test on Real Devices*: Extensions may behave differently across vendors and devices, particularly between different Huawei models.
+3. *Test on Real Devices*: Extensions may behave differently across vendors and devices. Test on a variety of hardware from different manufacturers.
 
-4. *Stay Updated*: Keep track of new extensions that could benefit mobile performance, especially as Huawei continues to enhance their Vulkan support.
+4. *Stay Updated*: Keep track of new extensions that could benefit mobile performance, as mobile GPU vendors continue to enhance their Vulkan support.
 
 In the next section, we'll conclude our exploration of mobile development with a summary of key takeaways and best practices.
 

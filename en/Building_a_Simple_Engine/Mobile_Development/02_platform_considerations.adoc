@@ -72,33 +72,38 @@ Android input handling differs from desktop:
 
 2. *Sensors*: Android devices have various sensors (accelerometer, gyroscope, etc.) that you can use for input.
 
-==== Huawei Device Considerations
+==== Vendor-Specific Considerations
 
-Huawei devices represent a significant portion of the Android market and have some specific considerations:
+Different Android device manufacturers may have specific considerations:
 
-1. *HarmonyOS/EMUI*: Huawei's custom operating system is based on Android but has some differences. Test your application specifically on Huawei devices to ensure compatibility.
+1. *Custom Android Versions*: Many manufacturers use customized versions of Android. Test your application on various devices to ensure compatibility.
 
-2. *Huawei GPU Turbo*: This technology optimizes GPU performance and power efficiency. Your Vulkan application can benefit from this, but you should test to ensure compatibility.
+2. *GPU Architectures*: Different vendors use different GPU architectures (Adreno, Mali, PowerVR, etc.). Each has unique performance characteristics.
 
-3. *AppGallery Distribution*: Since Huawei devices may not have Google Play Services, consider distributing your application through Huawei's AppGallery.
+3. *Alternative App Stores*: Some devices may not have Google Play Services. Consider distributing through alternative app stores when necessary.
 
-4. *Kirin SoCs*: Huawei's Kirin processors use Mali GPUs which are tile-based renderers. Optimize your rendering pipeline accordingly using the techniques described in the TBR section.
+4. *SoC Variations*: System-on-Chip variations affect performance. Most mobile GPUs are tile-based renderers, so optimize your rendering pipeline accordingly using the techniques described in the TBR section.
 
 [source,cpp]
 ----
-// Example of checking for Huawei devices
-bool is_huawei_device(vk::PhysicalDevice physical_device) {
+// Example of checking for specific device vendors
+bool check_device_vendor(vk::PhysicalDevice physical_device, uint32_t vendor_id) {
     vk::PhysicalDeviceProperties props = physical_device.getProperties();
-    return props.vendorID == 0x19E5;  // Huawei vendor ID
+    return props.vendorID == vendor_id;
 }
 
-// You can then apply Huawei-specific optimizations if needed
+// Common vendor IDs
+const uint32_t VENDOR_ID_QUALCOMM = 0x5143; // Adreno
+const uint32_t VENDOR_ID_ARM = 0x13B5;      // Mali
+const uint32_t VENDOR_ID_IMAGINATION = 0x1010; // PowerVR
+const uint32_t VENDOR_ID_HUAWEI = 0x19E5;   // Kirin
+
+// You can then apply vendor-specific optimizations if needed
 void configure_for_device(vk::PhysicalDevice physical_device) {
-    if (is_huawei_device(physical_device)) {
-        // Apply Huawei-specific optimizations
-        // For example, you might want to use specific memory allocation strategies
-        // or enable certain features that work well on Huawei's implementation
+    if (check_device_vendor(physical_device, VENDOR_ID_HUAWEI)) {
+        // Apply Huawei-specific optimizations if needed
     }
+    // Handle other vendors as needed
 }
 ----
 

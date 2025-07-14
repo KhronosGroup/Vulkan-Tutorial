@@ -24,7 +24,7 @@ We started by examining the specific requirements and constraints of developing 
 * Managing the complex lifecycle of mobile applications
 * Handling platform-specific input methods
 * Creating cross-platform abstractions to maintain a single codebase
-* Addressing Huawei-specific considerations like HarmonyOS/EMUI and AppGallery distribution
+* Addressing vendor-specific considerations like custom Android versions and alternative app stores
 
 Understanding these platform-specific considerations is essential for creating a robust mobile application that behaves correctly across different devices and operating systems.
 
@@ -37,7 +37,7 @@ We then explored key performance optimizations for mobile hardware:
 * Minimizing memory allocations through pooling and suballocation
 * Reducing bandwidth usage with optimized vertex formats and smaller data types
 * Optimizing draw calls through instancing, batching, and LOD systems
-* Leveraging vendor-specific optimizations, particularly for Huawei's Kirin SoCs with GPU Turbo technology
+* Leveraging vendor-specific optimizations for different mobile GPU architectures
 
 These optimizations help address the limited resources available on mobile devices, ensuring your application runs smoothly while conserving battery life.
 
@@ -62,7 +62,7 @@ Finally, we explored Vulkan extensions that can significantly improve performanc
 * VK_EXT_shader_tile_image: Providing direct access to tile memory in shaders
 * Combining these extensions for maximum performance
 * Best practices for using extensions in a cross-platform engine
-* Vendor-specific extension support, with particular focus on Huawei's optimized implementation of these extensions
+* Vendor-specific extension support and how different mobile GPU vendors implement these extensions
 
 These extensions leverage the unique characteristics of mobile GPUs, particularly tile-based renderers, to achieve better performance and power efficiency.
 
@@ -251,7 +251,7 @@ Mobile graphics hardware continues to evolve rapidly. Here are some trends to wa
 * *Ray Tracing on Mobile*: As ray tracing hardware becomes more common on mobile devices, new optimization techniques will emerge.
 * *AI-Enhanced Rendering*: Mobile GPUs are increasingly incorporating AI acceleration, which can be leveraged for rendering tasks.
 * *Cross-Platform Development*: Tools and frameworks for cross-platform development continue to improve, making it easier to target multiple platforms.
-* *Huawei's GPU Innovations*: Huawei continues to advance their GPU technology with each generation of Kirin SoCs, introducing new features and optimizations that can be leveraged through Vulkan.
+* *Mobile GPU Innovations*: Mobile GPU vendors continue to advance their technologies with each generation, introducing new features and optimizations that can be leveraged through Vulkan.
 
 === Final Thoughts
 

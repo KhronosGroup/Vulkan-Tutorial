@@ -199,7 +199,7 @@ outputImage[int2(gl_GlobalInvocationID.xy)] = pixel;
 
 == Compute queue families
 
-In the link:03_Drawing_a_triangle/00_Setup/03_Physical_devices_and_queue_families.adoc[physical device and queue families chapter],
+In the xref:03_Drawing_a_triangle/00_Setup/03_Physical_devices_and_queue_families.adoc[physical device and queue families chapter],
 we have already learned about queue families and how to select a graphics queue family.
 Compute uses the queue family properties flag bit `vk::QueueFlagBits::eCompute`.
 So if we want to do compute work, we need to get a queue from a queue family that supports compute.
@@ -518,8 +518,7 @@ An interesting thing is this compute-only declaration related to the compute spa
 
 This defines the number of invocations of this compute shader in the current work group.
 As noted earlier, this is the local part of the compute space.
-Hence, the `local_` prefix.
-As we work on a linear 1D array of particles, we only need to specify a number for x dimension in `local_size_x`.
+As we work on a linear 1D array of particles, we only need to specify a number for x dimension in `[numthreads(x,y,z)]`. 
 
 The `compMain` function then reads from the last frame's SSBO and writes the
 updated particle position to the SSBO for the current frame.
@@ -590,8 +589,8 @@ Wrong or lacking synchronization may result in the vertex stage starting to draw
 So we must make sure that those cases don't happen by properly synchronizing the graphics and the compute load.
 There are different ways of doing so, depending on how you submit your
 compute workload, but in our case with two separate submits, we'll be using
-link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphores] and
-link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[fences] to ensure that the vertex shader won't start fetching
+xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphores] and
+xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[fences] to ensure that the vertex shader won't start fetching
  vertices until the compute shader has finished updating them.
 
 This is necessary as even though the two submits are ordered one-after-another, there is no guarantee that they execute on the GPU in this order.
@@ -601,7 +600,7 @@ So we first add a new set of synchronization primitives for the compute work in 
 The compute fences, just like the graphics fences, are created in the
 signaled state because otherwise, the first draw would time out while waiting
  for the fences to be signaled as detailed
- link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[here]:
+ xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[here]:
 
 [,c++]
 ----
@@ -651,7 +650,7 @@ We then use these to synchronize the compute buffer submission with the graphics
 ----
 
 Similar to the sample in the
-link:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphore chapter], this setup will immediately run the
+xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphore chapter], this setup will immediately run the
  compute shader as we haven't specified any wait semaphores.
 Note that we're using scoping braces above to ensure that the RAII temporary
  variables we use get a chance to clean themselves up between the compute and

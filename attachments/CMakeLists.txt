@@ -3,14 +3,101 @@ cmake_minimum_required (VERSION 3.29)
 # Enable C++ module dependency scanning
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
+# Check if VULKAN_SDK environment variable is set
+if(NOT DEFINED ENV{VULKAN_SDK})
+    message(WARNING "VULKAN_SDK environment variable is not set. This may cause issues with finding Vulkan SDK.")
+endif()
+
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
+
+# Try to find Vulkan
 find_package (Vulkan REQUIRED)
+
+# Check if Vulkan was found correctly
+if(NOT Vulkan_FOUND OR NOT EXISTS "${Vulkan_INCLUDE_DIR}")
+    message(WARNING "Vulkan SDK not found in expected location: ${Vulkan_INCLUDE_DIR}")
+
+    # Try to find Vulkan in alternative locations
+    if(DEFINED ENV{VULKAN_SDK})
+        message(STATUS "Trying to find Vulkan SDK in VULKAN_SDK environment variable: $ENV{VULKAN_SDK}")
+        set(Vulkan_INCLUDE_DIR "$ENV{VULKAN_SDK}/include")
+        if(EXISTS "${Vulkan_INCLUDE_DIR}")
+            message(STATUS "Found Vulkan include directory at: ${Vulkan_INCLUDE_DIR}")
+
+            # Update Vulkan library path if needed
+            if(NOT EXISTS "${Vulkan_LIBRARY}")
+                if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+                    set(Vulkan_LIBRARY "$ENV{VULKAN_SDK}/lib/vulkan-1.lib")
+                else()
+                    set(Vulkan_LIBRARY "$ENV{VULKAN_SDK}/lib/libvulkan.so")
+                endif()
+                message(STATUS "Setting Vulkan library to: ${Vulkan_LIBRARY}")
+            endif()
+
+            # If the Vulkan::Vulkan target already exists, update its properties
+            if(TARGET Vulkan::Vulkan)
+                message(STATUS "Updating Vulkan::Vulkan target properties")
+                set_target_properties(Vulkan::Vulkan PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${Vulkan_INCLUDE_DIR}"
+                    IMPORTED_LOCATION "${Vulkan_LIBRARY}"
+                )
+            else()
+                # Create the Vulkan::Vulkan target if it doesn't exist
+                message(STATUS "Creating Vulkan::Vulkan target")
+                add_library(Vulkan::Vulkan UNKNOWN IMPORTED)
+                set_target_properties(Vulkan::Vulkan PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${Vulkan_INCLUDE_DIR}"
+                    IMPORTED_LOCATION "${Vulkan_LIBRARY}"
+                )
+            endif()
+        else()
+            message(FATAL_ERROR "Vulkan include directory not found at: ${Vulkan_INCLUDE_DIR}")
+        endif()
+    else()
+        message(FATAL_ERROR "Vulkan SDK not found. Please install Vulkan SDK or set VULKAN_SDK environment variable.")
+    endif()
+endif()
+
 find_package (VulkanHpp REQUIRED)
+
+# Check if VulkanHpp_CPPM_DIR is set and exists
+if(NOT DEFINED VulkanHpp_CPPM_DIR OR NOT EXISTS "${VulkanHpp_CPPM_DIR}")
+    message(WARNING "VulkanHpp CPPM directory not found: ${VulkanHpp_CPPM_DIR}")
+
+    # Try to find VulkanHpp in VULKAN_SDK
+    if(DEFINED ENV{VULKAN_SDK})
+        message(STATUS "Trying to find VulkanHpp in VULKAN_SDK environment variable: $ENV{VULKAN_SDK}")
+        set(VulkanHpp_CPPM_DIR "$ENV{VULKAN_SDK}/include")
+        if(EXISTS "${VulkanHpp_CPPM_DIR}")
+            message(STATUS "Found VulkanHpp CPPM directory at: ${VulkanHpp_CPPM_DIR}")
+
+            # Check if vulkan.cppm exists
+            if(NOT EXISTS "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm")
+                message(STATUS "vulkan.cppm not found, creating it")
+                file(MAKE_DIRECTORY "${VulkanHpp_CPPM_DIR}/vulkan")
+                file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
+"// Auto-generated vulkan.cppm file
+module;
+#include <vulkan/vulkan.hpp>
+export module vulkan;
+export namespace vk {
+  using namespace VULKAN_HPP_NAMESPACE;
+}
+")
+            endif()
+        else()
+            message(FATAL_ERROR "VulkanHpp CPPM directory not found at: ${VulkanHpp_CPPM_DIR}")
+        endif()
+    else()
+        message(FATAL_ERROR "VulkanHpp CPPM directory not found and VULKAN_SDK environment variable is not set.")
+    endif()
+endif()
+
 find_package (tinyobjloader REQUIRED)
 find_package (TinyGLTF REQUIRED)
 find_package (KTX REQUIRED)
@@ -26,12 +113,19 @@ target_include_directories(VulkanCppModule
         PRIVATE
         "${Vulkan_INCLUDE_DIR}"
 )
+
+# Check if Vulkan include directory exists
+if(NOT EXISTS "${Vulkan_INCLUDE_DIR}")
+    message(FATAL_ERROR "Vulkan include directory not found: ${Vulkan_INCLUDE_DIR}. Please install Vulkan SDK or set VULKAN_SDK environment variable.")
+endif()
 target_link_libraries(VulkanCppModule
         PUBLIC
         Vulkan::Vulkan
 )
 
 set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
+
+# VulkanHpp_CPPM_DIR is already checked above
 
 target_sources(VulkanCppModule
         PUBLIC
@@ -44,6 +138,7 @@ target_sources(VulkanCppModule
 
 
 # Add the vulkan.cppm file directly as a source file
+# (Checks for existence are already done above)
 target_sources(VulkanCppModule
         PRIVATE
         "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"

@@ -219,7 +219,7 @@ if(NOT VulkanHpp_INCLUDE_DIR OR NOT VulkanHpp_CPPM_DIR)
     file(MAKE_DIRECTORY ${VulkanHpp_CPPM_DIR}/vulkan)
 
     # Create vulkan.cppm file
-    file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm" 
+    file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
 "// Auto-generated vulkan.cppm file
 module;
 #include <vulkan/vulkan.hpp>
@@ -288,7 +288,7 @@ endif()
 
 # Set the variables
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(VulkanHpp 
+find_package_handle_standard_args(VulkanHpp
   REQUIRED_VARS VulkanHpp_INCLUDE_DIR
   FAIL_MESSAGE "Could NOT find VulkanHpp. Install it or set VulkanHpp_INCLUDE_DIR to the directory containing vulkan/vulkan.hpp"
 )
@@ -319,7 +319,7 @@ if(VulkanHpp_FOUND)
       message(STATUS "Creating vulkan.cppm in ${VulkanHpp_CPPM_DIR}")
 
       # Create vulkan.cppm file
-      file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm" 
+      file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
 "// Auto-generated vulkan.cppm file
 module;
 #include <vulkan/vulkan.hpp>
@@ -408,7 +408,7 @@ elseif(DEFINED VulkanHpp_SOURCE_DIR OR DEFINED vulkanhpp_SOURCE_DIR)
       message(STATUS "Creating vulkan.cppm in ${VulkanHpp_CPPM_DIR}")
 
       # Create vulkan.cppm file
-      file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm" 
+      file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
 "// Auto-generated vulkan.cppm file
 module;
 #include <vulkan/vulkan.hpp>

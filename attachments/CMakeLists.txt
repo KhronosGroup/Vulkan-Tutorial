@@ -8,27 +8,6 @@ if(NOT DEFINED ENV{VULKAN_SDK})
     message(WARNING "VULKAN_SDK environment variable is not set. This may cause issues with finding Vulkan SDK.")
 endif()
 
-# Extract Vulkan SDK version from path to detect version changes
-if(DEFINED ENV{VULKAN_SDK})
-    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+" VULKAN_SDK_VERSION "$ENV{VULKAN_SDK}")
-
-    # Check if cached version exists and is different from current version
-    if(DEFINED CACHE{VULKAN_SDK_CACHED_VERSION} AND NOT VULKAN_SDK_VERSION STREQUAL VULKAN_SDK_CACHED_VERSION)
-        message(STATUS "Vulkan SDK version changed from ${VULKAN_SDK_CACHED_VERSION} to ${VULKAN_SDK_VERSION}")
-        message(STATUS "Clearing CMake cache to ensure correct paths are used")
-
-        # Force CMake to reconfigure by removing cache entries related to Vulkan
-        unset(Vulkan_INCLUDE_DIR CACHE)
-        unset(Vulkan_LIBRARY CACHE)
-        unset(VulkanHpp_CPPM_DIR CACHE)
-        unset(GLSLANG_VALIDATOR CACHE)
-        unset(SLANGC_EXECUTABLE CACHE)
-    endif()
-
-    # Store current version in cache
-    set(VULKAN_SDK_CACHED_VERSION ${VULKAN_SDK_VERSION} CACHE STRING "Cached Vulkan SDK version" FORCE)
-    message(STATUS "Using Vulkan SDK version: ${VULKAN_SDK_VERSION}")
-endif()
 
 project (VulkanTutorial)
 

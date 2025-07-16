@@ -88,6 +88,11 @@ module;
 export module vulkan;
 export namespace vk {
   using namespace VULKAN_HPP_NAMESPACE;
+
+  // Export detail namespace symbols that might be referenced directly
+  namespace detail {
+    using namespace VULKAN_HPP_NAMESPACE::detail;
+  }
 }
 ")
             endif()

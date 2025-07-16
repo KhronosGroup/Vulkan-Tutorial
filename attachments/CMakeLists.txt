@@ -10,6 +10,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
+find_package (VulkanHpp REQUIRED)
 find_package (tinyobjloader REQUIRED)
 find_package (TinyGLTF REQUIRED)
 find_package (KTX REQUIRED)
@@ -36,16 +37,16 @@ target_sources(VulkanCppModule
         PUBLIC
         FILE_SET cxx_modules TYPE CXX_MODULES
         BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
+        "${VulkanHpp_CPPM_DIR}"
         FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+        "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
 )
 
 
 # Add the vulkan.cppm file directly as a source file
 target_sources(VulkanCppModule
         PRIVATE
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+        "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
 )
 
 find_package(stb REQUIRED)

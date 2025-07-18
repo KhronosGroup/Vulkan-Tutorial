@@ -15,6 +15,11 @@ One of the challenges when integrating a GUI into a 3D application is managing i
 
 In this section, we'll explore how to handle input for both the GUI and the 3D scene, ensuring a smooth user experience regardless of the windowing system you choose to use.
 
+[NOTE]
+====
+A *windowing library* is a software framework that provides functionality for creating and managing application windows, handling user input events (keyboard, mouse, touch), and interfacing with the operating system's display and input systems. Examples include GLFW, SDL, Qt, and SFML. These libraries abstract the platform-specific details of window management and input handling, allowing developers to write code that works across different operating systems without dealing with platform-specific APIs directly.
+====
+
 === Creating a Platform-Agnostic Input System
 
 To create an effective input system that works with any windowing library, we need to abstract the input mechanisms and provide a clean interface. Let's define a simple input system that can be adapted to different platforms:

@@ -17,7 +17,10 @@ Welcome to the "Building a Simple Engine" tutorial series! This series marks a t
 
 While the previous tutorial series focused on introducing individual Vulkan concepts step by step, this series takes a different approach:
 
-* *Intermediate to Advanced Level* - This tutorial assumes you have completed the original Vulkan tutorial series and are comfortable with the fundamental concepts. If this feels too advanced, start with the foundational tutorial and come back when you're ready.
+* *Intermediate to Advanced Level* - This tutorial assumes you have completed
+ the original link:../00_Introduction.adoc[Vulkan Tutorial] series and are
+ comfortable with the
+ fundamental concepts. If this feels too advanced, start with the link:../00_Introduction.adoc[Vulkan Tutorial] and come back when you're ready.
 
 * *Concept-Focused Learning* - Rather than providing exhaustive details on every possible implementation approach, we focus on key architectural concepts and design patterns for building a rendering engine.
 

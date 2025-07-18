@@ -17,13 +17,15 @@ In this section, we'll explore common architectural patterns used in modern rend
 
 One of the most fundamental architectural patterns is the layered architecture, where the system is divided into distinct layers, each with a specific responsibility.
 
+image::../../../images/layered_architecture_diagram.svg[Layered Architecture Diagram, width=600]
+
 ==== Typical Layers in a Rendering Engine
 
-1. *Application Layer* - Handles user input, game logic, and high-level application flow.
-2. *Scene Management Layer* - Manages the scene graph, spatial partitioning, and culling.
+1. *Platform Abstraction Layer* - Provides a consistent interface to platform-specific functionality.
+2. *Resource Management Layer* - Manages loading, caching, and unloading of assets.
 3. *Rendering Layer* - Handles the rendering pipeline, shaders, and graphics API interaction.
-4. *Resource Management Layer* - Manages loading, caching, and unloading of assets.
-5. *Platform Abstraction Layer* - Provides a consistent interface to platform-specific functionality.
+4. *Scene Management Layer* - Manages the scene graph, spatial partitioning, and culling.
+5. *Application Layer* - Handles user input, game logic, and high-level application flow.
 
 ==== Benefits of Layered Architecture
 
@@ -95,6 +97,8 @@ public:
 === Component-Based Architecture
 
 Component-based architecture is widely used in modern game engines. It promotes composition over inheritance and allows for more flexible entity design.
+
+image::../../../images/component_based_architecture_diagram.svg[Component-Based Architecture Diagram, width=600]
 
 ==== Key Concepts
 
@@ -177,6 +181,8 @@ public:
 
 Data-Oriented Design (DOD) focuses on organizing data for efficient processing, rather than organizing code around objects.
 
+image::../../../images/data_oriented_design_diagram.svg[Data-Oriented Design Diagram, width=600]
+
 ==== Key Concepts
 
 1. *Data Layout* - Organizing data for cache-friendly access patterns.
@@ -242,6 +248,8 @@ public:
 === Service Locator Pattern
 
 The Service Locator pattern provides a global point of access to services without coupling consumers to concrete implementations.
+
+image::../../../images/service_locator_pattern_diagram.svg[Service Locator Pattern Diagram, width=600]
 
 ==== Key Concepts
 

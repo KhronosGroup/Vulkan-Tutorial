@@ -3,196 +3,13 @@ cmake_minimum_required (VERSION 3.29)
 # Enable C++ module dependency scanning
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
-# Check if VULKAN_SDK environment variable is set
-if(NOT DEFINED ENV{VULKAN_SDK})
-    message(WARNING "VULKAN_SDK environment variable is not set. This may cause issues with finding Vulkan SDK.")
-endif()
-
-
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
-
-# Try to find Vulkan
 find_package (Vulkan REQUIRED)
-
-# Check if Vulkan was found correctly
-if(NOT Vulkan_FOUND OR NOT EXISTS "${Vulkan_INCLUDE_DIR}")
-    message(WARNING "Vulkan SDK not found in expected location: ${Vulkan_INCLUDE_DIR}")
-
-    # Try to find Vulkan in alternative locations
-    if(DEFINED ENV{VULKAN_SDK})
-        message(STATUS "Trying to find Vulkan SDK in VULKAN_SDK environment variable: $ENV{VULKAN_SDK}")
-        set(Vulkan_INCLUDE_DIR "$ENV{VULKAN_SDK}/include")
-        if(EXISTS "${Vulkan_INCLUDE_DIR}")
-            message(STATUS "Found Vulkan include directory at: ${Vulkan_INCLUDE_DIR}")
-
-            # Update Vulkan library path if needed
-            if(NOT EXISTS "${Vulkan_LIBRARY}")
-                if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-                    set(Vulkan_LIBRARY "$ENV{VULKAN_SDK}/lib/vulkan-1.lib")
-                else()
-                    set(Vulkan_LIBRARY "$ENV{VULKAN_SDK}/lib/libvulkan.so")
-                endif()
-                message(STATUS "Setting Vulkan library to: ${Vulkan_LIBRARY}")
-            endif()
-
-            # If the Vulkan::Vulkan target already exists, update its properties
-            if(TARGET Vulkan::Vulkan)
-                message(STATUS "Updating Vulkan::Vulkan target properties")
-                set_target_properties(Vulkan::Vulkan PROPERTIES
-                    INTERFACE_INCLUDE_DIRECTORIES "${Vulkan_INCLUDE_DIR}"
-                    IMPORTED_LOCATION "${Vulkan_LIBRARY}"
-                )
-            else()
-                # Create the Vulkan::Vulkan target if it doesn't exist
-                message(STATUS "Creating Vulkan::Vulkan target")
-                add_library(Vulkan::Vulkan UNKNOWN IMPORTED)
-                set_target_properties(Vulkan::Vulkan PROPERTIES
-                    INTERFACE_INCLUDE_DIRECTORIES "${Vulkan_INCLUDE_DIR}"
-                    IMPORTED_LOCATION "${Vulkan_LIBRARY}"
-                )
-            endif()
-        else()
-            message(FATAL_ERROR "Vulkan include directory not found at: ${Vulkan_INCLUDE_DIR}")
-        endif()
-    else()
-        message(FATAL_ERROR "Vulkan SDK not found. Please install Vulkan SDK or set VULKAN_SDK environment variable.")
-    endif()
-endif()
-
-# Include the script to fix vulkan.cppm files
-include(${CMAKE_CURRENT_LIST_DIR}/CMake/fix_vulkan_cppm.cmake)
-
-find_package (VulkanHpp REQUIRED)
-
-# Check if VulkanHpp_CPPM_DIR is set and exists
-if(NOT DEFINED VulkanHpp_CPPM_DIR OR NOT EXISTS "${VulkanHpp_CPPM_DIR}")
-    message(WARNING "VulkanHpp CPPM directory not found: ${VulkanHpp_CPPM_DIR}")
-
-    # First check if vulkan.cppm exists in /usr/include/vulkan
-    if(EXISTS "/usr/include/vulkan/vulkan.cppm")
-        message(STATUS "Found vulkan.cppm in /usr/include/vulkan")
-
-        # Create a copy in the build directory that we can modify
-        set(VulkanHpp_CPPM_DIR "${CMAKE_BINARY_DIR}/include")
-        file(MAKE_DIRECTORY "${VulkanHpp_CPPM_DIR}/vulkan")
-
-        # Read the content of the system vulkan.cppm file
-        file(READ "/usr/include/vulkan/vulkan.cppm" VULKAN_CPPM_CONTENT)
-
-        # Check if it's using the old format (without detail namespace)
-        if(VULKAN_CPPM_CONTENT MATCHES "using VULKAN_HPP_NAMESPACE::DispatchLoaderBase" AND
-           NOT VULKAN_CPPM_CONTENT MATCHES "namespace detail")
-            message(STATUS "System vulkan.cppm file needs to be updated with detail namespace")
-
-            # Create a modified version that directly imports the detail symbols
-            file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
-"// Modified vulkan.cppm file
-module;
-#include <vulkan/vulkan.hpp>
-export module vulkan;
-export namespace vk {
-  // Import symbols from the main namespace
-  using namespace VULKAN_HPP_NAMESPACE;
-
-  // Import symbols from the detail namespace
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderBase;
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderDynamic;
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderStatic;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectDestroy;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectDestroyShared;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectFree;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectFreeShared;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectRelease;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectReleaseShared;
-  using VULKAN_HPP_NAMESPACE::detail::PoolFree;
-  using VULKAN_HPP_NAMESPACE::detail::PoolFreeShared;
-  using VULKAN_HPP_NAMESPACE::detail::createResultValueType;
-  using VULKAN_HPP_NAMESPACE::detail::resultCheck;
-  using VULKAN_HPP_NAMESPACE::detail::DynamicLoader;
-
-  // Export detail namespace for other symbols
-  namespace detail {
-    using namespace VULKAN_HPP_NAMESPACE::detail;
-  }
-
-  // Export raii namespace
-  namespace raii {
-    using namespace VULKAN_HPP_RAII_NAMESPACE;
-
-    // Import symbols from the detail namespace
-    using VULKAN_HPP_NAMESPACE::detail::ContextDispatcher;
-    using VULKAN_HPP_NAMESPACE::detail::DeviceDispatcher;
-  }
-}
-")
-        else()
-            # Just copy the file as is
-            file(COPY "/usr/include/vulkan/vulkan.cppm" DESTINATION "${VulkanHpp_CPPM_DIR}/vulkan")
-        endif()
-    # Try to find VulkanHpp in VULKAN_SDK
-    elseif(DEFINED ENV{VULKAN_SDK})
-        message(STATUS "Trying to find VulkanHpp in VULKAN_SDK environment variable: $ENV{VULKAN_SDK}")
-        set(VulkanHpp_CPPM_DIR "$ENV{VULKAN_SDK}/include")
-        if(EXISTS "${VulkanHpp_CPPM_DIR}")
-            message(STATUS "Found VulkanHpp CPPM directory at: ${VulkanHpp_CPPM_DIR}")
-
-            # Check if vulkan.cppm exists
-            if(NOT EXISTS "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm")
-                message(STATUS "vulkan.cppm not found, creating it")
-                file(MAKE_DIRECTORY "${VulkanHpp_CPPM_DIR}/vulkan")
-                file(WRITE "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
-"// Auto-generated vulkan.cppm file
-module;
-#include <vulkan/vulkan.hpp>
-export module vulkan;
-export namespace vk {
-  using namespace VULKAN_HPP_NAMESPACE;
-
-  // Export detail namespace symbols that might be referenced directly
-  namespace detail {
-    using namespace VULKAN_HPP_NAMESPACE::detail;
-  }
-
-  // Import symbols from the detail namespace directly
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderBase;
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderDynamic;
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderStatic;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectDestroy;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectDestroyShared;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectFree;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectFreeShared;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectRelease;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectReleaseShared;
-  using VULKAN_HPP_NAMESPACE::detail::PoolFree;
-  using VULKAN_HPP_NAMESPACE::detail::PoolFreeShared;
-  using VULKAN_HPP_NAMESPACE::detail::createResultValueType;
-  using VULKAN_HPP_NAMESPACE::detail::resultCheck;
-  using VULKAN_HPP_NAMESPACE::detail::DynamicLoader;
-
-  // Export raii namespace
-  namespace raii {
-    using namespace VULKAN_HPP_RAII_NAMESPACE;
-
-    // Import symbols from the detail namespace
-    using VULKAN_HPP_NAMESPACE::detail::ContextDispatcher;
-    using VULKAN_HPP_NAMESPACE::detail::DeviceDispatcher;
-  }
-}
-")
-            endif()
-        else()
-            message(FATAL_ERROR "VulkanHpp CPPM directory not found at: ${VulkanHpp_CPPM_DIR}")
-        endif()
-    else()
-        message(FATAL_ERROR "VulkanHpp CPPM directory not found and VULKAN_SDK environment variable is not set.")
-    endif()
-endif()
-
 find_package (tinyobjloader REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
@@ -208,11 +25,6 @@ target_include_directories(VulkanCppModule
         PRIVATE
         "${Vulkan_INCLUDE_DIR}"
 )
-
-# Check if Vulkan include directory exists
-if(NOT EXISTS "${Vulkan_INCLUDE_DIR}")
-    message(FATAL_ERROR "Vulkan include directory not found: ${Vulkan_INCLUDE_DIR}. Please install Vulkan SDK or set VULKAN_SDK environment variable.")
-endif()
 target_link_libraries(VulkanCppModule
         PUBLIC
         Vulkan::Vulkan
@@ -220,23 +32,20 @@ target_link_libraries(VulkanCppModule
 
 set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
 
-# VulkanHpp_CPPM_DIR is already checked above
-
 target_sources(VulkanCppModule
         PUBLIC
         FILE_SET cxx_modules TYPE CXX_MODULES
         BASE_DIRS
-        "${VulkanHpp_CPPM_DIR}"
+        "${Vulkan_INCLUDE_DIR}"
         FILES
-        "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
+        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
 
 # Add the vulkan.cppm file directly as a source file
-# (Checks for existence are already done above)
 target_sources(VulkanCppModule
         PRIVATE
-        "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
+        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 
 find_package(stb REQUIRED)

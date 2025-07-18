@@ -194,7 +194,7 @@ export namespace vk {
 endif()
 
 find_package (tinyobjloader REQUIRED)
-find_package (TinyGLTF REQUIRED)
+find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 
 # set up Vulkan C++ module

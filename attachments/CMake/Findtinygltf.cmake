@@ -32,7 +32,7 @@ find_path(TinyGLTF_INCLUDE_DIR
 )
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(TinyGLTF
+find_package_handle_standard_args(tinygltf
   REQUIRED_VARS TinyGLTF_INCLUDE_DIR
   FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
 )
@@ -51,41 +51,62 @@ if(TinyGLTF_FOUND)
     endif()
   endif()
 else()
-  # If not found, use FetchContent to download and build
-  include(FetchContent)
+  # If not found, create a custom tinygltf implementation
+  message(STATUS "TinyGLTF not found, creating a custom implementation...")
 
-  message(STATUS "TinyGLTF not found, fetching from GitHub...")
-  FetchContent_Declare(
-    tinygltf
-    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
-    GIT_TAG v2.8.18  # Use a specific tag for stability
+  # Create a directory for our custom tinygltf implementation
+  set(TINYGLTF_DIR "${CMAKE_CURRENT_BINARY_DIR}/tinygltf")
+  file(REMOVE_RECURSE "${TINYGLTF_DIR}")
+  file(MAKE_DIRECTORY "${TINYGLTF_DIR}")
+
+  # Download the necessary files directly
+  file(DOWNLOAD
+    "https://raw.githubusercontent.com/syoyo/tinygltf/v2.8.18/tiny_gltf.h"
+    "${TINYGLTF_DIR}/tiny_gltf.h"
+    SHOW_PROGRESS
   )
 
-  # Configure tinygltf before making it available
-  FetchContent_GetProperties(tinygltf)
-  if(NOT tinygltf_POPULATED)
-    FetchContent_Populate(tinygltf)
+  file(DOWNLOAD
+    "https://raw.githubusercontent.com/syoyo/tinygltf/v2.8.18/json.hpp"
+    "${TINYGLTF_DIR}/json.hpp"
+    SHOW_PROGRESS
+  )
 
-    # Update the minimum required CMake version to avoid deprecation warning
-    file(READ "${tinygltf_SOURCE_DIR}/CMakeLists.txt" TINYGLTF_CMAKE_CONTENT)
-    string(REPLACE "cmake_minimum_required(VERSION 3.6)"
-                   "cmake_minimum_required(VERSION 3.10)"
-                   TINYGLTF_CMAKE_CONTENT "${TINYGLTF_CMAKE_CONTENT}")
-    file(WRITE "${tinygltf_SOURCE_DIR}/CMakeLists.txt" "${TINYGLTF_CMAKE_CONTENT}")
+  file(DOWNLOAD
+    "https://raw.githubusercontent.com/syoyo/tinygltf/v2.8.18/stb_image.h"
+    "${TINYGLTF_DIR}/stb_image.h"
+    SHOW_PROGRESS
+  )
 
-    # Create a symbolic link to make nlohmann/json.hpp available
-    if(EXISTS "${tinygltf_SOURCE_DIR}/json.hpp")
-      file(MAKE_DIRECTORY "${tinygltf_SOURCE_DIR}/nlohmann")
-      file(CREATE_LINK "${tinygltf_SOURCE_DIR}/json.hpp" "${tinygltf_SOURCE_DIR}/nlohmann/json.hpp" SYMBOLIC)
-    endif()
+  file(DOWNLOAD
+    "https://raw.githubusercontent.com/syoyo/tinygltf/v2.8.18/stb_image_write.h"
+    "${TINYGLTF_DIR}/stb_image_write.h"
+    SHOW_PROGRESS
+  )
 
-    # Set tinygltf to header-only mode
-    set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "Use header only version" FORCE)
-    set(TINYGLTF_INSTALL OFF CACHE BOOL "Do not install tinygltf" FORCE)
+  # Create a symbolic link to make nlohmann/json.hpp available
+  file(MAKE_DIRECTORY "${TINYGLTF_DIR}/nlohmann")
+  file(CREATE_LINK "${TINYGLTF_DIR}/json.hpp" "${TINYGLTF_DIR}/nlohmann/json.hpp" SYMBOLIC)
 
-    # Add the subdirectory after modifying the CMakeLists.txt
-    add_subdirectory(${tinygltf_SOURCE_DIR} ${tinygltf_BINARY_DIR})
-  endif()
+  # Create a simple CMakeLists.txt file
+  file(WRITE "${TINYGLTF_DIR}/CMakeLists.txt" "
+cmake_minimum_required(VERSION 3.10...3.29)
+project(tinygltf)
+
+if(NOT TARGET tinygltf)
+  add_library(tinygltf INTERFACE)
+  target_include_directories(tinygltf INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_definitions(tinygltf INTERFACE
+    TINYGLTF_IMPLEMENTATION
+    TINYGLTF_NO_EXTERNAL_IMAGE
+    TINYGLTF_NO_STB_IMAGE
+    TINYGLTF_NO_STB_IMAGE_WRITE
+  )
+endif()
+")
+
+  # Add the subdirectory
+  add_subdirectory(${TINYGLTF_DIR} ${CMAKE_CURRENT_BINARY_DIR}/tinygltf-build)
 
   # Create an alias for the tinygltf target
   if(NOT TARGET tinygltf::tinygltf)

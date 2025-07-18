@@ -225,38 +225,7 @@ module;
 #include <vulkan/vulkan.hpp>
 export module vulkan;
 export namespace vk {
-  // Import symbols from the main namespace
   using namespace VULKAN_HPP_NAMESPACE;
-
-  // Import symbols from the detail namespace
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderBase;
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderDynamic;
-  using VULKAN_HPP_NAMESPACE::detail::DispatchLoaderStatic;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectDestroy;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectDestroyShared;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectFree;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectFreeShared;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectRelease;
-  using VULKAN_HPP_NAMESPACE::detail::ObjectReleaseShared;
-  using VULKAN_HPP_NAMESPACE::detail::PoolFree;
-  using VULKAN_HPP_NAMESPACE::detail::PoolFreeShared;
-  using VULKAN_HPP_NAMESPACE::detail::createResultValueType;
-  using VULKAN_HPP_NAMESPACE::detail::resultCheck;
-  using VULKAN_HPP_NAMESPACE::detail::DynamicLoader;
-
-  // Export detail namespace for other symbols
-  namespace detail {
-    using namespace VULKAN_HPP_NAMESPACE::detail;
-  }
-
-  // Export raii namespace
-  namespace raii {
-    using namespace VULKAN_HPP_RAII_NAMESPACE;
-
-    // Import symbols from the detail namespace
-    using VULKAN_HPP_NAMESPACE::detail::ContextDispatcher;
-    using VULKAN_HPP_NAMESPACE::detail::DeviceDispatcher;
-  }
 }
 ")
   endif()
@@ -357,11 +326,6 @@ module;
 export module vulkan;
 export namespace vk {
   using namespace VULKAN_HPP_NAMESPACE;
-
-  // Export detail namespace symbols that might be referenced directly
-  namespace detail {
-    using namespace VULKAN_HPP_NAMESPACE::detail;
-  }
 }
 ")
     endif()
@@ -451,11 +415,6 @@ module;
 export module vulkan;
 export namespace vk {
   using namespace VULKAN_HPP_NAMESPACE;
-
-  // Export detail namespace symbols that might be referenced directly
-  namespace detail {
-    using namespace VULKAN_HPP_NAMESPACE::detail;
-  }
 }
 ")
     endif()

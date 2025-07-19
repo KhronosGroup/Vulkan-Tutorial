@@ -191,6 +191,7 @@ private:
 
     void cleanupSwapChain() {
         swapChainImageViews.clear();
+        swapChain = nullptr;
     }
 
     void cleanup() const {

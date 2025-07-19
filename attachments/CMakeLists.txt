@@ -11,7 +11,7 @@ find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 find_package (tinyobjloader REQUIRED)
-find_package (TinyGLTF REQUIRED)
+find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 
 # set up Vulkan C++ module

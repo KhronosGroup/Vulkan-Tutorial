@@ -36,8 +36,7 @@ struct PushConstants {
 
 // Bindings
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
-[[vk::binding(1, 0)]] Texture2D texSampler;
-[[vk::binding(1, 0)]] SamplerState texSamplerSampler;
+[[vk::binding(1, 0)]] Sampler2D texSampler;
 
 // Push constants
 [[vk::push_constant]] PushConstants material;
@@ -69,7 +68,7 @@ VSOutput VSMain(VSInput input)
 float4 PSMain(VSOutput input) : SV_TARGET
 {
     // Sample texture
-    float4 texColor = texSampler.Sample(texSamplerSampler, input.TexCoord);
+    float4 texColor = texSampler.Sample(input.TexCoord);
 
     // Normalize vectors
     float3 normal = normalize(input.Normal);

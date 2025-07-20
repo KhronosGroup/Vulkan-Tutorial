@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <array>
 #include <iostream>
-#include <string.h>
+#include <cstring>
 
 // Define STB_IMAGE_IMPLEMENTATION before including stb_image.h to provide the implementation
 #define STB_IMAGE_IMPLEMENTATION
@@ -155,6 +155,80 @@ bool Renderer::createTextureImageView(TextureResources& resources) {
     }
 }
 
+// Create default texture resources (1x1 white texture)
+bool Renderer::createDefaultTextureResources() {
+    try {
+        // Create a 1x1 white texture
+        const uint32_t width = 1;
+        const uint32_t height = 1;
+        const uint32_t pixelSize = 4; // RGBA
+        const std::vector<uint8_t> pixels = {255, 255, 255, 255}; // White pixel (RGBA)
+
+        // Create staging buffer
+        vk::DeviceSize imageSize = width * height * pixelSize;
+        auto [stagingBuffer, stagingBufferMemory] = createBuffer(
+            imageSize,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+        );
+
+        // Copy pixel data to staging buffer
+        void* data = stagingBufferMemory.mapMemory(0, imageSize);
+        memcpy(data, pixels.data(), static_cast<size_t>(imageSize));
+        stagingBufferMemory.unmapMemory();
+
+        // Create texture image
+        auto [textureImg, textureImgMem] = createImage(
+            width,
+            height,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageTiling::eOptimal,
+            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+            vk::MemoryPropertyFlagBits::eDeviceLocal
+        );
+
+        defaultTextureResources.textureImage = std::move(textureImg);
+        defaultTextureResources.textureImageMemory = std::move(textureImgMem);
+
+        // Transition image layout for copy
+        transitionImageLayout(
+            *defaultTextureResources.textureImage,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eTransferDstOptimal
+        );
+
+        // Copy buffer to image
+        copyBufferToImage(
+            *stagingBuffer,
+            *defaultTextureResources.textureImage,
+            width,
+            height
+        );
+
+        // Transition image layout for shader access
+        transitionImageLayout(
+            *defaultTextureResources.textureImage,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageLayout::eTransferDstOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal
+        );
+
+        // Create texture image view
+        defaultTextureResources.textureImageView = createImageView(
+            defaultTextureResources.textureImage,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageAspectFlagBits::eColor
+        );
+
+        // Create texture sampler
+        return createTextureSampler(defaultTextureResources);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create default texture resources: " << e.what() << std::endl;
+        return false;
+    }
+}
+
 // Create texture sampler
 bool Renderer::createTextureSampler(TextureResources& resources) {
     try {
@@ -281,9 +355,6 @@ bool Renderer::createUniformBuffers(Entity* entity) {
 
         // Create entity resources
         EntityResources resources;
-        resources.uniformBuffers.reserve(MAX_FRAMES_IN_FLIGHT);
-        resources.uniformBuffersMemory.reserve(MAX_FRAMES_IN_FLIGHT);
-        resources.uniformBuffersMapped.reserve(MAX_FRAMES_IN_FLIGHT);
 
         // Create uniform buffers
         vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -294,9 +365,11 @@ bool Renderer::createUniformBuffers(Entity* entity) {
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
             );
 
-            resources.uniformBuffers[i] = std::move(buffer);
-            resources.uniformBuffersMemory[i] = std::move(bufferMemory);
-            resources.uniformBuffersMapped[i] = resources.uniformBuffersMemory[i].mapMemory(0, bufferSize);
+            void* mappedMemory = bufferMemory.mapMemory(0, bufferSize);
+
+            resources.uniformBuffers.emplace_back(std::move(buffer));
+            resources.uniformBuffersMemory.emplace_back(std::move(bufferMemory));
+            resources.uniformBuffersMapped.emplace_back(mappedMemory);
         }
 
         // Add to entity resources map
@@ -383,6 +456,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                 .range = sizeof(UniformBufferObject)
             };
 
+            // Always update both descriptors
             std::array<vk::WriteDescriptorSet, 2> descriptorWrites;
 
             // Uniform buffer descriptor write
@@ -395,12 +469,28 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                 .pBufferInfo = &bufferInfo
             };
 
+            // Check if texture resources are valid
+            bool hasValidTexture = !texturePath.empty() &&
+                                  *textureRes.textureSampler &&
+                                  *textureRes.textureImageView;
+
             // Texture sampler descriptor
-            vk::DescriptorImageInfo imageInfo{
-                .sampler = *textureRes.textureSampler,
-                .imageView = *textureRes.textureImageView,
-                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-            };
+            vk::DescriptorImageInfo imageInfo;
+            if (hasValidTexture) {
+                // Use provided texture resources
+                imageInfo = vk::DescriptorImageInfo{
+                    .sampler = *textureRes.textureSampler,
+                    .imageView = *textureRes.textureImageView,
+                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                };
+            } else {
+                // Use default texture resources
+                imageInfo = vk::DescriptorImageInfo{
+                    .sampler = *defaultTextureResources.textureSampler,
+                    .imageView = *defaultTextureResources.textureImageView,
+                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                };
+            }
 
             // Texture sampler descriptor write
             descriptorWrites[1] = vk::WriteDescriptorSet{
@@ -412,7 +502,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                 .pImageInfo = &imageInfo
             };
 
-            // Update descriptor sets
+            // Update descriptor sets with both descriptors
             device.updateDescriptorSets(descriptorWrites, {});
         }
 
@@ -460,16 +550,15 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
 // Copy buffer
 void Renderer::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) {
     try {
-        // Create command buffer
+        // Create command buffer using RAII
         vk::CommandBufferAllocateInfo allocInfo{
             .commandPool = *commandPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1
         };
 
-        auto commandBuffers = device.allocateCommandBuffers(allocInfo);
-        vk::CommandBuffer cmdBuffer = commandBuffers[0];
-        vk::raii::CommandBuffer commandBuffer(device, cmdBuffer, *commandPool);
+        vk::raii::CommandBuffers commandBuffers(device, allocInfo);
+        vk::raii::CommandBuffer& commandBuffer = commandBuffers[0];
 
         // Begin command buffer
         vk::CommandBufferBeginInfo beginInfo{
@@ -575,16 +664,15 @@ vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format
 // Transition image layout
 void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
     try {
-        // Create command buffer
+        // Create command buffer using RAII
         vk::CommandBufferAllocateInfo allocInfo{
             .commandPool = *commandPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1
         };
 
-        auto commandBuffers = device.allocateCommandBuffers(allocInfo);
-        vk::CommandBuffer cmdBuffer = commandBuffers[0];
-        vk::raii::CommandBuffer commandBuffer(device, cmdBuffer, *commandPool);
+        vk::raii::CommandBuffers commandBuffers(device, allocInfo);
+        vk::raii::CommandBuffer& commandBuffer = commandBuffers[0];
 
         // Begin command buffer
         vk::CommandBufferBeginInfo beginInfo{
@@ -666,16 +754,15 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 // Copy buffer to image
 void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height) {
     try {
-        // Create command buffer
+        // Create command buffer using RAII
         vk::CommandBufferAllocateInfo allocInfo{
             .commandPool = *commandPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1
         };
 
-        auto commandBuffers = device.allocateCommandBuffers(allocInfo);
-        vk::CommandBuffer cmdBuffer = commandBuffers[0];
-        vk::raii::CommandBuffer commandBuffer(device, cmdBuffer, *commandPool);
+        vk::raii::CommandBuffers commandBuffers(device, allocInfo);
+        vk::raii::CommandBuffer& commandBuffer = commandBuffers[0];
 
         // Begin command buffer
         vk::CommandBufferBeginInfo beginInfo{

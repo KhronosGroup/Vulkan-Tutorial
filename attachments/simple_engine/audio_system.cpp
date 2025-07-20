@@ -9,7 +9,7 @@
 // Concrete implementation of AudioSource
 class ConcreteAudioSource : public AudioSource {
 public:
-    ConcreteAudioSource(const std::string& name) : name(name) {}
+    explicit ConcreteAudioSource(const std::string& name) : name(name) {}
     ~ConcreteAudioSource() override = default;
 
     void Play() override {
@@ -51,7 +51,7 @@ public:
         std::cout << "Setting velocity of audio source " << name << " to (" << x << ", " << y << ", " << z << ")" << std::endl;
     }
 
-    bool IsPlaying() const override {
+    [[nodiscard]] bool IsPlaying() const override {
         return playing;
     }
 
@@ -63,10 +63,6 @@ private:
     float position[3] = {0.0f, 0.0f, 0.0f};
     float velocity[3] = {0.0f, 0.0f, 0.0f};
 };
-
-AudioSystem::AudioSystem() {
-    // Constructor implementation
-}
 
 AudioSystem::~AudioSystem() {
     // Destructor implementation
@@ -337,12 +333,6 @@ bool AudioSystem::createHRTFBuffers(uint32_t sampleCount) {
     }
 
     const vk::raii::Device& device = renderer->GetRaiiDevice();
-    // Check if device is valid (using operator bool() instead of ! operator)
-    if (*device == nullptr) {
-        std::cerr << "AudioSystem::createHRTFBuffers: Vulkan device is null" << std::endl;
-        return false;
-    }
-
     try {
         // Create input buffer (mono audio)
         vk::BufferCreateInfo inputBufferInfo;

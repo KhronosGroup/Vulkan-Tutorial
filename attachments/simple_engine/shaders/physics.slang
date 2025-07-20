@@ -1,8 +1,6 @@
 // Compute shader for physics simulation
 // This shader processes rigid body physics data to simulate physical interactions
 
-// Workgroup size
-[[vk::compute_shader_input(local_size_x = 64)]]
 
 // Physics data structure
 struct PhysicsData {
@@ -61,6 +59,7 @@ float4 quatNormalize(float4 q) {
 
 // Integration shader - updates positions and velocities
 [shader("compute")]
+[numthreads(64, 1, 1)]
 void IntegrateCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint index = dispatchThreadID.x;
 
@@ -190,6 +189,7 @@ void BroadPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
 // Narrow phase collision detection - detailed collision detection for potential pairs
 [shader("compute")]
+[numthreads(64, 1, 1)]
 void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint index = dispatchThreadID.x;
 
@@ -249,6 +249,7 @@ void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
 // Collision resolution - resolves detected collisions
 [shader("compute")]
+[numthreads(64, 1, 1)]
 void ResolveCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint index = dispatchThreadID.x;
 

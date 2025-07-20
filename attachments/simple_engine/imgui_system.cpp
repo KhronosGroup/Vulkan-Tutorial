@@ -612,7 +612,7 @@ bool ImGuiSystem::createPipeline() {
         // Create the graphics pipeline with dynamic rendering
         vk::PipelineRenderingCreateInfo renderingInfo;
         renderingInfo.colorAttachmentCount = 1;
-        vk::Format colorFormat = vk::Format::eR8G8B8A8Unorm; // Use the format of your swapchain images
+        vk::Format colorFormat = renderer->GetSwapChainImageFormat(); // Get the actual swapchain format
         renderingInfo.pColorAttachmentFormats = &colorFormat;
 
         vk::GraphicsPipelineCreateInfo pipelineInfo;
@@ -631,11 +631,7 @@ bool ImGuiSystem::createPipeline() {
         pipelineInfo.basePipelineHandle = nullptr;
 
         const vk::raii::Device& device = renderer->GetRaiiDevice();
-        auto pipelines = device.createGraphicsPipelines(nullptr, {pipelineInfo});
-        pipeline = std::move(pipelines[0]);
-
-        // Shader modules will be automatically cleaned up by RAII
-
+        pipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to create graphics pipeline: " << e.what() << std::endl;

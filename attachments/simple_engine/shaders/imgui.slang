@@ -22,8 +22,7 @@ struct PushConstants {
 
 // Bindings
 [[vk::push_constant]] PushConstants pushConstants;
-[[vk::binding(0, 0)]] Texture2D fontTexture;
-[[vk::binding(0, 0)]] SamplerState fontSampler;
+[[vk::binding(0, 0)]] Sampler2D fontTexture;
 
 // Vertex shader entry point
 [[shader("vertex")]]
@@ -46,6 +45,6 @@ VSOutput VSMain(VSInput input)
 float4 PSMain(VSOutput input) : SV_TARGET
 {
     // Sample font texture and multiply by color
-    float4 color = input.Color * fontTexture.Sample(fontSampler, input.UV);
+    float4 color = input.Color * fontTexture.Sample(input.UV);
     return color;
 }

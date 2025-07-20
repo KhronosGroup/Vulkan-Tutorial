@@ -3,11 +3,8 @@
 #else
 import vulkan_hpp;
 #endif
-#include <vulkan/vk_platform.h>
 
 // Define the defaultDispatchLoaderDynamic variable
-namespace vk {
-    namespace detail {
-        vk::DispatchLoaderDynamic defaultDispatchLoaderDynamic;
-    }
+namespace vk::detail {
+    DispatchLoaderDynamic defaultDispatchLoaderDynamic;
 }

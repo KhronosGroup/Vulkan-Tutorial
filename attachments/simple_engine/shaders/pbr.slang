@@ -50,16 +50,11 @@ static const float PI = 3.14159265359;
 
 // Bindings
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
-[[vk::binding(1, 0)]] Texture2D baseColorMap;
-[[vk::binding(1, 0)]] SamplerState baseColorSampler;
-[[vk::binding(2, 0)]] Texture2D metallicRoughnessMap;
-[[vk::binding(2, 0)]] SamplerState metallicRoughnessSampler;
-[[vk::binding(3, 0)]] Texture2D normalMap;
-[[vk::binding(3, 0)]] SamplerState normalSampler;
-[[vk::binding(4, 0)]] Texture2D occlusionMap;
-[[vk::binding(4, 0)]] SamplerState occlusionSampler;
-[[vk::binding(5, 0)]] Texture2D emissiveMap;
-[[vk::binding(5, 0)]] SamplerState emissiveSampler;
+[[vk::binding(1, 0)]] Sampler2D baseColorMap;
+[[vk::binding(2, 0)]] Sampler2D metallicRoughnessMap;
+[[vk::binding(3, 0)]] Sampler2D normalMap;
+[[vk::binding(4, 0)]] Sampler2D occlusionMap;
+[[vk::binding(5, 0)]] Sampler2D emissiveMap;
 
 [[vk::push_constant]] PushConstants material;
 
@@ -120,18 +115,18 @@ VSOutput VSMain(VSInput input)
 float4 PSMain(VSOutput input) : SV_TARGET
 {
     // Sample material textures
-    float4 baseColor = baseColorMap.Sample(baseColorSampler, input.UV) * material.baseColorFactor;
-    float2 metallicRoughness = metallicRoughnessMap.Sample(metallicRoughnessSampler, input.UV).bg;
+    float4 baseColor = baseColorMap.Sample(input.UV) * material.baseColorFactor;
+    float2 metallicRoughness = metallicRoughnessMap.Sample(input.UV).bg;
     float metallic = metallicRoughness.x * material.metallicFactor;
     float roughness = metallicRoughness.y * material.roughnessFactor;
-    float ao = occlusionMap.Sample(occlusionSampler, input.UV).r;
-    float3 emissive = emissiveMap.Sample(emissiveSampler, input.UV).rgb;
+    float ao = occlusionMap.Sample(input.UV).r;
+    float3 emissive = emissiveMap.Sample(input.UV).rgb;
 
     // Calculate normal in tangent space
     float3 N = normalize(input.Normal);
     if (material.normalTextureSet >= 0) {
         // Apply normal mapping
-        float3 tangentNormal = normalMap.Sample(normalSampler, input.UV).xyz * 2.0 - 1.0;
+        float3 tangentNormal = normalMap.Sample(input.UV).xyz * 2.0 - 1.0;
         float3 T = normalize(input.Tangent.xyz);
         float3 B = normalize(cross(N, T)) * input.Tangent.w;
         float3x3 TBN = float3x3(T, B, N);

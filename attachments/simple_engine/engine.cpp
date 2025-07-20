@@ -74,6 +74,7 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     }
 
     // Initialize physics system
+    physicsSystem->SetRenderer(renderer.get());
     if (!physicsSystem->Initialize()) {
         return false;
     }
@@ -354,6 +355,7 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
     }
 
     // Initialize physics system
+    physicsSystem->SetRenderer(renderer.get());
     if (!physicsSystem->Initialize()) {
         return false;
     }

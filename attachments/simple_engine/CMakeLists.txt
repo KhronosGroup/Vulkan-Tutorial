@@ -12,7 +12,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../CMake")
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
-find_package (TinyGLTF REQUIRED)
+find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 find_package (stb REQUIRED)
 
@@ -107,7 +107,6 @@ set(SOURCES
     imgui_system.cpp
     imgui/imgui.cpp
     imgui/imgui_draw.cpp
-    vulkan_dispatch.cpp
     vulkan_device.cpp
     pipeline.cpp
     descriptor_manager.cpp

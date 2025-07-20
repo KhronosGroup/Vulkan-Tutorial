@@ -49,6 +49,12 @@ public:
     bool createDescriptorSetLayout();
 
     /**
+     * @brief Create the PBR descriptor set layout.
+     * @return True if the PBR descriptor set layout was created successfully, false otherwise.
+     */
+    bool createPBRDescriptorSetLayout();
+
+    /**
      * @brief Create the graphics pipeline.
      * @return True if the graphics pipeline was created successfully, false otherwise.
      */
@@ -133,6 +139,12 @@ public:
      */
     vk::raii::DescriptorSetLayout& getComputeDescriptorSetLayout() { return computeDescriptorSetLayout; }
 
+    /**
+     * @brief Get the PBR descriptor set layout.
+     * @return The PBR descriptor set layout.
+     */
+    vk::raii::DescriptorSetLayout& getPBRDescriptorSetLayout() { return pbrDescriptorSetLayout; }
+
 private:
     // Vulkan device
     VulkanDevice& device;
@@ -153,8 +165,9 @@ private:
     vk::raii::Pipeline computePipeline = nullptr;
     vk::raii::DescriptorSetLayout computeDescriptorSetLayout = nullptr;
 
-    // Descriptor set layout
+    // Descriptor set layouts
     vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
+    vk::raii::DescriptorSetLayout pbrDescriptorSetLayout = nullptr;
 
     // Helper functions
     vk::raii::ShaderModule createShaderModule(const std::vector<char>& code);

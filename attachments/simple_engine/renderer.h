@@ -5,12 +5,11 @@
 #else
 import vulkan_hpp;
 #endif
+#include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vk_platform.h>
 #include <vector>
 #include <string>
-#include <memory>
 #include <optional>
-#include <array>
 #include <unordered_map>
 
 #include "platform.h"
@@ -204,6 +203,14 @@ public:
         return *commandBuffers[currentFrame];
     }
 
+    /**
+     * @brief Get the swap chain image format.
+     * @return The swap chain image format.
+     */
+    vk::Format GetSwapChainImageFormat() const {
+        return swapChainImageFormat;
+    }
+
 private:
     // Platform
     Platform* platform = nullptr;
@@ -270,6 +277,7 @@ private:
 
     // Descriptor set layout and pool
     vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
+    vk::raii::DescriptorSetLayout pbrDescriptorSetLayout = nullptr;
     vk::raii::DescriptorPool descriptorPool = nullptr;
 
     // Mesh resources
@@ -290,6 +298,9 @@ private:
         vk::raii::Sampler textureSampler = nullptr;
     };
     std::unordered_map<std::string, TextureResources> textureResources;
+
+    // Default texture resources (used when no texture is provided)
+    TextureResources defaultTextureResources;
 
     // Entity resources
     struct EntityResources {
@@ -347,6 +358,7 @@ private:
     bool createImageViews();
     bool setupDynamicRendering();
     bool createDescriptorSetLayout();
+    bool createPBRDescriptorSetLayout();
     bool createGraphicsPipeline();
     bool createPBRPipeline();
     bool createLightingPipeline();
@@ -357,6 +369,7 @@ private:
     bool createTextureImage(const std::string& texturePath, TextureResources& resources);
     bool createTextureImageView(TextureResources& resources);
     bool createTextureSampler(TextureResources& resources);
+    bool createDefaultTextureResources();
     bool createMeshResources(MeshComponent* meshComponent);
     bool createUniformBuffers(Entity* entity);
     bool createDescriptorPool();

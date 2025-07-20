@@ -1,9 +1,6 @@
 // Compute shader for HRTF (Head-Related Transfer Function) audio processing
 // This shader processes audio data to create 3D spatial audio effects
 
-// Workgroup size
-[[vk::compute_shader_input(local_size_x = 256)]]
-
 // Input/output buffer bindings
 [[vk::binding(0, 0)]] RWStructuredBuffer<float> inputAudioBuffer;  // Raw audio samples
 [[vk::binding(1, 0)]] RWStructuredBuffer<float> outputAudioBuffer; // Processed audio samples
@@ -72,6 +69,7 @@ void CalculateAngles(float3 sourceDir, float3 listenerForward, float3 listenerUp
 
 // Main compute shader function
 [shader("compute")]
+[numthreads(64, 1, 1)]
 void CSMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint index = dispatchThreadID.x;
 

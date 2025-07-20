@@ -1,6 +1,5 @@
 #include "renderer.h"
 #include <fstream>
-#include <stdexcept>
 #include <array>
 #include <iostream>
 
@@ -10,7 +9,7 @@
 bool Renderer::createComputePipeline() {
     try {
         // Read compute shader code
-        auto computeShaderCode = readFile("shaders/compute.comp.spv");
+        auto computeShaderCode = readFile("shaders/compute.spv");
 
         // Create shader module
         vk::raii::ShaderModule computeShaderModule = createShaderModule(computeShaderCode);
@@ -47,7 +46,7 @@ bool Renderer::createComputePipeline() {
             },
             vk::DescriptorSetLayoutBinding{
                 .binding = 3,
-                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
                 .descriptorCount = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eCompute,
                 .pImmutableSamplers = nullptr
@@ -80,10 +79,14 @@ bool Renderer::createComputePipeline() {
         computePipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
 
         // Create compute descriptor pool
-        std::array<vk::DescriptorPoolSize, 1> poolSizes = {
+        std::array<vk::DescriptorPoolSize, 2> poolSizes = {
             vk::DescriptorPoolSize{
                 .type = vk::DescriptorType::eStorageBuffer,
-                .descriptorCount = 4u * MAX_FRAMES_IN_FLIGHT
+                .descriptorCount = 3u * MAX_FRAMES_IN_FLIGHT
+            },
+            vk::DescriptorPoolSize{
+                .type = vk::DescriptorType::eUniformBuffer,
+                .descriptorCount = 1u * MAX_FRAMES_IN_FLIGHT
             }
         };
 
@@ -172,7 +175,7 @@ void Renderer::DispatchCompute(uint32_t groupCountX, uint32_t groupCountY, uint3
                 .dstBinding = 3,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
-                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
                 .pBufferInfo = &paramsBufferInfo
             }
         };

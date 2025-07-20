@@ -1,7 +1,6 @@
 #include "vulkan_device.h"
 #include <iostream>
 #include <set>
-#include <string.h>
 #include <algorithm>
 #include <ranges>
 

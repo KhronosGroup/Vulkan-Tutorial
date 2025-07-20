@@ -24,8 +24,7 @@ struct UniformBufferObject {
 
 // Bindings
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
-[[vk::binding(1, 0)]] Texture2D texSampler;
-[[vk::binding(1, 0)]] SamplerState texSamplerSampler;
+[[vk::binding(1, 0)]] Sampler2D texSampler;
 
 // Vertex shader entry point
 [[shader("vertex")]]
@@ -48,5 +47,5 @@ VSOutput VSMain(VSInput input)
 float4 PSMain(VSOutput input) : SV_TARGET
 {
     // Sample texture and multiply by color
-    return texSampler.Sample(texSamplerSampler, input.TexCoord) * float4(input.Color, 1.0);
+    return texSampler.Sample(input.TexCoord) * float4(input.Color, 1.0);
 }

@@ -48,6 +48,76 @@ bool Pipeline::createDescriptorSetLayout() {
     }
 }
 
+// Create PBR descriptor set layout
+bool Pipeline::createPBRDescriptorSetLayout() {
+    try {
+        // Create descriptor set layout bindings for PBR shader
+        std::array<vk::DescriptorSetLayoutBinding, 6> bindings = {
+            // Binding 0: Uniform buffer (UBO)
+            vk::DescriptorSetLayoutBinding{
+                .binding = 0,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 1: Base color map and sampler
+            vk::DescriptorSetLayoutBinding{
+                .binding = 1,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 2: Metallic roughness map and sampler
+            vk::DescriptorSetLayoutBinding{
+                .binding = 2,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 3: Normal map and sampler
+            vk::DescriptorSetLayoutBinding{
+                .binding = 3,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 4: Occlusion map and sampler
+            vk::DescriptorSetLayoutBinding{
+                .binding = 4,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 5: Emissive map and sampler
+            vk::DescriptorSetLayoutBinding{
+                .binding = 5,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            }
+        };
+
+        // Create descriptor set layout
+        vk::DescriptorSetLayoutCreateInfo layoutInfo{
+            .bindingCount = static_cast<uint32_t>(bindings.size()),
+            .pBindings = bindings.data()
+        };
+
+        pbrDescriptorSetLayout = vk::raii::DescriptorSetLayout(device.getDevice(), layoutInfo);
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create PBR descriptor set layout: " << e.what() << std::endl;
+        return false;
+    }
+}
+
 // Create graphics pipeline
 bool Pipeline::createGraphicsPipeline() {
     try {
@@ -232,6 +302,11 @@ bool Pipeline::createGraphicsPipeline() {
 // Create PBR pipeline
 bool Pipeline::createPBRPipeline() {
     try {
+        // Create PBR descriptor set layout
+        if (!createPBRDescriptorSetLayout()) {
+            return false;
+        }
+
         // Read shader code
         auto vertShaderCode = readFile("shaders/pbr.spv");
         auto fragShaderCode = readFile("shaders/pbr.spv");
@@ -250,17 +325,56 @@ bool Pipeline::createPBRPipeline() {
         vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eFragment,
             .module = *fragShaderModule,
-            .pName = "FSMain"
+            .pName = "PSMain"  // Changed from FSMain to PSMain to match the shader
         };
 
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
+        // Define vertex binding description
+        vk::VertexInputBindingDescription bindingDescription{
+            .binding = 0,
+            .stride = sizeof(float) * (3 + 3 + 2 + 4),  // Position(3) + Normal(3) + UV(2) + Tangent(4)
+            .inputRate = vk::VertexInputRate::eVertex
+        };
+
+        // Define vertex attribute descriptions
+        std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
+            // Position attribute
+            vk::VertexInputAttributeDescription{
+                .location = 0,
+                .binding = 0,
+                .format = vk::Format::eR32G32B32Sfloat,
+                .offset = 0
+            },
+            // Normal attribute
+            vk::VertexInputAttributeDescription{
+                .location = 1,
+                .binding = 0,
+                .format = vk::Format::eR32G32B32Sfloat,
+                .offset = sizeof(float) * 3
+            },
+            // UV attribute
+            vk::VertexInputAttributeDescription{
+                .location = 2,
+                .binding = 0,
+                .format = vk::Format::eR32G32Sfloat,
+                .offset = sizeof(float) * 6
+            },
+            // Tangent attribute
+            vk::VertexInputAttributeDescription{
+                .location = 3,
+                .binding = 0,
+                .format = vk::Format::eR32G32B32A32Sfloat,
+                .offset = sizeof(float) * 8
+            }
+        };
+
         // Create vertex input info
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{
-            .vertexBindingDescriptionCount = 0,
-            .pVertexBindingDescriptions = nullptr,
-            .vertexAttributeDescriptionCount = 0,
-            .pVertexAttributeDescriptions = nullptr
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &bindingDescription,
+            .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+            .pVertexAttributeDescriptions = attributeDescriptions.data()
         };
 
         // Create input assembly info
@@ -368,10 +482,10 @@ bool Pipeline::createPBRPipeline() {
             .size = sizeof(MaterialProperties)
         };
 
-        // Create pipeline layout
+        // Create pipeline layout using the PBR descriptor set layout
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
             .setLayoutCount = 1,
-            .pSetLayouts = &*descriptorSetLayout,
+            .pSetLayouts = &*pbrDescriptorSetLayout,  // Use PBR descriptor set layout
             .pushConstantRangeCount = 1,
             .pPushConstantRanges = &pushConstantRange
         };
@@ -549,12 +663,19 @@ bool Pipeline::createLightingPipeline() {
             .pDynamicStates = dynamicStates.data()
         };
 
+        // Create push constant range for material properties
+        vk::PushConstantRange pushConstantRange{
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .offset = 0,
+            .size = sizeof(MaterialProperties)
+        };
+
         // Create pipeline layout
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
             .setLayoutCount = 1,
             .pSetLayouts = &*descriptorSetLayout,
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges = nullptr
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &pushConstantRange
         };
 
         lightingPipelineLayout = vk::raii::PipelineLayout(device.getDevice(), pipelineLayoutInfo);

@@ -1,10 +1,10 @@
 #include "renderer.h"
 #include <fstream>
-#include <stdexcept>
-#include <array>
 #include <iostream>
 #include <set>
-#include <string.h>
+#include <cstring>
+
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE; // In a .cpp file
 
 #ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
@@ -61,6 +61,9 @@ Renderer::~Renderer() {
 
 // Initialize the renderer
 bool Renderer::Initialize(const std::string& appName, bool enableValidationLayers) {
+    vk::detail::DynamicLoader dl;
+    auto vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
     // Create Vulkan instance
     if (!createInstance(appName, enableValidationLayers)) {
         return false;
@@ -122,11 +125,11 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // // Create compute pipeline
-    // if (!createComputePipeline()) {
-    //     std::cerr << "Failed to create compute pipeline" << std::endl;
-    //     return false;
-    // }
+    // Create compute pipeline
+    if (!createComputePipeline()) {
+        std::cerr << "Failed to create compute pipeline" << std::endl;
+        return false;
+    }
 
     // Create command pool
     if (!createCommandPool()) {
@@ -140,6 +143,12 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
 
     // Create descriptor pool
     if (!createDescriptorPool()) {
+        return false;
+    }
+
+    // Create default texture resources
+    if (!createDefaultTextureResources()) {
+        std::cerr << "Failed to create default texture resources" << std::endl;
         return false;
     }
 

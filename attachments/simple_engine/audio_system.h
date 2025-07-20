@@ -87,7 +87,7 @@ public:
     /**
      * @brief Default constructor.
      */
-    AudioSystem();
+    AudioSystem() = default;
 
     /**
      * @brief Destructor for proper cleanup.

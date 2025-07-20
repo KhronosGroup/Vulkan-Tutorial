@@ -5,6 +5,13 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force_android_build:
+        description: 'Force Android build to run regardless of file changes'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
 
@@ -436,7 +443,7 @@ jobs:
 
     # We need to run a preliminary job to check for changes
     needs: check-android-changes
-    if: needs.check-android-changes.outputs.should_build == 'true'
+    if: needs.check-android-changes.outputs.should_build == 'true' || github.event.inputs.force_android_build == 'true'
 
     steps:
       - uses: actions/checkout@v3

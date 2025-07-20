@@ -45,6 +45,9 @@ case $PACKAGE_MANAGER in
 
         echo "Installing X Window System dependencies..."
         sudo apt-get install -y libxxf86vm-dev libxi-dev
+
+        echo "Installing clang compiler..."
+        sudo apt-get install -y clang
         ;;
     dnf)
         echo "Detected Fedora/RHEL-based system"
@@ -68,6 +71,9 @@ case $PACKAGE_MANAGER in
 
         echo "Installing X Window System dependencies..."
         sudo dnf install -y libXxf86vm-devel libXi-devel
+
+        echo "Installing clang compiler..."
+        sudo dnf install -y clang
         ;;
     pacman)
         echo "Detected Arch-based system"
@@ -88,6 +94,9 @@ case $PACKAGE_MANAGER in
 
         echo "Installing nlohmann-json..."
         sudo pacman -S --needed nlohmann-json || echo "nlohmann-json not found in pacman, will need to be installed manually or via CMake FetchContent"
+
+        echo "Installing clang compiler..."
+        sudo pacman -S --needed clang
         ;;
     *)
         echo "Unsupported package manager. Please install the following packages manually:"
@@ -101,6 +110,7 @@ case $PACKAGE_MANAGER in
         echo "- libtinygltf-dev or equivalent"
         echo "- nlohmann-json3-dev or equivalent"
         echo "- libxxf86vm-dev and libxi-dev or equivalent"
+        echo "- clang compiler"
         exit 1
         ;;
 esac

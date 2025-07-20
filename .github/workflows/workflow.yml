@@ -410,8 +410,8 @@ jobs:
         working-directory: ${{github.workspace}}/attachments
         if: runner.os != 'Windows'
         run: |
-          export CC="ccache clang"
-          export CXX="ccache clang++"
+          export CC="clang"
+          export CXX="clang++"
 
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_SCAN_FOR_MODULES=ON \

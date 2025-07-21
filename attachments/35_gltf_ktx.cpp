@@ -358,6 +358,7 @@ private:
 
     void cleanupSwapChain() {
         swapChainImageViews.clear();
+        swapChain = nullptr;
     }
 
 #if PLATFORM_DESKTOP

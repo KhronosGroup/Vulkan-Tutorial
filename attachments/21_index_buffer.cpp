@@ -160,7 +160,7 @@ private:
 
     void cleanupSwapChain() {
         swapChainImageViews.clear();
-        swapChainImageViews.clear();
+        swapChain = nullptr;
     }
 
     void cleanup() {

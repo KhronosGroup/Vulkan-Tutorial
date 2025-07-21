@@ -435,6 +435,8 @@ private:
         // Clean up shader storage buffers
         shaderStorageBuffers.clear();
         shaderStorageBuffersMemory.clear();
+
+        swapChain = nullptr;
     }
 
     void stopThreads() {

@@ -199,6 +199,7 @@ void pickPhysicalDevice() {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
 }
+----
 
 === Understanding the nested lambda functions
 
@@ -209,9 +210,11 @@ The `pickPhysicalDevice()` function above uses several nested lambda functions, 
 Lambda functions (or lambda expressions) are a C++ feature that allows you to define anonymous functions inline. They're especially useful for short operations that you don't need to define as separate named functions.
 
 The basic syntax of a lambda is:
-```cpp
+
+[source,cpp]
+----
 [capture-list](parameters) { body }
-```
+----
 
 - The `capture-list` specifies which variables from the surrounding scope are accessible inside the lambda
 - `parameters` are the input parameters, just like in regular functions
@@ -221,14 +224,15 @@ The basic syntax of a lambda is:
 
 In our `pickPhysicalDevice()` function, we use `std::ranges::find_if` with a lambda to find the first suitable device:
 
-```cpp
+[source,cpp]
+----
 const auto devIter = std::ranges::find_if(devices,
     [&](auto const & device) {
         // Lambda body that checks if the device is suitable
         // ...
         return isSuitable;
     });
-```
+----
 
 The `[&]` capture list means this lambda can access all variables from the
 surrounding scope by reference. This is necessary because we need to access
@@ -240,12 +244,13 @@ convenience andclarity as goals in mind.
 
 Inside the main lambda, we have another lambda that checks if a queue family supports graphics operations:
 
-```cpp
+[source,cpp]
+----
 const auto qfpIter = std::ranges::find_if(queueFamilies,
     []( vk::QueueFamilyProperties const & qfp ) {
         return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
     });
-```
+----
 
 This lambda doesn't need to capture any variables (empty `[]`), as it only uses its parameter `qfp`.
 
@@ -253,12 +258,13 @@ This lambda doesn't need to capture any variables (empty `[]`), as it only uses 
 
 Further down, we have another lambda that checks if a specific extension is supported:
 
-```cpp
+[source,cpp]
+----
 auto extensionIter = std::ranges::find_if(extensions,
     [extension](auto const & ext) {
         return strcmp(ext.extensionName, extension) == 0;
     });
-```
+----
 
 This lambda captures the `extension` variable by value (`[extension]`) so it can compare it with each available extension.
 
@@ -276,7 +282,6 @@ While nested lambdas can make code more concise, they can also make it harder
  this explanation to help you understand the pattern.  Throughout this
  tutorial, we will attempt to use only modern C++ to keep with a one language
   paradigm for ease of use/familiarity.
-----
 
 In the next section, we'll discuss the first real required feature to check for.
 

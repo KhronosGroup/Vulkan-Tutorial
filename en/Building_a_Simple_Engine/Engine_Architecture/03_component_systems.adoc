@@ -11,7 +11,7 @@
 
 == Component Systems
 
-In the previous section, we introduced the concept of component-based architecture. Now, let's dive deeper into how to implement effective component systems in your rendering engine.
+In the previous section, we introduced several architectural patterns and explained why we're focusing on component-based architecture for our Vulkan rendering engine. As we established, component systems provide the ideal balance of flexibility, modularity, and performance for modern rendering engines. Now, let's dive deeper into how to implement effective component systems in your rendering engine.
 
 === The Problem with Deep Inheritance
 

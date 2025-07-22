@@ -11,10 +11,15 @@
 
 == Introduction
 
-Welcome to the "Engine Architecture" chapter of our "Building a Simple Game
-Engine" series! In this chapter, we'll explore the fundamental architectural
+Welcome to the "Engine Architecture" chapter of our "Building a Simple Engine"
+series! In this chapter, we'll explore the fundamental architectural
 patterns and design principles that form the backbone of a modern Vulkan
 rendering engine.
+
+While this series focuses primarily on building a rendering engine with Vulkan,
+the architectural concepts we'll discuss are applicable to both rendering engines
+and full game engines. We'll clarify which patterns are particularly well-suited
+for rendering-focused systems versus more general game engine development.
 
 We'll start by taking a step back and considering the overall structure of our engine. A
 well-designed architecture is crucial for creating a flexible, maintainable, and extensible rendering system.

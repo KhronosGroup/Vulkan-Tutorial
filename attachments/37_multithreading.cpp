@@ -146,18 +146,14 @@ public:
     }
 
 private:
-    GLFWwindow* window = nullptr;
-
-    vk::raii::Context  context;
-    vk::raii::Instance instance = nullptr;
-    vk::raii::SurfaceKHR surface = nullptr;
-
+    GLFWwindow *             window = nullptr;
+    vk::raii::Context        context;
+    vk::raii::Instance       instance       = nullptr;
+    vk::raii::SurfaceKHR     surface        = nullptr;
     vk::raii::PhysicalDevice physicalDevice = nullptr;
-    vk::raii::Device device = nullptr;
-
-    vk::raii::Queue graphicsQueue = nullptr;
-    vk::raii::Queue computeQueue = nullptr;
-    vk::raii::Queue presentQueue = nullptr;
+    vk::raii::Device         device         = nullptr;
+    uint32_t                 queueIndex     = ~0;
+    vk::raii::Queue          queue          = nullptr;
 
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
@@ -184,7 +180,6 @@ private:
 
     vk::raii::CommandPool commandPool = nullptr;
     std::vector<vk::raii::CommandBuffer> graphicsCommandBuffers;
-    uint32_t graphicsQueueFamilyIndex = 0;
 
     vk::raii::Semaphore timelineSemaphore = nullptr;
     uint64_t timelineValue = 0;
@@ -463,7 +458,7 @@ private:
     }
 
     void initThreadResources() {
-        resourceManager.createThreadCommandPools(device, graphicsQueueFamilyIndex, threadCount);
+        resourceManager.createThreadCommandPools(device, queueIndex, threadCount);
         resourceManager.allocateCommandBuffers(device, threadCount, 1);
     }
 
@@ -541,41 +536,21 @@ private:
     void createLogicalDevice() {
         std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-        auto graphicsAndComputeQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, [](auto const & qfp)
-            { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics && qfp.queueFlags & vk::QueueFlagBits::eCompute); });
-
-        graphicsQueueFamilyIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsAndComputeQueueFamilyProperty));
-
-        auto presentIndex = physicalDevice.getSurfaceSupportKHR(graphicsQueueFamilyIndex, surface)
-                                         ? graphicsQueueFamilyIndex
-                                         : ~0;
-        if (presentIndex == queueFamilyProperties.size())
+        // get the first index into queueFamilyProperties which supports both graphics and present
+        for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
         {
-            for (size_t i = 0; i < queueFamilyProperties.size(); i++)
+            if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+			    (queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eCompute) &&
+                physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
             {
-                if (((queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics && queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eCompute)) &&
-                   physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), surface))
-                {
-                    graphicsQueueFamilyIndex = static_cast<uint32_t>(i);
-                    presentIndex = graphicsQueueFamilyIndex;
-                    break;
-                }
-            }
-            if (presentIndex == queueFamilyProperties.size())
-            {
-                for (size_t i = 0; i < queueFamilyProperties.size(); i++)
-                {
-                    if (physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), surface))
-                    {
-                        presentIndex = static_cast<uint32_t>(i);
-                        break;
-                    }
-                }
+                // found a queue family that supports both graphics and present
+                queueIndex = qfpIndex;
+                break;
             }
         }
-        if ((graphicsQueueFamilyIndex == queueFamilyProperties.size()) || (presentIndex == queueFamilyProperties.size()))
+        if (queueIndex == ~0)
         {
-            throw std::runtime_error("Could not find a queue for graphics or present -> terminating");
+            throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
         }
 
         auto features = physicalDevice.getFeatures2();
@@ -592,7 +567,7 @@ private:
         features.pNext = &vulkan13Features;
 
         float queuePriority = 0.0f;
-        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = graphicsQueueFamilyIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
         vk::DeviceCreateInfo deviceCreateInfo{
             .pNext = &features,
             .queueCreateInfoCount = 1,
@@ -602,9 +577,7 @@ private:
         };
 
         device = vk::raii::Device(physicalDevice, deviceCreateInfo);
-        graphicsQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
-        computeQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
-        presentQueue = vk::raii::Queue(device, presentIndex, 0);
+        queue = vk::raii::Queue(device, queueIndex, 0);
     }
 
     void createSwapChain() {
@@ -746,7 +719,7 @@ private:
     void createCommandPool() {
         vk::CommandPoolCreateInfo poolInfo{};
         poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
+        poolInfo.queueFamilyIndex = queueIndex;
         commandPool = vk::raii::CommandPool(device, poolInfo);
     }
 
@@ -883,8 +856,8 @@ private:
         vk::SubmitInfo submitInfo{};
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &*commandBuffer;
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        queue.submit(submitInfo, nullptr);
+        queue.waitIdle();
     }
 
     void copyBuffer(const vk::raii::Buffer & srcBuffer, const vk::raii::Buffer & dstBuffer, vk::DeviceSize size) const {
@@ -1163,7 +1136,7 @@ private:
         // Submit compute work
         {
             std::lock_guard<std::mutex> lock(queueSubmitMutex);
-            computeQueue.submit(computeSubmitInfo, nullptr);
+            queue.submit(computeSubmitInfo, nullptr);
         }
 
         // Set up graphics submission
@@ -1193,7 +1166,7 @@ private:
         // Submit graphics work
         {
             std::lock_guard<std::mutex> lock(queueSubmitMutex);
-            graphicsQueue.submit(graphicsSubmitInfo, *inFlightFences[currentFrame]);
+            queue.submit(graphicsSubmitInfo, *inFlightFences[currentFrame]);
         }
 
         // Wait for graphics to complete before presenting
@@ -1218,7 +1191,7 @@ private:
             .pImageIndices = &imageIndex
         };
 
-        result = presentQueue.presentKHR(presentInfo);
+        result = queue.presentKHR(presentInfo);
 
         // Move to the next frame
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

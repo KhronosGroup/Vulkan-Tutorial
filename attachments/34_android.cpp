@@ -293,13 +293,14 @@ private:
     bool framebufferResized = false;
 
     // Vulkan objects
-    vk::raii::Context context;
-    vk::raii::Instance instance = nullptr;
-    vk::raii::SurfaceKHR surface = nullptr;
-    vk::raii::PhysicalDevice physicalDevice = nullptr;
-    vk::raii::Device device = nullptr;
-    vk::raii::Queue graphicsQueue = nullptr;
-    vk::raii::Queue presentQueue = nullptr;
+    vk::raii::Context                context;
+    vk::raii::Instance               instance       = nullptr;
+    vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
+    vk::raii::SurfaceKHR             surface        = nullptr;
+    vk::raii::PhysicalDevice         physicalDevice = nullptr;
+    vk::raii::Device                 device         = nullptr;
+	uint32_t                         queueIndex     = ~0;
+    vk::raii::Queue                  queue          = nullptr;
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
     vk::Format swapChainImageFormat = {};
@@ -335,16 +336,6 @@ private:
     // Model data
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-
-    // Queue family indices
-    struct QueueFamilyIndices {
-        std::optional<uint32_t> graphicsFamily;
-        std::optional<uint32_t> presentFamily;
-
-        bool isComplete() const {
-            return graphicsFamily.has_value() && presentFamily.has_value();
-        }
-    };
 
     // Swap chain support details
     struct SwapChainSupportDetails {
@@ -530,20 +521,26 @@ private:
 
     // Create logical device
     void createLogicalDevice() {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-        std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+        // get the first index into queueFamilyProperties which supports both graphics and present
+        for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
+        {
+            if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+                physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
+            {
+                // found a queue family that supports both graphics and present
+                queueIndex = qfpIndex;
+                break;
+            }
+        }
+        if (queueIndex == ~0)
+        {
+            throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+        }
 
         float queuePriority = 1.0f;
-        for (uint32_t queueFamily : uniqueQueueFamilies) {
-            vk::DeviceQueueCreateInfo queueCreateInfo{
-                .queueFamilyIndex = queueFamily,
-                .queueCount = 1,
-                .pQueuePriorities = &queuePriority
-            };
-            queueCreateInfos.push_back(queueCreateInfo);
-        }
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
 
         if (appInfo.profileSupported) {
             // Enable required features
@@ -561,8 +558,8 @@ private:
             // Create a vk::DeviceCreateInfo with the required features
             vk::DeviceCreateInfo vkDeviceCreateInfo{
                 .pNext = &features2,
-                .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-                .pQueueCreateInfos = queueCreateInfos.data(),
+                .queueCreateInfoCount = 1,
+                .pQueueCreateInfos = &deviceQueueCreateInfo,
                 .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
                 .ppEnabledExtensionNames = deviceExtensions.data()
             };
@@ -576,8 +573,8 @@ private:
             deviceFeatures.sampleRateShading = VK_TRUE;
 
             vk::DeviceCreateInfo createInfo{
-                .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-                .pQueueCreateInfos = queueCreateInfos.data(),
+                .queueCreateInfoCount = 1,
+                .pQueueCreateInfos = &deviceQueueCreateInfo,
                 .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
                 .ppEnabledExtensionNames = deviceExtensions.data(),
                 .pEnabledFeatures = &deviceFeatures
@@ -586,8 +583,7 @@ private:
             device = vk::raii::Device(physicalDevice, createInfo);
         }
 
-        graphicsQueue = device.getQueue(indices.graphicsFamily.value(), 0);
-        presentQueue = device.getQueue(indices.presentFamily.value(), 0);
+        queue = device.getQueue(queueIndex, 0);
     }
 
     // Create swap chain
@@ -610,19 +606,9 @@ private:
             .imageColorSpace = surfaceFormat.colorSpace,
             .imageExtent = extent,
             .imageArrayLayers = 1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+			.imageSharingMode = vk::SharingMode::eExclusive
         };
-
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-        uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-
-        if (indices.graphicsFamily != indices.presentFamily) {
-            createInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-            createInfo.queueFamilyIndexCount = 2;
-            createInfo.pQueueFamilyIndices = queueFamilyIndices;
-        } else {
-            createInfo.imageSharingMode = vk::SharingMode::eExclusive;
-        }
 
         createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
         createInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
@@ -894,11 +880,9 @@ private:
 
     // Create command pool
     void createCommandPool() {
-        QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-
         vk::CommandPoolCreateInfo poolInfo{
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-            .queueFamilyIndex = queueFamilyIndices.graphicsFamily.value()
+            .queueFamilyIndex = queueIndex
         };
 
         commandPool = device.createCommandPool(poolInfo);
@@ -1310,7 +1294,7 @@ private:
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
         };
-        graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
+        queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
         const vk::PresentInfoKHR presentInfoKHR{
             .waitSemaphoreCount = 1,
@@ -1322,7 +1306,7 @@ private:
 
         vk::Result result;
         try {
-            result = presentQueue.presentKHR(presentInfoKHR);
+            result = queue.presentKHR(presentInfoKHR);
         } catch (vk::OutOfDateKHRError&) {
             result = vk::Result::eErrorOutOfDateKHR;
         }
@@ -1452,33 +1436,6 @@ private:
         return details;
     }
 
-    // Find queue families
-    QueueFamilyIndices findQueueFamilies(vk::raii::PhysicalDevice device) {
-        QueueFamilyIndices indices;
-
-        std::vector<vk::QueueFamilyProperties> queueFamilies = device.getQueueFamilyProperties();
-
-        uint32_t i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-            if (queueFamily.queueFlags & vk::QueueFlagBits::eGraphics) {
-                indices.graphicsFamily = i;
-            }
-
-            vk::Bool32 presentSupport = device.getSurfaceSupportKHR(i, *surface);
-            if (presentSupport) {
-                indices.presentFamily = i;
-            }
-
-            if (indices.isComplete()) {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
-    }
-
     // Create buffer
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& bufferMemory) {
         vk::BufferCreateInfo bufferInfo{
@@ -1529,8 +1486,8 @@ private:
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        queue.submit(submitInfo, nullptr);
+        queue.waitIdle();
     }
 
     // Find memory type
@@ -1628,8 +1585,8 @@ private:
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        queue.submit(submitInfo, nullptr);
+        queue.waitIdle();
     }
 
     // Copy buffer to image
@@ -1675,8 +1632,8 @@ private:
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        queue.submit(submitInfo, nullptr);
+        queue.waitIdle();
     }
 
     // Update uniform buffer

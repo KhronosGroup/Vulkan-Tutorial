@@ -94,15 +94,15 @@ public:
     }
 
 private:
-    GLFWwindow* window = nullptr;
-    vk::raii::Context context;
-    vk::raii::Instance instance = nullptr;
+    GLFWwindow *                     window = nullptr;
+    vk::raii::Context                context;
+    vk::raii::Instance               instance       = nullptr;
     vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
-    vk::raii::SurfaceKHR surface = nullptr;
-    vk::raii::PhysicalDevice physicalDevice = nullptr;
-    vk::raii::Device device = nullptr;
-    vk::raii::Queue graphicsQueue = nullptr;
-    vk::raii::Queue presentQueue = nullptr;
+    vk::raii::SurfaceKHR             surface        = nullptr;
+    vk::raii::PhysicalDevice         physicalDevice = nullptr;
+    vk::raii::Device                 device         = nullptr;
+	uint32_t                         queueIndex     = ~0;
+    vk::raii::Queue                  queue          = nullptr;
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
     vk::Format swapChainImageFormat = {};
@@ -151,15 +151,6 @@ private:
         vk::SurfaceCapabilitiesKHR capabilities;
         std::vector<vk::SurfaceFormatKHR> formats;
         std::vector<vk::PresentModeKHR> presentModes;
-    };
-
-    struct QueueFamilyIndices {
-        std::optional<uint32_t> graphicsFamily;
-        std::optional<uint32_t> presentFamily;
-
-        bool isComplete() const {
-            return graphicsFamily.has_value() && presentFamily.has_value();
-        }
     };
 
     const std::vector<const char*> requiredDeviceExtension = {
@@ -407,20 +398,26 @@ private:
     }
 
     void createLogicalDevice() {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-        std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+        // get the first index into queueFamilyProperties which supports both graphics and present
+        for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
+        {
+            if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+                physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
+            {
+                // found a queue family that supports both graphics and present
+                queueIndex = qfpIndex;
+                break;
+            }
+        }
+        if (queueIndex == ~0)
+        {
+            throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+        }
 
         float queuePriority = 1.0f;
-        for (uint32_t queueFamily : uniqueQueueFamilies) {
-            vk::DeviceQueueCreateInfo queueCreateInfo{
-                .queueFamilyIndex = queueFamily,
-                .queueCount = 1,
-                .pQueuePriorities = &queuePriority
-            };
-            queueCreateInfos.push_back(queueCreateInfo);
-        }
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
 
         if (appInfo.profileSupported) {
             // Create device with Best Practices profile
@@ -440,8 +437,8 @@ private:
             // Create a vk::DeviceCreateInfo with the required features
             vk::DeviceCreateInfo vkDeviceCreateInfo{
                 .pNext = &features2,
-                .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-                .pQueueCreateInfos = queueCreateInfos.data(),
+                .queueCreateInfoCount = 1,
+                .pQueueCreateInfos = &deviceQueueCreateInfo,
                 .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
                 .ppEnabledExtensionNames = requiredDeviceExtension.data()
             };
@@ -457,8 +454,8 @@ private:
             deviceFeatures.sampleRateShading = VK_TRUE;
 
             vk::DeviceCreateInfo createInfo{
-                .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-                .pQueueCreateInfos = queueCreateInfos.data(),
+                .queueCreateInfoCount = 1,
+                .pQueueCreateInfos = &deviceQueueCreateInfo,
                 .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
                 .ppEnabledExtensionNames = requiredDeviceExtension.data(),
                 .pEnabledFeatures = &deviceFeatures
@@ -469,8 +466,7 @@ private:
             std::cout << "Created logical device using manual feature selection" << std::endl;
         }
 
-        graphicsQueue = device.getQueue(indices.graphicsFamily.value(), 0);
-        presentQueue = device.getQueue(indices.presentFamily.value(), 0);
+        queue = device.getQueue(queueIndex, 0);
     }
 
     void createSwapChain() {
@@ -492,19 +488,9 @@ private:
             .imageColorSpace = surfaceFormat.colorSpace,
             .imageExtent = extent,
             .imageArrayLayers = 1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+			.imageSharingMode = vk::SharingMode::eExclusive
         };
-
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-        uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-
-        if (indices.graphicsFamily != indices.presentFamily) {
-            createInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-            createInfo.queueFamilyIndexCount = 2;
-            createInfo.pQueueFamilyIndices = queueFamilyIndices;
-        } else {
-            createInfo.imageSharingMode = vk::SharingMode::eExclusive;
-        }
 
         createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
         createInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
@@ -792,11 +778,9 @@ private:
     }
 
     void createCommandPool() {
-        QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-
         vk::CommandPoolCreateInfo poolInfo{
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-            .queueFamilyIndex = queueFamilyIndices.graphicsFamily.value()
+            .queueFamilyIndex = queueIndex
         };
 
         commandPool = device.createCommandPool(poolInfo);
@@ -1307,8 +1291,8 @@ private:
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        queue.submit(submitInfo, nullptr);
+        queue.waitIdle();
     }
 
     void loadModel() {
@@ -1573,7 +1557,7 @@ private:
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &*presentCompleteSemaphore[imageIndex]
         };
-        graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
+        queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
         const vk::PresentInfoKHR presentInfoKHR{
             .waitSemaphoreCount = 1,
@@ -1585,7 +1569,7 @@ private:
 
         vk::Result result;
         try {
-            result = presentQueue.presentKHR(presentInfoKHR);
+            result = queue.presentKHR(presentInfoKHR);
         } catch (vk::OutOfDateKHRError&) {
             result = vk::Result::eErrorOutOfDateKHR;
         }
@@ -1710,33 +1694,6 @@ private:
         details.presentModes = device.getSurfacePresentModesKHR(*surface);
 
         return details;
-    }
-
-    QueueFamilyIndices findQueueFamilies(vk::raii::PhysicalDevice device)  {
-        QueueFamilyIndices indices;
-
-        std::vector<vk::QueueFamilyProperties> queueFamilies = device.getQueueFamilyProperties();
-
-        uint32_t i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-            if (queueFamily.queueFlags & vk::QueueFlagBits::eGraphics) {
-                indices.graphicsFamily = i;
-            }
-
-            vk::Bool32 presentSupport = device.getSurfaceSupportKHR(i, *surface);
-
-            if (presentSupport) {
-                indices.presentFamily = i;
-            }
-
-            if (indices.isComplete()) {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
     }
 };
 

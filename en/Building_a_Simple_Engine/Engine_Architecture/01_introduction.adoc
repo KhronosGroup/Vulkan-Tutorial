@@ -11,8 +11,8 @@
 
 == Introduction
 
-Welcome to the "Engine Architecture" chapter of our "Building a Simple Engine"
-series! In this chapter, we'll explore the fundamental architectural
+Welcome to the "Engine Architecture" chapter of our "Building a Simple Game
+Engine" series! In this chapter, we'll explore the fundamental architectural
 patterns and design principles that form the backbone of a modern Vulkan
 rendering engine.
 

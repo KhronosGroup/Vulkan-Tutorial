@@ -199,6 +199,83 @@ void pickPhysicalDevice() {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
 }
+
+=== Understanding the nested lambda functions
+
+The `pickPhysicalDevice()` function above uses several nested lambda functions, which might look complex if you're not familiar with this C++ feature. Let's break down what's happening:
+
+==== What are lambda functions?
+
+Lambda functions (or lambda expressions) are a C++ feature that allows you to define anonymous functions inline. They're especially useful for short operations that you don't need to define as separate named functions.
+
+The basic syntax of a lambda is:
+```cpp
+[capture-list](parameters) { body }
+```
+
+- The `capture-list` specifies which variables from the surrounding scope are accessible inside the lambda
+- `parameters` are the input parameters, just like in regular functions
+- `body` contains the code that will be executed
+
+==== The main device selection lambda
+
+In our `pickPhysicalDevice()` function, we use `std::ranges::find_if` with a lambda to find the first suitable device:
+
+```cpp
+const auto devIter = std::ranges::find_if(devices,
+    [&](auto const & device) {
+        // Lambda body that checks if the device is suitable
+        // ...
+        return isSuitable;
+    });
+```
+
+The `[&]` capture list means this lambda can access all variables from the
+surrounding scope by reference. This is necessary because we need to access
+the `deviceExtensions` variable. NB: this can be replaced by the explicit
+capture of deviceExtnesions variable, however, the & (capture of everything) is
+convenience andclarity as goals in mind.
+
+==== Nested lambda for finding graphics queue family
+
+Inside the main lambda, we have another lambda that checks if a queue family supports graphics operations:
+
+```cpp
+const auto qfpIter = std::ranges::find_if(queueFamilies,
+    []( vk::QueueFamilyProperties const & qfp ) {
+        return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
+    });
+```
+
+This lambda doesn't need to capture any variables (empty `[]`), as it only uses its parameter `qfp`.
+
+==== Nested lambda for checking extension support
+
+Further down, we have another lambda that checks if a specific extension is supported:
+
+```cpp
+auto extensionIter = std::ranges::find_if(extensions,
+    [extension](auto const & ext) {
+        return strcmp(ext.extensionName, extension) == 0;
+    });
+```
+
+This lambda captures the `extension` variable by value (`[extension]`) so it can compare it with each available extension.
+
+==== Why use nested lambdas?
+
+Nested lambdas are used here for a few reasons:
+
+1. **Code organization**: Each lambda handles a specific part of the device selection criteria.
+2. **Reusability**: The same pattern (using `std::ranges::find_if` with a predicate) is used for different checks.
+3. **Efficiency**: We avoid creating separate named functions for these small operations.
+4. **Readability**: Once you understand the pattern, it becomes easier to see what each part is checking for.
+
+While nested lambdas can make code more concise, they can also make it harder
+ to read for those not used to modern C++ idioms. That's why we're providing
+ this explanation to help you understand the pattern.  Throughout this
+ tutorial, we will attempt to use only modern C++ to keep with a one language
+  paradigm for ease of use/familiarity.
 ----
 
 In the next section, we'll discuss the first real required feature to check for.
@@ -214,24 +291,11 @@ commands or one that only allows memory transfer related commands.
 
 We need to check which queue families are supported by the device and which one
 of these supports the commands that we want to use. Right now we are only
-going to look for a queue that supports graphics commands, so the code
-could look like this:
+going to look for a queue that supports graphics commands.
 
-[,c++]
-----
-uint32_t findQueueFamilies(VkPhysicalDevice device) {
-    // find the index of the first queue family that supports graphics
-    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice->getQueueFamilyProperties();
-
-    // get the first index into queueFamilyProperties which supports graphics
-    auto graphicsQueueFamilyProperty =
-      std::find_if( queueFamilyProperties.begin(),
-                    queueFamilyProperties.end(),
-                    []( vk::QueueFamilyProperties const & qfp ) { return qfp.queueFlags & vk::QueueFlagBits::eGraphics; } );
-
-    return static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
-}
-----
+When selecting a physical device, we've already seen how to check for graphics support in our
+`pickPhysicalDevice()` function. In the next chapter, we'll implement a more detailed approach
+to find the queue family index and create a queue from it.
 
 Great, that's all we need for now to find the right physical device! The next
 step is to xref:./04_Logical_device_and_queues.adoc[create a logical device]

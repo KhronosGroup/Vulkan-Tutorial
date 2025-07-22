@@ -554,9 +554,29 @@ Rendergraphs simplify synchronization by:
 3. *Layout Transitions*: The rendergraph can automatically handle image layout transitions based on how resources are used.
 4. *Resource Aliasing*: The rendergraph can reuse memory for resources that aren't used simultaneously, reducing memory usage.
 
-===== Example: Implementing a Deferred Renderer with a Rendergraph
+==== Dynamic Rendering and Its Integration with Rendergraphs
 
-Here's how you might implement a deferred renderer using a rendergraph:
+Dynamic rendering is a modern Vulkan feature that simplifies the rendering process and works particularly well with rendergraphs. Before diving into implementation examples, let's understand what dynamic rendering is and how it relates to our rendering pipeline architecture.
+
+===== Benefits of Dynamic Rendering
+
+Dynamic rendering offers several advantages over traditional render passes:
+
+1. *Simplified API*: No need to create and manage VkRenderPass and VkFramebuffer objects, reducing code complexity.
+2. *More Flexible Rendering*: Easier to change render targets and attachment formats at runtime.
+3. *Improved Compatibility*: Works better with modern rendering techniques that don't fit well into the traditional render pass model.
+4. *Reduced State Management*: Fewer objects to track and synchronize.
+5. *Easier Debugging*: Simpler rendering code is easier to debug and maintain.
+
+With dynamic rendering, we specify all rendering state (render targets, load/store operations, etc.) directly in the vkCmdBeginRendering call, rather than setting it up ahead of time in a VkRenderPass object. This allows for more dynamic rendering workflows and simplifies the implementation of techniques like deferred rendering.
+
+===== Dynamic Rendering in Rendergraphs
+
+When combined with rendergraphs, dynamic rendering becomes even more powerful. The rendergraph handles the resource dependencies and synchronization, while dynamic rendering simplifies the actual rendering process. This combination provides both flexibility and performance.
+
+===== Example: Implementing a Deferred Renderer with a Rendergraph and Dynamic Rendering
+
+Here's how you might implement a deferred renderer using a rendergraph with dynamic rendering:
 
 [source,cpp]
 ----
@@ -649,18 +669,6 @@ void SetupDeferredRenderer(Rendergraph& graph, uint32_t width, uint32_t height) 
 5. *Consider Memory Aliasing*: Use the rendergraph's memory aliasing capabilities to reduce memory usage.
 6. *Profile and Optimize*: Use GPU profiling tools to identify synchronization bottlenecks.
 7. *Handle Platform Differences*: Different GPUs may have different synchronization requirements.
-
-==== Benefits of Dynamic Rendering
-
-Dynamic rendering offers several advantages over traditional render passes:
-
-1. *Simplified API*: No need to create and manage VkRenderPass and VkFramebuffer objects, reducing code complexity.
-2. *More Flexible Rendering*: Easier to change render targets and attachment formats at runtime.
-3. *Improved Compatibility*: Works better with modern rendering techniques that don't fit well into the traditional render pass model.
-4. *Reduced State Management*: Fewer objects to track and synchronize.
-5. *Easier Debugging*: Simpler rendering code is easier to debug and maintain.
-
-With dynamic rendering, we specify all rendering state (render targets, load/store operations, etc.) directly in the vkCmdBeginRendering call, rather than setting it up ahead of time in a VkRenderPass object. This allows for more dynamic rendering workflows and simplifies the implementation of techniques like deferred rendering.
 
 [source,cpp]
 ----

@@ -154,6 +154,8 @@ Let's implement some common component types that you might use in a rendering en
 [source,cpp]
 ----
 // Transform component
+// Handles the position, rotation, and scale of an entity in 3D space
+// AffineTransform or "Pose" matrix.
 class TransformComponent : public Component {
 private:
     glm::vec3 position = glm::vec3(0.0f);
@@ -199,6 +201,7 @@ public:
 };
 
 // Mesh component
+// Manages the visual representation of an entity by handling its 3D mesh and material
 class MeshComponent : public Component {
 private:
     Mesh* mesh = nullptr;
@@ -228,6 +231,7 @@ public:
 };
 
 // Camera component
+// Defines a viewpoint for rendering the scene by managing view and projection matrices
 class CameraComponent : public Component {
 private:
     float fieldOfView = 45.0f;
@@ -300,7 +304,7 @@ void MeshComponent::Update(float deltaTime) {
 ----
 
 This approach is straightforward but creates tight coupling between
-components.  Tight coupling makes it very difficult to impossible to create
+components.  Tight coupling makes it challenging or impossible to create
 unit tests and properly test the engine, so this approach should be avoided
 in production code.
 
@@ -361,6 +365,7 @@ public:
 };
 
 // Component that listens for events
+// Handles physics-related behavior and responds to collision events through the event system
 class PhysicsComponent : public Component, public EventListener {
 public:
     void Initialize() override {

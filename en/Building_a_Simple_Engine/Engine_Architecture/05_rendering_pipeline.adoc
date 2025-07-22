@@ -13,6 +13,22 @@
 
 A well-designed rendering pipeline is essential for creating a flexible and efficient rendering engine. In this section, we'll explore how to structure your rendering pipeline to support various rendering techniques and effects.
 
+=== Rendering Pipeline Overview
+
+The following diagram provides a high-level overview of a modern Vulkan rendering pipeline:
+
+image::../../../images/rendering_pipeline_flowchart.svg[Rendering Pipeline Flowchart, width=600]
+
+The rendering pipeline consists of several key stages:
+
+1. *Scene Culling* - Determine which objects are visible and need to be rendered.
+2. *Render Pass Management* - Organize rendering into passes with specific purposes.
+3. *Command Generation* - Generate commands for the GPU to execute.
+4. *Execution* - Submit commands to the GPU for execution.
+5. *Post-Processing* - Apply effects to the rendered image.
+
+Supporting components like Rendergraphs help manage dependencies between render passes, while Synchronization primitives ensure correct execution order. Different rendering techniques (Deferred, Forward+, PBR) can be implemented within this pipeline architecture.
+
 === Rendering Pipeline Challenges
 
 When designing a rendering pipeline, you'll need to address several challenges:

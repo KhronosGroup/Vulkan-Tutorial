@@ -13,7 +13,7 @@
 
 Welcome to the "GUI" chapter of our "Building a Simple Engine" series! After implementing a camera system in the previous chapter, we'll now focus on adding a graphical user interface (GUI) to our Vulkan application. A well-designed GUI is essential for creating interactive applications that allow users to control settings, display information, and interact with the 3D scene.
 
-In this chapter, we'll integrate a popular immediate-mode GUI library called Dear ImGui with our Vulkan engine. ImGui is widely used in the game and graphics industry due to its simplicity, performance, and flexibility. It allows developers to quickly create debug interfaces, tools, and in-game menus without the complexity of traditional retained-mode GUI systems.
+In this chapter, we'll integrate a popular immediate-mode GUI library called Dear ImGui with our Vulkan engine. Dear ImGui is widely used in the game and graphics industry due to its simplicity, performance, and flexibility. It allows developers to quickly create debug interfaces, tools, and in-game menus without the complexity of traditional retained-mode GUI systems.
 
 In this chapter, we'll focus on:
 

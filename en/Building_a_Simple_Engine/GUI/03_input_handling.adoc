@@ -13,7 +13,7 @@
 
 One of the challenges when integrating a GUI into a 3D application is managing input events. We need to ensure that input events are correctly routed to either the GUI or the 3D scene. For example, if the user is interacting with a UI element, we don't want their mouse movements to also rotate the camera.
 
-In this section, we'll explore how to handle input for both the GUI and the 3D scene, ensuring a smooth user experience regardless of the windowing system you choose to use.
+In this section, we'll explore how to handle input for both the GUI and the 3D scene, ensuring a smooth user experience regardless of the windowing library you choose to use.
 
 [NOTE]
 ====

@@ -38,9 +38,40 @@ In our camera system, vectors serve several critical purposes:
 * *Dot Product*: Calculates the cosine of the angle between vectors (when normalized)
   - Applications: Determining if objects are facing the camera, calculating lighting intensity
 
+==== The Right-Hand Rule
+
+The right-hand rule is a convention used in 3D graphics and mathematics to determine the orientation of coordinate systems and the direction of cross products.
+
+* *For Cross Products*: When calculating A × B:
+
+  1. Point your right hand's index finger in the direction of vector A
+  2. Point your middle finger in the direction of vector B (perpendicular to A)
+  3. Your thumb now points in the direction of the resulting cross product
+
+* *For Coordinate Systems*: In a right-handed coordinate system:
+
+  1. Point your right hand's index finger along the positive X-axis
+  2. Point your middle finger along the positive Y-axis
+  3. Your thumb points along the positive Z-axis
+
+[source,cpp]
+----
+// The cross product direction follows the right-hand rule
+glm::vec3 xAxis(1.0f, 0.0f, 0.0f);  // Point right (positive X)
+glm::vec3 yAxis(0.0f, 1.0f, 0.0f);  // Point up (positive Y)
+
+// Cross product gives the Z axis in a right-handed system
+glm::vec3 zAxis = glm::cross(xAxis, yAxis);  // Points forward (positive Z)
+// zAxis will be (0.0f, 0.0f, 1.0f)
+
+// If we reverse the order, we get the opposite direction
+glm::vec3 negativeZ = glm::cross(yAxis, xAxis);  // Points backward (negative Z)
+// negativeZ will be (0.0f, 0.0f, -1.0f)
+----
+
 * *Cross Product*: Creates a vector perpendicular to two input vectors
   - Applications: Generating the camera's "right" vector from "forward" and "up" vectors
-  - The direction follows the right-hand rule (explained below)
+  - The direction follows the right-hand rule (explained above)
 
 * *Normalization*: Preserves direction while setting length to 1
   - Applications: Ensuring consistent movement speed regardless of direction
@@ -192,6 +223,7 @@ Vulkan works with both row-major and column-major formats, but you need to speci
 * GLM (commonly used with Vulkan) uses column-major by default, but can be configured for row-major
 
 The practical implications:
+
 * Matrix multiplication order may need to be reversed depending on the layout
 * When debugging, matrix elements may appear transposed compared to mathematical notation
 * When porting code between different APIs, matrix layouts may need to be transposed
@@ -203,11 +235,18 @@ Affine transformations are a fundamental concept in computer graphics that prese
 ==== Properties of Affine Transformations
 
 An affine transformation can be represented as a combination of:
+
 * Linear transformations (rotation, scaling, shearing)
 * Translation (movement)
 
 In mathematical terms, an affine transformation can be expressed as:
-f(x) = Ax + b, where A is a matrix (linear transformation) and b is a vector (translation).
+
+[stem]
+++++
+f(x) = Ax + b
+++++
+
+where A is a matrix (linear transformation) and b is a vector (translation).
 
 ==== Why Affine Transformations Matter in Graphics
 
@@ -266,7 +305,7 @@ A pose matrix combines rotation and translation in a single 4×4 matrix:
 // Creating a pose matrix in GLM
 glm::mat4 poseMatrix = glm::mat4(1.0f);  // Start with identity matrix
 poseMatrix = glm::translate(poseMatrix, position);  // Apply translation
-poseMatrix = poseMatrix * glm::mat4_cast(orientation);  // Apply rotation (from quaternion)
+poseMatrix = poseMatrix * rotationMatrix;  // Apply rotation
 ----
 
 ==== Applications of Pose Matrices
@@ -813,7 +852,12 @@ void calculateFrustumCorners(
 
 ==== Projection and Unprojection
 
-Projection converts 3D world coordinates to 2D screen coordinates, while unprojection does the reverse:
+Projection converts 3D world coordinates to 2D screen coordinates, while unprojection does the reverse. The following code examples demonstrate these concepts for educational purposes:
+
+[NOTE]
+====
+These utility functions are provided to help understand the mathematical concepts behind projection and unprojection. While they may not be directly used in the basic rendering pipeline, they are valuable for implementing features like object picking, mouse interaction with 3D objects, and custom rendering techniques.
+====
 
 [source,cpp]
 ----
@@ -1046,14 +1090,6 @@ If you're finding some of the mathematical concepts challenging or want to deepe
   - https://www.khronos.org/opengl/wiki/Coordinate_Transformations[OpenGL Wiki: Coordinate Transformations] - Reference for coordinate transformations
   - https://docs.microsoft.com/en-us/windows/win32/direct3d9/coordinate-systems[Microsoft Docs: Coordinate Systems] - Explanation of left-handed vs. right-handed systems
 
-==== Vulkan-Specific Resources
-
-* *Official Documentation*:
-  - https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html[Vulkan Specification] - Official reference (see sections on coordinate systems)
-  - https://github.com/KhronosGroup/Vulkan-Guide[Khronos Vulkan Guide] - Official guide with explanations of Vulkan concepts
-
-* *Tutorials*:
-  - https://vkguide.dev/[Vulkan Guide] - Modern Vulkan tutorial with explanations of math concepts
 
 ==== GLM Library (Used in our examples)
 
@@ -1077,4 +1113,4 @@ If you're finding some of the mathematical concepts challenging or want to deepe
 
 These resources should help you gain a deeper understanding of the mathematical concepts used in 3D graphics and camera systems. If you're struggling with a particular concept, try looking at multiple resources as different explanations might resonate better with your learning style.
 
-link:03_camera_implementation.adoc[Next: Camera Implementation]
+link:03_transformation_matrices.adoc[Next: Transformation Matrices]

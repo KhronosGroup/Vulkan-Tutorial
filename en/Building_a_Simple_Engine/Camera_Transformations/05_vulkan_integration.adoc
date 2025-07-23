@@ -11,6 +11,16 @@
 
 == Integrating Camera with Vulkan
 
+=== Libraries Used in This Tutorial
+
+Before we dive into the integration, let's briefly introduce the key libraries we'll be using:
+
+* *GLFW* (Graphics Library Framework): A lightweight, multi-platform library for creating windows, contexts, and surfaces, handling input, and events. We use it for window management and input handling. [https://www.glfw.org/]
+
+* *GLM* (OpenGL Mathematics): A mathematics library for graphics programming that provides vector and matrix operations similar to GLSL. We use it for all our 3D math operations. [https://github.com/g-truc/glm]
+
+* *Vulkan*: The low-level graphics API we're using for rendering. [https://www.vulkan.org/]
+
 Now that we have a camera system and understand transformation matrices, let's integrate them with our Vulkan application. We'll focus on how to set up uniform buffers for our matrices and update them each frame based on camera movement.
 
 === Uniform Buffer Setup

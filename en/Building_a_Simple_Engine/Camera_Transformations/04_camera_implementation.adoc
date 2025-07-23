@@ -11,7 +11,7 @@
 
 == Camera Implementation
 
-Now that we understand the mathematical foundations, let's implement a flexible camera system for our Vulkan application. We'll create a camera class that can be used to navigate our 3D scenes. This implementation is designed for a general-purpose 3D application or game engine, and the concepts can be applied to various types of applications, from first-person games to architectural visualization tools.
+Now that we understand the mathematical foundations and transformation matrices, let's implement a flexible camera system for our Vulkan application. We'll create a camera class that can be used to navigate our 3D scenes. This implementation is designed for a general-purpose 3D application or game engine, and the concepts can be applied to various types of applications, from first-person games to architectural visualization tools.
 
 === Camera Types
 
@@ -485,6 +485,6 @@ void gameLoop(float deltaTime) {
 For more advanced camera techniques, refer to the Advanced Camera Techniques section in the Appendix.
 ====
 
-In the next section, we'll explore how to use transformation matrices to position objects in our 3D scene.
+In the next section, we'll integrate our camera system with Vulkan to render 3D scenes.
 
-link:04_transformation_matrices.adoc[Next: Transformation Matrices]
+link:05_vulkan_integration.adoc[Next: Vulkan Integration]

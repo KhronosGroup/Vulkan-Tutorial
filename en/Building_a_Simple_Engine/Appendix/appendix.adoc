@@ -320,6 +320,17 @@ PBR aims to create more realistic materials by simulating how light interacts wi
 2. *BRDF* - Use a physically based bidirectional reflectance distribution function.
 3. *Image-Based Lighting* - Use environment maps for ambient lighting.
 
+=== Advanced Camera Techniques
+
+This section covers advanced techniques for implementing sophisticated camera systems in 3D applications:
+
+* *Camera Collision*: Implement a collision volume for the camera to prevent it from passing through walls
+* *Context-Aware Positioning*: Adjust camera position based on the environment (e.g., zoom out in large open areas, zoom in in tight spaces)
+* *Intelligent Framing*: Adjust the camera to keep both the character and important objects in frame
+* *Predictive Following*: Anticipate character movement to reduce camera lag
+* *Camera Obstruction Transparency*: Make objects that obstruct the view partially transparent
+* *Dynamic Field of View*: Adjust the FOV based on movement speed or environmental context
+
 == Conclusion
 
 These architectural patterns and rendering techniques provide a foundation for designing your rendering engine. In practice, most engines use a combination of these patterns to address different aspects of the system.

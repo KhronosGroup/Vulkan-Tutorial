@@ -23,8 +23,7 @@ Here's a brief introduction to the most common architectural patterns used in ga
 
 Layered architecture divides the system into distinct layers, each with a specific responsibility. Typical layers include platform abstraction, resource management, rendering, scene management, and application layers.
 
-image::../../../images/layered_architecture_diagram.png[Layered Architecture
-Diagram, width=400]
+image::../../../images/layered_architecture_diagram.png[Layered Architecture Diagram, width=400]
 
 *Key Benefits:*
 * Clear separation of concerns

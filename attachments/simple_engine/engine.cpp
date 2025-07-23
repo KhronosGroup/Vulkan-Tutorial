@@ -261,6 +261,7 @@ void Engine::Update(float deltaTime) {
 }
 
 void Engine::Render() {
+
     // Check if we have an active camera
     if (!activeCamera) {
         return;
@@ -274,11 +275,8 @@ void Engine::Render() {
         }
     }
 
-    // Render the scene
-    renderer->Render(activeEntities, activeCamera);
-
-    // Render ImGui
-    imguiSystem->Render(renderer->GetCurrentCommandBuffer());
+    // Render the scene (ImGui will be rendered within the render pass)
+    renderer->Render(activeEntities, activeCamera, imguiSystem.get());
 }
 
 float Engine::CalculateDeltaTime() {

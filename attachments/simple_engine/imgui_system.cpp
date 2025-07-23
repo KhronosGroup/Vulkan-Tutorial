@@ -104,10 +104,11 @@ void ImGuiSystem::NewFrame() {
     ImGui::End();
 }
 
-void ImGuiSystem::Render(vk::CommandBuffer commandBuffer) {
+void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer) {
     if (!initialized) {
         return;
     }
+
 
     // End the frame and prepare for rendering
     ImGui::Render();
@@ -137,18 +138,19 @@ void ImGuiSystem::Render(vk::CommandBuffer commandBuffer) {
         struct PushConstBlock {
             float scale[2];
             float translate[2];
-        } pushConstBlock;
+        };
+        std::array<PushConstBlock, 1> pushConstBlock;
 
-        pushConstBlock.scale[0] = 2.0f / ImGui::GetIO().DisplaySize.x;
-        pushConstBlock.scale[1] = 2.0f / ImGui::GetIO().DisplaySize.y;
-        pushConstBlock.translate[0] = -1.0f;
-        pushConstBlock.translate[1] = -1.0f;
+        pushConstBlock[0].scale[0] = 2.0f / ImGui::GetIO().DisplaySize.x;
+        pushConstBlock[0].scale[1] = 2.0f / ImGui::GetIO().DisplaySize.y;
+        pushConstBlock[0].translate[0] = -1.0f;
+        pushConstBlock[0].translate[1] = -1.0f;
 
-        commandBuffer.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(PushConstBlock), &pushConstBlock);
+        commandBuffer.pushConstants<PushConstBlock>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstBlock);
 
         // Bind vertex and index buffers
-        std::array<vk::Buffer, 1> vertexBuffers = {*vertexBuffer};
-        std::array<vk::DeviceSize, 1> offsets = {0};
+        std::array vertexBuffers = {*vertexBuffer};
+        std::array<vk::DeviceSize, 1> offsets = {};
         commandBuffer.bindVertexBuffers(0, vertexBuffers, offsets);
         commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
 

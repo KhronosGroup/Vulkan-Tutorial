@@ -965,6 +965,9 @@ void PhysicsSystem::UpdateGPUPhysicsData() {
         return;
     }
 
+    // TODO: Add validity checks for Vulkan resources if needed
+    // Temporarily removed to focus on main validation error investigation
+
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 
 
@@ -1027,6 +1030,9 @@ void PhysicsSystem::ReadbackGPUPhysicsData() {
         return;
     }
 
+    // TODO: Add validity checks for Vulkan resources if needed
+    // Temporarily removed to focus on main validation error investigation
+
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 
 
@@ -1058,11 +1064,17 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
         return;
     }
 
+    // TODO: Add validity checks for Vulkan resources if needed
+    // Temporarily removed to focus on main validation error investigation
+
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 
 
     // Update physics data on the GPU
     UpdateGPUPhysicsData();
+
+    // Reset command buffer before beginning (required for reuse)
+    vulkanResources.commandBuffer.reset();
 
     // Begin command buffer
     vk::CommandBufferBeginInfo beginInfo;

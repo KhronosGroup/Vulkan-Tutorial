@@ -55,7 +55,7 @@ public:
      * @brief Render the ImGui frame.
      * @param commandBuffer The command buffer to record rendering commands to.
      */
-    void Render(vk::CommandBuffer commandBuffer);
+    void Render(vk::raii::CommandBuffer & commandBuffer);
 
     /**
      * @brief Handle mouse input.

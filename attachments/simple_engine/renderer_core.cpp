@@ -169,46 +169,69 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
 // Clean up renderer resources
 void Renderer::Cleanup() {
     if (initialized) {
+        std::cout << "Starting renderer cleanup..." << std::endl;
+
         // Wait for the device to be idle before cleaning up
         device.waitIdle();
+        std::cout << "Device idle, starting RAII object destruction..." << std::endl;
 
         // Clean up swap chain
+        std::cout << "Cleaning up swap chain..." << std::endl;
         cleanupSwapChain();
 
         // Clear resources - RAII will handle destruction
+        std::cout << "Destroying sync objects..." << std::endl;
         imageAvailableSemaphores.clear();
         renderFinishedSemaphores.clear();
         inFlightFences.clear();
+
+        std::cout << "Destroying command buffers and pool..." << std::endl;
         commandBuffers.clear();
         commandPool = nullptr;
+
+        std::cout << "Destroying descriptor pool..." << std::endl;
         descriptorPool = nullptr;
+
+        std::cout << "Destroying pipelines..." << std::endl;
         pbrGraphicsPipeline = nullptr;
         pbrPipelineLayout = nullptr;
         lightingPipeline = nullptr;
         lightingPipelineLayout = nullptr;
         graphicsPipeline = nullptr;
         pipelineLayout = nullptr;
+
+        std::cout << "Destroying compute pipeline..." << std::endl;
         computePipeline = nullptr;
         computePipelineLayout = nullptr;
         computeDescriptorSetLayout = nullptr;
         computeDescriptorPool = nullptr;
+
+        std::cout << "Destroying descriptor set layout..." << std::endl;
         descriptorSetLayout = nullptr;
 
         // Clear mesh resources - RAII will handle destruction
+        std::cout << "Destroying mesh resources..." << std::endl;
         meshResources.clear();
 
         // Clear texture resources - RAII will handle destruction
+        std::cout << "Destroying texture resources..." << std::endl;
         textureResources.clear();
 
         // Clear entity resources - RAII will handle destruction
+        std::cout << "Destroying entity resources..." << std::endl;
         entityResources.clear();
 
         // Clear device, surface, debug messenger, and instance - RAII will handle destruction
+        std::cout << "Destroying device..." << std::endl;
         device = nullptr;
+        std::cout << "Destroying surface..." << std::endl;
         surface = nullptr;
+        std::cout << "Destroying debug messenger..." << std::endl;
         debugMessenger = nullptr;
+        std::cout << "Destroying instance..." << std::endl;
         instance = nullptr;
 
+        std::cout << "Renderer cleanup completed." << std::endl;
         initialized = false;
     }
 }

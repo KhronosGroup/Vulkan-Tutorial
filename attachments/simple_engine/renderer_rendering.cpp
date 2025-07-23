@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "imgui_system.h"
 #include <fstream>
 #include <stdexcept>
 #include <array>
@@ -290,7 +291,8 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
 }
 
 // Render the scene
-void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* camera) {
+void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
+
     // Wait for the previous frame to finish
     device.waitForFences(*inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -397,6 +399,11 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
         // Draw the mesh
         commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, 1, 0, 0, 0);
+    }
+
+    // Render ImGui if provided
+    if (imguiSystem) {
+        imguiSystem->Render(commandBuffers[currentFrame]);
     }
 
     // End dynamic rendering

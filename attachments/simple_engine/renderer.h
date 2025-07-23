@@ -17,6 +17,9 @@ import vulkan_hpp;
 #include "mesh_component.h"
 #include "camera_component.h"
 
+// Forward declarations
+class ImGuiSystem;
+
 /**
  * @brief Structure for Vulkan queue family indices.
  */
@@ -98,8 +101,9 @@ public:
      * @brief Render the scene.
      * @param entities The entities to render.
      * @param camera The camera to use for rendering.
+     * @param imguiSystem The ImGui system for UI rendering (optional).
      */
-    void Render(const std::vector<Entity*>& entities, CameraComponent* camera);
+    void Render(const std::vector<Entity*>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem = nullptr);
 
     /**
      * @brief Wait for the device to be idle.
@@ -199,8 +203,8 @@ public:
      * @brief Get the current command buffer.
      * @return The current command buffer.
      */
-    vk::CommandBuffer GetCurrentCommandBuffer() const {
-        return *commandBuffers[currentFrame];
+    vk::raii::CommandBuffer& GetCurrentCommandBuffer() {
+        return commandBuffers[currentFrame];
     }
 
     /**

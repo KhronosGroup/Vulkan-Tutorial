@@ -105,6 +105,8 @@ The key principles of PBR include:
 * *Fresnel Effect*: Reflectivity changes with viewing angle
 * *Metallic-Roughness Workflow*: Materials are defined by their base color, metalness, and roughness
 
+Considerations for using PBR:
+
 * *Advantages*: Realistic results that remain consistent across different lighting conditions, intuitive parameters for artists
 * *Disadvantages*: More complex and computationally expensive
 * *When to use*: For modern games and applications where realism is important

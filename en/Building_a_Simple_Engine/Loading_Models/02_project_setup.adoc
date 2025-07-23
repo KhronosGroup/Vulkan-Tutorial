@@ -22,19 +22,37 @@ When designing an asset organization system, consider these key principles:
 3. *Discoverability* - Make assets easy to find and reference
 4. *Scalability* - Design for growth as your project expands
 
-Here's an example of how assets might be organized in a final product:
+Here's an example of how assets might be organized in a final product, demonstrating all four principles:
 
 [source]
 ----
 assets/
-  ├── models/                  // 3D model files
-  │   ├── characters/          // Character models
+  ├── models/                  // 3D model files (Categorization)
+  │   ├── characters/          // Character models (Hierarchy)
+  │   │   ├── player/          // Player character models (Hierarchy)
+  │   │   └── npc/             // Non-player character models (Hierarchy)
   │   ├── environments/        // Environment models
+  │   │   ├── indoor/          // Indoor environment models
+  │   │   └── outdoor/         // Outdoor environment models
   │   └── props/               // Prop models
-  └── shaders/                 // Shader files
+  ├── textures/                // Texture files (Categorization)
+  │   ├── common/              // Shared textures (Discoverability)
+  │   └── high_resolution/     // High-res textures for close-up views (Scalability)
+  ├── shaders/                 // Shader files
+  │   ├── core/                // Essential shaders (Discoverability)
+  │   ├── effects/             // Special effect shaders
+  │   └── mobile/              // Mobile-optimized shaders (Scalability)
+  └── config/                  // Configuration files
+      └── quality_presets/     // Different quality settings (Scalability)
 ----
 
-This example demonstrates categorization (models vs. shaders) and hierarchy (character models vs. environment models). The specific organization should be tailored to your project's needs, but the underlying principles remain consistent across different engines.
+This example demonstrates all four principles:
+- *Categorization*: Assets are grouped by type (models, textures, shaders, config)
+- *Hierarchy*: Assets are organized in a nested structure (e.g., models > characters > player)
+- *Discoverability*: Common assets are placed in dedicated folders (e.g., common textures, core shaders) making them easy to find
+- *Scalability*: The structure accommodates different quality levels and platform-specific assets (e.g., high-resolution textures, mobile shaders, quality presets)
+
+The specific organization should be tailored to your project's needs, but the underlying principles remain consistent across different engines.
 
 === Asset Pipeline Concepts
 

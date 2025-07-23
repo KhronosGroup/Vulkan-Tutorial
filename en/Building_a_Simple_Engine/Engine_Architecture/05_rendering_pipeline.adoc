@@ -578,7 +578,9 @@ Dynamic rendering offers several advantages over traditional render passes:
 4. *Reduced State Management*: Fewer objects to track and synchronize.
 5. *Easier Debugging*: Simpler rendering code is easier to debug and maintain.
 
-With dynamic rendering, we specify all rendering state (render targets, load/store operations, etc.) directly in the vkCmdBeginRendering call, rather than setting it up ahead of time in a VkRenderPass object. This allows for more dynamic rendering workflows and simplifies the implementation of techniques like deferred rendering.
+With dynamic rendering, we specify all rendering states (render targets,
+load/store operations, etc.) directly within the vkCmdBeginRendering call,
+rather than setting it up ahead of time in a VkRenderPass object. This allows for more dynamic rendering workflows and simplifies the implementation of techniques like deferred rendering.
 
 ===== Dynamic Rendering in Rendergraphs
 

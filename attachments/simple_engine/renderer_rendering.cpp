@@ -394,8 +394,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
         // Bind the index buffer
         commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
 
-        // Bind the descriptor set
-        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {entityIt->second.descriptorSets[currentFrame]}, {});
+        // Bind the descriptor set (dereference RAII wrapper)
+        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*entityIt->second.descriptorSets[currentFrame]}, {});
 
         // Draw the mesh
         commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, 1, 0, 0, 0);

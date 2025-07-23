@@ -107,7 +107,7 @@ private:
     // Vulkan resources
     vk::raii::DescriptorPool descriptorPool = nullptr;
     vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
-    vk::DescriptorSet descriptorSet = nullptr;
+    vk::raii::DescriptorSet descriptorSet = nullptr;
     vk::raii::PipelineLayout pipelineLayout = nullptr;
     vk::raii::Pipeline pipeline = nullptr;
     vk::raii::Sampler fontSampler = nullptr;

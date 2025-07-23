@@ -437,7 +437,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             }
         }
 
-        // Create descriptor sets
+        // Create descriptor sets using RAII
         std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
         vk::DescriptorSetAllocateInfo allocInfo{
             .descriptorPool = *descriptorPool,
@@ -445,7 +445,16 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             .pSetLayouts = layouts.data()
         };
 
-        entityIt->second.descriptorSets = device.allocateDescriptorSets(allocInfo);
+        // Allocate descriptor sets using RAII wrapper
+        vk::raii::DescriptorSets raiiDescriptorSets(device, allocInfo);
+
+        // Convert to vector of individual RAII descriptor sets
+        entityIt->second.descriptorSets.clear();
+        entityIt->second.descriptorSets.reserve(MAX_FRAMES_IN_FLIGHT);
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            entityIt->second.descriptorSets.emplace_back(std::move(raiiDescriptorSets[i]));
+            std::cout << "Created descriptor set " << i << " with handle: " << *entityIt->second.descriptorSets[i] << std::endl;
+        }
 
         // Update descriptor sets
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {

@@ -173,7 +173,7 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer) {
                 commandBuffer.setScissor(0, {scissor});
 
                 // Bind descriptor set (font texture)
-                commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {descriptorSet}, {});
+                commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*descriptorSet}, {});
 
                 // Draw
                 commandBuffer.drawIndexed(pcmd->ElemCount, 1, indexOffset, vertexOffset, 0);
@@ -451,8 +451,9 @@ bool ImGuiSystem::createDescriptorSet() {
         allocInfo.pSetLayouts = &(*descriptorSetLayout);
 
         const vk::raii::Device& device = renderer->GetRaiiDevice();
-        auto descriptorSets = device.allocateDescriptorSets(allocInfo);
-        descriptorSet = descriptorSets[0]; // Store the first (and only) descriptor set
+        vk::raii::DescriptorSets descriptorSets(device, allocInfo);
+        descriptorSet = std::move(descriptorSets[0]); // Store the first (and only) descriptor set
+        std::cout << "ImGui created descriptor set with handle: " << *descriptorSet << std::endl;
 
         // Update descriptor set
         vk::DescriptorImageInfo imageInfo;
@@ -461,7 +462,7 @@ bool ImGuiSystem::createDescriptorSet() {
         imageInfo.sampler = *fontSampler;
 
         vk::WriteDescriptorSet writeSet;
-        writeSet.dstSet = descriptorSet;
+        writeSet.dstSet = *descriptorSet;
         writeSet.descriptorCount = 1;
         writeSet.descriptorType = vk::DescriptorType::eCombinedImageSampler;
         writeSet.pImageInfo = &imageInfo;

@@ -49,11 +49,13 @@ vk::Format Renderer::findSupportedFormat(const std::vector<vk::Format>& candidat
 
 // Find depth format
 vk::Format Renderer::findDepthFormat() {
-    return findSupportedFormat(
+    vk::Format depthFormat = findSupportedFormat(
         {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
         vk::ImageTiling::eOptimal,
         vk::FormatFeatureFlagBits::eDepthStencilAttachment
     );
+    std::cout << "Found depth format: " << static_cast<int>(depthFormat) << std::endl;
+    return depthFormat;
 }
 
 // Check if format has stencil component

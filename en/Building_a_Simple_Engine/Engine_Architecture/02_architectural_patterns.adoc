@@ -23,7 +23,7 @@ Here's a brief introduction to the most common architectural patterns used in ga
 
 Layered architecture divides the system into distinct layers, each with a specific responsibility. Typical layers include platform abstraction, resource management, rendering, scene management, and application layers.
 
-image::../../../images/layered_architecture_diagram.png[Layered Architecture Diagram, width=400]
+image::../../../images/layered_architecture_diagram.png[Layered Architecture Diagram, width=400, alt="Layered Architecture Diagram showing different layers of a rendering engine"]
 
 *Key Benefits:*
 * Clear separation of concerns
@@ -62,7 +62,19 @@ For detailed information and implementation examples, see the link:../Appendix/a
 
 Component-based architecture is widely used in modern game engines and forms the foundation of our Vulkan rendering engine. It promotes composition over inheritance and allows for more flexible entity design.
 
-image::../../../images/component_based_architecture_diagram.svg[Component-Based Architecture Diagram, width=600]
+image::../../../images/component_based_architecture_diagram.svg[Component-Based Architecture Diagram, width=600, alt="Component-Based Architecture Diagram showing entities, components, and systems"]
+
+[NOTE]
+====
+*Diagram Legend:*
+
+* *Boxes*: Blue boxes represent Entities, orange boxes represent Components, and green boxes represent Systems
+* *Line Types*:
+  ** Dashed lines show ownership/containment (Entities contain Components)
+  ** Solid lines show processing relationships (Systems process specific Components)
+* *Text*: All text elements use dark colors for visibility in both light and dark modes
+* *Directional Flow*: Arrows indicate the direction of relationships between elements
+====
 
 ==== Key Concepts
 

@@ -17,7 +17,17 @@ A well-designed rendering pipeline is essential for creating a flexible and effi
 
 The following diagram provides a high-level overview of a modern Vulkan rendering pipeline:
 
-image::../../../images/rendering_pipeline_flowchart.svg[Rendering Pipeline Flowchart, width=600]
+image::../../../images/rendering_pipeline_flowchart.svg[Rendering Pipeline Flowchart, width=600, alt="Flowchart showing the stages of a modern Vulkan rendering pipeline"]
+
+[NOTE]
+====
+*Diagram Legend:*
+
+* *Boxes*: Represent the different stages of the rendering pipeline
+* *Arrows*: Show the flow of data and execution between stages
+* *Colors*: Different colors indicate different types of operations (processing, management, execution)
+* *Supporting Components*: Rendergraphs and Synchronization primitives are shown as connected to the main pipeline flow
+====
 
 The rendering pipeline consists of several key stages:
 
@@ -1221,27 +1231,7 @@ private:
 
 === Advanced Rendering Techniques
 
-==== Deferred Rendering
-
-Deferred rendering separates the geometry and lighting calculations into separate passes, which can be more efficient for scenes with many lights:
-
-1. *Geometry Pass* - Render scene geometry to G-buffer textures (position, normal, albedo, etc.).
-2. *Lighting Pass* - Apply lighting calculations using G-buffer textures.
-
-==== Forward+ Rendering
-
-Forward+ (or tiled forward) rendering combines the simplicity of forward rendering with some of the efficiency benefits of deferred rendering:
-
-1. *Light Culling Pass* - Divide the screen into tiles and determine which lights affect each tile.
-2. *Forward Rendering Pass* - Render scene geometry with only the lights that affect each tile.
-
-==== Physically Based Rendering (PBR)
-
-PBR aims to create more realistic materials by simulating how light interacts with surfaces in the real world:
-
-1. *Material Parameters* - Define materials using physically meaningful parameters (albedo, metalness, roughness, etc.).
-2. *BRDF* - Use a physically based bidirectional reflectance distribution function.
-3. *Image-Based Lighting* - Use environment maps for ambient lighting.
+For detailed information about advanced rendering techniques such as Deferred Rendering, Forward+ Rendering, and Physically Based Rendering (PBR), please refer to the link:../Appendix/appendix.adoc#advanced-rendering-techniques[Advanced Rendering Techniques] section in the Appendix. This section includes references to valuable resources for further reading.
 
 === Conclusion
 

@@ -290,9 +290,39 @@ Below is a comparative analysis of the architectural patterns discussed in this 
   * When loose coupling is critical
 |===
 
+== Advanced Rendering Techniques
+
+This section provides an overview of advanced rendering techniques commonly used in modern rendering engines. For more comprehensive information, refer to these excellent resources:
+
+* *Physically Based Rendering: From Theory to Implementation* - https://www.pbr-book.org/
+* *Real-Time Rendering* - https://www.realtimerendering.com/
+* *GPU Gems* series - https://developer.nvidia.com/gpugems/gpugems/contributors
+
+=== Deferred Rendering
+
+Deferred rendering separates the geometry and lighting calculations into separate passes, which can be more efficient for scenes with many lights:
+
+1. *Geometry Pass* - Render scene geometry to G-buffer textures (position, normal, albedo, etc.).
+2. *Lighting Pass* - Apply lighting calculations using G-buffer textures.
+
+=== Forward+ Rendering
+
+Forward+ (or tiled forward) rendering combines the simplicity of forward rendering with some of the efficiency benefits of deferred rendering:
+
+1. *Light Culling Pass* - Divide the screen into tiles and determine which lights affect each tile.
+2. *Forward Rendering Pass* - Render scene geometry with only the lights that affect each tile.
+
+=== Physically Based Rendering (PBR)
+
+PBR aims to create more realistic materials by simulating how light interacts with surfaces in the real world:
+
+1. *Material Parameters* - Define materials using physically meaningful parameters (albedo, metalness, roughness, etc.).
+2. *BRDF* - Use a physically based bidirectional reflectance distribution function.
+3. *Image-Based Lighting* - Use environment maps for ambient lighting.
+
 == Conclusion
 
-These architectural patterns provide a foundation for designing your rendering engine. In practice, most engines use a combination of these patterns to address different aspects of the system.
+These architectural patterns and rendering techniques provide a foundation for designing your rendering engine. In practice, most engines use a combination of these patterns to address different aspects of the system.
 
 When designing your engine architecture, consider:
 
@@ -302,3 +332,4 @@ When designing your engine architecture, consider:
 4. *Project Scope* - A small project may not need the complexity of a full ECS.
 
 link:../Engine_Architecture/02_architectural_patterns.adoc[Back to Architectural Patterns]
+link:../Engine_Architecture/05_rendering_pipeline.adoc[Back to Rendering Pipeline]

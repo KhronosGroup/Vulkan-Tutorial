@@ -43,17 +43,17 @@ As you develop your own rendering engine, keep these principles in mind:
 
 === Next Steps
 
-With a solid understanding of engine architecture, you're now ready to implement these concepts in your own rendering engine. Here are some suggestions for next steps:
+Throughout this tutorial, we've been building a simple engine together, exploring key concepts and implementing core components. As we continue through the tutorial, we'll build upon these architectural foundations. Here are some suggestions for enhancing your learning:
 
-1. *Implement a Prototype* - Start by implementing a simple prototype that incorporates the key architectural patterns we've discussed.
+1. *Follow Along with the Code* - As you progress through the tutorial, implement the code examples to build your engine step by step. Each section contains code snippets that you can use as a reference.
 
-2. *Experiment with Different Approaches* - Try different variations of these patterns to see what works best for your specific needs.
+2. *Experiment with Variations* - Once you understand a concept, try modifying the implementation to see how different approaches affect your engine.
 
-3. *Explore Advanced Topics* - Dive deeper into specific areas like advanced rendering techniques, physics integration, or audio systems.
+3. *Explore Advanced Topics* - The link:../Appendix/appendix.adoc[Appendix] contains additional information on advanced rendering techniques and architectural patterns.
 
-4. *Study Existing Engines* - Examine open-source engines to see how they solve similar problems.
+4. *Study Existing Engines* - Examine open-source engines like link:https://github.com/TheCherno/Hazel[Hazel] or link:https://github.com/LWJGL/lwjgl3[LWJGL] to see how they implement similar concepts.
 
-5. *Join the Community* - Engage with the graphics programming community to share ideas and get feedback on your approach.
+5. *Join the Community* - Engage with the graphics programming community to share ideas and get feedback on your implementation.
 
 Remember that engine development is an iterative process. Your architecture will evolve as you gain experience and as your requirements change. The concepts we've covered provide a foundation, but the best architecture for your engine will depend on your specific goals and constraints.
 

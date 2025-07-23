@@ -15,7 +15,7 @@ Event systems provide a flexible way for different parts of your engine to commu
 
 === The Need for Event Systems
 
-In a complex engine, many subsystems need to communicate with each other:
+Even in the simple engine we're building, subsystems need to communicate with each other efficiently. As our engine grows, these communication needs become increasingly important:
 
 1. *Physics* needs to notify *Audio* when collisions occur.
 2. *Input* needs to notify *Game Logic* when buttons are pressed.
@@ -464,7 +464,13 @@ public:
 
 ==== Event Bubbling and Capturing
 
-For hierarchical systems like UI, events can bubble up or capture down the hierarchy:
+In hierarchical systems like UI, events can propagate through the hierarchy in two ways:
+
+* *Event Bubbling* - The event starts at the target element and "bubbles up" through parent elements in the hierarchy. For example, a click event on a button first triggers on the button, then on its container, and continues up to the root element.
+
+* *Event Capturing* - The event starts at the root element and travels down the hierarchy to the target element (the opposite direction of bubbling).
+
+This approach allows parent elements to intercept and handle events triggered on their children, while also giving children the ability to stop propagation if needed. For hierarchical systems like UI, this provides a flexible way to handle events at the appropriate level:
 
 [source,cpp]
 ----

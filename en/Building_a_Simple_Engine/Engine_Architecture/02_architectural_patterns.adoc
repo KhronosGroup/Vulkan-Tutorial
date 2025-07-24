@@ -19,7 +19,7 @@ Before diving into specific patterns, it's important to clarify that while we're
 
 Here's a brief introduction to the most common architectural patterns used in game and rendering engines:
 
-==== Layered Architecture
+==== link:https://games-1312234642.cos.ap-guangzhou.myqcloud.com/course/GAMES104/GAMES104_Lecture02.pdf[Layered Architecture]
 
 Layered architecture divides the system into distinct layers, each with a specific responsibility. Typical layers include platform abstraction, resource management, rendering, scene management, and application layers.
 
@@ -32,9 +32,9 @@ image::../../../images/layered_architecture_diagram.png[Layered Architecture Dia
 
 For detailed information and implementation examples, see the link:../Appendix/appendix.adoc#layered-architecture[Appendix: Layered Architecture].
 
-==== Data-Oriented Design
+==== link:https://www.youtube.com/watch?v=rX0ItVEVjHc[Data-Oriented Design]
 
-Data-Oriented Design (DOD) focuses on organizing data for efficient processing, rather than organizing code around objects. It emphasizes cache-friendly memory layouts and bulk processing of data.
+Data-Oriented Design (DOD) focuses on organizing data for efficient processing rather than organizing code around objects. It emphasizes cache-friendly memory layouts and bulk processing of data.
 
 image::../../../images/data_oriented_design_diagram.svg[Data-Oriented Design Diagram, width=400]
 
@@ -45,7 +45,7 @@ image::../../../images/data_oriented_design_diagram.svg[Data-Oriented Design Dia
 
 For detailed information and implementation examples, see the link:../Appendix/appendix.adoc#data-oriented-design[Appendix: Data-Oriented Design].
 
-==== Service Locator Pattern
+==== link:https://gameprogrammingpatterns.com/service-locator.html[Service Locator Pattern]
 
 The Service Locator pattern provides a global point of access to services without coupling consumers to concrete implementations.
 
@@ -58,7 +58,7 @@ image::../../../images/service_locator_pattern_diagram.svg[Service Locator Patte
 
 For detailed information and implementation examples, see the link:../Appendix/appendix.adoc#service-locator-pattern[Appendix: Service Locator Pattern].
 
-=== Component-Based Architecture
+=== link:https://gameprogrammingpatterns.com/component.html[Component-Based Architecture]
 
 Component-based architecture is widely used in modern game engines and forms the foundation of our Vulkan rendering engine. It promotes composition over inheritance and allows for more flexible entity design.
 

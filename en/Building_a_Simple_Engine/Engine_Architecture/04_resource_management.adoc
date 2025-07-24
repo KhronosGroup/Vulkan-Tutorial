@@ -21,7 +21,7 @@ When designing a resource management system, you'll need to address several chal
 2. *Caching* - Frequently used resources should be cached to avoid redundant loading.
 3. *Reference Counting* - Track how many objects are using a resource to know when it can be safely unloaded.
 4. *Hot Reloading* - Allow resources to be updated while the application is running (useful during development).
-5. *Streaming* - Load resources asynchronously to avoid blocking the main thread.
+5. *Streaming* - Load resources asynchronously to avoid blocking the main thread. It's good to realize that "streaming" here is meant in terms of sending data from one location to another in chunks.  It's the same type of algorithm that might be familiar in networking or internet downloading, however, it only differs in the sense that it relates to transferring data between the system memory and the GPU memory.
 6. *Memory Management* - Efficiently allocate and deallocate memory for resources.
 
 === Resource Handles

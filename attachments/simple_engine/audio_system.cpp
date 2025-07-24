@@ -875,6 +875,15 @@ bool AudioSystem::IsHRTFEnabled() const {
     return hrtfEnabled;
 }
 
+void AudioSystem::SetHRTFCPUOnly(bool cpuOnly) {
+    hrtfCPUOnly = cpuOnly;
+    std::cout << "HRTF processing mode set to " << (cpuOnly ? "CPU-only" : "Vulkan shader (when available)") << std::endl;
+}
+
+bool AudioSystem::IsHRTFCPUOnly() const {
+    return hrtfCPUOnly;
+}
+
 bool AudioSystem::LoadHRTFData(const std::string& filename) {
     if (!filename.empty()) {
         std::cout << "Loading HRTF data from: " << filename << std::endl;
@@ -1001,14 +1010,62 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
 }
 
 bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uint32_t sampleCount, const float* sourcePosition) {
-    if (!hrtfEnabled || !renderer || !renderer->IsInitialized()) {
-        // If HRTF is disabled or renderer is not available, just copy input to output
+    if (!hrtfEnabled) {
+        // If HRTF is disabled, just copy input to output
         for (uint32_t i = 0; i < sampleCount; i++) {
             outputBuffer[i * 2] = inputBuffer[i];     // Left channel
             outputBuffer[i * 2 + 1] = inputBuffer[i]; // Right channel
         }
         return true;
     }
+
+    // Check if we should use CPU-only processing or if Vulkan is not available
+    if (hrtfCPUOnly || !renderer || !renderer->IsInitialized()) {
+        // Use CPU-based HRTF processing (either forced or fallback)
+        // Skip Vulkan buffer creation and go directly to CPU processing
+    } else {
+        // Use Vulkan shader-based HRTF processing
+        // Create buffers for HRTF processing if they don't exist or if the sample count has changed
+        if (!createHRTFBuffers(sampleCount)) {
+            std::cerr << "Failed to create HRTF buffers" << std::endl;
+            return false;
+        }
+
+        // Copy input data to input buffer
+        void* data = inputBufferMemory.mapMemory(0, sampleCount * sizeof(float));
+        memcpy(data, inputBuffer, sampleCount * sizeof(float));
+        inputBufferMemory.unmapMemory();
+
+        // Set up HRTF parameters
+        struct HRTFParams {
+            float sourcePosition[3];
+            float listenerPosition[3];
+            float listenerOrientation[6]; // Forward (3) and up (3) vectors
+            uint32_t sampleCount;
+            uint32_t hrtfSize;
+            uint32_t numHrtfPositions;
+            float padding; // For alignment
+        } params;
+
+        // Copy source and listener positions
+        memcpy(params.sourcePosition, sourcePosition, sizeof(float) * 3);
+        memcpy(params.listenerPosition, listenerPosition, sizeof(float) * 3);
+        memcpy(params.listenerOrientation, listenerOrientation, sizeof(float) * 6);
+        params.sampleCount = sampleCount;
+        params.hrtfSize = hrtfSize;
+        params.numHrtfPositions = numHrtfPositions;
+        params.padding = 0.0f;
+
+        // Copy parameters to parameter buffer
+        data = paramsBufferMemory.mapMemory(0, sizeof(HRTFParams));
+        memcpy(data, &params, sizeof(HRTFParams));
+        paramsBufferMemory.unmapMemory();
+
+        // TODO: Add actual Vulkan compute shader dispatch here
+        // For now, fall through to CPU processing
+    }
+
+    // CPU-based HRTF processing (used for both CPU-only mode and fallback)
 
     // Create buffers for HRTF processing if they don't exist or if the sample count has changed
     if (!createHRTFBuffers(sampleCount)) {

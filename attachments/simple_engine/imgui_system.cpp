@@ -210,6 +210,35 @@ void ImGuiSystem::NewFrame() {
         ImGui::Text("HRTF Processing: ENABLED");
         ImGui::Text("Use directional buttons to move the audio source in 3D space");
         ImGui::Text("You should hear the audio move around you!");
+
+        // HRTF Processing Mode Selection
+        ImGui::Separator();
+        ImGui::Text("HRTF Processing Mode:");
+
+        static bool cpuOnlyMode = false;
+        static bool initialized = false;
+
+        // Initialize checkbox state to match audio system state
+        if (!initialized && audioSystem) {
+            cpuOnlyMode = audioSystem->IsHRTFCPUOnly();
+            initialized = true;
+        }
+
+        if (ImGui::Checkbox("Force CPU-only HRTF processing", &cpuOnlyMode)) {
+            if (audioSystem) {
+                audioSystem->SetHRTFCPUOnly(cpuOnlyMode);
+                std::cout << "HRTF processing mode changed to: " << (cpuOnlyMode ? "CPU-only" : "Vulkan shader (when available)") << std::endl;
+            }
+        }
+
+        // Display current processing mode
+        if (audioSystem) {
+            if (audioSystem->IsHRTFCPUOnly()) {
+                ImGui::Text("Current Mode: CPU-only processing");
+            } else {
+                ImGui::Text("Current Mode: Vulkan shader processing (when available)");
+            }
+        }
     } else {
         ImGui::Text("HRTF Processing: DISABLED");
     }

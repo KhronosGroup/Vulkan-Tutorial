@@ -233,6 +233,18 @@ public:
     bool IsHRTFEnabled() const;
 
     /**
+     * @brief Set whether to force CPU-only HRTF processing.
+     * @param cpuOnly Whether to force CPU-only processing (true) or allow Vulkan shader processing (false).
+     */
+    void SetHRTFCPUOnly(bool cpuOnly);
+
+    /**
+     * @brief Check if HRTF processing is set to CPU-only mode.
+     * @return True if CPU-only mode is enabled, false if Vulkan shader processing is allowed.
+     */
+    bool IsHRTFCPUOnly() const;
+
+    /**
      * @brief Load HRTF data from a file.
      * @param filename The path to the HRTF data file.
      * @return True if loading was successful, false otherwise.
@@ -277,6 +289,7 @@ private:
 
     // HRTF processing
     bool hrtfEnabled = false;
+    bool hrtfCPUOnly = false;
     std::vector<float> hrtfData;
     uint32_t hrtfSize = 0;
     uint32_t numHrtfPositions = 0;

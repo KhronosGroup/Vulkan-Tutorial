@@ -80,6 +80,63 @@ public:
 class Renderer;
 
 /**
+ * @brief Interface for audio output devices.
+ */
+class AudioOutputDevice {
+public:
+    /**
+     * @brief Default constructor.
+     */
+    AudioOutputDevice() = default;
+
+    /**
+     * @brief Virtual destructor for proper cleanup.
+     */
+    virtual ~AudioOutputDevice() = default;
+
+    /**
+     * @brief Initialize the audio output device.
+     * @param sampleRate The sample rate (e.g., 44100).
+     * @param channels The number of channels (typically 2 for stereo).
+     * @param bufferSize The buffer size in samples.
+     * @return True if initialization was successful, false otherwise.
+     */
+    virtual bool Initialize(uint32_t sampleRate, uint32_t channels, uint32_t bufferSize) = 0;
+
+    /**
+     * @brief Start audio playback.
+     * @return True if successful, false otherwise.
+     */
+    virtual bool Start() = 0;
+
+    /**
+     * @brief Stop audio playback.
+     * @return True if successful, false otherwise.
+     */
+    virtual bool Stop() = 0;
+
+    /**
+     * @brief Write audio data to the output device.
+     * @param data Pointer to the audio data (interleaved stereo float samples).
+     * @param sampleCount Number of samples per channel to write.
+     * @return True if successful, false otherwise.
+     */
+    virtual bool WriteAudio(const float* data, uint32_t sampleCount) = 0;
+
+    /**
+     * @brief Check if the device is currently playing.
+     * @return True if playing, false otherwise.
+     */
+    virtual bool IsPlaying() const = 0;
+
+    /**
+     * @brief Get the current playback position in samples.
+     * @return Current position in samples.
+     */
+    virtual uint32_t GetPosition() const = 0;
+};
+
+/**
  * @brief Class for managing audio.
  */
 class AudioSystem {
@@ -121,6 +178,13 @@ public:
      * @return Pointer to the created audio source, or nullptr if creation failed.
      */
     AudioSource* CreateAudioSource(const std::string& name);
+
+    /**
+     * @brief Create a sine wave ping audio source for debugging.
+     * @param name The name to assign to the debug audio source.
+     * @return Pointer to the created audio source, or nullptr if creation failed.
+     */
+    AudioSource* CreateDebugPingSource(const std::string& name);
 
     /**
      * @brief Set the listener position in 3D space.
@@ -185,6 +249,14 @@ public:
      */
     bool ProcessHRTF(const float* inputBuffer, float* outputBuffer, uint32_t sampleCount, const float* sourcePosition);
 
+    /**
+     * @brief Generate a sine wave ping for debugging purposes.
+     * @param buffer The output buffer to fill with ping audio data.
+     * @param sampleCount The number of samples to generate.
+     * @param playbackPosition The current playback position for timing.
+     */
+    void GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint32_t playbackPosition);
+
 private:
     // Loaded audio data
     std::unordered_map<std::string, std::vector<uint8_t>> audioData;
@@ -211,6 +283,9 @@ private:
 
     // Renderer for compute shader support
     Renderer* renderer = nullptr;
+
+    // Audio output device for sending processed audio to speakers
+    std::unique_ptr<AudioOutputDevice> outputDevice = nullptr;
 
     // Vulkan resources for HRTF processing
     vk::raii::Buffer inputBuffer = nullptr;

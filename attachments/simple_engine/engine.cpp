@@ -69,7 +69,7 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     }
 
     // Initialize audio system
-    if (!audioSystem->Initialize()) {
+    if (!audioSystem->Initialize(renderer.get())) {
         return false;
     }
 
@@ -83,6 +83,9 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     if (!imguiSystem->Initialize(renderer.get(), width, height)) {
         return false;
     }
+
+    // Connect ImGui system to audio system for UI controls
+    imguiSystem->SetAudioSystem(audioSystem.get());
 
     initialized = true;
     return true;
@@ -281,17 +284,28 @@ void Engine::Render() {
 
 float Engine::CalculateDeltaTime() {
     // Get current time
-    auto currentTime = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
+    auto currentTime = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::high_resolution_clock::now().time_since_epoch()
-    ).count()) / 1000.0f;
+    ).count());
+
+    // Initialize lastFrameTime on first call
+    if (lastFrameTime == 0) {
+        lastFrameTime = currentTime;
+        return 0.016f; // Return ~16ms (60 FPS) for first frame
+    }
 
     // Calculate delta time
-    float delta = currentTime - lastFrameTime;
+    uint64_t delta = currentTime - lastFrameTime;
 
     // Update last frame time
     lastFrameTime = currentTime;
 
-    return delta;
+    // Clamp delta time to reasonable values (prevent huge jumps)
+    if (delta > 10) { // Cap at 100ms (10 FPS minimum)
+        delta = 16; // Use 16ms instead
+    }
+
+    return delta / 1000.0f; // Convert to seconds
 }
 
 void Engine::HandleResize(int width, int height) {
@@ -358,7 +372,7 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
     }
 
     // Initialize audio system
-    if (!audioSystem->Initialize()) {
+    if (!audioSystem->Initialize(renderer.get())) {
         return false;
     }
 
@@ -376,6 +390,9 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
     if (!imguiSystem->Initialize(renderer.get(), width, height)) {
         return false;
     }
+
+    // Connect ImGui system to audio system for UI controls
+    imguiSystem->SetAudioSystem(audioSystem.get());
 
     initialized = true;
     return true;

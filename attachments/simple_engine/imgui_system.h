@@ -12,6 +12,8 @@ import vulkan_hpp;
 
 // Forward declarations
 class Renderer;
+class AudioSystem;
+class AudioSource;
 struct ImGuiContext;
 
 /**
@@ -97,12 +99,28 @@ public:
      */
     bool WantCaptureMouse() const;
 
+    /**
+     * @brief Set the audio system reference for audio controls.
+     * @param audioSystem Pointer to the audio system.
+     */
+    void SetAudioSystem(AudioSystem* audioSystem);
+
 private:
     // ImGui context
     ImGuiContext* context = nullptr;
 
     // Renderer reference
     Renderer* renderer = nullptr;
+
+    // Audio system reference
+    AudioSystem* audioSystem = nullptr;
+    AudioSource* audioSource = nullptr;
+    AudioSource* debugPingSource = nullptr;
+
+    // Audio position tracking
+    float audioSourceX = 1.0f;
+    float audioSourceY = 0.0f;
+    float audioSourceZ = 0.0f;
 
     // Vulkan resources
     vk::raii::DescriptorPool descriptorPool = nullptr;

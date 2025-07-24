@@ -15,6 +15,7 @@ find_package (Vulkan REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 find_package (stb REQUIRED)
+find_package (OpenAL REQUIRED)
 
 # set up Vulkan C++ module
 add_library(VulkanCppModule)
@@ -124,6 +125,7 @@ target_link_libraries(SimpleEngine PRIVATE
     tinygltf::tinygltf
     KTX::ktx
     stb::stb
+    OpenAL::OpenAL
 )
 
 if(NOT DEFINED ANDROID)

@@ -1,5 +1,6 @@
 #include "imgui_system.h"
 #include "renderer.h"
+#include "audio_system.h"
 
 // Include ImGui headers
 #include "imgui/imgui.h"
@@ -72,6 +73,32 @@ void ImGuiSystem::Cleanup() {
     initialized = false;
 }
 
+void ImGuiSystem::SetAudioSystem(AudioSystem* audioSystem) {
+    this->audioSystem = audioSystem;
+
+    // Load the grass-step-right.wav file and create audio source
+    if (audioSystem) {
+        if (audioSystem->LoadAudio("../Assets/grass-step-right.wav", "grass_step")) {
+            audioSource = audioSystem->CreateAudioSource("grass_step");
+            if (audioSource) {
+                audioSource->SetPosition(audioSourceX, audioSourceY, audioSourceZ);
+                audioSource->SetVolume(0.8f);
+                audioSource->SetLoop(true);
+                std::cout << "Audio source created and configured for HRTF demo" << std::endl;
+            }
+        }
+
+        // Also create a debug ping source for testing
+        debugPingSource = audioSystem->CreateDebugPingSource("debug_ping");
+        if (debugPingSource) {
+            debugPingSource->SetPosition(audioSourceX, audioSourceY, audioSourceZ);
+            debugPingSource->SetVolume(0.8f);
+            debugPingSource->SetLoop(true);
+            std::cout << "Debug ping source created for audio debugging" << std::endl;
+        }
+    }
+}
+
 void ImGuiSystem::NewFrame() {
     if (!initialized) {
         return;
@@ -79,13 +106,114 @@ void ImGuiSystem::NewFrame() {
 
     ImGui::NewFrame();
 
-    // Create your UI elements here
-    // For example:
-    ImGui::Begin("Simple Engine Demo");
+    // Create HRTF Audio Control UI
+    ImGui::Begin("HRTF Audio Controls");
     ImGui::Text("Hello, Vulkan!");
-    if (ImGui::Button("Click me!")) {
-        // Handle button click
+    ImGui::Text("3D Audio Position Control");
+
+    // Audio source selection
+    ImGui::Separator();
+    ImGui::Text("Audio Source Selection:");
+
+    static bool useDebugPing = false;
+    if (ImGui::Checkbox("Use Debug Ping (800Hz sine wave)", &useDebugPing)) {
+        // Stop current audio
+        if (audioSource && audioSource->IsPlaying()) {
+            audioSource->Stop();
+        }
+        if (debugPingSource && debugPingSource->IsPlaying()) {
+            debugPingSource->Stop();
+        }
+        std::cout << "Switched to " << (useDebugPing ? "debug ping" : "file audio") << " source" << std::endl;
     }
+
+    // Display current audio source position
+    ImGui::Text("Audio Source Position: (%.2f, %.2f, %.2f)", audioSourceX, audioSourceY, audioSourceZ);
+    ImGui::Text("Current Source: %s", useDebugPing ? "Debug Ping (800Hz)" : "grass-step-right.wav");
+
+    // Directional control buttons
+    ImGui::Separator();
+    ImGui::Text("Directional Controls:");
+
+    // Get current active source
+    AudioSource* currentSource = useDebugPing ? debugPingSource : audioSource;
+
+    // Up button
+    if (ImGui::Button("Up")) {
+        audioSourceY += 0.5f;
+        if (currentSource) {
+            currentSource->SetPosition(audioSourceX, audioSourceY, audioSourceZ);
+        }
+        std::cout << (useDebugPing ? "Debug ping" : "Audio") << " moved up to (" << audioSourceX << ", " << audioSourceY << ", " << audioSourceZ << ")" << std::endl;
+    }
+
+    // Left and Right buttons on same line
+    if (ImGui::Button("Left")) {
+        audioSourceX -= 0.5f;
+        if (currentSource) {
+            currentSource->SetPosition(audioSourceX, audioSourceY, audioSourceZ);
+        }
+        std::cout << (useDebugPing ? "Debug ping" : "Audio") << " moved left to (" << audioSourceX << ", " << audioSourceY << ", " << audioSourceZ << ")" << std::endl;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Right")) {
+        audioSourceX += 0.5f;
+        if (currentSource) {
+            currentSource->SetPosition(audioSourceX, audioSourceY, audioSourceZ);
+        }
+        std::cout << (useDebugPing ? "Debug ping" : "Audio") << " moved right to (" << audioSourceX << ", " << audioSourceY << ", " << audioSourceZ << ")" << std::endl;
+    }
+
+    // Down button
+    if (ImGui::Button("Down")) {
+        audioSourceY -= 0.5f;
+        if (currentSource) {
+            currentSource->SetPosition(audioSourceX, audioSourceY, audioSourceZ);
+        }
+        std::cout << (useDebugPing ? "Debug ping" : "Audio") << " moved down to (" << audioSourceX << ", " << audioSourceY << ", " << audioSourceZ << ")" << std::endl;
+    }
+
+    // Audio playback controls
+    ImGui::Separator();
+    ImGui::Text("Playback Controls:");
+
+    // Play button
+    if (ImGui::Button("Play")) {
+        if (currentSource) {
+            currentSource->Play();
+            if (useDebugPing) {
+                std::cout << "Started playing debug ping (800Hz sine wave) with HRTF processing" << std::endl;
+            } else {
+                std::cout << "Started playing grass-step-right.wav with HRTF processing" << std::endl;
+            }
+        } else {
+            std::cout << "No audio source available - audio system not initialized" << std::endl;
+        }
+    }
+    ImGui::SameLine();
+
+    // Stop button
+    if (ImGui::Button("Stop")) {
+        if (currentSource) {
+            currentSource->Stop();
+            if (useDebugPing) {
+                std::cout << "Stopped debug ping playback" << std::endl;
+            } else {
+                std::cout << "Stopped audio playback" << std::endl;
+            }
+        }
+    }
+
+    // Additional info
+    ImGui::Separator();
+    if (audioSystem && audioSystem->IsHRTFEnabled()) {
+        ImGui::Text("HRTF Processing: ENABLED");
+        ImGui::Text("Use directional buttons to move the audio source in 3D space");
+        ImGui::Text("You should hear the audio move around you!");
+    } else {
+        ImGui::Text("HRTF Processing: DISABLED");
+    }
+
     ImGui::End();
 }
 

@@ -180,7 +180,7 @@ private:
 
     // Delta time calculation
     float deltaTime = 0.0f;
-    float lastFrameTime = 0.0f;
+    uint64_t lastFrameTime = 0;
 
     /**
      * @brief Update the engine state.

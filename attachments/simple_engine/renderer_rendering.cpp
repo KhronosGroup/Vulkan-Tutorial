@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "imgui_system.h"
+#include "imgui/imgui.h"
 #include <fstream>
 #include <stdexcept>
 #include <array>
@@ -246,6 +247,23 @@ void Renderer::cleanupSwapChain() {
     // Clean up swap chain image views
     swapChainImageViews.clear();
 
+    // Clean up descriptor pool (this will automatically clean up descriptor sets)
+    descriptorPool = nullptr;
+
+    // Clean up pipelines
+    graphicsPipeline = nullptr;
+    pbrGraphicsPipeline = nullptr;
+    lightingPipeline = nullptr;
+
+    // Clean up pipeline layouts
+    pipelineLayout = nullptr;
+    pbrPipelineLayout = nullptr;
+    lightingPipelineLayout = nullptr;
+
+    // Clean up sync objects (they need to be recreated with new swap chain image count)
+    imageAvailableSemaphores.clear();
+    renderFinishedSemaphores.clear();
+
     // Clean up swap chain
     swapChain = nullptr;
 }
@@ -258,10 +276,15 @@ void Renderer::recreateSwapChain() {
     // Clean up old swap chain resources
     cleanupSwapChain();
 
-    // Recreate swap chain
+    // Recreate swap chain and related resources
     createSwapChain();
     createImageViews();
     createDepthResources();
+
+    // Recreate sync objects with correct sizing for new swap chain
+    createSyncObjects();
+
+    // Recreate descriptor pool and pipelines
     createDescriptorPool();
     createGraphicsPipeline();
     createPBRPipeline();
@@ -314,6 +337,12 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Check if the swap chain needs to be recreated
     if (result.first == vk::Result::eErrorOutOfDateKHR || result.first == vk::Result::eSuboptimalKHR || framebufferResized) {
         framebufferResized = false;
+
+        // If ImGui has started a frame, we need to end it properly before returning
+        if (imguiSystem) {
+            ImGui::EndFrame();
+        }
+
         recreateSwapChain();
         return;
     } else if (result.first != vk::Result::eSuccess) {

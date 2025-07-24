@@ -63,21 +63,6 @@ void ImGuiSystem::Cleanup() {
     if (renderer) {
         renderer->WaitIdle();
     }
-
-    // Clean up Vulkan resources - using RAII, these will be automatically destroyed
-    pipeline = nullptr;
-    pipelineLayout = nullptr;
-    descriptorSetLayout = nullptr;
-    fontSampler = nullptr;
-    fontView = nullptr;
-    fontImage = nullptr;
-    fontMemory = nullptr;
-    vertexBuffer = nullptr;
-    vertexBufferMemory = nullptr;
-    indexBuffer = nullptr;
-    indexBufferMemory = nullptr;
-    descriptorPool = nullptr;
-
     // Destroy ImGui context
     if (context) {
         ImGui::DestroyContext(context);
@@ -612,11 +597,13 @@ bool ImGuiSystem::createPipeline() {
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
+        vk::Format depthFormat = renderer->findDepthFormat();
         // Create the graphics pipeline with dynamic rendering
         vk::PipelineRenderingCreateInfo renderingInfo;
         renderingInfo.colorAttachmentCount = 1;
         vk::Format colorFormat = renderer->GetSwapChainImageFormat(); // Get the actual swapchain format
         renderingInfo.pColorAttachmentFormats = &colorFormat;
+        renderingInfo.depthAttachmentFormat = depthFormat;
 
         vk::GraphicsPipelineCreateInfo pipelineInfo;
         pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());

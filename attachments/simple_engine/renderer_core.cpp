@@ -3,6 +3,7 @@
 #include <iostream>
 #include <set>
 #include <cstring>
+#include <ranges>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE; // In a .cpp file
 
@@ -173,6 +174,14 @@ void Renderer::Cleanup() {
 
         // Wait for the device to be idle before cleaning up
         device.waitIdle();
+        for (auto& resources : entityResources | std::views::values) {
+            for (auto& memory : resources.uniformBuffersMemory) {
+                memory.unmapMemory();
+            }
+            resources.descriptorSets.clear();
+            resources.uniformBuffers.clear();
+            resources.uniformBuffersMemory.clear();
+        }
         std::cout << "Renderer cleanup completed." << std::endl;
         initialized = false;
     }

@@ -215,6 +215,15 @@ public:
         return swapChainImageFormat;
     }
 
+    /**
+     * @brief Set the framebuffer resized flag.
+     * This should be called when the window is resized to trigger swap chain recreation.
+     */
+    void SetFramebufferResized() {
+        framebufferResized = true;
+    }
+    vk::Format findDepthFormat();
+
 private:
     // Platform
     Platform* platform = nullptr;
@@ -415,7 +424,6 @@ private:
 
     vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags);
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
-    vk::Format findDepthFormat();
     bool hasStencilComponent(vk::Format format);
 
     std::vector<char> readFile(const std::string& filename);

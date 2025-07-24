@@ -299,6 +299,16 @@ void Engine::HandleResize(int width, int height) {
     if (activeCamera) {
         activeCamera->SetAspectRatio(static_cast<float>(width) / static_cast<float>(height));
     }
+
+    // Notify the renderer that the framebuffer has been resized
+    if (renderer) {
+        renderer->SetFramebufferResized();
+    }
+
+    // Notify ImGui system about the resize
+    if (imguiSystem) {
+        imguiSystem->HandleResize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+    }
 }
 
 #if PLATFORM_ANDROID

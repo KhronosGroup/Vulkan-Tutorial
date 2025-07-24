@@ -258,6 +258,11 @@ private:
     vk::raii::PipelineLayout lightingPipelineLayout = nullptr;
     vk::raii::Pipeline lightingPipeline = nullptr;
 
+    // Pipeline rendering create info structures (for proper lifetime management)
+    vk::PipelineRenderingCreateInfo mainPipelineRenderingCreateInfo;
+    vk::PipelineRenderingCreateInfo pbrPipelineRenderingCreateInfo;
+    vk::PipelineRenderingCreateInfo lightingPipelineRenderingCreateInfo;
+
     // Compute pipeline
     vk::raii::PipelineLayout computePipelineLayout = nullptr;
     vk::raii::Pipeline computePipeline = nullptr;
@@ -279,10 +284,9 @@ private:
     vk::raii::DeviceMemory depthImageMemory = nullptr;
     vk::raii::ImageView depthImageView = nullptr;
 
-    // Descriptor set layout and pool
+    // Descriptor set layouts (declared before pools and sets)
     vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
     vk::raii::DescriptorSetLayout pbrDescriptorSetLayout = nullptr;
-    vk::raii::DescriptorPool descriptorPool = nullptr;
 
     // Mesh resources
     struct MeshResources {
@@ -306,7 +310,7 @@ private:
     // Default texture resources (used when no texture is provided)
     TextureResources defaultTextureResources;
 
-    // Entity resources
+    // Entity resources (contains descriptor sets - must be declared before descriptor pool)
     struct EntityResources {
         std::vector<vk::raii::Buffer> uniformBuffers;
         std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
@@ -314,6 +318,9 @@ private:
         std::vector<vk::raii::DescriptorSet> descriptorSets;
     };
     std::unordered_map<Entity*, EntityResources> entityResources;
+
+    // Descriptor pool (declared after entity resources to ensure proper destruction order)
+    vk::raii::DescriptorPool descriptorPool = nullptr;
 
     // Current frame index
     uint32_t currentFrame = 0;

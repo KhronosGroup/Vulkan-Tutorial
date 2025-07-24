@@ -204,8 +204,12 @@ bool Renderer::createSyncObjects() {
         renderFinishedSemaphores.clear();
         inFlightFences.clear();
 
-        imageAvailableSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
+        // Create semaphores per swapchain image to avoid reuse issues
+        size_t swapchainImageCount = swapChainImages.size();
+        imageAvailableSemaphores.reserve(swapchainImageCount);
+        renderFinishedSemaphores.reserve(swapchainImageCount);
+
+        // Keep fences per frame in flight for CPU-GPU synchronization
         inFlightFences.reserve(MAX_FRAMES_IN_FLIGHT);
 
         // Create semaphore and fence info
@@ -214,10 +218,14 @@ bool Renderer::createSyncObjects() {
             .flags = vk::FenceCreateFlagBits::eSignaled
         };
 
-        // Create semaphores and fences for each frame in flight
-        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // Create semaphores for each swapchain image
+        for (size_t i = 0; i < swapchainImageCount; i++) {
             imageAvailableSemaphores.emplace_back(device, semaphoreInfo);
             renderFinishedSemaphores.emplace_back(device, semaphoreInfo);
+        }
+
+        // Create fences for each frame in flight
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             inFlightFences.emplace_back(device, fenceInfo);
         }
 
@@ -298,7 +306,9 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
     // Acquire the next image from the swap chain
     uint32_t imageIndex;
-    auto result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
+    // Use currentFrame for semaphore indexing to ensure consistency
+    uint32_t semaphoreIndex = currentFrame % imageAvailableSemaphores.size();
+    auto result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[semaphoreIndex]);
     imageIndex = result.second;
 
     // Check if the swap chain needs to be recreated
@@ -325,6 +335,33 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
     // Update rendering area
     renderingInfo.setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+
+    // Transition swapchain image layout for rendering
+    vk::ImageMemoryBarrier renderBarrier{
+        .srcAccessMask = vk::AccessFlagBits::eNone,
+        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = swapChainImages[imageIndex],
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+
+    commandBuffers[currentFrame].pipelineBarrier(
+        vk::PipelineStageFlagBits::eTopOfPipe,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        vk::DependencyFlags{},
+        {},
+        {},
+        renderBarrier
+    );
 
     // Begin dynamic rendering with vk::raii
     commandBuffers[currentFrame].beginRendering(renderingInfo);
@@ -409,6 +446,33 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // End dynamic rendering
     commandBuffers[currentFrame].endRendering();
 
+    // Transition swapchain image layout for presentation
+    vk::ImageMemoryBarrier imageBarrier{
+        .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+        .dstAccessMask = vk::AccessFlagBits::eNone,
+        .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .newLayout = vk::ImageLayout::ePresentSrcKHR,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = swapChainImages[imageIndex],
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+
+    commandBuffers[currentFrame].pipelineBarrier(
+        vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits::eBottomOfPipe,
+        vk::DependencyFlags{},
+        {},
+        {},
+        imageBarrier
+    );
+
     // End command buffer
     commandBuffers[currentFrame].end();
 
@@ -416,12 +480,12 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submitInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*imageAvailableSemaphores[currentFrame],
+        .pWaitSemaphores = &*imageAvailableSemaphores[semaphoreIndex],
         .pWaitDstStageMask = waitStages,
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[currentFrame],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
+        .pSignalSemaphores = &*renderFinishedSemaphores[semaphoreIndex]
     };
 
     graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
@@ -429,7 +493,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Present the image
     vk::PresentInfoKHR presentInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*renderFinishedSemaphores[currentFrame],
+        .pWaitSemaphores = &*renderFinishedSemaphores[semaphoreIndex],
         .swapchainCount = 1,
         .pSwapchains = &*swapChain,
         .pImageIndices = &imageIndex

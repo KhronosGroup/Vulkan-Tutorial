@@ -223,15 +223,24 @@ bool Renderer::createGraphicsPipeline() {
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
         // Create pipeline rendering info
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
+        vk::Format depthFormat = findDepthFormat();
+        std::cout << "Creating main graphics pipeline with depth format: " << static_cast<int>(depthFormat) << std::endl;
+
+        // Initialize member variable for proper lifetime management
+        mainPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
+            .sType = vk::StructureType::ePipelineRenderingCreateInfo,
+            .pNext = nullptr,
             .colorAttachmentCount = 1,
             .pColorAttachmentFormats = &swapChainImageFormat,
-            .depthAttachmentFormat = findDepthFormat()
+            .depthAttachmentFormat = depthFormat,
+            .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
         // Create graphics pipeline
         vk::GraphicsPipelineCreateInfo pipelineInfo{
-            .pNext = &pipelineRenderingCreateInfo,
+            .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
+            .pNext = &mainPipelineRenderingCreateInfo,
+            .flags = vk::PipelineCreateFlags{},
             .stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
@@ -242,7 +251,11 @@ bool Renderer::createGraphicsPipeline() {
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = *pipelineLayout
+            .layout = *pipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = -1
         };
 
         graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
@@ -411,15 +424,23 @@ bool Renderer::createPBRPipeline() {
         pbrPipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
         // Create pipeline rendering info
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
+        vk::Format depthFormat = findDepthFormat();
+
+        // Initialize member variable for proper lifetime management
+        pbrPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
+            .sType = vk::StructureType::ePipelineRenderingCreateInfo,
+            .pNext = nullptr,
             .colorAttachmentCount = 1,
             .pColorAttachmentFormats = &swapChainImageFormat,
-            .depthAttachmentFormat = findDepthFormat()
+            .depthAttachmentFormat = depthFormat,
+            .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
         // Create graphics pipeline
         vk::GraphicsPipelineCreateInfo pipelineInfo{
-            .pNext = &pipelineRenderingCreateInfo,
+            .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
+            .pNext = &pbrPipelineRenderingCreateInfo,
+            .flags = vk::PipelineCreateFlags{},
             .stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
@@ -430,7 +451,11 @@ bool Renderer::createPBRPipeline() {
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = *pbrPipelineLayout
+            .layout = *pbrPipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = -1
         };
 
         pbrGraphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
@@ -565,15 +590,23 @@ bool Renderer::createLightingPipeline() {
         lightingPipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
         // Create pipeline rendering info
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
+        vk::Format depthFormat = findDepthFormat();
+
+        // Initialize member variable for proper lifetime management
+        lightingPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
+            .sType = vk::StructureType::ePipelineRenderingCreateInfo,
+            .pNext = nullptr,
             .colorAttachmentCount = 1,
             .pColorAttachmentFormats = &swapChainImageFormat,
-            .depthAttachmentFormat = findDepthFormat()
+            .depthAttachmentFormat = depthFormat,
+            .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
         // Create graphics pipeline
         vk::GraphicsPipelineCreateInfo pipelineInfo{
-            .pNext = &pipelineRenderingCreateInfo,
+            .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
+            .pNext = &lightingPipelineRenderingCreateInfo,
+            .flags = vk::PipelineCreateFlags{},
             .stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
@@ -584,7 +617,11 @@ bool Renderer::createLightingPipeline() {
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = *lightingPipelineLayout
+            .layout = *lightingPipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = -1
         };
 
         lightingPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);

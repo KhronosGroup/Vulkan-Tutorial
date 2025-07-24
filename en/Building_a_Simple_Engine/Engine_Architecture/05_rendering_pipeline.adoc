@@ -459,6 +459,14 @@ Proper synchronization is crucial in Vulkan because:
 2. *Parallel Execution*: Modern GPUs execute commands in parallel, which can lead to race conditions without proper synchronization.
 3. *Memory Visibility*: Changes made by one operation may not be visible to another without proper barriers.
 
+The vulkan tutorial includes a more detailed discussion of synchronization, the proper uses of the primitives described above.
+
+* link:../../03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[Synchronization]
+* link:../../03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[Frames In Flight]
+* link:../../11_Compute_Shader.adoc[Compute Shader]
+* link:../../17_Multithreading.adoc[Multithreading]
+
+
 ===== Pipeline Barriers
 
 Pipeline barriers are one of the most important synchronization primitives in Vulkan. They ensure that operations before the barrier complete before operations after the barrier begin, and they can also perform layout transitions for images.

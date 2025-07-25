@@ -7,11 +7,7 @@
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE; // In a .cpp file
 
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 #include <vulkan/vk_platform.h>
 
 // Debug callback for vk::raii
@@ -189,7 +185,8 @@ void Renderer::Cleanup() {
             for (auto& memory : resources.uniformBuffersMemory) {
                 memory.unmapMemory();
             }
-            resources.descriptorSets.clear();
+            resources.basicDescriptorSets.clear();
+            resources.pbrDescriptorSets.clear();
             resources.uniformBuffers.clear();
             resources.uniformBuffersMemory.clear();
         }

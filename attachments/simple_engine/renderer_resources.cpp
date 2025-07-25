@@ -262,6 +262,165 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
     }
 }
 
+// Load texture from file (public wrapper for createTextureImage)
+bool Renderer::LoadTexture(const std::string& texturePath) {
+    if (texturePath.empty()) {
+        std::cerr << "LoadTexture: Empty texture path provided" << std::endl;
+        return false;
+    }
+
+    // Check if texture is already loaded
+    auto it = textureResources.find(texturePath);
+    if (it != textureResources.end()) {
+        // Texture already loaded
+        return true;
+    }
+
+    // Create temporary texture resources
+    TextureResources tempResources;
+
+    // Use existing createTextureImage method
+    bool success = createTextureImage(texturePath, tempResources);
+
+    if (success) {
+        std::cout << "Successfully loaded texture: " << texturePath << std::endl;
+    } else {
+        std::cerr << "Failed to load texture: " << texturePath << std::endl;
+    }
+
+    return success;
+}
+
+// Load texture from raw image data in memory
+bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigned char* imageData,
+                                    int width, int height, int channels) {
+    if (textureId.empty() || !imageData || width <= 0 || height <= 0 || channels <= 0) {
+        std::cerr << "LoadTextureFromMemory: Invalid parameters" << std::endl;
+        return false;
+    }
+
+    // Check if texture is already loaded
+    auto it = textureResources.find(textureId);
+    if (it != textureResources.end()) {
+        // Texture already loaded
+        return true;
+    }
+
+    try {
+        TextureResources resources;
+
+        // Calculate image size (ensure 4 channels for RGBA)
+        int targetChannels = 4; // Always use RGBA for consistency
+        vk::DeviceSize imageSize = width * height * targetChannels;
+
+        // Create staging buffer
+        auto [stagingBuffer, stagingBufferMemory] = createBuffer(
+            imageSize,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+        );
+
+        // Copy and convert pixel data to staging buffer
+        void* data = stagingBufferMemory.mapMemory(0, imageSize);
+        unsigned char* stagingData = static_cast<unsigned char*>(data);
+
+        if (channels == 4) {
+            // Already RGBA, direct copy
+            memcpy(stagingData, imageData, imageSize);
+        } else if (channels == 3) {
+            // RGB to RGBA conversion
+            for (int i = 0; i < width * height; ++i) {
+                stagingData[i * 4 + 0] = imageData[i * 3 + 0]; // R
+                stagingData[i * 4 + 1] = imageData[i * 3 + 1]; // G
+                stagingData[i * 4 + 2] = imageData[i * 3 + 2]; // B
+                stagingData[i * 4 + 3] = 255; // A
+            }
+        } else if (channels == 2) {
+            // Grayscale + Alpha to RGBA conversion
+            for (int i = 0; i < width * height; ++i) {
+                stagingData[i * 4 + 0] = imageData[i * 2 + 0]; // R (grayscale)
+                stagingData[i * 4 + 1] = imageData[i * 2 + 0]; // G (grayscale)
+                stagingData[i * 4 + 2] = imageData[i * 2 + 0]; // B (grayscale)
+                stagingData[i * 4 + 3] = imageData[i * 2 + 1]; // A (alpha)
+            }
+        } else if (channels == 1) {
+            // Grayscale to RGBA conversion
+            for (int i = 0; i < width * height; ++i) {
+                stagingData[i * 4 + 0] = imageData[i]; // R
+                stagingData[i * 4 + 1] = imageData[i]; // G
+                stagingData[i * 4 + 2] = imageData[i]; // B
+                stagingData[i * 4 + 3] = 255; // A
+            }
+        } else {
+            std::cerr << "LoadTextureFromMemory: Unsupported channel count: " << channels << std::endl;
+            stagingBufferMemory.unmapMemory();
+            return false;
+        }
+
+        stagingBufferMemory.unmapMemory();
+
+        // Create texture image
+        auto [textureImg, textureImgMem] = createImage(
+            width,
+            height,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageTiling::eOptimal,
+            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+            vk::MemoryPropertyFlagBits::eDeviceLocal
+        );
+
+        resources.textureImage = std::move(textureImg);
+        resources.textureImageMemory = std::move(textureImgMem);
+
+        // Transition image layout for copy
+        transitionImageLayout(
+            *resources.textureImage,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eTransferDstOptimal
+        );
+
+        // Copy buffer to image
+        copyBufferToImage(
+            *stagingBuffer,
+            *resources.textureImage,
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height)
+        );
+
+        // Transition image layout for shader access
+        transitionImageLayout(
+            *resources.textureImage,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageLayout::eTransferDstOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal
+        );
+
+        // Create texture image view
+        resources.textureImageView = createImageView(
+            resources.textureImage,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageAspectFlagBits::eColor
+        );
+
+        // Create texture sampler
+        if (!createTextureSampler(resources)) {
+            return false;
+        }
+
+        // Add to texture resources map
+        textureResources[textureId] = std::move(resources);
+
+        std::cout << "Successfully loaded texture from memory: " << textureId
+                  << " (" << width << "x" << height << ", " << channels << " channels)" << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to load texture from memory: " << e.what() << std::endl;
+        return false;
+    }
+}
+
 // Create mesh resources
 bool Renderer::createMeshResources(MeshComponent* meshComponent) {
     try {
@@ -385,25 +544,43 @@ bool Renderer::createUniformBuffers(Entity* entity) {
 // Create descriptor pool
 bool Renderer::createDescriptorPool() {
     try {
-        // Create descriptor pool sizes
+        // Calculate pool sizes for all Bistro materials (131) plus additional entities
+        // Each entity needs descriptor sets for both basic and PBR pipelines
+        // PBR pipeline needs 6 descriptors per set (1 UBO + 5 textures)
+        // Basic pipeline needs 2 descriptors per set (1 UBO + 1 texture)
+        const uint32_t maxEntities = 200; // Support up to 200 entities (131 Bistro + extras)
+        const uint32_t maxDescriptorSets = MAX_FRAMES_IN_FLIGHT * maxEntities * 2; // 2 pipeline types per entity
+
+        // Calculate descriptor counts
+        // UBO descriptors: 1 per descriptor set
+        const uint32_t uboDescriptors = maxDescriptorSets;
+        // Texture descriptors: Basic pipeline uses 1, PBR uses 5, so average ~3 per set
+        // But allocate for worst case: all entities using PBR (5 textures each)
+        const uint32_t textureDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities * 5;
+
         std::array<vk::DescriptorPoolSize, 2> poolSizes = {
             vk::DescriptorPoolSize{
                 .type = vk::DescriptorType::eUniformBuffer,
-                .descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 100)
+                .descriptorCount = uboDescriptors
             },
             vk::DescriptorPoolSize{
                 .type = vk::DescriptorType::eCombinedImageSampler,
-                .descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 100)
+                .descriptorCount = textureDescriptors
             }
         };
 
         // Create descriptor pool
         vk::DescriptorPoolCreateInfo poolInfo{
             .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-            .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 100),
+            .maxSets = maxDescriptorSets,
             .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
             .pPoolSizes = poolSizes.data()
         };
+
+        std::cout << "Creating descriptor pool with capacity for " << maxEntities << " entities:" << std::endl;
+        std::cout << "  Max descriptor sets: " << maxDescriptorSets << std::endl;
+        std::cout << "  UBO descriptors: " << uboDescriptors << std::endl;
+        std::cout << "  Texture descriptors: " << textureDescriptors << std::endl;
 
         descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
         return true;
@@ -414,7 +591,7 @@ bool Renderer::createDescriptorPool() {
 }
 
 // Create descriptor sets
-bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePath) {
+bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePath, bool usePBR) {
     try {
         // Get entity resources
         auto entityIt = entityResources.find(entity);
@@ -423,37 +600,50 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             return false;
         }
 
-        // Get texture resources
-        TextureResources textureRes;
+        // Get texture resources - don't move them out of the map!
+        TextureResources* textureRes = nullptr;
         if (!texturePath.empty()) {
             auto textureIt = textureResources.find(texturePath);
             if (textureIt == textureResources.end()) {
                 // Create texture resources if they don't exist
-                if (!createTextureImage(texturePath, textureRes)) {
+                TextureResources tempRes;
+                if (!createTextureImage(texturePath, tempRes)) {
                     return false;
                 }
-            } else {
-                textureRes = std::move(textureIt->second);
+                // The texture should now be in the map, find it again
+                textureIt = textureResources.find(texturePath);
+                if (textureIt == textureResources.end()) {
+                    std::cerr << "Failed to find texture after creation: " << texturePath << std::endl;
+                    return false;
+                }
             }
+            textureRes = &textureIt->second;
         }
 
-        // Create descriptor sets using RAII
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
+        // Create descriptor sets using RAII - choose layout based on pipeline type
+        vk::DescriptorSetLayout selectedLayout = usePBR ? *pbrDescriptorSetLayout : *descriptorSetLayout;
+        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, selectedLayout);
         vk::DescriptorSetAllocateInfo allocInfo{
             .descriptorPool = *descriptorPool,
             .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
             .pSetLayouts = layouts.data()
         };
 
-        // Allocate descriptor sets using RAII wrapper
-        vk::raii::DescriptorSets raiiDescriptorSets(device, allocInfo);
+        // Choose the appropriate descriptor set vector based on pipeline type
+        auto& targetDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
 
-        // Convert to vector of individual RAII descriptor sets
-        entityIt->second.descriptorSets.clear();
-        entityIt->second.descriptorSets.reserve(MAX_FRAMES_IN_FLIGHT);
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            entityIt->second.descriptorSets.emplace_back(std::move(raiiDescriptorSets[i]));
-            std::cout << "Created descriptor set " << i << " with handle: " << *entityIt->second.descriptorSets[i] << std::endl;
+        // Only create descriptor sets if they don't already exist for this pipeline type
+        if (targetDescriptorSets.empty()) {
+            // Allocate descriptor sets using RAII wrapper
+            vk::raii::DescriptorSets raiiDescriptorSets(device, allocInfo);
+
+            // Convert to vector of individual RAII descriptor sets
+            targetDescriptorSets.clear();
+            targetDescriptorSets.reserve(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                targetDescriptorSets.emplace_back(std::move(raiiDescriptorSets[i]));
+                std::cout << "Created " << (usePBR ? "PBR" : "basic") << " descriptor set " << i << " with handle: " << *targetDescriptorSets[i] << std::endl;
+            }
         }
 
         // Update descriptor sets
@@ -465,54 +655,113 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                 .range = sizeof(UniformBufferObject)
             };
 
-            // Always update both descriptors
-            std::array<vk::WriteDescriptorSet, 2> descriptorWrites;
+            if (usePBR) {
+                // PBR pipeline: Create 6 descriptor writes (UBO + 5 textures)
+                std::array<vk::WriteDescriptorSet, 6> descriptorWrites;
+                std::array<vk::DescriptorImageInfo, 5> imageInfos;
 
-            // Uniform buffer descriptor write
-            descriptorWrites[0] = vk::WriteDescriptorSet{
-                .dstSet = entityIt->second.descriptorSets[i],
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType = vk::DescriptorType::eUniformBuffer,
-                .pBufferInfo = &bufferInfo
-            };
-
-            // Check if texture resources are valid
-            bool hasValidTexture = !texturePath.empty() &&
-                                  *textureRes.textureSampler &&
-                                  *textureRes.textureImageView;
-
-            // Texture sampler descriptor
-            vk::DescriptorImageInfo imageInfo;
-            if (hasValidTexture) {
-                // Use provided texture resources
-                imageInfo = vk::DescriptorImageInfo{
-                    .sampler = *textureRes.textureSampler,
-                    .imageView = *textureRes.textureImageView,
-                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                // Uniform buffer descriptor write (binding 0)
+                descriptorWrites[0] = vk::WriteDescriptorSet{
+                    .dstSet = targetDescriptorSets[i],
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .pBufferInfo = &bufferInfo
                 };
-            } else {
-                // Use default texture resources
-                imageInfo = vk::DescriptorImageInfo{
+
+                // Try to use loaded textures instead of default white texture
+                vk::DescriptorImageInfo defaultImageInfo{
                     .sampler = *defaultTextureResources.textureSampler,
                     .imageView = *defaultTextureResources.textureImageView,
                     .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
                 };
+
+                // Use entity-specific texture if available, otherwise fall back to default
+                bool hasValidTexture = !texturePath.empty() &&
+                                      textureResources.find(texturePath) != textureResources.end();
+
+                for (int j = 0; j < 5; j++) {
+                    if (hasValidTexture) {
+                        // Use the entity's specific texture for all PBR bindings
+                        const auto& texRes = textureResources.at(texturePath);
+                        imageInfos[j] = vk::DescriptorImageInfo{
+                            .sampler = *texRes.textureSampler,
+                            .imageView = *texRes.textureImageView,
+                            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                        };
+                        std::cout << "Using entity texture for PBR binding " << (j+1) << ": " << texturePath << std::endl;
+                    } else {
+                        // Fall back to default texture
+                        imageInfos[j] = defaultImageInfo;
+                        std::cout << "Using default texture for PBR binding " << (j+1) << std::endl;
+                    }
+                }
+
+                // Create descriptor writes for all 5 texture bindings
+                for (int binding = 1; binding <= 5; binding++) {
+                    descriptorWrites[binding] = vk::WriteDescriptorSet{
+                        .dstSet = targetDescriptorSets[i],
+                        .dstBinding = static_cast<uint32_t>(binding),
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                        .pImageInfo = &imageInfos[binding - 1]
+                    };
+                }
+
+                // Update descriptor sets with all 6 descriptors
+                device.updateDescriptorSets(descriptorWrites, {});
+            } else {
+                // Basic pipeline: Create 2 descriptor writes (UBO + 1 texture)
+                std::array<vk::WriteDescriptorSet, 2> descriptorWrites;
+
+                // Uniform buffer descriptor write
+                descriptorWrites[0] = vk::WriteDescriptorSet{
+                    .dstSet = targetDescriptorSets[i],
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .pBufferInfo = &bufferInfo
+                };
+
+                // Check if texture resources are valid
+                bool hasValidTexture = !texturePath.empty() && textureRes &&
+                                      *textureRes->textureSampler &&
+                                      *textureRes->textureImageView;
+
+                // Texture sampler descriptor
+                vk::DescriptorImageInfo imageInfo;
+                if (hasValidTexture) {
+                    // Use provided texture resources
+                    imageInfo = vk::DescriptorImageInfo{
+                        .sampler = *textureRes->textureSampler,
+                        .imageView = *textureRes->textureImageView,
+                        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                    };
+                } else {
+                    // Use default texture resources
+                    imageInfo = vk::DescriptorImageInfo{
+                        .sampler = *defaultTextureResources.textureSampler,
+                        .imageView = *defaultTextureResources.textureImageView,
+                        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                    };
+                }
+
+                // Texture sampler descriptor write
+                descriptorWrites[1] = vk::WriteDescriptorSet{
+                    .dstSet = targetDescriptorSets[i],
+                    .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                    .pImageInfo = &imageInfo
+                };
+
+                // Update descriptor sets with both descriptors
+                device.updateDescriptorSets(descriptorWrites, {});
             }
-
-            // Texture sampler descriptor write
-            descriptorWrites[1] = vk::WriteDescriptorSet{
-                .dstSet = entityIt->second.descriptorSets[i],
-                .dstBinding = 1,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                .pImageInfo = &imageInfo
-            };
-
-            // Update descriptor sets with both descriptors
-            device.updateDescriptorSets(descriptorWrites, {});
         }
 
         return true;

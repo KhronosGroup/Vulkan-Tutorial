@@ -109,6 +109,22 @@ void ImGuiSystem::NewFrame() {
     // Create HRTF Audio Control UI
     ImGui::Begin("HRTF Audio Controls");
     ImGui::Text("Hello, Vulkan!");
+    // PBR Rendering Controls
+    ImGui::Separator();
+    ImGui::Text("PBR Rendering Controls:");
+
+    if (ImGui::Checkbox("Enable PBR Rendering", &pbrEnabled)) {
+        std::cout << "PBR rendering " << (pbrEnabled ? "enabled" : "disabled") << std::endl;
+    }
+
+    if (pbrEnabled) {
+        ImGui::Text("Status: PBR pipeline active for supported models");
+        ImGui::Text("Models using PBR: Bistro scene");
+    } else {
+        ImGui::Text("Status: Using basic rendering pipeline");
+        ImGui::Text("All models rendered with basic shading");
+    }
+
     ImGui::Text("3D Audio Position Control");
 
     // Audio source selection

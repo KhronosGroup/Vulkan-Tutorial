@@ -182,6 +182,24 @@ private:
     float deltaTime = 0.0f;
     uint64_t lastFrameTime = 0;
 
+    // Camera control state
+    struct CameraControlState {
+        bool moveForward = false;
+        bool moveBackward = false;
+        bool moveLeft = false;
+        bool moveRight = false;
+        bool moveUp = false;
+        bool moveDown = false;
+        bool mouseLeftPressed = false;
+        float lastMouseX = 0.0f;
+        float lastMouseY = 0.0f;
+        float yaw = 0.0f;   // Horizontal rotation
+        float pitch = 0.0f; // Vertical rotation
+        bool firstMouse = true;
+        float cameraSpeed = 5.0f;
+        float mouseSensitivity = 0.1f;
+    } cameraControl;
+
     /**
      * @brief Update the engine state.
      * @param deltaTime The time elapsed since the last update.
@@ -205,4 +223,15 @@ private:
      * @param height The new height of the window.
      */
     void HandleResize(int width, int height);
+
+    /**
+     * @brief Update camera controls based on input state.
+     * @param deltaTime The time elapsed since the last update.
+     */
+    void UpdateCameraControls(float deltaTime);
+
+    /**
+     * @brief Check for completed background loading and create entities if ready.
+     */
+    void CheckAndCreateLoadedEntities();
 };

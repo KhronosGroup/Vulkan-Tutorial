@@ -965,8 +965,13 @@ void PhysicsSystem::UpdateGPUPhysicsData() {
         return;
     }
 
-    // TODO: Add validity checks for Vulkan resources if needed
-    // Temporarily removed to focus on main validation error investigation
+    // Validate Vulkan resources before using them
+    if (*vulkanResources.physicsBuffer == VK_NULL_HANDLE || *vulkanResources.physicsBufferMemory == VK_NULL_HANDLE ||
+        *vulkanResources.counterBuffer == VK_NULL_HANDLE || *vulkanResources.counterBufferMemory == VK_NULL_HANDLE ||
+        *vulkanResources.paramsBuffer == VK_NULL_HANDLE || *vulkanResources.paramsBufferMemory == VK_NULL_HANDLE) {
+        std::cerr << "PhysicsSystem::UpdateGPUPhysicsData: Invalid Vulkan resources" << std::endl;
+        return;
+    }
 
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 
@@ -1030,8 +1035,11 @@ void PhysicsSystem::ReadbackGPUPhysicsData() {
         return;
     }
 
-    // TODO: Add validity checks for Vulkan resources if needed
-    // Temporarily removed to focus on main validation error investigation
+    // Validate Vulkan resources before using them
+    if (*vulkanResources.physicsBuffer == VK_NULL_HANDLE || *vulkanResources.physicsBufferMemory == VK_NULL_HANDLE) {
+        std::cerr << "PhysicsSystem::ReadbackGPUPhysicsData: Invalid Vulkan resources" << std::endl;
+        return;
+    }
 
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 
@@ -1064,8 +1072,14 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
         return;
     }
 
-    // TODO: Add validity checks for Vulkan resources if needed
-    // Temporarily removed to focus on main validation error investigation
+    // Validate Vulkan resources before using them
+    if (*vulkanResources.broadPhasePipeline == VK_NULL_HANDLE || *vulkanResources.narrowPhasePipeline == VK_NULL_HANDLE ||
+        *vulkanResources.integratePipeline == VK_NULL_HANDLE || *vulkanResources.pipelineLayout == VK_NULL_HANDLE ||
+        vulkanResources.descriptorSets.empty() || *vulkanResources.physicsBuffer == VK_NULL_HANDLE ||
+        *vulkanResources.counterBuffer == VK_NULL_HANDLE || *vulkanResources.paramsBuffer == VK_NULL_HANDLE) {
+        std::cerr << "PhysicsSystem::SimulatePhysicsOnGPU: Invalid Vulkan resources" << std::endl;
+        return;
+    }
 
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 

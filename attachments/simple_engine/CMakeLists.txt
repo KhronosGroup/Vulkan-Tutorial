@@ -89,6 +89,7 @@ add_custom_target(shaders DEPENDS ${SHADER_SPVS})
 set(SOURCES
     main.cpp
     engine.cpp
+    scene_loading.cpp
     platform.cpp
     renderer_core.cpp
     renderer_rendering.cpp

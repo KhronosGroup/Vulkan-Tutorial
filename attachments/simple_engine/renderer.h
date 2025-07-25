@@ -1,10 +1,6 @@
 #pragma once
 
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vk_platform.h>
 #include <vector>
@@ -50,9 +46,13 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
-    alignas(16) glm::vec4 lightPos;
-    alignas(16) glm::vec4 lightColor;
-    alignas(16) glm::vec4 viewPos;
+    alignas(16) glm::vec4 lightPositions[4];
+    alignas(16) glm::vec4 lightColors[4];
+    alignas(16) glm::vec4 camPos;
+    alignas(4) float exposure;
+    alignas(4) float gamma;
+    alignas(4) float prefilteredCubeMipLevels;
+    alignas(4) float scaleIBLAmbient;
 };
 
 /**
@@ -209,6 +209,25 @@ public:
     }
 
     /**
+     * @brief Load a texture from file.
+     * @param texturePath The path to the texture file.
+     * @return True if the texture was loaded successfully, false otherwise.
+     */
+    bool LoadTexture(const std::string& texturePath);
+
+    /**
+     * @brief Load a texture from raw image data in memory.
+     * @param textureId The identifier for the texture.
+     * @param imageData The raw image data.
+     * @param width The width of the image.
+     * @param height The height of the image.
+     * @param channels The number of channels in the image.
+     * @return True if the texture was loaded successfully, false otherwise.
+     */
+    bool LoadTextureFromMemory(const std::string& textureId, const unsigned char* imageData,
+                              int width, int height, int channels);
+
+    /**
      * @brief Transition an image layout.
      * @param image The image.
      * @param format The image format.
@@ -253,11 +272,22 @@ public:
     void SetFramebufferResized() {
         framebufferResized = true;
     }
+
+    /**
+     * @brief Set the model loader reference for accessing extracted lights.
+     * @param modelLoader Pointer to the model loader.
+     */
+    void SetModelLoader(class ModelLoader* modelLoader) {
+        this->modelLoader = modelLoader;
+    }
     vk::Format findDepthFormat();
 
 private:
     // Platform
     Platform* platform = nullptr;
+
+    // Model loader reference for accessing extracted lights
+    class ModelLoader* modelLoader = nullptr;
 
     // Vulkan RAII context
     vk::raii::Context context;
@@ -359,7 +389,8 @@ private:
         std::vector<vk::raii::Buffer> uniformBuffers;
         std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
         std::vector<void*> uniformBuffersMapped;
-        std::vector<vk::raii::DescriptorSet> descriptorSets;
+        std::vector<vk::raii::DescriptorSet> basicDescriptorSets;  // For basic pipeline
+        std::vector<vk::raii::DescriptorSet> pbrDescriptorSets;    // For PBR pipeline
     };
     std::unordered_map<Entity*, EntityResources> entityResources;
 
@@ -429,7 +460,7 @@ private:
     bool createMeshResources(MeshComponent* meshComponent);
     bool createUniformBuffers(Entity* entity);
     bool createDescriptorPool();
-    bool createDescriptorSets(Entity* entity, const std::string& texturePath);
+    bool createDescriptorSets(Entity* entity, const std::string& texturePath, bool usePBR = false);
     bool createCommandBuffers();
     bool createSyncObjects();
 

@@ -3,11 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <optional>
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 
 /**
  * @brief Structure for Vulkan queue family indices.

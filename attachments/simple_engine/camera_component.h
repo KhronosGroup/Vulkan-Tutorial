@@ -151,6 +151,17 @@ public:
     }
 
     /**
+     * @brief Make the camera look at a specific target position.
+     * @param targetPosition The position to look at.
+     * @param upVector The up vector (optional, defaults to current up vector).
+     */
+    void LookAt(const glm::vec3& targetPosition, const glm::vec3& upVector = glm::vec3(0.0f, 1.0f, 0.0f)) {
+        target = targetPosition;
+        up = upVector;
+        viewMatrixDirty = true;
+    }
+
+    /**
      * @brief Get the view matrix.
      * @return The view matrix.
      */

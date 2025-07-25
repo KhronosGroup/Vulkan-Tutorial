@@ -56,8 +56,5 @@ void CameraComponent::UpdateProjectionMatrix() {
         float halfHeight = orthoHeight * 0.5f;
         projectionMatrix = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearPlane, farPlane);
     }
-    // Flip Y-axis for Vulkan coordinate system
-    // @see en/Building_a_Simple_Engine/Camera_Transformations/05_vulkan_integration.adoc#coordinate-system-differences
-    projectionMatrix[1][1] *= -1;
     projectionMatrixDirty = false;
 }

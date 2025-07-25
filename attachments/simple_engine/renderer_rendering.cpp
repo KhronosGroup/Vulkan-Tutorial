@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "imgui_system.h"
 #include "imgui/imgui.h"
+#include "model_loader.h"
 #include <fstream>
 #include <stdexcept>
 #include <array>
@@ -270,6 +271,15 @@ void Renderer::cleanupSwapChain() {
 
 // Recreate swap chain
 void Renderer::recreateSwapChain() {
+    // Wait for all frames in flight to complete before recreating the swap chain
+    std::vector<vk::Fence> allFences;
+    for (const auto& fence : inFlightFences) {
+        allFences.push_back(*fence);
+    }
+    if (!allFences.empty()) {
+        device.waitForFences(allFences, VK_TRUE, UINT64_MAX);
+    }
+
     // Wait for the device to be idle before recreating the swap chain
     device.waitIdle();
 
@@ -286,6 +296,18 @@ void Renderer::recreateSwapChain() {
 
     // Recreate descriptor pool and pipelines
     createDescriptorPool();
+
+    // Wait for all command buffers to complete before clearing resources
+    for (const auto& fence : inFlightFences) {
+        device.waitForFences(*fence, VK_TRUE, UINT64_MAX);
+    }
+
+    // Clear all entity descriptor sets since they're now invalid (allocated from old pool)
+    for (auto& [entity, resources] : entityResources) {
+        resources.basicDescriptorSets.clear();
+        resources.pbrDescriptorSets.clear();
+    }
+
     createGraphicsPipeline();
     createPBRPipeline();
     createLightingPipeline();
@@ -312,10 +334,54 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
     ubo.proj = camera->GetProjectionMatrix();
     ubo.proj[1][1] *= -1; // Flip Y for Vulkan
 
-    // Set light position and color
-    ubo.lightPos = glm::vec4(5.0f, 5.0f, 5.0f, 1.0f);
-    ubo.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    ubo.viewPos = glm::vec4(camera->GetPosition(), 1.0f);
+    // Set up lighting from extracted GLTF lights or fallback to default
+    std::vector<ExtractedLight> extractedLights;
+    if (modelLoader) {
+        extractedLights = modelLoader->GetExtractedLights("../Assets/Bistro.glb");
+    }
+
+    if (!extractedLights.empty()) {
+        // Fill up to 4 lights from extracted lights
+        for (size_t i = 0; i < 4 && i < extractedLights.size(); ++i) {
+            const auto& light = extractedLights[i];
+            ubo.lightPositions[i] = glm::vec4(light.position, 1.0f);
+            ubo.lightColors[i] = glm::vec4(light.color * light.intensity, 1.0f);
+        }
+
+        // Fill remaining slots with dim lights if we have fewer than 4
+        for (size_t i = extractedLights.size(); i < 4; ++i) {
+            ubo.lightPositions[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            ubo.lightColors[i] = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f); // Very dim fallback
+        }
+    } else {
+        // Fallback to default hardcoded lights if no extracted lights available
+        std::cout << "No extracted lights found, using fallback lighting" << std::endl;
+
+        // Light 0: Main key light (white, positioned above and to the right)
+        ubo.lightPositions[0] = glm::vec4(10.0f, 10.0f, 10.0f, 1.0f);
+        ubo.lightColors[0] = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+        // Light 1: Fill light (warm, positioned to the left)
+        ubo.lightPositions[1] = glm::vec4(-8.0f, 5.0f, 8.0f, 1.0f);
+        ubo.lightColors[1] = glm::vec4(0.8f, 0.7f, 0.6f, 1.0f);
+
+        // Light 2: Rim light (cool, positioned behind)
+        ubo.lightPositions[2] = glm::vec4(0.0f, 8.0f, -12.0f, 1.0f);
+        ubo.lightColors[2] = glm::vec4(0.6f, 0.7f, 1.0f, 1.0f);
+
+        // Light 3: Ambient fill (dim, positioned below)
+        ubo.lightPositions[3] = glm::vec4(0.0f, -5.0f, 5.0f, 1.0f);
+        ubo.lightColors[3] = glm::vec4(0.3f, 0.3f, 0.4f, 1.0f);
+    }
+
+    // Set camera position for PBR calculations
+    ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);
+
+    // Set PBR parameters
+    ubo.exposure = 1.0f;
+    ubo.gamma = 2.2f;
+    ubo.prefilteredCubeMipLevels = 0.0f;
+    ubo.scaleIBLAmbient = 1.0f;
 
     // Copy to uniform buffer
     std::memcpy(entityIt->second.uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -395,9 +461,6 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Begin dynamic rendering with vk::raii
     commandBuffers[currentFrame].beginRendering(renderingInfo);
 
-    // Bind the graphics pipeline
-    commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-
     // Set the viewport
     vk::Viewport viewport(0.0f, 0.0f,
                          static_cast<float>(swapChainExtent.width),
@@ -408,6 +471,10 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Set the scissor
     vk::Rect2D scissor(vk::Offset2D(0, 0), swapChainExtent);
     commandBuffers[currentFrame].setScissor(0, scissor);
+
+    // Track current pipeline to avoid unnecessary bindings
+    vk::raii::Pipeline* currentPipeline = nullptr;
+    vk::raii::PipelineLayout* currentLayout = nullptr;
 
     // Render each entity
     for (auto entity : entities) {
@@ -423,8 +490,10 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             continue;
         }
 
-        // Update the uniform buffer
-        updateUniformBuffer(currentFrame, entity, camera);
+        // Determine which pipeline to use based on ImGui PBR toggle and entity type
+        bool usePBR = imguiSystem && imguiSystem->IsPBREnabled() && (entity->GetName().find("Bistro") == 0);
+        vk::raii::Pipeline* selectedPipeline = usePBR ? &pbrGraphicsPipeline : &graphicsPipeline;
+        vk::raii::PipelineLayout* selectedLayout = usePBR ? &pbrPipelineLayout : &pipelineLayout;
 
         // Get the mesh resources
         auto meshIt = meshResources.find(meshComponent);
@@ -444,13 +513,36 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
                 continue;
             }
 
-            // Create descriptor sets
-            if (!createDescriptorSets(entity, meshComponent->GetTexturePath())) {
+            // Create descriptor sets with correct pipeline type
+            if (!createDescriptorSets(entity, meshComponent->GetTexturePath(), usePBR)) {
                 continue;
             }
 
             entityIt = entityResources.find(entity);
+        } else {
+            // Entity exists, but check if we need to create descriptor sets for the current pipeline type
+            auto& targetDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
+            if (targetDescriptorSets.empty()) {
+                // Create missing descriptor sets for the current pipeline type
+                if (!createDescriptorSets(entity, meshComponent->GetTexturePath(), usePBR)) {
+                    continue;
+                }
+            }
         }
+
+        // Bind pipeline if it changed
+        if (currentPipeline != selectedPipeline) {
+            commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
+            currentPipeline = selectedPipeline;
+            currentLayout = selectedLayout;
+
+            if (usePBR) {
+                std::cout << "Using PBR pipeline for entity: " << entity->GetName() << std::endl;
+            }
+        }
+
+        // Update the uniform buffer
+        updateUniformBuffer(currentFrame, entity, camera);
 
         // Bind the vertex buffer
         std::array<vk::Buffer, 1> vertexBuffers = {*meshIt->second.vertexBuffer};
@@ -460,8 +552,62 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
         // Bind the index buffer
         commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
 
-        // Bind the descriptor set (dereference RAII wrapper)
-        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*entityIt->second.descriptorSets[currentFrame]}, {});
+        // Bind the descriptor set using the appropriate pipeline layout
+        auto& selectedDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
+
+        // Check if descriptor sets exist for the current pipeline type
+        if (selectedDescriptorSets.empty()) {
+            std::cerr << "Error: No descriptor sets available for entity " << entity->GetName()
+                      << " (pipeline: " << (usePBR ? "PBR" : "basic") << ")" << std::endl;
+            continue; // Skip this entity
+        }
+
+        if (currentFrame >= selectedDescriptorSets.size()) {
+            std::cerr << "Error: Invalid frame index " << currentFrame
+                      << " for entity " << entity->GetName()
+                      << " (descriptor sets size: " << selectedDescriptorSets.size() << ")" << std::endl;
+            continue; // Skip this entity
+        }
+
+        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, **currentLayout, 0, {*selectedDescriptorSets[currentFrame]}, {});
+
+        // Push constants for PBR pipeline
+        if (usePBR) {
+            // Define PBR push constants structure matching the shader
+            struct PushConstants {
+                glm::vec4 baseColorFactor;
+                float metallicFactor;
+                float roughnessFactor;
+                int baseColorTextureSet;
+                int physicalDescriptorTextureSet;
+                int normalTextureSet;
+                int occlusionTextureSet;
+                int emissiveTextureSet;
+                float alphaMask;
+                float alphaMaskCutoff;
+            };
+
+            // Set default PBR material properties
+            PushConstants pushConstants{};
+            pushConstants.baseColorFactor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f); // White base color
+            pushConstants.metallicFactor = 0.0f;   // Non-metallic
+            pushConstants.roughnessFactor = 1.0f;  // Fully rough
+            pushConstants.baseColorTextureSet = 0;      // Use texture set 0
+            pushConstants.physicalDescriptorTextureSet = 0;
+            pushConstants.normalTextureSet = 0;
+            pushConstants.occlusionTextureSet = 0;
+            pushConstants.emissiveTextureSet = 0;
+            pushConstants.alphaMask = 0.0f;
+            pushConstants.alphaMaskCutoff = 0.5f;
+
+            // Push constants to the shader
+            commandBuffers[currentFrame].pushConstants(
+                **currentLayout,
+                vk::ShaderStageFlagBits::eFragment,
+                0,
+                vk::ArrayProxy<const uint8_t>(sizeof(PushConstants), reinterpret_cast<const uint8_t*>(&pushConstants))
+            );
+        }
 
         // Draw the mesh
         commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, 1, 0, 0, 0);

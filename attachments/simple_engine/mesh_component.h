@@ -5,11 +5,7 @@
 #include <array>
 #include <glm/glm.hpp>
 
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan.hpp>
-#else
-import vulkan_hpp;
-#endif
 
 #include "component.h"
 
@@ -28,11 +24,11 @@ struct Vertex {
     }
 
     static vk::VertexInputBindingDescription getBindingDescription() {
-        vk::VertexInputBindingDescription bindingDescription{
-            .binding = 0,
-            .stride = sizeof(Vertex),
-            .inputRate = vk::VertexInputRate::eVertex
-        };
+        vk::VertexInputBindingDescription bindingDescription(
+            0,                                  // binding
+            sizeof(Vertex),                     // stride
+            vk::VertexInputRate::eVertex        // inputRate
+        );
         return bindingDescription;
     }
 
@@ -143,4 +139,10 @@ public:
      * @param color The color of the cube.
      */
     void CreateCube(float size = 1.0f, const glm::vec3& color = glm::vec3(1.0f));
+
+    /**
+     * @brief Load mesh data from a Model.
+     * @param model Pointer to the model to load from.
+     */
+    void LoadFromModel(const class Model* model);
 };

@@ -9,11 +9,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <queue>
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 #include <vulkan/vk_platform.h>
 
 /**

@@ -3,11 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 #include <vulkan/vk_platform.h>
 
 // Forward declarations
@@ -105,6 +101,12 @@ public:
      */
     void SetAudioSystem(AudioSystem* audioSystem);
 
+    /**
+     * @brief Get the current PBR rendering state.
+     * @return True if PBR rendering is enabled, false otherwise.
+     */
+    bool IsPBREnabled() const { return pbrEnabled; }
+
 private:
     // ImGui context
     ImGuiContext* context = nullptr;
@@ -150,6 +152,9 @@ private:
 
     // Initialization flag
     bool initialized = false;
+
+    // PBR rendering state
+    bool pbrEnabled = false;
 
     /**
      * @brief Create Vulkan resources for ImGui.

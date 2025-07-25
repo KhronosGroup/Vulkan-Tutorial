@@ -5,11 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include <glm/glm.hpp>
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 #include <vulkan/vk_platform.h>
 
 class Entity;

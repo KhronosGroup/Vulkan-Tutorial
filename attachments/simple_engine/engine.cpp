@@ -1,8 +1,10 @@
 #include "engine.h"
+#include "scene_loading.h"
 
 #include <chrono>
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
 
 // This implementation corresponds to the Engine_Architecture chapter in the tutorial:
 // @see en/Building_a_Simple_Engine/Engine_Architecture/02_architectural_patterns.adoc
@@ -38,6 +40,37 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
 
     // Set mouse callback
     platform->SetMouseCallback([this](float x, float y, uint32_t buttons) {
+        // Handle camera rotation when left mouse button is pressed
+        if (buttons & 1) { // Left mouse button (bit 0)
+            if (!cameraControl.mouseLeftPressed) {
+                cameraControl.mouseLeftPressed = true;
+                cameraControl.firstMouse = true;
+            }
+
+            if (cameraControl.firstMouse) {
+                cameraControl.lastMouseX = x;
+                cameraControl.lastMouseY = y;
+                cameraControl.firstMouse = false;
+            }
+
+            float xOffset = x - cameraControl.lastMouseX;
+            float yOffset = cameraControl.lastMouseY - y; // Reversed since y-coordinates go from bottom to top
+            cameraControl.lastMouseX = x;
+            cameraControl.lastMouseY = y;
+
+            xOffset *= cameraControl.mouseSensitivity;
+            yOffset *= cameraControl.mouseSensitivity;
+
+            cameraControl.yaw += xOffset;
+            cameraControl.pitch += yOffset;
+
+            // Constrain pitch to avoid gimbal lock
+            if (cameraControl.pitch > 89.0f) cameraControl.pitch = 89.0f;
+            if (cameraControl.pitch < -89.0f) cameraControl.pitch = -89.0f;
+        } else {
+            cameraControl.mouseLeftPressed = false;
+        }
+
         if (imguiSystem) {
             imguiSystem->HandleMouse(x, y, buttons);
         }
@@ -45,6 +78,34 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
 
     // Set keyboard callback
     platform->SetKeyboardCallback([this](uint32_t key, bool pressed) {
+        // Handle camera movement keys (WASD + Arrow keys)
+        switch (key) {
+            case GLFW_KEY_W:
+            case GLFW_KEY_UP:
+                cameraControl.moveForward = pressed;
+                break;
+            case GLFW_KEY_S:
+            case GLFW_KEY_DOWN:
+                cameraControl.moveBackward = pressed;
+                break;
+            case GLFW_KEY_A:
+            case GLFW_KEY_LEFT:
+                cameraControl.moveLeft = pressed;
+                break;
+            case GLFW_KEY_D:
+            case GLFW_KEY_RIGHT:
+                cameraControl.moveRight = pressed;
+                break;
+            case GLFW_KEY_Q:
+            case GLFW_KEY_PAGE_UP:
+                cameraControl.moveUp = pressed;
+                break;
+            case GLFW_KEY_E:
+            case GLFW_KEY_PAGE_DOWN:
+                cameraControl.moveDown = pressed;
+                break;
+        }
+
         if (imguiSystem) {
             imguiSystem->HandleKeyboard(key, pressed);
         }
@@ -67,6 +128,9 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     if (!modelLoader->Initialize(renderer.get())) {
         return false;
     }
+
+    // Connect model loader to renderer for light extraction
+    renderer->SetModelLoader(modelLoader.get());
 
     // Initialize audio system
     if (!audioSystem->Initialize(renderer.get())) {
@@ -246,6 +310,9 @@ ImGuiSystem* Engine::GetImGuiSystem() const {
 }
 
 void Engine::Update(float deltaTime) {
+    // Check for completed background loading and create entities if ready
+    CheckAndCreateLoadedEntities();
+
     // Update physics system
     physicsSystem->Update(deltaTime);
 
@@ -254,6 +321,11 @@ void Engine::Update(float deltaTime) {
 
     // Update ImGui system
     imguiSystem->NewFrame();
+
+    // Update camera controls
+    if (activeCamera) {
+        UpdateCameraControls(deltaTime);
+    }
 
     // Update all entities
     for (auto& entity : entities) {
@@ -325,6 +397,75 @@ void Engine::HandleResize(int width, int height) {
     }
 }
 
+void Engine::UpdateCameraControls(float deltaTime) {
+    if (!activeCamera) return;
+
+    // Get camera transform component
+    TransformComponent* cameraTransform = activeCamera->GetOwner()->GetComponent<TransformComponent>();
+    if (!cameraTransform) return;
+
+    // Calculate movement speed
+    float velocity = cameraControl.cameraSpeed * deltaTime;
+
+    // Calculate camera direction vectors based on yaw and pitch
+    glm::vec3 front;
+    front.x = cos(glm::radians(cameraControl.yaw)) * cos(glm::radians(cameraControl.pitch));
+    front.y = sin(glm::radians(cameraControl.pitch));
+    front.z = sin(glm::radians(cameraControl.yaw)) * cos(glm::radians(cameraControl.pitch));
+    front = glm::normalize(front);
+
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 right = glm::normalize(glm::cross(front, up));
+    up = glm::normalize(glm::cross(right, front));
+
+    // Get current camera position
+    glm::vec3 position = cameraTransform->GetPosition();
+
+    // Apply movement based on input
+    if (cameraControl.moveForward) {
+        position += front * velocity;
+    }
+    if (cameraControl.moveBackward) {
+        position -= front * velocity;
+    }
+    if (cameraControl.moveLeft) {
+        position -= right * velocity;
+    }
+    if (cameraControl.moveRight) {
+        position += right * velocity;
+    }
+    if (cameraControl.moveUp) {
+        position += up * velocity;
+    }
+    if (cameraControl.moveDown) {
+        position -= up * velocity;
+    }
+
+    // Update camera position
+    cameraTransform->SetPosition(position);
+
+    // Update camera target based on direction
+    glm::vec3 target = position + front;
+    activeCamera->SetTarget(target);
+}
+
+void Engine::CheckAndCreateLoadedEntities() {
+    // Check if background loading is complete
+    if (g_loadingState.loadingComplete && !g_loadingState.loadedMaterials.empty()) {
+        // Create entities from loaded materials on the main thread
+        CreateEntitiesFromLoadedMaterials(this);
+
+        // Reset the loading complete flag
+        g_loadingState.loadingComplete = false;
+    }
+
+    // Check for loading errors
+    if (g_loadingState.loadingFailed) {
+        std::cerr << "Background loading failed: " << g_loadingState.errorMessage << std::endl;
+        g_loadingState.loadingFailed = false; // Reset the flag
+    }
+}
+
 #if PLATFORM_ANDROID
 // Android-specific implementation
 bool Engine::InitializeAndroid(android_app* app, const std::string& appName, bool enableValidationLayers) {
@@ -370,6 +511,9 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
     if (!modelLoader->Initialize(renderer.get())) {
         return false;
     }
+
+    // Connect model loader to renderer for light extraction
+    renderer->SetModelLoader(modelLoader.get());
 
     // Initialize audio system
     if (!audioSystem->Initialize(renderer.get())) {

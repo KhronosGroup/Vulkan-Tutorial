@@ -1,4 +1,5 @@
 #include "mesh_component.h"
+#include "model_loader.h"
 
 // Most of the MeshComponent class implementation is in the header file
 // This file is mainly for any methods that might need additional implementation
@@ -75,4 +76,14 @@ void MeshComponent::CreateCube(float size, const glm::vec3& color) {
         // Left face
         20, 21, 22, 22, 23, 20
     };
+}
+
+void MeshComponent::LoadFromModel(const Model* model) {
+    if (!model) {
+        return;
+    }
+
+    // Copy vertex and index data from the model
+    vertices = model->GetVertices();
+    indices = model->GetIndices();
 }

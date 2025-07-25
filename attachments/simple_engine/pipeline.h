@@ -1,10 +1,6 @@
 #pragma once
 
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 #include <vector>
 #include <string>
 #define GLM_FORCE_RADIANS

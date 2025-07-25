@@ -9,32 +9,6 @@
 #include <stb_image.h>
 
 // Forward declarations for classes that will be defined in separate files
-
-class Material {
-public:
-    Material(const std::string& name) : name(name) {}
-    ~Material() = default;
-
-    const std::string& GetName() const { return name; }
-
-    // PBR properties
-    glm::vec3 albedo = glm::vec3(1.0f);
-    float metallic = 0.0f;
-    float roughness = 1.0f;
-    float ao = 1.0f;
-    glm::vec3 emissive = glm::vec3(0.0f);
-
-    // Texture paths for PBR materials
-    std::string albedoTexturePath;
-    std::string normalTexturePath;
-    std::string metallicRoughnessTexturePath;
-    std::string occlusionTexturePath;
-    std::string emissiveTexturePath;
-
-private:
-    std::string name;
-};
-
 ModelLoader::ModelLoader() {
     // Constructor implementation
 }
@@ -53,7 +27,6 @@ bool ModelLoader::Initialize(Renderer* renderer) {
         return false;
     }
 
-    std::cout << "ModelLoader initialized successfully" << std::endl;
     return true;
 }
 
@@ -77,7 +50,6 @@ Model* ModelLoader::LoadGLTF(const std::string& filename) {
     Model* modelPtr = model.get();
     models[filename] = std::move(model);
 
-    std::cout << "Model loaded successfully: " << filename << std::endl;
     return modelPtr;
 }
 
@@ -483,15 +455,15 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                     positions[i * 3 + 2]
                 );
 
-                // Color (use normal as color if available, otherwise white)
+                // Normal (use extracted normals if available, otherwise default up)
                 if (normals) {
-                    vertex.color = glm::vec3(
-                        std::abs(normals[i * 3 + 0]),
-                        std::abs(normals[i * 3 + 1]),
-                        std::abs(normals[i * 3 + 2])
+                    vertex.normal = glm::vec3(
+                        normals[i * 3 + 0],
+                        normals[i * 3 + 1],
+                        normals[i * 3 + 2]
                     );
                 } else {
-                    vertex.color = glm::vec3(0.8f, 0.8f, 0.8f);
+                    vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Default forward normal
                 }
 
                 // Texture coordinates
@@ -503,6 +475,9 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 } else {
                     vertex.texCoord = glm::vec2(0.0f, 0.0f);
                 }
+
+                // Tangent (default right tangent for now, could be extracted from GLTF if available)
+                vertex.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 
                 materialVertices[materialIndex].push_back(vertex);
             }
@@ -579,11 +554,6 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         std::cerr << "Warning: Failed to extract punctual lights from " << filename << std::endl;
     }
 
-    // Extract lights from emissive materials
-    if (!ExtractEmissiveLights(gltfModel, filename)) {
-        std::cerr << "Warning: Failed to extract emissive lights from " << filename << std::endl;
-    }
-
     std::cout << "GLTF model loaded successfully with " << combinedVertices.size() << " vertices and " << combinedIndices.size() << " indices" << std::endl;
     return true;
 }
@@ -608,7 +578,7 @@ bool ModelLoader::LoadPBRTextures(Material* material,
 
     bool success = true;
 
-    // Load albedo map
+    // Load albedo map or create default
     if (!albedoMap.empty()) {
         std::cout << "  Loading albedo map: " << albedoMap << std::endl;
         material->albedoTexturePath = albedoMap;
@@ -616,9 +586,13 @@ bool ModelLoader::LoadPBRTextures(Material* material,
             std::cerr << "  Failed to load albedo texture: " << albedoMap << std::endl;
             success = false;
         }
+    } else {
+        // Use shared default albedo texture (much more efficient than creating per-material textures)
+        std::cout << "  Using shared default albedo texture" << std::endl;
+        material->albedoTexturePath = renderer->SHARED_DEFAULT_ALBEDO_ID;
     }
 
-    // Load normal map
+    // Load normal map or create default
     if (!normalMap.empty()) {
         std::cout << "  Loading normal map: " << normalMap << std::endl;
         material->normalTexturePath = normalMap;
@@ -626,9 +600,13 @@ bool ModelLoader::LoadPBRTextures(Material* material,
             std::cerr << "  Failed to load normal texture: " << normalMap << std::endl;
             success = false;
         }
+    } else {
+        // Use shared default normal texture (much more efficient than creating per-material textures)
+        std::cout << "  Using shared default normal texture" << std::endl;
+        material->normalTexturePath = renderer->SHARED_DEFAULT_NORMAL_ID;
     }
 
-    // Load metallic-roughness map
+    // Load metallic-roughness map or create default
     if (!metallicRoughnessMap.empty()) {
         std::cout << "  Loading metallic-roughness map: " << metallicRoughnessMap << std::endl;
         material->metallicRoughnessTexturePath = metallicRoughnessMap;
@@ -636,9 +614,13 @@ bool ModelLoader::LoadPBRTextures(Material* material,
             std::cerr << "  Failed to load metallic-roughness texture: " << metallicRoughnessMap << std::endl;
             success = false;
         }
+    } else {
+        // Use shared default metallic-roughness texture (much more efficient than creating per-material textures)
+        std::cout << "  Using shared default metallic-roughness texture" << std::endl;
+        material->metallicRoughnessTexturePath = renderer->SHARED_DEFAULT_METALLIC_ROUGHNESS_ID;
     }
 
-    // Load ambient occlusion map
+    // Load ambient occlusion map or create default
     if (!aoMap.empty()) {
         std::cout << "  Loading ambient occlusion map: " << aoMap << std::endl;
         material->occlusionTexturePath = aoMap;
@@ -646,9 +628,13 @@ bool ModelLoader::LoadPBRTextures(Material* material,
             std::cerr << "  Failed to load occlusion texture: " << aoMap << std::endl;
             success = false;
         }
+    } else {
+        // Use shared default occlusion texture (much more efficient than creating per-material textures)
+        std::cout << "  Using shared default occlusion texture" << std::endl;
+        material->occlusionTexturePath = renderer->SHARED_DEFAULT_OCCLUSION_ID;
     }
 
-    // Load emissive map
+    // Load emissive map or create default
     if (!emissiveMap.empty()) {
         std::cout << "  Loading emissive map: " << emissiveMap << std::endl;
         material->emissiveTexturePath = emissiveMap;
@@ -656,6 +642,10 @@ bool ModelLoader::LoadPBRTextures(Material* material,
             std::cerr << "  Failed to load emissive texture: " << emissiveMap << std::endl;
             success = false;
         }
+    } else {
+        // Use shared default emissive texture (much more efficient than creating per-material textures)
+        std::cout << "  Using shared default emissive texture" << std::endl;
+        material->emissiveTexturePath = renderer->SHARED_DEFAULT_EMISSIVE_ID;
     }
 
     std::cout << "PBR texture paths stored for material: " << material->GetName() << std::endl;
@@ -663,25 +653,40 @@ bool ModelLoader::LoadPBRTextures(Material* material,
 }
 
 std::string ModelLoader::GetFirstMaterialTexturePath(const std::string& modelName) {
-    // Iterate through all materials to find the first one with an albedo texture path
-    for (const auto& materialPair : materials) {
-        const auto& material = materialPair.second;
-        if (!material->albedoTexturePath.empty()) {
-            std::cout << "Found texture path for model " << modelName << ": " << material->albedoTexturePath << std::endl;
-            return material->albedoTexturePath;
+    // Get material meshes for this specific model
+    auto it = materialMeshes.find(modelName);
+    if (it == materialMeshes.end()) {
+        std::cout << "No material meshes found for model: " << modelName << std::endl;
+        return "";
+    }
+
+    const auto& modelMaterialMeshes = it->second;
+
+    // First, try to find a material mesh with a texture path (prioritizing base color)
+    for (const auto& materialMesh : modelMaterialMeshes) {
+        if (!materialMesh.texturePath.empty()) {
+            std::cout << "Found texture path for model " << modelName << ": " << materialMesh.texturePath << std::endl;
+            return materialMesh.texturePath;
         }
     }
 
-    // If no albedo texture found, try other texture types
-    for (const auto& materialPair : materials) {
-        const auto& material = materialPair.second;
-        if (!material->normalTexturePath.empty()) {
-            std::cout << "Found normal texture path for model " << modelName << ": " << material->normalTexturePath << std::endl;
-            return material->normalTexturePath;
-        }
-        if (!material->metallicRoughnessTexturePath.empty()) {
-            std::cout << "Found metallic-roughness texture path for model " << modelName << ": " << material->metallicRoughnessTexturePath << std::endl;
-            return material->metallicRoughnessTexturePath;
+    // If no texture path found in MaterialMesh, try to get from the actual materials
+    // Only look for albedo textures to ensure non-PBR rendering doesn't use normal/metallic maps
+    for (const auto& materialMesh : modelMaterialMeshes) {
+        const std::string& materialName = materialMesh.materialName;
+        if (materialName.empty()) continue;
+
+        auto materialIt = materials.find(materialName);
+        if (materialIt != materials.end()) {
+            const auto& material = materialIt->second;
+
+            // Only return albedo texture for non-PBR rendering compatibility
+            if (!material->albedoTexturePath.empty()) {
+                std::cout << "Found albedo texture path for model " << modelName << ": " << material->albedoTexturePath << std::endl;
+                return material->albedoTexturePath;
+            }
+            // Don't fall back to normal or metallic-roughness textures to avoid
+            // using them in non-PBR rendering where they would be incorrect
         }
     }
 
@@ -697,12 +702,22 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
     return std::vector<ExtractedLight>();
 }
 
-std::vector<MaterialMesh> ModelLoader::GetMaterialMeshes(const std::string& modelName) const {
+const std::vector<MaterialMesh>& ModelLoader::GetMaterialMeshes(const std::string& modelName) const {
     auto it = materialMeshes.find(modelName);
     if (it != materialMeshes.end()) {
         return it->second;
     }
-    return std::vector<MaterialMesh>();
+    // Return a static empty vector to avoid creating temporary objects
+    static const std::vector<MaterialMesh> emptyVector;
+    return emptyVector;
+}
+
+Material* ModelLoader::GetMaterial(const std::string& materialName) const {
+    auto it = materials.find(materialName);
+    if (it != materials.end()) {
+        return it->second.get();
+    }
+    return nullptr;
 }
 
 bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const std::string& modelName) {
@@ -721,63 +736,6 @@ bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const 
     // This would require parsing the JSON structure of the extension
     // For now, we'll focus on emissive lights
 
-    return true;
-}
-
-bool ModelLoader::ExtractEmissiveLights(const tinygltf::Model& gltfModel, const std::string& modelName) {
-    std::cout << "Extracting emissive lights from model: " << modelName << std::endl;
-
-    std::vector<ExtractedLight> lights;
-
-    // Iterate through materials to find emissive ones
-    for (size_t i = 0; i < gltfModel.materials.size(); ++i) {
-        const auto& gltfMaterial = gltfModel.materials[i];
-
-        // Check if material has emissive properties
-        bool hasEmissiveFactor = gltfMaterial.emissiveFactor.size() >= 3;
-        bool hasEmissiveTexture = gltfMaterial.emissiveTexture.index >= 0;
-
-        if (!hasEmissiveFactor && !hasEmissiveTexture) {
-            continue; // No emissive properties
-        }
-
-        // Calculate emissive intensity
-        glm::vec3 emissiveColor(0.0f);
-        if (hasEmissiveFactor) {
-            emissiveColor = glm::vec3(
-                gltfMaterial.emissiveFactor[0],
-                gltfMaterial.emissiveFactor[1],
-                gltfMaterial.emissiveFactor[2]
-            );
-        }
-
-        // Calculate luminance to determine if this should be a light source
-        float luminance = 0.299f * emissiveColor.r + 0.587f * emissiveColor.g + 0.114f * emissiveColor.b;
-
-        // Only create lights for materials with significant emissive values
-        if (luminance > 0.1f) { // Threshold for creating a light
-            ExtractedLight light;
-            light.type = ExtractedLight::Type::Emissive;
-            light.color = emissiveColor;
-            light.intensity = luminance * 10.0f; // Scale up for lighting
-            light.range = 50.0f; // Default range for emissive lights
-            light.sourceMaterial = gltfMaterial.name.empty() ? ("material_" + std::to_string(i)) : gltfMaterial.name;
-
-            // For now, place the light at the origin - we'll improve this later
-            // by calculating positions from mesh geometry
-            light.position = glm::vec3(0.0f, 5.0f, 0.0f);
-
-            lights.push_back(light);
-
-            std::cout << "  Created emissive light from material '" << light.sourceMaterial
-                      << "' with intensity " << light.intensity << std::endl;
-        }
-    }
-
-    // Store the extracted lights
-    extractedLights[modelName] = lights;
-
-    std::cout << "  Extracted " << lights.size() << " emissive lights" << std::endl;
     return true;
 }
 
@@ -939,15 +897,15 @@ std::vector<MaterialMesh> ModelLoader::ParseGLTFDataOnly(const std::string& file
                     positions[i * 3 + 2]
                 );
 
-                // Color (use normal as color if available, otherwise white)
+                // Normal (use extracted normals if available, otherwise default up)
                 if (normals) {
-                    vertex.color = glm::vec3(
-                        std::abs(normals[i * 3 + 0]),
-                        std::abs(normals[i * 3 + 1]),
-                        std::abs(normals[i * 3 + 2])
+                    vertex.normal = glm::vec3(
+                        normals[i * 3 + 0],
+                        normals[i * 3 + 1],
+                        normals[i * 3 + 2]
                     );
                 } else {
-                    vertex.color = glm::vec3(0.8f, 0.8f, 0.8f);
+                    vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Default forward normal
                 }
 
                 // Texture coordinates
@@ -959,6 +917,9 @@ std::vector<MaterialMesh> ModelLoader::ParseGLTFDataOnly(const std::string& file
                 } else {
                     vertex.texCoord = glm::vec2(0.0f, 0.0f);
                 }
+
+                // Tangent (default right tangent for now, could be extracted from GLTF if available)
+                vertex.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 
                 materialVertices[materialIndex].push_back(vertex);
             }
@@ -985,22 +946,12 @@ std::vector<MaterialMesh> ModelLoader::ParseGLTFDataOnly(const std::string& file
         materialMesh.vertices = vertices;
         materialMesh.indices = indices;
 
-        // Get texture path for this material (but don't load the texture)
+        // Get a texture path for this material (but don't load the texture)
         if (materialIndex >= 0 && materialIndex < gltfModel.materials.size()) {
             const auto& gltfMaterial = gltfModel.materials[materialIndex];
 
-            // Try to get base color texture first
             if (gltfMaterial.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                 int texIndex = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
-                materialMesh.texturePath = "gltf_texture_" + std::to_string(texIndex);
-            }
-            // Fall back to other texture types if no base color
-            else if (gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
-                int texIndex = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
-                materialMesh.texturePath = "gltf_texture_" + std::to_string(texIndex);
-            }
-            else if (gltfMaterial.normalTexture.index >= 0) {
-                int texIndex = gltfMaterial.normalTexture.index;
                 materialMesh.texturePath = "gltf_texture_" + std::to_string(texIndex);
             }
         }

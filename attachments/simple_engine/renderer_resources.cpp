@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "model_loader.h"
 #include <fstream>
 #include <stdexcept>
 #include <array>
@@ -11,14 +12,21 @@
 
 // This file contains resource-related methods from the Renderer class
 
+// Define shared default PBR texture identifiers (static constants)
+const std::string Renderer::SHARED_DEFAULT_ALBEDO_ID = "__shared_default_albedo__";
+const std::string Renderer::SHARED_DEFAULT_NORMAL_ID = "__shared_default_normal__";
+const std::string Renderer::SHARED_DEFAULT_METALLIC_ROUGHNESS_ID = "__shared_default_metallic_roughness__";
+const std::string Renderer::SHARED_DEFAULT_OCCLUSION_ID = "__shared_default_occlusion__";
+const std::string Renderer::SHARED_DEFAULT_EMISSIVE_ID = "__shared_default_emissive__";
+
 // Create depth resources
 bool Renderer::createDepthResources() {
     try {
         // Find depth format
         vk::Format depthFormat = findDepthFormat();
 
-        // Create depth image
-        auto [depthImg, depthImgMem] = createImage(
+        // Create depth image using memory pool
+        auto [depthImg, depthImgAllocation] = createImagePooled(
             swapChainExtent.width,
             swapChainExtent.height,
             depthFormat,
@@ -28,7 +36,7 @@ bool Renderer::createDepthResources() {
         );
 
         depthImage = std::move(depthImg);
-        depthImageMemory = std::move(depthImgMem);
+        depthImageAllocation = std::move(depthImgAllocation);
 
         // Create depth image view
         depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
@@ -83,8 +91,8 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
         // Free pixel data
         stbi_image_free(pixels);
 
-        // Create texture image
-        auto [textureImg, textureImgMem] = createImage(
+        // Create texture image using memory pool
+        auto [textureImg, textureImgAllocation] = createImagePooled(
             texWidth,
             texHeight,
             vk::Format::eR8G8B8A8Srgb,
@@ -94,7 +102,7 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
         );
 
         resources.textureImage = std::move(textureImg);
-        resources.textureImageMemory = std::move(textureImgMem);
+        resources.textureImageAllocation = std::move(textureImgAllocation);
 
         // Transition image layout for copy
         transitionImageLayout(
@@ -155,6 +163,54 @@ bool Renderer::createTextureImageView(TextureResources& resources) {
     }
 }
 
+// Create shared default PBR textures (to avoid creating hundreds of identical textures)
+bool Renderer::createSharedDefaultPBRTextures() {
+    try {
+        std::cout << "Creating shared default PBR textures..." << std::endl;
+
+        // Create shared default albedo texture (neutral gray to reduce excessive brightness)
+        unsigned char whitePixel[4] = {128, 128, 128, 255}; // 50% gray instead of pure white
+        if (!LoadTextureFromMemory(SHARED_DEFAULT_ALBEDO_ID, whitePixel, 1, 1, 4)) {
+            std::cerr << "Failed to create shared default albedo texture" << std::endl;
+            return false;
+        }
+
+        // Create shared default normal texture (flat normal)
+        unsigned char normalPixel[4] = {128, 128, 255, 255}; // (0.5, 0.5, 1.0, 1.0) in 0-255 range
+        if (!LoadTextureFromMemory(SHARED_DEFAULT_NORMAL_ID, normalPixel, 1, 1, 4)) {
+            std::cerr << "Failed to create shared default normal texture" << std::endl;
+            return false;
+        }
+
+        // Create shared default metallic-roughness texture (non-metallic, fully rough)
+        unsigned char metallicRoughnessPixel[4] = {0, 255, 0, 255}; // (unused, roughness=1.0, metallic=0.0, alpha=1.0)
+        if (!LoadTextureFromMemory(SHARED_DEFAULT_METALLIC_ROUGHNESS_ID, metallicRoughnessPixel, 1, 1, 4)) {
+            std::cerr << "Failed to create shared default metallic-roughness texture" << std::endl;
+            return false;
+        }
+
+        // Create shared default occlusion texture (white - no occlusion)
+        unsigned char occlusionPixel[4] = {255, 255, 255, 255};
+        if (!LoadTextureFromMemory(SHARED_DEFAULT_OCCLUSION_ID, occlusionPixel, 1, 1, 4)) {
+            std::cerr << "Failed to create shared default occlusion texture" << std::endl;
+            return false;
+        }
+
+        // Create shared default emissive texture (black - no emission)
+        unsigned char emissivePixel[4] = {0, 0, 0, 255};
+        if (!LoadTextureFromMemory(SHARED_DEFAULT_EMISSIVE_ID, emissivePixel, 1, 1, 4)) {
+            std::cerr << "Failed to create shared default emissive texture" << std::endl;
+            return false;
+        }
+
+        std::cout << "Successfully created all shared default PBR textures" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create shared default PBR textures: " << e.what() << std::endl;
+        return false;
+    }
+}
+
 // Create default texture resources (1x1 white texture)
 bool Renderer::createDefaultTextureResources() {
     try {
@@ -177,8 +233,8 @@ bool Renderer::createDefaultTextureResources() {
         memcpy(data, pixels.data(), static_cast<size_t>(imageSize));
         stagingBufferMemory.unmapMemory();
 
-        // Create texture image
-        auto [textureImg, textureImgMem] = createImage(
+        // Create texture image using memory pool
+        auto [textureImg, textureImgAllocation] = createImagePooled(
             width,
             height,
             vk::Format::eR8G8B8A8Srgb,
@@ -188,7 +244,7 @@ bool Renderer::createDefaultTextureResources() {
         );
 
         defaultTextureResources.textureImage = std::move(textureImg);
-        defaultTextureResources.textureImageMemory = std::move(textureImgMem);
+        defaultTextureResources.textureImageAllocation = std::move(textureImgAllocation);
 
         // Transition image layout for copy
         transitionImageLayout(
@@ -359,8 +415,8 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
 
         stagingBufferMemory.unmapMemory();
 
-        // Create texture image
-        auto [textureImg, textureImgMem] = createImage(
+        // Create texture image using memory pool
+        auto [textureImg, textureImgAllocation] = createImagePooled(
             width,
             height,
             vk::Format::eR8G8B8A8Srgb,
@@ -370,7 +426,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
         );
 
         resources.textureImage = std::move(textureImg);
-        resources.textureImageMemory = std::move(textureImgMem);
+        resources.textureImageAllocation = std::move(textureImgAllocation);
 
         // Transition image layout for copy
         transitionImageLayout(
@@ -452,8 +508,8 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
         memcpy(vertexData, vertices.data(), static_cast<size_t>(vertexBufferSize));
         stagingVertexBufferMemory.unmapMemory();
 
-        // Create vertex buffer on device
-        auto [vertexBuffer, vertexBufferMemory] = createBuffer(
+        // Create vertex buffer on device using memory pool
+        auto [vertexBuffer, vertexBufferAllocation] = createBufferPooled(
             vertexBufferSize,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal
@@ -475,8 +531,8 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
         memcpy(indexData, indices.data(), static_cast<size_t>(indexBufferSize));
         stagingIndexBufferMemory.unmapMemory();
 
-        // Create index buffer on device
-        auto [indexBuffer, indexBufferMemory] = createBuffer(
+        // Create index buffer on device using memory pool
+        auto [indexBuffer, indexBufferAllocation] = createBufferPooled(
             indexBufferSize,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal
@@ -488,9 +544,9 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
         // Create mesh resources
         MeshResources resources;
         resources.vertexBuffer = std::move(vertexBuffer);
-        resources.vertexBufferMemory = std::move(vertexBufferMemory);
+        resources.vertexBufferAllocation = std::move(vertexBufferAllocation);
         resources.indexBuffer = std::move(indexBuffer);
-        resources.indexBufferMemory = std::move(indexBufferMemory);
+        resources.indexBufferAllocation = std::move(indexBufferAllocation);
         resources.indexCount = static_cast<uint32_t>(indices.size());
 
         // Add to mesh resources map
@@ -502,6 +558,122 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
         return false;
     }
 }
+
+// REMOVED: Create material-specific mesh resources for PBR rendering - Memory inefficient approach
+// This function was creating separate vertex/index buffers for each material, multiplying memory usage
+/*
+bool Renderer::createMaterialMeshResources(const std::string& modelName) {
+    try {
+        // Check if material mesh resources already exist
+        auto it = materialMeshResources.find(modelName);
+        if (it != materialMeshResources.end()) {
+            return true;
+        }
+
+        // Get material meshes from model loader
+        if (!modelLoader) {
+            std::cerr << "ModelLoader not available for creating material mesh resources" << std::endl;
+            return false;
+        }
+
+        std::vector<MaterialMesh> materialMeshes = modelLoader->GetMaterialMeshes(modelName);
+        if (materialMeshes.empty()) {
+            std::cerr << "No material meshes found for model: " << modelName << std::endl;
+            return false;
+        }
+
+        std::cout << "Creating material mesh resources for model: " << modelName
+                  << " (" << materialMeshes.size() << " materials)" << std::endl;
+
+        // Create material mesh resources
+        MaterialMeshResources resources;
+        resources.materialMeshes.reserve(materialMeshes.size());
+        resources.materialNames.reserve(materialMeshes.size());
+        resources.materialIndices.reserve(materialMeshes.size());
+
+        for (const auto& materialMesh : materialMeshes) {
+            const auto& vertices = materialMesh.vertices;
+            const auto& indices = materialMesh.indices;
+
+            if (vertices.empty() || indices.empty()) {
+                std::cerr << "Material mesh has no vertices or indices: " << materialMesh.materialName << std::endl;
+                continue;
+            }
+
+            std::cout << "  Creating buffers for material: " << materialMesh.materialName
+                      << " (" << vertices.size() << " vertices, " << indices.size() << " indices)" << std::endl;
+
+            // Create vertex buffer
+            vk::DeviceSize vertexBufferSize = sizeof(vertices[0]) * vertices.size();
+            auto [stagingVertexBuffer, stagingVertexBufferMemory] = createBuffer(
+                vertexBufferSize,
+                vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+            );
+
+            // Copy vertex data to staging buffer
+            void* vertexData = stagingVertexBufferMemory.mapMemory(0, vertexBufferSize);
+            memcpy(vertexData, vertices.data(), static_cast<size_t>(vertexBufferSize));
+            stagingVertexBufferMemory.unmapMemory();
+
+            // Create vertex buffer on device
+            auto [vertexBuffer, vertexBufferMemory] = createBuffer(
+                vertexBufferSize,
+                vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+                vk::MemoryPropertyFlagBits::eDeviceLocal
+            );
+
+            // Copy from staging buffer to device buffer
+            copyBuffer(stagingVertexBuffer, vertexBuffer, vertexBufferSize);
+
+            // Create index buffer
+            vk::DeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
+            auto [stagingIndexBuffer, stagingIndexBufferMemory] = createBuffer(
+                indexBufferSize,
+                vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+            );
+
+            // Copy index data to staging buffer
+            void* indexData = stagingIndexBufferMemory.mapMemory(0, indexBufferSize);
+            memcpy(indexData, indices.data(), static_cast<size_t>(indexBufferSize));
+            stagingIndexBufferMemory.unmapMemory();
+
+            // Create index buffer on device
+            auto [indexBuffer, indexBufferMemory] = createBuffer(
+                indexBufferSize,
+                vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+                vk::MemoryPropertyFlagBits::eDeviceLocal
+            );
+
+            // Copy from staging buffer to device buffer
+            copyBuffer(stagingIndexBuffer, indexBuffer, indexBufferSize);
+
+            // Create mesh resources for this material
+            MeshResources meshRes;
+            meshRes.vertexBuffer = std::move(vertexBuffer);
+            meshRes.vertexBufferMemory = std::move(vertexBufferMemory);
+            meshRes.indexBuffer = std::move(indexBuffer);
+            meshRes.indexBufferMemory = std::move(indexBufferMemory);
+            meshRes.indexCount = static_cast<uint32_t>(indices.size());
+
+            // Store the mesh resources and metadata
+            resources.materialMeshes.emplace_back(std::move(meshRes));
+            resources.materialNames.emplace_back(materialMesh.materialName);
+            resources.materialIndices.emplace_back(materialMesh.materialIndex);
+        }
+
+        // Add to material mesh resources map
+        materialMeshResources[modelName] = std::move(resources);
+
+        std::cout << "Successfully created material mesh resources for model: " << modelName << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create material mesh resources: " << e.what() << std::endl;
+        return false;
+    }
+}
+*/
 
 // Create uniform buffers
 bool Renderer::createUniformBuffers(Entity* entity) {
@@ -515,19 +687,23 @@ bool Renderer::createUniformBuffers(Entity* entity) {
         // Create entity resources
         EntityResources resources;
 
-        // Create uniform buffers
+        // Create uniform buffers using memory pool
         vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            auto [buffer, bufferMemory] = createBuffer(
+            auto [buffer, bufferAllocation] = createBufferPooled(
                 bufferSize,
                 vk::BufferUsageFlagBits::eUniformBuffer,
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
             );
 
-            void* mappedMemory = bufferMemory.mapMemory(0, bufferSize);
+            // Use the memory pool's mapped pointer if available
+            void* mappedMemory = bufferAllocation->mappedPtr;
+            if (!mappedMemory) {
+                std::cerr << "Warning: Uniform buffer allocation is not mapped" << std::endl;
+            }
 
             resources.uniformBuffers.emplace_back(std::move(buffer));
-            resources.uniformBuffersMemory.emplace_back(std::move(bufferMemory));
+            resources.uniformBufferAllocations.emplace_back(std::move(bufferAllocation));
             resources.uniformBuffersMapped.emplace_back(mappedMemory);
         }
 
@@ -771,13 +947,105 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
     }
 }
 
-// Create buffer
-std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
+// Pre-allocate all Vulkan resources for an entity during scene loading
+bool Renderer::preAllocateEntityResources(Entity* entity) {
+    try {
+        std::cout << "Pre-allocating resources for entity: " << entity->GetName() << std::endl;
+
+        // Get the mesh component
+        auto meshComponent = entity->GetComponent<MeshComponent>();
+        if (!meshComponent) {
+            std::cerr << "Entity " << entity->GetName() << " has no mesh component" << std::endl;
+            return false;
+        }
+
+        // 1. Create mesh resources (vertex/index buffers)
+        if (!createMeshResources(meshComponent)) {
+            std::cerr << "Failed to create mesh resources for entity: " << entity->GetName() << std::endl;
+            return false;
+        }
+
+        // 2. Create uniform buffers
+        if (!createUniformBuffers(entity)) {
+            std::cerr << "Failed to create uniform buffers for entity: " << entity->GetName() << std::endl;
+            return false;
+        }
+
+        // 3. Pre-allocate BOTH basic and PBR descriptor sets
+        std::string texturePath = meshComponent->GetTexturePath();
+
+        // Create basic descriptor sets
+        if (!createDescriptorSets(entity, texturePath, false)) {
+            std::cerr << "Failed to create basic descriptor sets for entity: " << entity->GetName() << std::endl;
+            return false;
+        }
+
+        // Create PBR descriptor sets
+        if (!createDescriptorSets(entity, texturePath, true)) {
+            std::cerr << "Failed to create PBR descriptor sets for entity: " << entity->GetName() << std::endl;
+            return false;
+        }
+
+        std::cout << "Successfully pre-allocated all resources for entity: " << entity->GetName() << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to pre-allocate resources for entity " << entity->GetName() << ": " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Create buffer using memory pool for efficient allocation
+std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> Renderer::createBufferPooled(
     vk::DeviceSize size,
     vk::BufferUsageFlags usage,
     vk::MemoryPropertyFlags properties) {
     try {
-        // Create buffer
+        if (!memoryPool) {
+            throw std::runtime_error("Memory pool not initialized");
+        }
+
+        // Use memory pool for allocation
+        auto [buffer, allocation] = memoryPool->createBuffer(size, usage, properties);
+        std::cout << "Created buffer using memory pool: " << size << " bytes" << std::endl;
+
+        return {std::move(buffer), std::move(allocation)};
+
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create buffer with memory pool: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// Legacy createBuffer function - now strictly enforces memory pool usage
+std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
+    vk::DeviceSize size,
+    vk::BufferUsageFlags usage,
+    vk::MemoryPropertyFlags properties) {
+
+    // This function should only be used for temporary staging buffers during resource creation
+    // All persistent resources should use createBufferPooled directly
+
+    if (!memoryPool) {
+        throw std::runtime_error("Memory pool not available - cannot create buffer");
+    }
+
+    // Check if we're trying to allocate during rendering
+    if (memoryPool->isRenderingActive()) {
+        std::cerr << "ERROR: Attempted to create buffer during rendering! Size: " << size << " bytes" << std::endl;
+        std::cerr << "This violates the constraint that no new memory should be allocated during rendering." << std::endl;
+        throw std::runtime_error("Buffer creation attempted during rendering - this is not allowed");
+    }
+
+    // Only allow direct allocation for staging buffers (temporary, host-visible)
+    if (!(properties & vk::MemoryPropertyFlagBits::eHostVisible)) {
+        std::cerr << "ERROR: Legacy createBuffer should only be used for staging buffers!" << std::endl;
+        throw std::runtime_error("Legacy createBuffer used for non-staging buffer");
+    }
+
+    try {
+        std::cout << "Creating staging buffer with direct allocation: " << size << " bytes" << std::endl;
+
         vk::BufferCreateInfo bufferInfo{
             .size = size,
             .usage = usage,
@@ -786,7 +1054,7 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
 
         vk::raii::Buffer buffer(device, bufferInfo);
 
-        // Allocate memory
+        // Allocate memory directly for staging buffers only
         vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements();
         vk::MemoryAllocateInfo allocInfo{
             .allocationSize = memRequirements.size,
@@ -799,8 +1067,9 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
         buffer.bindMemory(*bufferMemory, 0);
 
         return {std::move(buffer), std::move(bufferMemory)};
+
     } catch (const std::exception& e) {
-        std::cerr << "Failed to create buffer: " << e.what() << std::endl;
+        std::cerr << "Failed to create staging buffer: " << e.what() << std::endl;
         throw;
     }
 }
@@ -895,6 +1164,31 @@ std::pair<vk::raii::Image, vk::raii::DeviceMemory> Renderer::createImage(
         return {std::move(image), std::move(imageMemory)};
     } catch (const std::exception& e) {
         std::cerr << "Failed to create image: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// Create image using memory pool for efficient allocation
+std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::createImagePooled(
+    uint32_t width,
+    uint32_t height,
+    vk::Format format,
+    vk::ImageTiling tiling,
+    vk::ImageUsageFlags usage,
+    vk::MemoryPropertyFlags properties) {
+    try {
+        if (!memoryPool) {
+            throw std::runtime_error("Memory pool not initialized");
+        }
+
+        // Use memory pool for allocation
+        auto [image, allocation] = memoryPool->createImage(width, height, format, tiling, usage, properties);
+        std::cout << "Created image using memory pool: " << width << "x" << height << " format=" << static_cast<int>(format) << std::endl;
+
+        return {std::move(image), std::move(allocation)};
+
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create image with memory pool: " << e.what() << std::endl;
         throw;
     }
 }

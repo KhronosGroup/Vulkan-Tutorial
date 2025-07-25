@@ -16,6 +16,32 @@ namespace tinygltf {
     class Model;
 }
 
+class Material {
+    public:
+        Material(const std::string& name) : name(name) {}
+        ~Material() = default;
+
+        const std::string& GetName() const { return name; }
+
+        // PBR properties
+        glm::vec3 albedo = glm::vec3(1.0f);
+        float metallic = 0.0f;
+        float roughness = 1.0f;
+        float ao = 1.0f;
+        glm::vec3 emissive = glm::vec3(0.0f);
+
+        // Texture paths for PBR materials
+        std::string albedoTexturePath;
+        std::string normalTexturePath;
+        std::string metallicRoughnessTexturePath;
+        std::string occlusionTexturePath;
+        std::string emissiveTexturePath;
+
+    private:
+        std::string name;
+};
+
+
 /**
  * @brief Structure representing a light source extracted from GLTF.
  */
@@ -163,7 +189,14 @@ public:
      * @param modelName The name of the model.
      * @return Vector of material meshes from the model.
      */
-    std::vector<MaterialMesh> GetMaterialMeshes(const std::string& modelName) const;
+    const std::vector<MaterialMesh>& GetMaterialMeshes(const std::string& modelName) const;
+
+    /**
+     * @brief Get a material by name.
+     * @param materialName The name of the material.
+     * @return Pointer to the material, or nullptr if not found.
+     */
+    Material* GetMaterial(const std::string& materialName) const;
 
     /**
      * @brief Parse GLTF file data without creating Vulkan resources (thread-safe).
@@ -220,12 +253,4 @@ private:
      * @return True if extraction was successful, false otherwise.
      */
     bool ExtractPunctualLights(const class tinygltf::Model& gltfModel, const std::string& modelName);
-
-    /**
-     * @brief Extract lights from emissive materials.
-     * @param gltfModel The loaded GLTF model.
-     * @param modelName The name of the model.
-     * @return True if extraction was successful, false otherwise.
-     */
-    bool ExtractEmissiveLights(const class tinygltf::Model& gltfModel, const std::string& modelName);
 };

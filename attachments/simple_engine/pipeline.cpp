@@ -230,7 +230,7 @@ bool Pipeline::createGraphicsPipeline() {
         };
 
         // Create color blend state info
-        std::array<float, 4> blendConstants = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::array blendConstants = {0.0f, 0.0f, 0.0f, 0.0f};
         vk::PipelineColorBlendStateCreateInfo colorBlending{
             .logicOpEnable = VK_FALSE,
             .logicOp = vk::LogicOp::eCopy,
@@ -240,7 +240,7 @@ bool Pipeline::createGraphicsPipeline() {
         };
 
         // Create dynamic state info
-        std::vector<vk::DynamicState> dynamicStates = {
+        std::vector dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };

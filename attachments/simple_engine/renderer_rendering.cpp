@@ -243,7 +243,7 @@ void Renderer::cleanupSwapChain() {
     // Clean up depth resources
     depthImageView = nullptr;
     depthImage = nullptr;
-    depthImageMemory = nullptr;
+    depthImageAllocation = nullptr;
 
     // Clean up swap chain image views
     swapChainImageViews.clear();
@@ -348,30 +348,11 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
             ubo.lightColors[i] = glm::vec4(light.color * light.intensity, 1.0f);
         }
 
-        // Fill remaining slots with dim lights if we have fewer than 4
+        // Fill remaining slots with zero-intensity lights (no contribution)
         for (size_t i = extractedLights.size(); i < 4; ++i) {
             ubo.lightPositions[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-            ubo.lightColors[i] = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f); // Very dim fallback
+            ubo.lightColors[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // No light contribution
         }
-    } else {
-        // Fallback to default hardcoded lights if no extracted lights available
-        std::cout << "No extracted lights found, using fallback lighting" << std::endl;
-
-        // Light 0: Main key light (white, positioned above and to the right)
-        ubo.lightPositions[0] = glm::vec4(10.0f, 10.0f, 10.0f, 1.0f);
-        ubo.lightColors[0] = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-
-        // Light 1: Fill light (warm, positioned to the left)
-        ubo.lightPositions[1] = glm::vec4(-8.0f, 5.0f, 8.0f, 1.0f);
-        ubo.lightColors[1] = glm::vec4(0.8f, 0.7f, 0.6f, 1.0f);
-
-        // Light 2: Rim light (cool, positioned behind)
-        ubo.lightPositions[2] = glm::vec4(0.0f, 8.0f, -12.0f, 1.0f);
-        ubo.lightColors[2] = glm::vec4(0.6f, 0.7f, 1.0f, 1.0f);
-
-        // Light 3: Ambient fill (dim, positioned below)
-        ubo.lightPositions[3] = glm::vec4(0.0f, -5.0f, 5.0f, 1.0f);
-        ubo.lightColors[3] = glm::vec4(0.3f, 0.3f, 0.4f, 1.0f);
     }
 
     // Set camera position for PBR calculations
@@ -389,6 +370,21 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
 
 // Render the scene
 void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
+    // Set rendering active to prevent memory pool growth during rendering
+    if (memoryPool) {
+        memoryPool->setRenderingActive(true);
+    }
+
+    // Use RAII to ensure rendering state is always reset, even if an exception occurs
+    struct RenderingStateGuard {
+        MemoryPool* pool;
+        RenderingStateGuard(MemoryPool* p) : pool(p) {}
+        ~RenderingStateGuard() {
+            if (pool) {
+                pool->setRenderingActive(false);
+            }
+        }
+    } guard(memoryPool.get());
 
     // Wait for the previous frame to finish
     device.waitForFences(*inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
@@ -495,39 +491,20 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
         vk::raii::Pipeline* selectedPipeline = usePBR ? &pbrGraphicsPipeline : &graphicsPipeline;
         vk::raii::PipelineLayout* selectedLayout = usePBR ? &pbrPipelineLayout : &pipelineLayout;
 
-        // Get the mesh resources
+        // Get the mesh resources - they should already exist from pre-allocation
         auto meshIt = meshResources.find(meshComponent);
         if (meshIt == meshResources.end()) {
-            // Create mesh resources if they don't exist
-            if (!createMeshResources(meshComponent)) {
-                continue;
-            }
-            meshIt = meshResources.find(meshComponent);
+            std::cerr << "ERROR: Mesh resources not found for entity " << entity->GetName()
+                      << " - resources should have been pre-allocated during scene loading!" << std::endl;
+            continue;
         }
 
-        // Get the entity resources
+        // Get the entity resources - they should already exist from pre-allocation
         auto entityIt = entityResources.find(entity);
         if (entityIt == entityResources.end()) {
-            // Create entity resources if they don't exist
-            if (!createUniformBuffers(entity)) {
-                continue;
-            }
-
-            // Create descriptor sets with correct pipeline type
-            if (!createDescriptorSets(entity, meshComponent->GetTexturePath(), usePBR)) {
-                continue;
-            }
-
-            entityIt = entityResources.find(entity);
-        } else {
-            // Entity exists, but check if we need to create descriptor sets for the current pipeline type
-            auto& targetDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
-            if (targetDescriptorSets.empty()) {
-                // Create missing descriptor sets for the current pipeline type
-                if (!createDescriptorSets(entity, meshComponent->GetTexturePath(), usePBR)) {
-                    continue;
-                }
-            }
+            std::cerr << "ERROR: Entity resources not found for entity " << entity->GetName()
+                      << " - resources should have been pre-allocated during scene loading!" << std::endl;
+            continue;
         }
 
         // Bind pipeline if it changed
@@ -535,10 +512,6 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
             currentPipeline = selectedPipeline;
             currentLayout = selectedLayout;
-
-            if (usePBR) {
-                std::cout << "Using PBR pipeline for entity: " << entity->GetName() << std::endl;
-            }
         }
 
         // Update the uniform buffer
@@ -571,28 +544,59 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
         commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, **currentLayout, 0, {*selectedDescriptorSets[currentFrame]}, {});
 
-        // Push constants for PBR pipeline
-        if (usePBR) {
-            // Define PBR push constants structure matching the shader
-            struct PushConstants {
-                glm::vec4 baseColorFactor;
-                float metallicFactor;
-                float roughnessFactor;
-                int baseColorTextureSet;
-                int physicalDescriptorTextureSet;
-                int normalTextureSet;
-                int occlusionTextureSet;
-                int emissiveTextureSet;
-                float alphaMask;
-                float alphaMaskCutoff;
-            };
+        // Define PBR push constants structure matching the shader
+        struct PushConstants {
+            glm::vec4 baseColorFactor;
+            float metallicFactor;
+            float roughnessFactor;
+            int baseColorTextureSet;
+            int physicalDescriptorTextureSet;
+            int normalTextureSet;
+            int occlusionTextureSet;
+            int emissiveTextureSet;
+            float alphaMask;
+            float alphaMaskCutoff;
+        };
 
-            // Set default PBR material properties
+        // Set PBR material properties using push constants
+        if (usePBR) {
             PushConstants pushConstants{};
-            pushConstants.baseColorFactor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f); // White base color
-            pushConstants.metallicFactor = 0.0f;   // Non-metallic
-            pushConstants.roughnessFactor = 1.0f;  // Fully rough
-            pushConstants.baseColorTextureSet = 0;      // Use texture set 0
+
+            // Try to get material properties for this specific entity
+            if (modelLoader && entity->GetName().find("Bistro_Material_") == 0) {
+                // Extract material name from entity name for Bistro entities
+                std::string entityName = entity->GetName();
+                size_t materialStart = entityName.find("Bistro_Material_");
+                if (materialStart != std::string::npos) {
+                    // Try to extract material name from entity name
+                    size_t nameStart = entityName.find_last_of("_");
+                    if (nameStart != std::string::npos && nameStart < entityName.length() - 1) {
+                        std::string materialName = entityName.substr(nameStart + 1);
+                        Material* material = modelLoader->GetMaterial(materialName);
+                        if (material) {
+                            // Use actual PBR properties from the GLTF material
+                            pushConstants.baseColorFactor = glm::vec4(material->albedo, 1.0f);
+                            pushConstants.metallicFactor = material->metallic;
+                            pushConstants.roughnessFactor = material->roughness;
+                        } else {
+                            // Fallback: Use entity-specific variation
+                            size_t hash = std::hash<std::string>{}(entityName);
+                            float variation = (hash % 100) / 100.0f;
+                            pushConstants.baseColorFactor = glm::vec4(0.7f + variation * 0.3f, 0.6f + variation * 0.4f, 0.5f + variation * 0.5f, 1.0f);
+                            pushConstants.metallicFactor = variation * 0.8f;
+                            pushConstants.roughnessFactor = 0.2f + variation * 0.6f;
+                        }
+                    }
+                }
+            } else {
+                // Default PBR material properties for non-Bistro entities
+                pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+                pushConstants.metallicFactor = 0.1f;
+                pushConstants.roughnessFactor = 0.7f;
+            }
+
+            // Set texture binding indices
+            pushConstants.baseColorTextureSet = 0;
             pushConstants.physicalDescriptorTextureSet = 0;
             pushConstants.normalTextureSet = 0;
             pushConstants.occlusionTextureSet = 0;
@@ -609,7 +613,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             );
         }
 
-        // Draw the mesh
+        // Draw the entity once (no redundant draw calls)
         commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, 1, 0, 0, 0);
     }
 

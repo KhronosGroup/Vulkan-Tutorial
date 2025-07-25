@@ -90,7 +90,7 @@ void CreateEntitiesFromLoadedMaterials(Engine* engine) {
             auto* transform = materialEntity->AddComponent<TransformComponent>();
             transform->SetPosition(glm::vec3(0.0f, -1.5f, 0.0f));
             transform->SetRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-            transform->SetScale(glm::vec3(0.1f, 0.1f, 0.1f));
+            transform->SetScale(glm::vec3(1.0f, 1.0f, 1.0f));
 
             // Add mesh component with material-specific data
             auto* mesh = materialEntity->AddComponent<MeshComponent>();
@@ -106,6 +106,12 @@ void CreateEntitiesFromLoadedMaterials(Engine* engine) {
             } else {
                 std::cout << "  Entity " << entityName << ": " << materialMesh.vertices.size()
                           << " vertices, no texture" << std::endl;
+            }
+
+            // Pre-allocate all Vulkan resources for this Bistro entity
+            if (!renderer->preAllocateEntityResources(materialEntity)) {
+                std::cerr << "Failed to pre-allocate resources for Bistro entity: " << entityName << std::endl;
+                // Continue with other entities even if one fails
             }
 
             entitiesCreated++;

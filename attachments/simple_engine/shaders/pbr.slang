@@ -11,7 +11,7 @@ struct VSInput {
 // Output from vertex shader / Input to fragment shader
 struct VSOutput {
     float4 Position : SV_POSITION;
-    float3 WorldPos : POSITION;
+    float3 WorldPos;
     float3 Normal : NORMAL;
     float2 UV : TEXCOORD0;
     float4 Tangent : TANGENT;
@@ -182,9 +182,9 @@ float4 PSMain(VSOutput input) : SV_TARGET
         Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
     }
 
-    // Add ambient and emissive
-    float3 ambient = float3(0.03, 0.03, 0.03) * baseColor.rgb * ao;
-    float3 color = ambient + Lo + emissive;
+    // Add only emissive (no hardcoded ambient - use only model-defined lights)
+    // Scale down emissive contribution to reduce excessive brightness
+    float3 color = Lo + emissive * 0.1;
 
     // HDR tonemapping and gamma correction
     color = color / (color + float3(1.0, 1.0, 1.0));

@@ -97,6 +97,7 @@ set(SOURCES
     renderer_compute.cpp
     renderer_utils.cpp
     renderer_resources.cpp
+    memory_pool.cpp
     resource_manager.cpp
     entity.cpp
     component.cpp

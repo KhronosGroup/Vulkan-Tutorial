@@ -8,11 +8,15 @@ void MeshComponent::CreateQuad(float width, float height, const glm::vec3& color
     float halfWidth = width * 0.5f;
     float halfHeight = height * 0.5f;
 
+    // Quad facing forward (positive Z direction)
+    glm::vec3 normal = glm::vec3(0.0f, 0.0f, 1.0f);
+    glm::vec4 tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+
     vertices = {
-        { {-halfWidth, -halfHeight, 0.0f}, color, {0.0f, 0.0f} },
-        { { halfWidth, -halfHeight, 0.0f}, color, {1.0f, 0.0f} },
-        { { halfWidth,  halfHeight, 0.0f}, color, {1.0f, 1.0f} },
-        { {-halfWidth,  halfHeight, 0.0f}, color, {0.0f, 1.0f} }
+        { {-halfWidth, -halfHeight, 0.0f}, normal, {0.0f, 0.0f}, tangent },
+        { { halfWidth, -halfHeight, 0.0f}, normal, {1.0f, 0.0f}, tangent },
+        { { halfWidth,  halfHeight, 0.0f}, normal, {1.0f, 1.0f}, tangent },
+        { {-halfWidth,  halfHeight, 0.0f}, normal, {0.0f, 1.0f}, tangent }
     };
 
     indices = {
@@ -25,41 +29,41 @@ void MeshComponent::CreateCube(float size, const glm::vec3& color) {
     float halfSize = size * 0.5f;
 
     vertices = {
-        // Front face
-        { {-halfSize, -halfSize,  halfSize}, color, {0.0f, 0.0f} },
-        { { halfSize, -halfSize,  halfSize}, color, {1.0f, 0.0f} },
-        { { halfSize,  halfSize,  halfSize}, color, {1.0f, 1.0f} },
-        { {-halfSize,  halfSize,  halfSize}, color, {0.0f, 1.0f} },
+        // Front face (normal: +Z, tangent: +X)
+        { {-halfSize, -halfSize,  halfSize}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize, -halfSize,  halfSize}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize,  halfSize,  halfSize}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { {-halfSize,  halfSize,  halfSize}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
 
-        // Back face
-        { {-halfSize, -halfSize, -halfSize}, color, {1.0f, 0.0f} },
-        { {-halfSize,  halfSize, -halfSize}, color, {1.0f, 1.0f} },
-        { { halfSize,  halfSize, -halfSize}, color, {0.0f, 1.0f} },
-        { { halfSize, -halfSize, -halfSize}, color, {0.0f, 0.0f} },
+        // Back face (normal: -Z, tangent: -X)
+        { {-halfSize, -halfSize, -halfSize}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}, {-1.0f, 0.0f, 0.0f, 1.0f} },
+        { {-halfSize,  halfSize, -halfSize}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize,  halfSize, -halfSize}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize, -halfSize, -halfSize}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f, 1.0f} },
 
-        // Top face
-        { {-halfSize,  halfSize, -halfSize}, color, {0.0f, 0.0f} },
-        { {-halfSize,  halfSize,  halfSize}, color, {0.0f, 1.0f} },
-        { { halfSize,  halfSize,  halfSize}, color, {1.0f, 1.0f} },
-        { { halfSize,  halfSize, -halfSize}, color, {1.0f, 0.0f} },
+        // Top face (normal: +Y, tangent: +X)
+        { {-halfSize,  halfSize, -halfSize}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { {-halfSize,  halfSize,  halfSize}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize,  halfSize,  halfSize}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize,  halfSize, -halfSize}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
 
-        // Bottom face
-        { {-halfSize, -halfSize, -halfSize}, color, {0.0f, 1.0f} },
-        { { halfSize, -halfSize, -halfSize}, color, {1.0f, 1.0f} },
-        { { halfSize, -halfSize,  halfSize}, color, {1.0f, 0.0f} },
-        { {-halfSize, -halfSize,  halfSize}, color, {0.0f, 0.0f} },
+        // Bottom face (normal: -Y, tangent: +X)
+        { {-halfSize, -halfSize, -halfSize}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize, -halfSize, -halfSize}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { { halfSize, -halfSize,  halfSize}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
+        { {-halfSize, -halfSize,  halfSize}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f} },
 
-        // Right face
-        { { halfSize, -halfSize, -halfSize}, color, {0.0f, 0.0f} },
-        { { halfSize,  halfSize, -halfSize}, color, {1.0f, 0.0f} },
-        { { halfSize,  halfSize,  halfSize}, color, {1.0f, 1.0f} },
-        { { halfSize, -halfSize,  halfSize}, color, {0.0f, 1.0f} },
+        // Right face (normal: +X, tangent: -Z)
+        { { halfSize, -halfSize, -halfSize}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f, 1.0f} },
+        { { halfSize,  halfSize, -halfSize}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, -1.0f, 1.0f} },
+        { { halfSize,  halfSize,  halfSize}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f, 1.0f} },
+        { { halfSize, -halfSize,  halfSize}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, -1.0f, 1.0f} },
 
-        // Left face
-        { {-halfSize, -halfSize, -halfSize}, color, {1.0f, 0.0f} },
-        { {-halfSize, -halfSize,  halfSize}, color, {0.0f, 0.0f} },
-        { {-halfSize,  halfSize,  halfSize}, color, {0.0f, 1.0f} },
-        { {-halfSize,  halfSize, -halfSize}, color, {1.0f, 1.0f} }
+        // Left face (normal: -X, tangent: +Z)
+        { {-halfSize, -halfSize, -halfSize}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f} },
+        { {-halfSize, -halfSize,  halfSize}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f} },
+        { {-halfSize,  halfSize,  halfSize}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 1.0f} },
+        { {-halfSize,  halfSize, -halfSize}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 1.0f} }
     };
 
     indices = {

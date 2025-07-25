@@ -36,57 +36,6 @@ void SetupScene(Engine* engine) {
     // Set the camera as the active camera
     engine->SetActiveCamera(camera);
 
-    // Create a cube entity
-    Entity* cubeEntity = engine->CreateEntity("Cube");
-    if (!cubeEntity) {
-        throw std::runtime_error("Failed to create cube entity");
-    }
-
-    // Add a transform component to the cube
-    auto* cubeTransform = cubeEntity->AddComponent<TransformComponent>();
-    cubeTransform->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-    cubeTransform->SetRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-    cubeTransform->SetScale(glm::vec3(1.0f, 1.0f, 1.0f));
-
-    // Add a mesh component to the cube
-    auto* cubeMesh = cubeEntity->AddComponent<MeshComponent>();
-    cubeMesh->CreateCube(1.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-
-    // Make the camera look at the red cube
-    camera->LookAt(cubeTransform->GetPosition());
-
-    // Create a second cube entity
-    Entity* cube2Entity = engine->CreateEntity("Cube2");
-    if (!cube2Entity) {
-        throw std::runtime_error("Failed to create second cube entity");
-    }
-
-    // Add a transform component to the second cube
-    auto* cube2Transform = cube2Entity->AddComponent<TransformComponent>();
-    cube2Transform->SetPosition(glm::vec3(2.0f, 0.0f, 0.0f));
-    cube2Transform->SetRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-    cube2Transform->SetScale(glm::vec3(0.5f, 0.5f, 0.5f));
-
-    // Add a mesh component to the second cube
-    auto* cube2Mesh = cube2Entity->AddComponent<MeshComponent>();
-    cube2Mesh->CreateCube(1.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-
-    // Create a third cube entity
-    Entity* cube3Entity = engine->CreateEntity("Cube3");
-    if (!cube3Entity) {
-        throw std::runtime_error("Failed to create third cube entity");
-    }
-
-    // Add a transform component to the third cube
-    auto* cube3Transform = cube3Entity->AddComponent<TransformComponent>();
-    cube3Transform->SetPosition(glm::vec3(-2.0f, 0.0f, 0.0f));
-    cube3Transform->SetRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-    cube3Transform->SetScale(glm::vec3(0.5f, 0.5f, 0.5f));
-
-    // Add a mesh component to the third cube
-    auto* cube3Mesh = cube3Entity->AddComponent<MeshComponent>();
-    cube3Mesh->CreateCube(1.0f, glm::vec3(0.0f, 0.0f, 1.0f));
-
     // Start loading Bistro.glb model in background thread
     if (ModelLoader* modelLoader = engine->GetModelLoader()) {
         std::cout << "Starting threaded loading of Bistro model..." << std::endl;
@@ -123,11 +72,9 @@ void android_main(android_app* app) {
 #else
 /**
  * @brief Desktop entry point.
- * @param argc The number of command-line arguments.
- * @param argv The command-line arguments.
  * @return The exit code.
  */
-int main(int argc, char* argv[]) {
+int main(int, char*[]) {
     try {
         // Create the engine
         Engine engine;

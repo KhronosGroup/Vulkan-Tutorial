@@ -13,6 +13,7 @@
 #include "entity.h"
 #include "mesh_component.h"
 #include "camera_component.h"
+#include "memory_pool.h"
 
 // Forward declarations
 class ImGuiSystem;
@@ -282,6 +283,20 @@ public:
     }
     vk::Format findDepthFormat();
 
+    /**
+     * @brief Pre-allocate all Vulkan resources for an entity during scene loading.
+     * @param entity The entity to pre-allocate resources for.
+     * @return True if pre-allocation was successful, false otherwise.
+     */
+    bool preAllocateEntityResources(Entity* entity);
+
+    // Shared default PBR texture identifiers (to avoid creating hundreds of identical textures)
+    static const std::string SHARED_DEFAULT_ALBEDO_ID;
+    static const std::string SHARED_DEFAULT_NORMAL_ID;
+    static const std::string SHARED_DEFAULT_METALLIC_ROUGHNESS_ID;
+    static const std::string SHARED_DEFAULT_OCCLUSION_ID;
+    static const std::string SHARED_DEFAULT_EMISSIVE_ID;
+
 private:
     // Platform
     Platform* platform = nullptr;
@@ -299,6 +314,9 @@ private:
     // Vulkan device
     vk::raii::PhysicalDevice physicalDevice = nullptr;
     vk::raii::Device device = nullptr;
+
+    // Memory pool for efficient memory management
+    std::unique_ptr<MemoryPool> memoryPool;
 
     // Vulkan queues
     vk::raii::Queue graphicsQueue = nullptr;
@@ -355,7 +373,7 @@ private:
 
     // Depth buffer
     vk::raii::Image depthImage = nullptr;
-    vk::raii::DeviceMemory depthImageMemory = nullptr;
+    std::unique_ptr<MemoryPool::Allocation> depthImageAllocation = nullptr;
     vk::raii::ImageView depthImageView = nullptr;
 
     // Descriptor set layouts (declared before pools and sets)
@@ -365,9 +383,9 @@ private:
     // Mesh resources
     struct MeshResources {
         vk::raii::Buffer vertexBuffer = nullptr;
-        vk::raii::DeviceMemory vertexBufferMemory = nullptr;
+        std::unique_ptr<MemoryPool::Allocation> vertexBufferAllocation = nullptr;
         vk::raii::Buffer indexBuffer = nullptr;
-        vk::raii::DeviceMemory indexBufferMemory = nullptr;
+        std::unique_ptr<MemoryPool::Allocation> indexBufferAllocation = nullptr;
         uint32_t indexCount = 0;
     };
     std::unordered_map<MeshComponent*, MeshResources> meshResources;
@@ -375,7 +393,7 @@ private:
     // Texture resources
     struct TextureResources {
         vk::raii::Image textureImage = nullptr;
-        vk::raii::DeviceMemory textureImageMemory = nullptr;
+        std::unique_ptr<MemoryPool::Allocation> textureImageAllocation = nullptr;
         vk::raii::ImageView textureImageView = nullptr;
         vk::raii::Sampler textureSampler = nullptr;
     };
@@ -384,10 +402,11 @@ private:
     // Default texture resources (used when no texture is provided)
     TextureResources defaultTextureResources;
 
+
     // Entity resources (contains descriptor sets - must be declared before descriptor pool)
     struct EntityResources {
         std::vector<vk::raii::Buffer> uniformBuffers;
-        std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
+        std::vector<std::unique_ptr<MemoryPool::Allocation>> uniformBufferAllocations;
         std::vector<void*> uniformBuffersMapped;
         std::vector<vk::raii::DescriptorSet> basicDescriptorSets;  // For basic pipeline
         std::vector<vk::raii::DescriptorSet> pbrDescriptorSets;    // For PBR pipeline
@@ -457,6 +476,7 @@ private:
     bool createTextureImageView(TextureResources& resources);
     bool createTextureSampler(TextureResources& resources);
     bool createDefaultTextureResources();
+    bool createSharedDefaultPBRTextures();
     bool createMeshResources(MeshComponent* meshComponent);
     bool createUniformBuffers(Entity* entity);
     bool createDescriptorPool();
@@ -483,9 +503,11 @@ private:
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const;
 
     std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
+    std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> createBufferPooled(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
     void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 
     std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
+    std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> createImagePooled(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
     void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
     void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
 

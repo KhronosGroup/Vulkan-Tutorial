@@ -97,6 +97,24 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
+    // Initialize memory pool for efficient memory management
+    try {
+        memoryPool = std::make_unique<MemoryPool>(device, physicalDevice);
+        if (!memoryPool->initialize()) {
+            std::cerr << "Failed to initialize memory pool" << std::endl;
+            return false;
+        }
+
+        // Pre-allocate memory pools to prevent allocation during rendering
+        if (!memoryPool->preAllocatePools()) {
+            std::cerr << "Failed to pre-allocate memory pools" << std::endl;
+            return false;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create memory pool: " << e.what() << std::endl;
+        return false;
+    }
+
     // Create swap chain
     if (!createSwapChain()) {
         return false;
@@ -160,6 +178,12 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
+    // Create shared default PBR textures (to avoid creating hundreds of identical textures)
+    if (!createSharedDefaultPBRTextures()) {
+        std::cerr << "Failed to create shared default PBR textures" << std::endl;
+        return false;
+    }
+
     // Create command buffers
     if (!createCommandBuffers()) {
         return false;
@@ -182,13 +206,12 @@ void Renderer::Cleanup() {
         // Wait for the device to be idle before cleaning up
         device.waitIdle();
         for (auto& resources : entityResources | std::views::values) {
-            for (auto& memory : resources.uniformBuffersMemory) {
-                memory.unmapMemory();
-            }
+            // Memory pool handles unmapping automatically, no need to manually unmap
             resources.basicDescriptorSets.clear();
             resources.pbrDescriptorSets.clear();
             resources.uniformBuffers.clear();
-            resources.uniformBuffersMemory.clear();
+            resources.uniformBufferAllocations.clear();
+            resources.uniformBuffersMapped.clear();
         }
         std::cout << "Renderer cleanup completed." << std::endl;
         initialized = false;

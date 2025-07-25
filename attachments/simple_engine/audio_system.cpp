@@ -1,13 +1,16 @@
 #include "audio_system.h"
 
+#include <cassert>
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <queue>
 #include <mutex>
+#include <utility>
 
 // OpenAL headers
 #ifdef __APPLE__
@@ -52,7 +55,7 @@ static void CheckOpenALError(const std::string& operation) {
 // Concrete implementation of AudioSource
 class ConcreteAudioSource : public AudioSource {
 public:
-    explicit ConcreteAudioSource(const std::string& name) : name(name) {}
+    explicit ConcreteAudioSource(std::string  name) : name(std::move(name)) {}
     ~ConcreteAudioSource() override = default;
 
     void Play() override {
@@ -60,12 +63,10 @@ public:
         playbackPosition = 0;
         delayTimer = 0.0f;
         inDelayPhase = false;
-        std::cout << "Playing audio source: " << name << std::endl;
     }
 
     void Pause() override {
         playing = false;
-        std::cout << "Pausing audio source: " << name << std::endl;
     }
 
     void Stop() override {
@@ -73,31 +74,26 @@ public:
         playbackPosition = 0;
         delayTimer = 0.0f;
         inDelayPhase = false;
-        std::cout << "Stopping audio source: " << name << std::endl;
     }
 
     void SetVolume(float volume) override {
         this->volume = volume;
-        std::cout << "Setting volume of audio source " << name << " to " << volume << std::endl;
     }
 
     void SetLoop(bool loop) override {
         this->loop = loop;
-        std::cout << "Setting loop of audio source " << name << " to " << (loop ? "true" : "false") << std::endl;
     }
 
     void SetPosition(float x, float y, float z) override {
         position[0] = x;
         position[1] = y;
         position[2] = z;
-        std::cout << "Setting position of audio source " << name << " to (" << x << ", " << y << ", " << z << ")" << std::endl;
     }
 
     void SetVelocity(float x, float y, float z) override {
         velocity[0] = x;
         velocity[1] = y;
         velocity[2] = z;
-        std::cout << "Setting velocity of audio source " << name << " to (" << x << ", " << y << ", " << z << ")" << std::endl;
     }
 
     [[nodiscard]] bool IsPlaying() const override {
@@ -120,7 +116,6 @@ public:
                 inDelayPhase = false;
                 playbackPosition = 0;
                 delayTimer = 0.0f;
-                std::cout << "Delay finished, restarting audio playback for: " << name << std::endl;
             }
         } else {
             // Normal playback, update position
@@ -129,15 +124,13 @@ public:
             // Check if we've reached the end of the audio
             if (audioLengthSamples > 0 && playbackPosition >= audioLengthSamples) {
                 if (loop) {
-                    // Start delay phase before looping
+                    // Start the delay phase before looping
                     inDelayPhase = true;
                     delayTimer = 0.0f;
-                    std::cout << "Audio finished, starting 1.5s delay before loop for: " << name << std::endl;
                 } else {
                     // Stop playing if not looping
                     playing = false;
                     playbackPosition = 0;
-                    std::cout << "Audio finished, stopping playback for: " << name << std::endl;
                 }
             }
         }
@@ -171,8 +164,8 @@ private:
     uint32_t playbackPosition = 0;      // Current position in samples
     uint32_t audioLengthSamples = 0;    // Total length of audio in samples
     float delayTimer = 0.0f;            // Timer for delay between loops
-    bool inDelayPhase = false;          // Whether we're currently in delay phase
-    static constexpr float delayDuration = 1.5f; // 1.5 second delay between loops
+    bool inDelayPhase = false;          // Whether we're currently in the delay phase
+    static constexpr float delayDuration = 1.5f; // 1.5-second delay between loops
 };
 
 // OpenAL audio output device implementation
@@ -180,7 +173,7 @@ class OpenALAudioOutputDevice : public AudioOutputDevice {
 public:
     OpenALAudioOutputDevice() = default;
     ~OpenALAudioOutputDevice() override {
-        Stop();
+        OpenALAudioOutputDevice::Stop();
         Cleanup();
     }
 
@@ -242,7 +235,6 @@ public:
         }
 
         initialized = true;
-        std::cout << "OpenAL audio output device initialized successfully" << std::endl;
         return true;
     }
 
@@ -258,10 +250,9 @@ public:
 
         playing = true;
 
-        // Start audio playback thread
+        // Start an audio playback thread
         audioThread = std::thread(&OpenALAudioOutputDevice::AudioThreadFunction, this);
 
-        std::cout << "OpenAL audio output device started" << std::endl;
         return true;
     }
 
@@ -272,7 +263,7 @@ public:
 
         playing = false;
 
-        // Wait for audio thread to finish
+        // Wait for the audio thread to finish
         if (audioThread.joinable()) {
             audioThread.join();
         }
@@ -283,7 +274,6 @@ public:
             CheckOpenALError("alSourceStop");
         }
 
-        std::cout << "OpenAL audio output device stopped" << std::endl;
         return true;
     }
 
@@ -302,16 +292,16 @@ public:
         return true;
     }
 
-    bool IsPlaying() const override {
+    [[nodiscard]] bool IsPlaying() const override {
         return playing;
     }
 
-    uint32_t GetPosition() const override {
+    [[nodiscard]] uint32_t GetPosition() const override {
         return playbackPosition;
     }
 
 private:
-    static const int NUM_BUFFERS = 4;
+    static constexpr int NUM_BUFFERS = 4;
 
     uint32_t sampleRate = 44100;
     uint32_t channels = 2;
@@ -324,7 +314,7 @@ private:
     ALCdevice* device = nullptr;
     ALCcontext* context = nullptr;
     ALuint source = 0;
-    ALuint buffers[NUM_BUFFERS];
+    ALuint buffers[NUM_BUFFERS]{};
     int currentBuffer = 0;
 
     std::vector<float> audioBuffer;
@@ -435,7 +425,7 @@ private:
             }
 
             // Validate buffer parameters
-            if (samplesProcessed == 0 || pcmBuffer.empty()) {
+            if (pcmBuffer.empty()) {
                 // Re-add buffer to available list if we can't use it
                 if (queuedBufferCount >= NUM_BUFFERS) {
                     availableBuffers.push(buffer);
@@ -471,18 +461,14 @@ private:
             }
 
             playbackPosition += samplesProcessed / channels;
-
-            // For debugging: print audio activity
-            static uint32_t debugCounter = 0;
-            if (++debugCounter % 100 == 0) { // Print every 100 buffer updates
-                std::cout << "OpenAL output: processed " << samplesProcessed
-                          << " samples, position: " << playbackPosition << std::endl;
-            }
         }
     }
 };
 
 AudioSystem::~AudioSystem() {
+    // Stop the audio thread first
+    stopAudioThread();
+
     // Stop and clean up audio output device
     if (outputDevice) {
         outputDevice->Stop();
@@ -498,13 +484,17 @@ AudioSystem::~AudioSystem() {
 }
 
 void AudioSystem::GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint32_t playbackPosition) {
-    const float sampleRate = 44100.0f;
+    constexpr float sampleRate = 44100.0f;
     const float frequency = 1000.0f;  // 1000Hz ping - louder and more penetrating frequency
-    const float pingDuration = 0.5f; // 0.5 second ping duration
-    const uint32_t pingSamples = static_cast<uint32_t>(pingDuration * sampleRate);
-    const float silenceDuration = 1.0f; // 1 second silence after ping
-    const uint32_t silenceSamples = static_cast<uint32_t>(silenceDuration * sampleRate);
-    const uint32_t totalCycleSamples = pingSamples + silenceSamples;
+    constexpr float pingDuration = 0.5f; // 0.5 second ping duration
+    constexpr auto pingSamples = static_cast<uint32_t>(pingDuration * sampleRate);
+    constexpr float silenceDuration = 1.0f; // 1 second silence after ping
+    constexpr auto silenceSamples = static_cast<uint32_t>(silenceDuration * sampleRate);
+    constexpr uint32_t totalCycleSamples = pingSamples + silenceSamples;
+
+    // Debug: Track generated values
+    float maxGenerated = 0.0f;
+    uint32_t nonZeroGenerated = 0;
 
     for (uint32_t i = 0; i < sampleCount; i++) {
         uint32_t globalPosition = playbackPosition + i;
@@ -530,19 +520,25 @@ void AudioSystem::GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint
             }
 
             // Generate sine wave with envelope
-            float sineWave = std::sin(2.0f * M_PI * frequency * t);
+            float sineWave = sinf(2.0f * static_cast<float>(M_PI) * frequency * t);
             buffer[i] = 0.8f * envelope * sineWave; // 0.8 amplitude for much louder, clearly audible sound
+
+            // Track generated values for debugging
+            float absValue = std::abs(buffer[i]);
+            if (absValue > 0.0001f) {
+                nonZeroGenerated++;
+            }
+            maxGenerated = std::max(maxGenerated, absValue);
         } else {
             // Silence phase
             buffer[i] = 0.0f;
         }
     }
+
 }
 
 bool AudioSystem::Initialize(Renderer* renderer) {
     if (renderer) {
-        std::cout << "Initializing HRTF audio system with Vulkan compute shader support" << std::endl;
-
         // Validate renderer if provided
         if (!renderer->IsInitialized()) {
             std::cerr << "AudioSystem::Initialize: Renderer is not initialized" << std::endl;
@@ -552,13 +548,11 @@ bool AudioSystem::Initialize(Renderer* renderer) {
         // Store the renderer for compute shader support
         this->renderer = renderer;
     } else {
-        std::cout << "Initializing HRTF audio system with CPU-based processing (no renderer)" << std::endl;
         this->renderer = nullptr;
     }
 
     // Generate default HRTF data for spatial audio processing
     LoadHRTFData(""); // Pass empty filename to force generation of default HRTF data
-    std::cout << "Using generated HRTF data for spatial audio processing" << std::endl;
 
     // Enable HRTF processing by default for 3D spatial audio
     EnableHRTF(true);
@@ -582,8 +576,10 @@ bool AudioSystem::Initialize(Renderer* renderer) {
         return false;
     }
 
+    // Start the background audio processing thread
+    startAudioThread();
+
     initialized = true;
-    std::cout << "HRTF audio system initialized successfully with audio output" << std::endl;
     return true;
 }
 
@@ -592,9 +588,6 @@ void AudioSystem::Update(float deltaTime) {
         return;
     }
 
-    // Check if we have a valid renderer for Vulkan compute shader processing
-    bool hasValidRenderer = (renderer && renderer->IsInitialized());
-
     // Update audio sources and process spatial audio
     for (auto& source : sources) {
         if (!source->IsPlaying()) {
@@ -602,12 +595,12 @@ void AudioSystem::Update(float deltaTime) {
         }
 
         // Cast to ConcreteAudioSource to access timing methods
-        ConcreteAudioSource* concreteSource = static_cast<ConcreteAudioSource*>(source.get());
+        auto* concreteSource = dynamic_cast<ConcreteAudioSource*>(source.get());
 
         // Update playback timing and delay logic
         concreteSource->UpdatePlayback(deltaTime, 0); // Will update with actual samples processed later
 
-        // Only process audio if not in delay phase
+        // Only process audio if not in the delay phase
         if (!concreteSource->ShouldProcessAudio()) {
             continue;
         }
@@ -618,7 +611,7 @@ void AudioSystem::Update(float deltaTime) {
             const float* sourcePosition = concreteSource->GetPosition();
 
             // Create sample buffers for processing
-            const uint32_t sampleCount = 1024;
+            constexpr uint32_t sampleCount = 1024;
             std::vector<float> inputBuffer(sampleCount, 0.0f);
             std::vector<float> outputBuffer(sampleCount * 2, 0.0f);
             uint32_t actualSamplesProcessed = 0;
@@ -649,21 +642,10 @@ void AudioSystem::Update(float deltaTime) {
                 actualSamplesProcessed = sampleCount;
             }
 
-            // Process audio with HRTF spatial processing using Vulkan compute shader
-            ProcessHRTF(inputBuffer.data(), outputBuffer.data(), sampleCount, sourcePosition);
-
-            // Send processed audio to output device
-            if (outputDevice && outputDevice->IsPlaying()) {
-                // Apply master volume
-                for (uint32_t i = 0; i < sampleCount * 2; i++) {
-                    outputBuffer[i] *= masterVolume;
-                }
-
-                // Send to audio output device
-                if (!outputDevice->WriteAudio(outputBuffer.data(), sampleCount)) {
-                    std::cerr << "Failed to write audio data to output device" << std::endl;
-                }
-            }
+            // Process audio with HRTF spatial processing using background thread
+            // This prevents the main thread from blocking on fence waits
+            // The background thread handles the complete pipeline including output to device
+            submitAudioTask(inputBuffer.data(), sampleCount, sourcePosition, actualSamplesProcessed);
 
             // Update playback timing with actual samples processed
             concreteSource->UpdatePlayback(0.0f, actualSamplesProcessed);
@@ -679,22 +661,19 @@ void AudioSystem::Update(float deltaTime) {
     }
 
     // Clean up finished audio sources
-    sources.erase(
-        std::remove_if(sources.begin(), sources.end(),
-            [](const std::unique_ptr<AudioSource>& source) {
-                // Keep all sources active for continuous playback
-                // Audio sources can be stopped/started via their Play/Stop methods
-                return false;
-            }),
-        sources.end()
-    );
+    std::erase_if(sources,
+                  [](const std::unique_ptr<AudioSource>& source) {
+                      // Keep all sources active for continuous playback
+                      // Audio sources can be stopped/started via their Play/Stop methods
+                      return false;
+                  });
 
     // Update timing for audio processing with low-latency chunks
     static float accumulatedTime = 0.0f;
     accumulatedTime += deltaTime;
 
     // Process audio in 20ms chunks for optimal latency
-    const float audioChunkTime = 0.02f; // 20ms chunks for real-time audio
+    constexpr float audioChunkTime = 0.02f; // 20ms chunks for real-time audio
     if (accumulatedTime >= audioChunkTime) {
         // Trigger audio buffer updates for smooth playback
         // The HRTF processing ensures spatial audio is updated continuously
@@ -706,7 +685,6 @@ void AudioSystem::Update(float deltaTime) {
 }
 
 bool AudioSystem::LoadAudio(const std::string& filename, const std::string& name) {
-    std::cout << "Loading audio file: " << filename << " as " << name << std::endl;
 
     // Open the WAV file
     std::ifstream file(filename, std::ios::binary);
@@ -732,7 +710,7 @@ bool AudioSystem::LoadAudio(const std::string& filename, const std::string& name
         uint32_t dataSize;      // Data size
     };
 
-    WAVHeader header;
+    WAVHeader header{};
     file.read(reinterpret_cast<char*>(&header), sizeof(WAVHeader));
 
     // Validate WAV header
@@ -765,12 +743,6 @@ bool AudioSystem::LoadAudio(const std::string& filename, const std::string& name
     // Store the audio data
     audioData[name] = std::move(data);
 
-    std::cout << "Successfully loaded WAV file: " << filename
-              << " (Channels: " << header.numChannels
-              << ", Sample Rate: " << header.sampleRate
-              << ", Bits: " << header.bitsPerSample
-              << ", Size: " << header.dataSize << " bytes)" << std::endl;
-
     return true;
 }
 
@@ -796,29 +768,25 @@ AudioSource* AudioSystem::CreateAudioSource(const std::string& name) {
 
         // Set the audio length for proper timing
         source->SetAudioLength(totalSamples);
-        std::cout << "Set audio length for " << name << ": " << totalSamples << " samples (corrected for 4-byte indexing)" << std::endl;
     }
 
     // Store the source
     AudioSource* sourcePtr = source.get();
     sources.push_back(std::move(source));
 
-    std::cout << "Audio source created: " << name << std::endl;
     return sourcePtr;
 }
 
 AudioSource* AudioSystem::CreateDebugPingSource(const std::string& name) {
-    std::cout << "Creating debug ping audio source: " << name << std::endl;
-
     // Create a new audio source for debugging
     auto source = std::make_unique<ConcreteAudioSource>(name);
 
     // Set up debug ping parameters
     // The ping will cycle every 1.5 seconds (0.5s ping + 1.0s silence)
-    const float sampleRate = 44100.0f;
-    const float pingDuration = 0.5f;
-    const float silenceDuration = 1.0f;
-    const uint32_t totalCycleSamples = static_cast<uint32_t>((pingDuration + silenceDuration) * sampleRate);
+    constexpr float sampleRate = 44100.0f;
+    constexpr float pingDuration = 0.5f;
+    constexpr float silenceDuration = 1.0f;
+    constexpr auto totalCycleSamples = static_cast<uint32_t>((pingDuration + silenceDuration) * sampleRate);
 
     // Set the audio length for proper timing (infinite loop for debugging)
     source->SetAudioLength(totalCycleSamples);
@@ -827,7 +795,6 @@ AudioSource* AudioSystem::CreateDebugPingSource(const std::string& name) {
     AudioSource* sourcePtr = source.get();
     sources.push_back(std::move(source));
 
-    std::cout << "Debug ping audio source created: " << name << " (800Hz ping every 1.5 seconds)" << std::endl;
     return sourcePtr;
 }
 
@@ -835,8 +802,6 @@ void AudioSystem::SetListenerPosition(float x, float y, float z) {
     listenerPosition[0] = x;
     listenerPosition[1] = y;
     listenerPosition[2] = z;
-
-    std::cout << "Setting listener position to (" << x << ", " << y << ", " << z << ")" << std::endl;
 }
 
 void AudioSystem::SetListenerOrientation(float forwardX, float forwardY, float forwardZ,
@@ -847,28 +812,20 @@ void AudioSystem::SetListenerOrientation(float forwardX, float forwardY, float f
     listenerOrientation[3] = upX;
     listenerOrientation[4] = upY;
     listenerOrientation[5] = upZ;
-
-    std::cout << "Setting listener orientation to forward=(" << forwardX << ", " << forwardY << ", " << forwardZ << "), "
-              << "up=(" << upX << ", " << upY << ", " << upZ << ")" << std::endl;
 }
 
 void AudioSystem::SetListenerVelocity(float x, float y, float z) {
     listenerVelocity[0] = x;
     listenerVelocity[1] = y;
     listenerVelocity[2] = z;
-
-    std::cout << "Setting listener velocity to (" << x << ", " << y << ", " << z << ")" << std::endl;
 }
 
 void AudioSystem::SetMasterVolume(float volume) {
     masterVolume = volume;
-
-    std::cout << "Setting master volume to " << volume << std::endl;
 }
 
 void AudioSystem::EnableHRTF(bool enable) {
     hrtfEnabled = enable;
-    std::cout << "HRTF processing " << (enable ? "enabled" : "disabled") << std::endl;
 }
 
 bool AudioSystem::IsHRTFEnabled() const {
@@ -877,7 +834,6 @@ bool AudioSystem::IsHRTFEnabled() const {
 
 void AudioSystem::SetHRTFCPUOnly(bool cpuOnly) {
     hrtfCPUOnly = cpuOnly;
-    std::cout << "HRTF processing mode set to " << (cpuOnly ? "CPU-only" : "Vulkan shader (when available)") << std::endl;
 }
 
 bool AudioSystem::IsHRTFCPUOnly() const {
@@ -885,16 +841,11 @@ bool AudioSystem::IsHRTFCPUOnly() const {
 }
 
 bool AudioSystem::LoadHRTFData(const std::string& filename) {
-    if (!filename.empty()) {
-        std::cout << "Loading HRTF data from: " << filename << std::endl;
-    } else {
-        std::cout << "Generating default HRTF data (no file specified)" << std::endl;
-    }
 
     // HRTF parameters
-    const uint32_t hrtfSampleCount = 256;  // Number of samples per impulse response
-    const uint32_t positionCount = 36 * 13; // 36 azimuths (10-degree steps) * 13 elevations (15-degree steps)
-    const uint32_t channelCount = 2;       // Stereo (left and right ears)
+    constexpr uint32_t hrtfSampleCount = 256;  // Number of samples per impulse response
+    constexpr uint32_t positionCount = 36 * 13; // 36 azimuths (10-degree steps) * 13 elevations (15-degree steps)
+    constexpr uint32_t channelCount = 2;       // Stereo (left and right ears)
     const float sampleRate = 44100.0f;    // Sample rate for HRTF data
     const float speedOfSound = 343.0f;    // Speed of sound in m/s
     const float headRadius = 0.0875f;     // Average head radius in meters
@@ -922,7 +873,6 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
                 numHrtfPositions = filePositionCount;
 
                 file.close();
-                std::cout << "Successfully loaded HRTF data from file" << std::endl;
                 return true;
             }
         }
@@ -931,8 +881,6 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
     }
 
     // Generate realistic HRTF data based on acoustic modeling
-    std::cout << "Generating realistic HRTF impulse responses..." << std::endl;
-
     // Resize the HRTF data vector
     hrtfData.resize(hrtfSampleCount * positionCount * channelCount);
 
@@ -942,8 +890,8 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
         uint32_t azimuthIndex = pos % 36;
         uint32_t elevationIndex = pos / 36;
 
-        float azimuth = (static_cast<float>(azimuthIndex) * 10.0f - 180.0f) * M_PI / 180.0f;
-        float elevation = (static_cast<float>(elevationIndex) * 15.0f - 90.0f) * M_PI / 180.0f;
+        float azimuth = (static_cast<float>(azimuthIndex) * 10.0f - 180.0f) * static_cast<float>(M_PI) / 180.0f;
+        float elevation = (static_cast<float>(elevationIndex) * 15.0f - 90.0f) * static_cast<float>(M_PI) / 180.0f;
 
         // Convert to Cartesian coordinates
         float x = std::cos(elevation) * std::sin(azimuth);
@@ -962,7 +910,7 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
 
             // Calculate time delay (ITD - Interaural Time Difference)
             float timeDelay = distance / speedOfSound;
-            uint32_t sampleDelay = static_cast<uint32_t>(timeDelay * sampleRate);
+            auto sampleDelay = static_cast<uint32_t>(timeDelay * sampleRate);
 
             // Calculate head shadow effect (ILD - Interaural Level Difference)
             float shadowFactor = 1.0f;
@@ -972,14 +920,16 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
                 shadowFactor = 0.3f + 0.7f * std::exp(azimuth * 2.0f);
             }
 
+
             // Generate impulse response
+            uint32_t samplesGenerated = 0;
             for (uint32_t i = 0; i < hrtfSampleCount; i++) {
                 float value = 0.0f;
 
                 // Direct path impulse
                 if (i >= sampleDelay && i < sampleDelay + 10) {
                     float t = static_cast<float>(i - sampleDelay) / sampleRate;
-                    value = shadowFactor * std::exp(-t * 1000.0f) * std::cos(2.0f * M_PI * 1000.0f * t);
+                    value = shadowFactor * std::exp(-t * 1000.0f) * std::cos(2.0f * static_cast<float>(M_PI) * 1000.0f * t);
                 }
 
                 // Early reflections (simplified)
@@ -988,7 +938,7 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
                     if (i >= reflDelay && i < reflDelay + 5) {
                         float t = static_cast<float>(i - reflDelay) / sampleRate;
                         float reflGain = shadowFactor * 0.3f / static_cast<float>(refl);
-                        value += reflGain * std::exp(-t * 2000.0f) * std::cos(2.0f * M_PI * 800.0f * t);
+                        value += reflGain * std::exp(-t * 2000.0f) * std::cos(2.0f * static_cast<float>(M_PI) * 800.0f * t);
                     }
                 }
 
@@ -1005,11 +955,11 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
     hrtfSize = hrtfSampleCount;
     numHrtfPositions = positionCount;
 
-    std::cout << "Successfully generated " << positionCount << " HRTF impulse responses" << std::endl;
     return true;
 }
 
 bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uint32_t sampleCount, const float* sourcePosition) {
+
     if (!hrtfEnabled) {
         // If HRTF is disabled, just copy input to output
         for (uint32_t i = 0; i < sampleCount; i++) {
@@ -1020,11 +970,11 @@ bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uin
     }
 
     // Check if we should use CPU-only processing or if Vulkan is not available
-    if (hrtfCPUOnly || !renderer || !renderer->IsInitialized()) {
+    // Also force CPU processing if we've detected threading issues previously
+    static bool forceGPUFallback = false;
+    if (hrtfCPUOnly || !renderer || !renderer->IsInitialized() || forceGPUFallback) {
         // Use CPU-based HRTF processing (either forced or fallback)
-        // Skip Vulkan buffer creation and go directly to CPU processing
-    } else {
-        // Use Vulkan shader-based HRTF processing
+
         // Create buffers for HRTF processing if they don't exist or if the sample count has changed
         if (!createHRTFBuffers(sampleCount)) {
             std::cerr << "Failed to create HRTF buffers" << std::endl;
@@ -1036,17 +986,6 @@ bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uin
         memcpy(data, inputBuffer, sampleCount * sizeof(float));
         inputBufferMemory.unmapMemory();
 
-        // Set up HRTF parameters
-        struct HRTFParams {
-            float sourcePosition[3];
-            float listenerPosition[3];
-            float listenerOrientation[6]; // Forward (3) and up (3) vectors
-            uint32_t sampleCount;
-            uint32_t hrtfSize;
-            uint32_t numHrtfPositions;
-            float padding; // For alignment
-        } params;
-
         // Copy source and listener positions
         memcpy(params.sourcePosition, sourcePosition, sizeof(float) * 3);
         memcpy(params.listenerPosition, listenerPosition, sizeof(float) * 3);
@@ -1056,118 +995,198 @@ bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uin
         params.numHrtfPositions = numHrtfPositions;
         params.padding = 0.0f;
 
-        // Copy parameters to parameter buffer
-        data = paramsBufferMemory.mapMemory(0, sizeof(HRTFParams));
-        memcpy(data, &params, sizeof(HRTFParams));
-        paramsBufferMemory.unmapMemory();
-
-        // TODO: Add actual Vulkan compute shader dispatch here
-        // For now, fall through to CPU processing
-    }
-
-    // CPU-based HRTF processing (used for both CPU-only mode and fallback)
-
-    // Create buffers for HRTF processing if they don't exist or if the sample count has changed
-    if (!createHRTFBuffers(sampleCount)) {
-        std::cerr << "Failed to create HRTF buffers" << std::endl;
-        return false;
-    }
-
-    // Copy input data to input buffer
-    void* data = inputBufferMemory.mapMemory(0, sampleCount * sizeof(float));
-    memcpy(data, inputBuffer, sampleCount * sizeof(float));
-    inputBufferMemory.unmapMemory();
-
-    // Set up HRTF parameters
-    struct HRTFParams {
-        float sourcePosition[3];
-        float listenerPosition[3];
-        float listenerOrientation[6]; // Forward (3) and up (3) vectors
-        uint32_t sampleCount;
-        uint32_t hrtfSize;
-        uint32_t numHrtfPositions;
-        float padding; // For alignment
-    } params;
-
-    // Copy source and listener positions
-    memcpy(params.sourcePosition, sourcePosition, sizeof(float) * 3);
-    memcpy(params.listenerPosition, listenerPosition, sizeof(float) * 3);
-    memcpy(params.listenerOrientation, listenerOrientation, sizeof(float) * 6);
-    params.sampleCount = sampleCount;
-    params.hrtfSize = hrtfSize;
-    params.numHrtfPositions = numHrtfPositions;
-    params.padding = 0.0f;
-
-    // Copy parameters to parameter buffer
-    data = paramsBufferMemory.mapMemory(0, sizeof(HRTFParams));
-    memcpy(data, &params, sizeof(HRTFParams));
-    paramsBufferMemory.unmapMemory();
-
-    // Perform HRTF processing using CPU-based convolution
-    // This implementation provides real-time 3D audio spatialization
-
-    // Calculate direction from listener to source
-    float direction[3];
-    direction[0] = sourcePosition[0] - listenerPosition[0];
-    direction[1] = sourcePosition[1] - listenerPosition[1];
-    direction[2] = sourcePosition[2] - listenerPosition[2];
-
-    // Normalize direction
-    float length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]);
-    if (length > 0.0001f) {
-        direction[0] /= length;
-        direction[1] /= length;
-        direction[2] /= length;
-    } else {
-        direction[0] = 0.0f;
-        direction[1] = 0.0f;
-        direction[2] = -1.0f; // Default to front
-    }
-
-    // Calculate azimuth and elevation
-    float azimuth = std::atan2(direction[0], direction[2]);
-    float elevation = std::asin(std::max(-1.0f, std::min(1.0f, direction[1])));
-
-    // Convert to indices
-    int azimuthIndex = static_cast<int>((azimuth + M_PI) / (2.0f * M_PI) * 36.0f) % 36;
-    int elevationIndex = static_cast<int>((elevation + M_PI / 2.0f) / M_PI * 13.0f);
-    elevationIndex = std::max(0, std::min(12, elevationIndex));
-
-    // Get HRTF index
-    int hrtfIndex = elevationIndex * 36 + azimuthIndex;
-    hrtfIndex = std::min(hrtfIndex, static_cast<int>(numHrtfPositions) - 1);
-
-    // Perform convolution for left and right ears
-    for (uint32_t i = 0; i < sampleCount; i++) {
-        float leftSample = 0.0f;
-        float rightSample = 0.0f;
-
-        // Convolve with HRTF impulse response
-        for (uint32_t j = 0; j < hrtfSize && j <= i; j++) {
-            uint32_t hrtfLeftIndex = hrtfIndex * hrtfSize * 2 + j;
-            uint32_t hrtfRightIndex = hrtfIndex * hrtfSize * 2 + hrtfSize + j;
-
-            if (hrtfLeftIndex < hrtfData.size() && hrtfRightIndex < hrtfData.size()) {
-                leftSample += inputBuffer[i - j] * hrtfData[hrtfLeftIndex];
-                rightSample += inputBuffer[i - j] * hrtfData[hrtfRightIndex];
-            }
+        // Copy parameters to parameter buffer using persistent memory mapping
+        if (persistentParamsMemory) {
+            memcpy(persistentParamsMemory, &params, sizeof(HRTFParams));
+        } else {
+            std::cerr << "WARNING: Persistent memory not available, falling back to map/unmap" << std::endl;
+            data = paramsBufferMemory.mapMemory(0, sizeof(HRTFParams));
+            memcpy(data, &params, sizeof(HRTFParams));
+            paramsBufferMemory.unmapMemory();
         }
 
-        // Apply distance attenuation
-        float distanceAttenuation = 1.0f / std::max(1.0f, length);
-        leftSample *= distanceAttenuation;
-        rightSample *= distanceAttenuation;
+        // Perform HRTF processing using CPU-based convolution
+        // This implementation provides real-time 3D audio spatialization
 
-        // Write to output buffer
-        outputBuffer[i * 2] = leftSample;
-        outputBuffer[i * 2 + 1] = rightSample;
+        // Calculate direction from listener to source
+        float direction[3];
+        direction[0] = sourcePosition[0] - listenerPosition[0];
+        direction[1] = sourcePosition[1] - listenerPosition[1];
+        direction[2] = sourcePosition[2] - listenerPosition[2];
+
+        // Normalize direction
+        float length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]);
+        if (length > 0.0001f) {
+            direction[0] /= length;
+            direction[1] /= length;
+            direction[2] /= length;
+        } else {
+            direction[0] = 0.0f;
+            direction[1] = 0.0f;
+            direction[2] = -1.0f; // Default to front
+        }
+
+        // Calculate azimuth and elevation
+        float azimuth = std::atan2(direction[0], direction[2]);
+        float elevation = std::asin(std::max(-1.0f, std::min(1.0f, direction[1])));
+
+        // Convert to indices
+        int azimuthIndex = static_cast<int>((azimuth + M_PI) / (2.0f * M_PI) * 36.0f) % 36;
+        int elevationIndex = static_cast<int>((elevation + M_PI / 2.0f) / M_PI * 13.0f);
+        elevationIndex = std::max(0, std::min(12, elevationIndex));
+
+        // Get HRTF index
+        int hrtfIndex = elevationIndex * 36 + azimuthIndex;
+        hrtfIndex = std::min(hrtfIndex, static_cast<int>(numHrtfPositions) - 1);
+
+        // Perform convolution for left and right ears
+        for (uint32_t i = 0; i < sampleCount; i++) {
+            float leftSample = 0.0f;
+            float rightSample = 0.0f;
+
+            // Convolve with HRTF impulse response
+            for (uint32_t j = 0; j < hrtfSize && j <= i; j++) {
+                uint32_t hrtfLeftIndex = hrtfIndex * hrtfSize * 2 + j;
+                uint32_t hrtfRightIndex = hrtfIndex * hrtfSize * 2 + hrtfSize + j;
+
+                if (hrtfLeftIndex < hrtfData.size() && hrtfRightIndex < hrtfData.size()) {
+                    leftSample += inputBuffer[i - j] * hrtfData[hrtfLeftIndex];
+                    rightSample += inputBuffer[i - j] * hrtfData[hrtfRightIndex];
+                }
+            }
+
+            // Apply distance attenuation
+            float distanceAttenuation = 1.0f / std::max(1.0f, length);
+            leftSample *= distanceAttenuation;
+            rightSample *= distanceAttenuation;
+
+            // Write to output buffer
+            outputBuffer[i * 2] = leftSample;
+            outputBuffer[i * 2 + 1] = rightSample;
+        }
+
+
+
+        return true;
+    } else {
+        // Use Vulkan shader-based HRTF processing with fallback to CPU
+        try {
+            // Validate HRTF data exists
+            if (hrtfData.empty()) {
+                LoadHRTFData(""); // Generate HRTF data
+            }
+
+            // Create buffers for HRTF processing if they don't exist or if the sample count has changed
+            if (!createHRTFBuffers(sampleCount)) {
+                std::cerr << "Failed to create HRTF buffers, falling back to CPU processing" << std::endl;
+                throw std::runtime_error("Buffer creation failed");
+            }
+
+            // Copy input data to input buffer
+            void* data = inputBufferMemory.mapMemory(0, sampleCount * sizeof(float));
+            memcpy(data, inputBuffer, sampleCount * sizeof(float));
+
+
+            inputBufferMemory.unmapMemory();
+
+            // Set up HRTF parameters with proper std140 uniform buffer layout
+            struct alignas(16) HRTFParams {
+                float listenerPosition[4];    // vec3 + padding (16 bytes) - offset 0
+                float listenerForward[4];     // vec3 + padding (16 bytes) - offset 16
+                float listenerUp[4];          // vec3 + padding (16 bytes) - offset 32
+                float sourcePosition[4];      // vec3 + padding (16 bytes) - offset 48
+                float sampleCount;            // float (4 bytes) - offset 64
+                float padding1[3];            // Padding to align to 16-byte boundary - offset 68
+                uint32_t inputChannels;       // uint (4 bytes) - offset 80
+                uint32_t outputChannels;      // uint (4 bytes) - offset 84
+                uint32_t hrtfSize;            // uint (4 bytes) - offset 88
+                uint32_t numHrtfPositions;    // uint (4 bytes) - offset 92
+                float distanceAttenuation;    // float (4 bytes) - offset 96
+                float dopplerFactor;          // float (4 bytes) - offset 100
+                float reverbMix;              // float (4 bytes) - offset 104
+                float padding2;               // Padding to complete 16-byte alignment - offset 108
+            } params{};
+
+            // Copy listener and source positions with proper padding for GPU alignment
+            memcpy(params.listenerPosition, listenerPosition, sizeof(float) * 3);
+            params.listenerPosition[3] = 0.0f; // Padding for float3 alignment
+            memcpy(params.listenerForward, &listenerOrientation[0], sizeof(float) * 3); // Forward vector
+            params.listenerForward[3] = 0.0f; // Padding for float3 alignment
+            memcpy(params.listenerUp, &listenerOrientation[3], sizeof(float) * 3); // Up vector
+            params.listenerUp[3] = 0.0f; // Padding for float3 alignment
+            memcpy(params.sourcePosition, sourcePosition, sizeof(float) * 3);
+            params.sourcePosition[3] = 0.0f; // Padding for float3 alignment
+            params.sampleCount = static_cast<float>(sampleCount); // Number of samples to process
+            params.padding1[0] = params.padding1[1] = params.padding1[2] = 0.0f; // Initialize padding
+            params.inputChannels = 1; // Mono input
+            params.outputChannels = 2; // Stereo output
+            params.hrtfSize = hrtfSize;
+            params.numHrtfPositions = numHrtfPositions;
+            params.distanceAttenuation = 1.0f;
+            params.dopplerFactor = 1.0f;
+            params.reverbMix = 0.0f;
+            params.padding2 = 0.0f; // Initialize padding
+
+            // Copy parameters to parameter buffer using persistent memory mapping
+            if (persistentParamsMemory) {
+                memcpy(persistentParamsMemory, &params, sizeof(HRTFParams));
+            } else {
+                std::cerr << "ERROR: Persistent memory not available for GPU processing!" << std::endl;
+                throw std::runtime_error("Persistent memory required for GPU processing");
+            }
+
+
+            // Use renderer's main compute pipeline instead of dedicated HRTF pipeline
+            uint32_t workGroupSize = 64; // Must match the numthreads in the shader
+            uint32_t groupCountX = (sampleCount + workGroupSize - 1) / workGroupSize;
+
+
+
+            // Use renderer's main compute pipeline dispatch method
+            auto computeFence = renderer->DispatchCompute(groupCountX, 1, 1,
+                                                        *this->inputBuffer, *this->outputBuffer,
+                                                        *this->hrtfBuffer, *this->paramsBuffer);
+
+            // Wait for compute shader to complete using fence-based synchronization
+            const vk::raii::Device& device = renderer->GetRaiiDevice();
+            vk::Result result = device.waitForFences(*computeFence, VK_TRUE, UINT64_MAX);
+            if (result != vk::Result::eSuccess) {
+                std::cerr << "Failed to wait for compute fence: " << vk::to_string(result) << std::endl;
+                throw std::runtime_error("Fence wait failed");
+            }
+
+
+            // Copy results from output buffer to the output array
+            void* outputData = outputBufferMemory.mapMemory(0, sampleCount * 2 * sizeof(float));
+
+
+            memcpy(outputBuffer, outputData, sampleCount * 2 * sizeof(float));
+            outputBufferMemory.unmapMemory();
+
+
+
+            return true;
+        } catch (const std::exception& e) {
+            std::cerr << "GPU HRTF processing failed: " << e.what() << std::endl;
+            std::cerr << "CPU fallback disabled - GPU path required" << std::endl;
+            throw; // Re-throw the exception to ensure failure without CPU fallback
+        }
     }
-
-    return true;
 }
 
 bool AudioSystem::createHRTFBuffers(uint32_t sampleCount) {
-    // Clean up existing buffers
+    // Smart buffer reuse: only recreate if sample count changed significantly or buffers don't exist
+    if (currentSampleCount == sampleCount && *inputBuffer && *outputBuffer && *hrtfBuffer && *paramsBuffer) {
+        return true;
+    }
+
+    // Ensure all GPU operations complete before cleaning up existing buffers
+    if (renderer) {
+        const vk::raii::Device& device = renderer->GetRaiiDevice();
+        device.waitIdle();
+    }
+
+    // Clean up existing buffers only if we need to recreate them
     cleanupHRTFBuffers();
 
     if (!renderer) {
@@ -1242,9 +1261,27 @@ bool AudioSystem::createHRTFBuffers(uint32_t sampleCount) {
         memcpy(hrtfMappedMemory, hrtfData.data(), hrtfData.size() * sizeof(float));
         hrtfBufferMemory.unmapMemory();
 
-        // Create parameters buffer
+        // Create parameters buffer - use the correct GPU structure size
+        // The GPU processing uses a larger aligned structure (112 bytes) not the header struct (64 bytes)
+        struct alignas(16) GPUHRTFParams {
+            float listenerPosition[4];    // vec3 + padding (16 bytes)
+            float listenerForward[4];     // vec3 + padding (16 bytes)
+            float listenerUp[4];          // vec3 + padding (16 bytes)
+            float sourcePosition[4];      // vec3 + padding (16 bytes)
+            float sampleCount;            // float (4 bytes)
+            float padding1[3];            // Padding to align to 16-byte boundary
+            uint32_t inputChannels;       // uint (4 bytes)
+            uint32_t outputChannels;      // uint (4 bytes)
+            uint32_t hrtfSize;            // uint (4 bytes)
+            uint32_t numHrtfPositions;    // uint (4 bytes)
+            float distanceAttenuation;    // float (4 bytes)
+            float dopplerFactor;          // float (4 bytes)
+            float reverbMix;              // float (4 bytes)
+            float padding2;               // Padding to complete 16-byte alignment
+        };
+
         vk::BufferCreateInfo paramsBufferInfo;
-        paramsBufferInfo.size = 256; // Size large enough for all parameters
+        paramsBufferInfo.size = sizeof(GPUHRTFParams); // Use correct GPU structure size (112 bytes)
         paramsBufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
         paramsBufferInfo.sharingMode = vk::SharingMode::eExclusive;
 
@@ -1262,6 +1299,10 @@ bool AudioSystem::createHRTFBuffers(uint32_t sampleCount) {
         paramsBufferMemory = vk::raii::DeviceMemory(device, paramsAllocInfo);
         paramsBuffer.bindMemory(*paramsBufferMemory, 0);
 
+        // Set up persistent memory mapping for parameters buffer to avoid repeated map/unmap operations
+        persistentParamsMemory = paramsBufferMemory.mapMemory(0, sizeof(GPUHRTFParams));
+        // Update current sample count to track buffer size
+        currentSampleCount = sampleCount;
         return true;
     }
     catch (const std::exception& e) {
@@ -1272,6 +1313,12 @@ bool AudioSystem::createHRTFBuffers(uint32_t sampleCount) {
 }
 
 void AudioSystem::cleanupHRTFBuffers() {
+    // Unmap persistent memory if it exists
+    if (persistentParamsMemory && *paramsBufferMemory) {
+        paramsBufferMemory.unmapMemory();
+        persistentParamsMemory = nullptr;
+    }
+
     // With RAII, we just need to set the resources to nullptr
     // The destructors will handle the cleanup
     inputBuffer = nullptr;
@@ -1282,4 +1329,130 @@ void AudioSystem::cleanupHRTFBuffers() {
     hrtfBufferMemory = nullptr;
     paramsBuffer = nullptr;
     paramsBufferMemory = nullptr;
+
+    // Reset sample count tracking
+    currentSampleCount = 0;
+}
+
+
+// Threading implementation methods
+
+void AudioSystem::startAudioThread() {
+    if (audioThreadRunning.load()) {
+        return; // Thread already running
+    }
+
+    audioThreadShouldStop.store(false);
+    audioThreadRunning.store(true);
+
+    audioThread = std::thread(&AudioSystem::audioThreadLoop, this);
+    std::cout << "Audio processing thread started" << std::endl;
+}
+
+void AudioSystem::stopAudioThread() {
+    if (!audioThreadRunning.load()) {
+        return; // Thread not running
+    }
+
+    // Signal the thread to stop
+    audioThreadShouldStop.store(true);
+
+    // Wake up the thread if it's waiting
+    audioCondition.notify_all();
+
+    // Wait for the thread to finish
+    if (audioThread.joinable()) {
+        audioThread.join();
+    }
+
+    audioThreadRunning.store(false);
+    std::cout << "Audio processing thread stopped" << std::endl;
+}
+
+void AudioSystem::audioThreadLoop() {
+    while (!audioThreadShouldStop.load()) {
+        std::shared_ptr<AudioTask> task = nullptr;
+
+        // Wait for a task or stop signal
+        {
+            std::unique_lock<std::mutex> lock(taskQueueMutex);
+            audioCondition.wait(lock, [this] {
+                return !audioTaskQueue.empty() || audioThreadShouldStop.load();
+            });
+
+            if (audioThreadShouldStop.load()) {
+                break;
+            }
+
+            if (!audioTaskQueue.empty()) {
+                task = audioTaskQueue.front();
+                audioTaskQueue.pop();
+            }
+        }
+
+        // Process the task if we have one
+        if (task) {
+            processAudioTask(task);
+        }
+    }
+}
+
+void AudioSystem::processAudioTask(const std::shared_ptr<AudioTask>& task) {
+    // Process HRTF in the background thread
+    bool success = ProcessHRTF(task->inputBuffer.data(), task->outputBuffer.data(),
+                              task->sampleCount, task->sourcePosition);
+
+    if (success && task->outputDevice && task->outputDevice->IsPlaying()) {
+        // Apply master volume in the background thread
+        for (uint32_t i = 0; i < task->sampleCount * 2; i++) {
+            task->outputBuffer[i] *= task->masterVolume;
+        }
+
+        // Send processed audio directly to output device from background thread
+        if (!task->outputDevice->WriteAudio(task->outputBuffer.data(), task->sampleCount)) {
+            std::cerr << "Failed to write audio data to output device from background thread" << std::endl;
+        }
+    }
+}
+
+bool AudioSystem::submitAudioTask(const float* inputBuffer, uint32_t sampleCount,
+                                 const float* sourcePosition, uint32_t actualSamplesProcessed) {
+    if (!audioThreadRunning.load()) {
+        // Fallback to synchronous processing if the thread is not running
+        std::vector<float> outputBuffer(sampleCount * 2);
+        bool success = ProcessHRTF(inputBuffer, outputBuffer.data(), sampleCount, sourcePosition);
+
+        if (success && outputDevice && outputDevice->IsPlaying()) {
+            // Apply master volume
+            for (uint32_t i = 0; i < sampleCount * 2; i++) {
+                outputBuffer[i] *= masterVolume;
+            }
+
+            // Send to audio output device
+            if (!outputDevice->WriteAudio(outputBuffer.data(), sampleCount)) {
+                std::cerr << "Failed to write audio data to output device" << std::endl;
+                return false;
+            }
+        }
+        return success;
+    }
+
+    // Create a new task for asynchronous processing
+    auto task = std::make_shared<AudioTask>();
+    task->inputBuffer.assign(inputBuffer, inputBuffer + sampleCount);
+    task->outputBuffer.resize(sampleCount * 2); // Stereo output
+    memcpy(task->sourcePosition, sourcePosition, sizeof(float) * 3);
+    task->sampleCount = sampleCount;
+    task->actualSamplesProcessed = actualSamplesProcessed;
+    task->outputDevice = outputDevice.get();
+    task->masterVolume = masterVolume;
+
+    // Submit the task to the queue (non-blocking)
+    {
+        std::lock_guard<std::mutex> lock(taskQueueMutex);
+        audioTaskQueue.push(task);
+    }
+    audioCondition.notify_one();
+
+    return true; // Return immediately without waiting
 }

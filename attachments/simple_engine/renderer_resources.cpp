@@ -594,8 +594,12 @@ void Renderer::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuff
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        // Use mutex to ensure thread-safe access to graphics queue
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            graphicsQueue.submit(submitInfo, nullptr);
+            graphicsQueue.waitIdle();
+        }
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer: " << e.what() << std::endl;
         throw;
@@ -752,8 +756,12 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        // Use mutex to ensure thread-safe access to graphics queue
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            graphicsQueue.submit(submitInfo, nullptr);
+            graphicsQueue.waitIdle();
+        }
     } catch (const std::exception& e) {
         std::cerr << "Failed to transition image layout: " << e.what() << std::endl;
         throw;
@@ -812,8 +820,12 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
             .pCommandBuffers = &*commandBuffer
         };
 
-        graphicsQueue.submit(submitInfo, nullptr);
-        graphicsQueue.waitIdle();
+        // Use mutex to ensure thread-safe access to graphics queue
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            graphicsQueue.submit(submitInfo, nullptr);
+            graphicsQueue.waitIdle();
+        }
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer to image: " << e.what() << std::endl;
         throw;

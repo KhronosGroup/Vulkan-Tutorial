@@ -11,6 +11,7 @@ import vulkan_hpp;
 #include <string>
 #include <optional>
 #include <unordered_map>
+#include <mutex>
 
 #include "platform.h"
 #include "entity.h"
@@ -119,10 +120,11 @@ public:
      * @param outputBuffer The output buffer.
      * @param hrtfBuffer The HRTF data buffer.
      * @param paramsBuffer The parameters buffer.
+     * @return A fence that can be used to synchronize with the compute operation.
      */
-    void DispatchCompute(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ,
-                        vk::Buffer inputBuffer, vk::Buffer outputBuffer,
-                        vk::Buffer hrtfBuffer, vk::Buffer paramsBuffer);
+    vk::raii::Fence DispatchCompute(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ,
+                                   vk::Buffer inputBuffer, vk::Buffer outputBuffer,
+                                   vk::Buffer hrtfBuffer, vk::Buffer paramsBuffer);
 
     /**
      * @brief Check if the renderer is initialized.
@@ -146,7 +148,10 @@ public:
      * @brief Get the compute queue.
      * @return The compute queue.
      */
-    vk::Queue GetComputeQueue() const { return *computeQueue; }
+    vk::Queue GetComputeQueue() const {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        return *computeQueue;
+    }
 
     /**
      * @brief Find a suitable memory type.
@@ -156,6 +161,32 @@ public:
      */
     uint32_t FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) {
         return findMemoryType(typeFilter, properties);
+    }
+
+    /**
+     * @brief Get the compute queue family index.
+     * @return The compute queue family index.
+     */
+    uint32_t GetComputeQueueFamilyIndex() const {
+        return queueFamilyIndices.computeFamily.value();
+    }
+
+    /**
+     * @brief Submit a command buffer to the compute queue with proper dispatch loader preservation.
+     * @param commandBuffer The command buffer to submit.
+     * @param fence The fence to signal when the operation completes.
+     */
+    void SubmitToComputeQueue(vk::CommandBuffer commandBuffer, vk::Fence fence) {
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffer
+        };
+
+        // Use mutex to ensure thread-safe access to compute queue
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            computeQueue.submit(submitInfo, fence);
+        }
     }
 
     /**
@@ -278,6 +309,10 @@ private:
     vk::raii::DescriptorSetLayout computeDescriptorSetLayout = nullptr;
     vk::raii::DescriptorPool computeDescriptorPool = nullptr;
     std::vector<vk::raii::DescriptorSet> computeDescriptorSets;
+    vk::raii::CommandPool computeCommandPool = nullptr;
+
+    // Thread safety for queue access - unified mutex since queues may share the same underlying VkQueue
+    mutable std::mutex queueMutex;
 
     // Command pool and buffers
     vk::raii::CommandPool commandPool = nullptr;
@@ -385,6 +420,7 @@ private:
     bool createComputePipeline();
     void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material);
     bool createCommandPool();
+    bool createComputeCommandPool();
     bool createDepthResources();
     bool createTextureImage(const std::string& texturePath, TextureResources& resources);
     bool createTextureImageView(TextureResources& resources);

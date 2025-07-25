@@ -517,7 +517,11 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
         .pSignalSemaphores = &*renderFinishedSemaphores[semaphoreIndex]
     };
 
-    graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
+    // Use mutex to ensure thread-safe access to graphics queue
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
+    }
 
     // Present the image
     vk::PresentInfoKHR presentInfo{
@@ -528,7 +532,9 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
         .pImageIndices = &imageIndex
     };
 
+    // Use mutex to ensure thread-safe access to present queue
     try {
+        std::lock_guard<std::mutex> lock(queueMutex);
         result.first = presentQueue.presentKHR(presentInfo);
     } catch (const vk::OutOfDateKHRError&) {
         framebufferResized = true;

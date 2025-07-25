@@ -21,10 +21,21 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
     const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) {
 
-    if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-        // Print message to console
-        std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
-    }
+    // // Check if this is a shader debug printf message
+    // if (messageType & vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation) {
+    //     std::string message(pCallbackData->pMessage);
+    //     if (message.find("DEBUG-PRINTF") != std::string::npos) {
+    //         // This is a shader debug printf message - always show it
+    //         std::cout << "FINDME =====   SHADER DEBUG: " << pCallbackData->pMessage << std::endl;
+    //         return VK_FALSE;
+    //     }
+    // }
+    printf("Received %s\n", pCallbackData->pMessage);
+
+    // if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+    //     // Print message to console
+    //     std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    // }
 
     return VK_FALSE;
 }
@@ -222,6 +233,9 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
         };
 
         // Enable validation layers if requested
+        vk::ValidationFeaturesEXT validationFeatures{};
+        std::vector<vk::ValidationFeatureEnableEXT> enabledValidationFeatures;
+
         if (enableValidationLayers) {
             if (!checkValidationLayerSupport()) {
                 std::cerr << "Validation layers requested, but not available" << std::endl;
@@ -230,6 +244,14 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
 
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
+
+            // Enable debug printf functionality for shader debugging
+            enabledValidationFeatures.push_back(vk::ValidationFeatureEnableEXT::eDebugPrintf);
+
+            validationFeatures.enabledValidationFeatureCount = static_cast<uint32_t>(enabledValidationFeatures.size());
+            validationFeatures.pEnabledValidationFeatures = enabledValidationFeatures.data();
+
+            createInfo.pNext = &validationFeatures;
         }
 
         // Create instance
@@ -251,6 +273,7 @@ bool Renderer::setupDebugMessenger(bool enableValidationLayers) {
         // Create debug messenger info
         vk::DebugUtilsMessengerCreateInfoEXT createInfo{
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+                              vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
                               vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
                               vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
             .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |

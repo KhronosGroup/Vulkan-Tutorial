@@ -4,6 +4,11 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <queue>
 #ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
 #else
@@ -267,7 +272,7 @@ public:
      * @param sampleCount The number of samples to generate.
      * @param playbackPosition The current playback position for timing.
      */
-    void GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint32_t playbackPosition);
+    static void GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint32_t playbackPosition);
 
 private:
     // Loaded audio data
@@ -300,6 +305,36 @@ private:
     // Audio output device for sending processed audio to speakers
     std::unique_ptr<AudioOutputDevice> outputDevice = nullptr;
 
+    // Threading infrastructure for background audio processing
+    std::thread audioThread;
+    std::mutex audioMutex;
+    std::condition_variable audioCondition;
+    std::atomic<bool> audioThreadRunning{false};
+    std::atomic<bool> audioThreadShouldStop{false};
+
+    // Audio processing task queue
+    struct AudioTask {
+        std::vector<float> inputBuffer;
+        std::vector<float> outputBuffer;
+        float sourcePosition[3];
+        uint32_t sampleCount;
+        uint32_t actualSamplesProcessed;
+        AudioOutputDevice* outputDevice;
+        float masterVolume;
+    };
+    // Set up HRTF parameters
+    struct HRTFParams {
+        float sourcePosition[3];
+        float listenerPosition[3];
+        float listenerOrientation[6]; // Forward (3) and up (3) vectors
+        uint32_t sampleCount;
+        uint32_t hrtfSize;
+        uint32_t numHrtfPositions;
+        float padding; // For alignment
+    } params;
+    std::queue<std::shared_ptr<AudioTask>> audioTaskQueue;
+    std::mutex taskQueueMutex;
+
     // Vulkan resources for HRTF processing
     vk::raii::Buffer inputBuffer = nullptr;
     vk::raii::DeviceMemory inputBufferMemory = nullptr;
@@ -309,6 +344,10 @@ private:
     vk::raii::DeviceMemory hrtfBufferMemory = nullptr;
     vk::raii::Buffer paramsBuffer = nullptr;
     vk::raii::DeviceMemory paramsBufferMemory = nullptr;
+
+    // Persistent memory mapping for UBO to avoid repeated map/unmap operations
+    void* persistentParamsMemory = nullptr;
+    uint32_t currentSampleCount = 0; // Track current buffer size to avoid unnecessary recreation
 
     /**
      * @brief Create buffers for HRTF processing.
@@ -321,4 +360,36 @@ private:
      * @brief Clean up HRTF buffers.
      */
     void cleanupHRTFBuffers();
+
+
+    /**
+     * @brief Start the background audio processing thread.
+     */
+    void startAudioThread();
+
+    /**
+     * @brief Stop the background audio processing thread.
+     */
+    void stopAudioThread();
+
+    /**
+     * @brief Main loop for the background audio processing thread.
+     */
+    void audioThreadLoop();
+
+    /**
+     * @brief Process an audio task in the background thread.
+     * @param task The audio task to process.
+     */
+    void processAudioTask(const std::shared_ptr<AudioTask>& task);
+
+    /**
+     * @brief Submit an audio processing task to the background thread.
+     * @param inputBuffer The input audio buffer.
+     * @param sampleCount The number of samples to process.
+     * @param sourcePosition The position of the sound source.
+     * @param actualSamplesProcessed The number of samples actually processed.
+     * @return True if the task was submitted successfully, false otherwise.
+     */
+    bool submitAudioTask(const float* inputBuffer, uint32_t sampleCount, const float* sourcePosition, uint32_t actualSamplesProcessed);
 };

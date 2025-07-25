@@ -133,7 +133,7 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     renderer->SetModelLoader(modelLoader.get());
 
     // Initialize audio system
-    if (!audioSystem->Initialize(renderer.get())) {
+    if (!audioSystem->Initialize(this, renderer.get())) {
         return false;
     }
 
@@ -516,7 +516,7 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
     renderer->SetModelLoader(modelLoader.get());
 
     // Initialize audio system
-    if (!audioSystem->Initialize(renderer.get())) {
+    if (!audioSystem->Initialize(this, renderer.get())) {
         return false;
     }
 

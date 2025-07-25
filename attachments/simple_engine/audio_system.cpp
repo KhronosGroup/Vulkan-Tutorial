@@ -22,6 +22,7 @@
 #endif
 
 #include "renderer.h"
+#include "engine.h"
 
 // OpenAL error checking utility
 static void CheckOpenALError(const std::string& operation) {
@@ -537,7 +538,10 @@ void AudioSystem::GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint
 
 }
 
-bool AudioSystem::Initialize(Renderer* renderer) {
+bool AudioSystem::Initialize(Engine* engine, Renderer* renderer) {
+    // Store the engine reference for accessing active camera
+    this->engine = engine;
+
     if (renderer) {
         // Validate renderer if provided
         if (!renderer->IsInitialized()) {
@@ -586,6 +590,24 @@ bool AudioSystem::Initialize(Renderer* renderer) {
 void AudioSystem::Update(float deltaTime) {
     if (!initialized) {
         return;
+    }
+
+    // Synchronize HRTF listener position and orientation with active camera
+    if (engine) {
+        CameraComponent* activeCamera = engine->GetActiveCamera();
+        if (activeCamera) {
+            // Get camera position
+            glm::vec3 cameraPos = activeCamera->GetPosition();
+            SetListenerPosition(cameraPos.x, cameraPos.y, cameraPos.z);
+
+            // Calculate camera forward and up vectors for orientation
+            // The camera looks at its target, so forward = normalize(target - position)
+            glm::vec3 target = activeCamera->GetTarget();
+            glm::vec3 up = activeCamera->GetUp();
+            glm::vec3 forward = glm::normalize(target - cameraPos);
+
+            SetListenerOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+        }
     }
 
     // Update audio sources and process spatial audio

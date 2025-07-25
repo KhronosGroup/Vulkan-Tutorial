@@ -79,6 +79,7 @@ public:
 
 // Forward declarations
 class Renderer;
+class Engine;
 
 /**
  * @brief Interface for audio output devices.
@@ -154,10 +155,11 @@ public:
 
     /**
      * @brief Initialize the audio system.
+     * @param engine Pointer to the engine for accessing active camera.
      * @param renderer Pointer to the renderer for compute shader support.
      * @return True if initialization was successful, false otherwise.
      */
-    bool Initialize(Renderer* renderer = nullptr);
+    bool Initialize(Engine* engine, Renderer* renderer = nullptr);
 
     /**
      * @brief Update the audio system.
@@ -297,6 +299,9 @@ private:
 
     // Renderer for compute shader support
     Renderer* renderer = nullptr;
+
+    // Engine reference for accessing active camera
+    Engine* engine = nullptr;
 
     // Audio output device for sending processed audio to speakers
     std::unique_ptr<AudioOutputDevice> outputDevice = nullptr;

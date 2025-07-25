@@ -182,6 +182,22 @@ public:
         return transform ? transform->GetPosition() : glm::vec3(0.0f, 0.0f, 0.0f);
     }
 
+    /**
+     * @brief Get the camera target.
+     * @return The camera target.
+     */
+    const glm::vec3& GetTarget() const {
+        return target;
+    }
+
+    /**
+     * @brief Get the camera up vector.
+     * @return The camera up vector.
+     */
+    const glm::vec3& GetUp() const {
+        return up;
+    }
+
 private:
     /**
      * @brief Update the view matrix based on the camera position and target.

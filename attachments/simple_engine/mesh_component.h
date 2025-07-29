@@ -72,7 +72,14 @@ class MeshComponent : public Component {
 private:
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    std::string texturePath;
+
+    // All PBR texture paths for this mesh
+    std::string texturePath;           // Primary texture path (baseColor) - kept for backward compatibility
+    std::string baseColorTexturePath;  // Base color (albedo) texture
+    std::string normalTexturePath;     // Normal map texture
+    std::string metallicRoughnessTexturePath;  // Metallic-roughness texture
+    std::string occlusionTexturePath;  // Ambient occlusion texture
+    std::string emissiveTexturePath;   // Emissive texture
 
     // Vulkan resources will be managed by the renderer
     // This component only stores the data
@@ -97,7 +104,7 @@ public:
      * @brief Get the vertices of the mesh.
      * @return The vertices.
      */
-    const std::vector<Vertex>& GetVertices() const {
+    [[nodiscard]] const std::vector<Vertex>& GetVertices() const {
         return vertices;
     }
 
@@ -113,7 +120,7 @@ public:
      * @brief Get the indices of the mesh.
      * @return The indices.
      */
-    const std::vector<uint32_t>& GetIndices() const {
+    [[nodiscard]] const std::vector<uint32_t>& GetIndices() const {
         return indices;
     }
 
@@ -123,15 +130,30 @@ public:
      */
     void SetTexturePath(const std::string& path) {
         texturePath = path;
+        baseColorTexturePath = path; // Keep baseColor in sync for backward compatibility
     }
 
     /**
      * @brief Get the texture path for the mesh.
      * @return The path to the texture file.
      */
-    const std::string& GetTexturePath() const {
+    [[nodiscard]] const std::string& GetTexturePath() const {
         return texturePath;
     }
+
+    // PBR texture path setters
+    void SetBaseColorTexturePath(const std::string& path) { baseColorTexturePath = path; }
+    void SetNormalTexturePath(const std::string& path) { normalTexturePath = path; }
+    void SetMetallicRoughnessTexturePath(const std::string& path) { metallicRoughnessTexturePath = path; }
+    void SetOcclusionTexturePath(const std::string& path) { occlusionTexturePath = path; }
+    void SetEmissiveTexturePath(const std::string& path) { emissiveTexturePath = path; }
+
+    // PBR texture path getters
+    [[nodiscard]] const std::string& GetBaseColorTexturePath() const { return baseColorTexturePath; }
+    [[nodiscard]] const std::string& GetNormalTexturePath() const { return normalTexturePath; }
+    [[nodiscard]] const std::string& GetMetallicRoughnessTexturePath() const { return metallicRoughnessTexturePath; }
+    [[nodiscard]] const std::string& GetOcclusionTexturePath() const { return occlusionTexturePath; }
+    [[nodiscard]] const std::string& GetEmissiveTexturePath() const { return emissiveTexturePath; }
 
     /**
      * @brief Create a simple quad mesh.

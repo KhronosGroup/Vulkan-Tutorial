@@ -15,6 +15,7 @@ struct VSOutput {
     float3 WorldPos;
     float3 Normal : NORMAL;
     float2 TexCoord : TEXCOORD0;
+    float4 Tangent : TANGENT; // Pass through tangent to satisfy validation layer
 };
 
 // Uniform buffer
@@ -42,6 +43,7 @@ VSOutput VSMain(VSInput input)
     output.WorldPos = worldPos.xyz;
     output.Normal = normalize(mul((float3x3)ubo.model, input.Normal));
     output.TexCoord = input.TexCoord;
+    output.Tangent = input.Tangent; // Pass through tangent (unused in basic rendering)
 
     return output;
 }

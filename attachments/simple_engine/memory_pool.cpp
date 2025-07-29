@@ -1,7 +1,6 @@
 #include "memory_pool.h"
 #include <iostream>
 #include <algorithm>
-#include <cassert>
 
 MemoryPool::MemoryPool(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice)
     : device(device), physicalDevice(physicalDevice) {
@@ -9,32 +8,32 @@ MemoryPool::MemoryPool(const vk::raii::Device& device, const vk::raii::PhysicalD
 
 MemoryPool::~MemoryPool() {
     // RAII will handle cleanup automatically
-    std::lock_guard<std::mutex> lock(poolMutex);
+    std::lock_guard lock(poolMutex);
     pools.clear();
 }
 
 bool MemoryPool::initialize() {
-    std::lock_guard<std::mutex> lock(poolMutex);
+    std::lock_guard lock(poolMutex);
 
     try {
         // Configure default pool settings based on typical usage patterns
 
-        // Vertex buffer pool: Large allocations, device-local
+        // Vertex buffer pool: Large allocations, device-local (increased for large models like bistro)
         configurePool(
             PoolType::VERTEX_BUFFER,
-            64 * 1024 * 1024,  // 64MB blocks
+            128 * 1024 * 1024, // 128MB blocks (doubled)
             4096,               // 4KB allocation units
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            8                   // Max 8 blocks (512MB total)
+            16                  // Max 16 blocks (2GB total, quadrupled)
         );
 
-        // Index buffer pool: Medium allocations, device-local
+        // Index buffer pool: Medium allocations, device-local (increased for large models like bistro)
         configurePool(
             PoolType::INDEX_BUFFER,
-            32 * 1024 * 1024,  // 32MB blocks
+            64 * 1024 * 1024,  // 64MB blocks (doubled)
             2048,               // 2KB allocation units
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            4                   // Max 4 blocks (128MB total)
+            8                   // Max 8 blocks (512MB total, quadrupled)
         );
 
         // Uniform buffer pool: Small allocations, host-visible
@@ -55,13 +54,13 @@ bool MemoryPool::initialize() {
             4                   // Max 4 blocks (64MB total)
         );
 
-        // Texture image pool: Large allocations, device-local
+        // Texture image pool: Large allocations, device-local (significantly increased for large models like bistro)
         configurePool(
             PoolType::TEXTURE_IMAGE,
-            128 * 1024 * 1024, // 128MB blocks
+            256 * 1024 * 1024, // 256MB blocks (doubled)
             4096,               // 4KB allocation units
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            8                   // Max 8 blocks (1GB total)
+            24                  // Max 24 blocks (6GB total, 6x increase)
         );
 
         return true;
@@ -72,11 +71,11 @@ bool MemoryPool::initialize() {
 }
 
 void MemoryPool::configurePool(
-    PoolType poolType,
-    vk::DeviceSize blockSize,
-    vk::DeviceSize allocationUnit,
-    vk::MemoryPropertyFlags properties,
-    uint32_t maxBlocks) {
+    const PoolType poolType,
+    const vk::DeviceSize blockSize,
+    const vk::DeviceSize allocationUnit,
+    const vk::MemoryPropertyFlags properties,
+    const uint32_t maxBlocks) {
 
     PoolConfig config;
     config.blockSize = blockSize;
@@ -87,8 +86,8 @@ void MemoryPool::configurePool(
     poolConfigs[poolType] = config;
 }
 
-uint32_t MemoryPool::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const {
-    vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
+uint32_t MemoryPool::findMemoryType(const uint32_t typeFilter, const vk::MemoryPropertyFlags properties) const {
+    const vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
 
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) &&
@@ -108,8 +107,8 @@ std::unique_ptr<MemoryPool::MemoryBlock> MemoryPool::createMemoryBlock(PoolType 
 
     const PoolConfig& config = configIt->second;
 
-    // Use the larger of requested size or configured block size
-    vk::DeviceSize blockSize = std::max(size, config.blockSize);
+    // Use the larger of the requested size or configured block size
+    const vk::DeviceSize blockSize = std::max(size, config.blockSize);
 
     // Create a dummy buffer to get memory requirements for the memory type
     vk::BufferCreateInfo bufferInfo{
@@ -151,8 +150,8 @@ std::unique_ptr<MemoryPool::MemoryBlock> MemoryPool::createMemoryBlock(PoolType 
         block->mappedPtr = nullptr;
     }
 
-    // Initialize free list
-    size_t numUnits = static_cast<size_t>(blockSize / config.allocationUnit);
+    // Initialize a free list
+    const size_t numUnits = blockSize / config.allocationUnit;
     block->freeList.resize(numUnits, true);  // All units initially free
 
 
@@ -170,11 +169,11 @@ MemoryPool::MemoryBlock* MemoryPool::findSuitableBlock(PoolType poolType, vk::De
     const PoolConfig& config = poolConfigs[poolType];
 
     // Calculate required units (accounting for alignment)
-    vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
-    size_t requiredUnits = static_cast<size_t>((alignedSize + config.allocationUnit - 1) / config.allocationUnit);
+    const vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
+    const size_t requiredUnits = (alignedSize + config.allocationUnit - 1) / config.allocationUnit;
 
     // Search existing blocks for sufficient free space
-    for (auto& block : poolBlocks) {
+    for (const auto& block : poolBlocks) {
         // Find consecutive free units
         size_t consecutiveFree = 0;
         for (size_t i = 0; i < block->freeList.size(); ++i) {
@@ -200,11 +199,10 @@ MemoryPool::MemoryBlock* MemoryPool::findSuitableBlock(PoolType poolType, vk::De
 
         try {
             auto newBlock = createMemoryBlock(poolType, alignedSize);
-            MemoryBlock* blockPtr = newBlock.get();
             poolBlocks.push_back(std::move(newBlock));
             std::cout << "Created new memory block during initialization (pool type: "
                       << static_cast<int>(poolType) << ")" << std::endl;
-            return blockPtr;
+            return poolBlocks.back().get();
         } catch (const std::exception& e) {
             std::cerr << "Failed to create new memory block: " << e.what() << std::endl;
             return nullptr;
@@ -226,8 +224,8 @@ std::unique_ptr<MemoryPool::Allocation> MemoryPool::allocate(PoolType poolType, 
     const PoolConfig& config = poolConfigs[poolType];
 
     // Calculate required units (accounting for alignment)
-    vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
-    size_t requiredUnits = static_cast<size_t>((alignedSize + config.allocationUnit - 1) / config.allocationUnit);
+    const vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
+    const size_t requiredUnits = (alignedSize + config.allocationUnit - 1) / config.allocationUnit;
 
     // Find consecutive free units
     size_t startUnit = 0;
@@ -287,8 +285,8 @@ void MemoryPool::deallocate(std::unique_ptr<Allocation> allocation) {
         for (auto& block : poolBlocks) {
             if (*block->memory == allocation->memory) {
                 // Calculate which units to free
-                size_t startUnit = static_cast<size_t>(allocation->offset / config.allocationUnit);
-                size_t numUnits = static_cast<size_t>((allocation->size + config.allocationUnit - 1) / config.allocationUnit);
+                size_t startUnit = allocation->offset / config.allocationUnit;
+                size_t numUnits = (allocation->size + config.allocationUnit - 1) / config.allocationUnit;
 
                 // Mark units as free
                 for (size_t i = startUnit; i < startUnit + numUnits; ++i) {
@@ -307,12 +305,12 @@ void MemoryPool::deallocate(std::unique_ptr<Allocation> allocation) {
 }
 
 std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> MemoryPool::createBuffer(
-    vk::DeviceSize size,
-    vk::BufferUsageFlags usage,
-    vk::MemoryPropertyFlags properties) {
+    const vk::DeviceSize size,
+    const vk::BufferUsageFlags usage,
+    const vk::MemoryPropertyFlags properties) {
 
-    // Determine pool type based on usage and properties
-    PoolType poolType;
+    // Determine a pool type based on usage and properties
+    PoolType poolType = PoolType::VERTEX_BUFFER;
     if (usage & vk::BufferUsageFlagBits::eVertexBuffer) {
         poolType = PoolType::VERTEX_BUFFER;
     } else if (usage & vk::BufferUsageFlagBits::eIndexBuffer) {
@@ -321,12 +319,10 @@ std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> MemoryPool:
         poolType = PoolType::UNIFORM_BUFFER;
     } else if (properties & vk::MemoryPropertyFlagBits::eHostVisible) {
         poolType = PoolType::STAGING_BUFFER;
-    } else {
-        poolType = PoolType::VERTEX_BUFFER;  // Default to vertex buffer pool
     }
 
     // Create the buffer
-    vk::BufferCreateInfo bufferInfo{
+    const vk::BufferCreateInfo bufferInfo{
         .size = size,
         .usage = usage,
         .sharingMode = vk::SharingMode::eExclusive
@@ -455,7 +451,7 @@ bool MemoryPool::preAllocatePools() {
 }
 
 void MemoryPool::setRenderingActive(bool active) {
-    std::lock_guard<std::mutex> lock(poolMutex);
+    std::lock_guard lock(poolMutex);
     renderingActive = active;
 }
 

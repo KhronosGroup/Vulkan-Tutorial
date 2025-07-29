@@ -7,6 +7,7 @@
 #include <array>
 #include <cstring>
 #include <iostream>
+#include <ranges>
 
 // This file contains rendering-related methods from the Renderer class
 
@@ -273,11 +274,12 @@ void Renderer::cleanupSwapChain() {
 void Renderer::recreateSwapChain() {
     // Wait for all frames in flight to complete before recreating the swap chain
     std::vector<vk::Fence> allFences;
+    allFences.reserve(inFlightFences.size());
     for (const auto& fence : inFlightFences) {
         allFences.push_back(*fence);
     }
     if (!allFences.empty()) {
-        device.waitForFences(allFences, VK_TRUE, UINT64_MAX);
+        if (device.waitForFences(allFences, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess) {}
     }
 
     // Wait for the device to be idle before recreating the swap chain
@@ -299,11 +301,11 @@ void Renderer::recreateSwapChain() {
 
     // Wait for all command buffers to complete before clearing resources
     for (const auto& fence : inFlightFences) {
-        device.waitForFences(*fence, VK_TRUE, UINT64_MAX);
+        if (device.waitForFences(*fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess) {}
     }
 
-    // Clear all entity descriptor sets since they're now invalid (allocated from old pool)
-    for (auto& [entity, resources] : entityResources) {
+    // Clear all entity descriptor sets since they're now invalid (allocated from the old pool)
+    for (auto& resources : entityResources | std::views::values) {
         resources.basicDescriptorSets.clear();
         resources.pbrDescriptorSets.clear();
     }
@@ -334,33 +336,37 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
     ubo.proj = camera->GetProjectionMatrix();
     ubo.proj[1][1] *= -1; // Flip Y for Vulkan
 
-    // Set up lighting from extracted GLTF lights or fallback to default
-    std::vector<ExtractedLight> extractedLights;
-    if (modelLoader) {
-        extractedLights = modelLoader->GetExtractedLights("../Assets/Bistro.glb");
-    }
+    // Use static lights loaded during model initialization
+    const std::vector<ExtractedLight>& extractedLights = staticLights;
 
     if (!extractedLights.empty()) {
-        // Fill up to 4 lights from extracted lights
-        for (size_t i = 0; i < 4 && i < extractedLights.size(); ++i) {
-            const auto& light = extractedLights[i];
-            ubo.lightPositions[i] = glm::vec4(light.position, 1.0f);
-            ubo.lightColors[i] = glm::vec4(light.color * light.intensity, 1.0f);
-        }
+        // Use all available lights (no hardcoded limit)
+        size_t numLights = extractedLights.size();
 
-        // Fill remaining slots with zero-intensity lights (no contribution)
-        for (size_t i = extractedLights.size(); i < 4; ++i) {
-            ubo.lightPositions[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-            ubo.lightColors[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // No light contribution
+        // Update the light storage buffer with all light data
+        updateLightStorageBuffer(currentImage, extractedLights);
+
+        ubo.lightCount = static_cast<int>(numLights);
+        // Set shadow map count based on shadowsEnabled flag
+        if (shadowsEnabled) {
+            ubo.shadowMapCount = static_cast<int>(std::min(numLights, size_t(16))); // Limit shadow maps to 16 for performance (indices 0-15)
+        } else {
+            ubo.shadowMapCount = 0; // Disable shadows when shadowsEnabled is false
         }
+    } else {
+        ubo.lightCount = 0;
+        ubo.shadowMapCount = 0;
     }
+
+    // Set shadow mapping parameters
+    ubo.shadowBias = 0.005f; // Adjust to prevent shadow acne
 
     // Set camera position for PBR calculations
     ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);
 
-    // Set PBR parameters
-    ubo.exposure = 1.0f;
-    ubo.gamma = 2.2f;
+    // Set PBR parameters (use member variables for UI control)
+    ubo.exposure = this->exposure;
+    ubo.gamma = this->gamma;
     ubo.prefilteredCubeMipLevels = 0.0f;
     ubo.scaleIBLAmbient = 1.0f;
 
@@ -378,7 +384,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Use RAII to ensure rendering state is always reset, even if an exception occurs
     struct RenderingStateGuard {
         MemoryPool* pool;
-        RenderingStateGuard(MemoryPool* p) : pool(p) {}
+        explicit RenderingStateGuard(MemoryPool* p) : pool(p) {}
         ~RenderingStateGuard() {
             if (pool) {
                 pool->setRenderingActive(false);
@@ -387,7 +393,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     } guard(memoryPool.get());
 
     // Wait for the previous frame to finish
-    device.waitForFences(*inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    if (device.waitForFences(*inFlightFences[currentFrame], VK_TRUE, UINT64_MAX) != vk::Result::eSuccess) {}
 
     // Acquire the next image from the swap chain
     uint32_t imageIndex;
@@ -407,7 +413,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
         recreateSwapChain();
         return;
-    } else if (result.first != vk::Result::eSuccess) {
+    }
+    if (result.first != vk::Result::eSuccess) {
         throw std::runtime_error("Failed to acquire swap chain image");
     }
 
@@ -486,8 +493,10 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             continue;
         }
 
-        // Determine which pipeline to use based on ImGui PBR toggle and entity type
-        bool usePBR = imguiSystem && imguiSystem->IsPBREnabled() && (entity->GetName().find("Bistro") == 0);
+        // Determine which pipeline to use - now defaults to BRDF/PBR instead of Phong
+        // Use basic pipeline only when PBR is explicitly disabled via ImGui
+        bool useBasic = imguiSystem && !imguiSystem->IsPBREnabled();
+        bool usePBR = !useBasic; // BRDF/PBR is now the default lighting model
         vk::raii::Pipeline* selectedPipeline = usePBR ? &pbrGraphicsPipeline : &graphicsPipeline;
         vk::raii::PipelineLayout* selectedLayout = usePBR ? &pbrPipelineLayout : &pipelineLayout;
 
@@ -556,6 +565,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             int emissiveTextureSet;
             float alphaMask;
             float alphaMaskCutoff;
+            glm::vec3 emissiveFactor;  // Add emissive factor for HDR emissive sources
+            float emissiveStrength;    // KHR_materials_emissive_strength extension
         };
 
         // Set PBR material properties using push constants
@@ -563,10 +574,10 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             PushConstants pushConstants{};
 
             // Try to get material properties for this specific entity
-            if (modelLoader && entity->GetName().find("Bistro_Material_") == 0) {
-                // Extract material name from entity name for Bistro entities
+            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                // Extract material name from entity name for any GLTF model entities
                 std::string entityName = entity->GetName();
-                size_t materialStart = entityName.find("Bistro_Material_");
+                size_t materialStart = entityName.find("_Material_");
                 if (materialStart != std::string::npos) {
                     // Try to extract material name from entity name
                     size_t nameStart = entityName.find_last_of("_");
@@ -578,6 +589,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
                             pushConstants.baseColorFactor = glm::vec4(material->albedo, 1.0f);
                             pushConstants.metallicFactor = material->metallic;
                             pushConstants.roughnessFactor = material->roughness;
+                            pushConstants.emissiveFactor = material->emissive;  // Set emissive factor for HDR emissive sources
+                            pushConstants.emissiveStrength = material->emissiveStrength;  // Set emissive strength from KHR_materials_emissive_strength extension
                         } else {
                             // Fallback: Use entity-specific variation
                             size_t hash = std::hash<std::string>{}(entityName);
@@ -585,6 +598,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
                             pushConstants.baseColorFactor = glm::vec4(0.7f + variation * 0.3f, 0.6f + variation * 0.4f, 0.5f + variation * 0.5f, 1.0f);
                             pushConstants.metallicFactor = variation * 0.8f;
                             pushConstants.roughnessFactor = 0.2f + variation * 0.6f;
+                            pushConstants.emissiveFactor = glm::vec3(0.0f);  // No emissive for fallback materials
+                            pushConstants.emissiveStrength = 1.0f;  // Default emissive strength
                         }
                     }
                 }
@@ -593,6 +608,19 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
                 pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
                 pushConstants.metallicFactor = 0.1f;
                 pushConstants.roughnessFactor = 0.7f;
+                pushConstants.emissiveFactor = glm::vec3(0.0f);  // No emissive for default materials
+                pushConstants.emissiveStrength = 1.0f;  // Default emissive strength
+            }
+
+            // Apply highlighting effect if this entity is highlighted
+            if (highlightedEntity == entity) {
+                // Add a bright yellow tint to highlight the entity
+                pushConstants.baseColorFactor.r = std::min(1.0f, pushConstants.baseColorFactor.r + 0.3f);
+                pushConstants.baseColorFactor.g = std::min(1.0f, pushConstants.baseColorFactor.g + 0.3f);
+                pushConstants.baseColorFactor.b = std::min(1.0f, pushConstants.baseColorFactor.b * 0.7f); // Reduce blue for yellow tint
+                // Also add some emissive glow for extra visibility
+                pushConstants.emissiveFactor = glm::vec3(0.2f, 0.2f, 0.0f);
+                pushConstants.emissiveStrength = 2.0f;
             }
 
             // Set texture binding indices

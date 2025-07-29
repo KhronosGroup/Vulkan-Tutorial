@@ -6,10 +6,10 @@
 
 // This file contains pipeline-related methods from the Renderer class
 
-// Create descriptor set layout
+// Create a descriptor set layout
 bool Renderer::createDescriptorSetLayout() {
     try {
-        // Create binding for uniform buffer
+        // Create binding for a uniform buffer
         vk::DescriptorSetLayoutBinding uboLayoutBinding{
             .binding = 0,
             .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -46,7 +46,7 @@ bool Renderer::createDescriptorSetLayout() {
 bool Renderer::createPBRDescriptorSetLayout() {
     try {
         // Create descriptor set layout bindings for PBR shader
-        std::array<vk::DescriptorSetLayoutBinding, 6> bindings = {
+        std::array bindings = {
             // Binding 0: Uniform buffer (UBO)
             vk::DescriptorSetLayoutBinding{
                 .binding = 0,
@@ -94,10 +94,26 @@ bool Renderer::createPBRDescriptorSetLayout() {
                 .descriptorCount = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eFragment,
                 .pImmutableSamplers = nullptr
+            },
+            // Binding 6: Shadow map array
+            vk::DescriptorSetLayoutBinding{
+                .binding = 6,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = MAX_SHADOW_MAPS, // Array of shadow maps (dynamic count)
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 7: Light storage buffer
+            vk::DescriptorSetLayoutBinding{
+                .binding = 7,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
             }
         };
 
-        // Create descriptor set layout
+        // Create a descriptor set layout
         vk::DescriptorSetLayoutCreateInfo layoutInfo{
             .bindingCount = static_cast<uint32_t>(bindings.size()),
             .pBindings = bindings.data()
@@ -112,27 +128,25 @@ bool Renderer::createPBRDescriptorSetLayout() {
     }
 }
 
-// Create graphics pipeline
+// Create a graphics pipeline
 bool Renderer::createGraphicsPipeline() {
     try {
         // Read shader code
-        auto vertShaderCode = readFile("shaders/texturedMesh.spv");
-        auto fragShaderCode = readFile("shaders/texturedMesh.spv");
+        auto shaderCode = readFile("shaders/texturedMesh.spv");
 
         // Create shader modules
-        vk::raii::ShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-        vk::raii::ShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+        vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
         // Create shader stage info
         vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eVertex,
-            .module = *vertShaderModule,
+            .module = *shaderModule,
             .pName = "VSMain"
         };
 
         vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eFragment,
-            .module = *fragShaderModule,
+            .module = *shaderModule,
             .pName = "PSMain"
         };
 
@@ -187,7 +201,7 @@ bool Renderer::createGraphicsPipeline() {
             .stencilTestEnable = VK_FALSE
         };
 
-        // Create color blend attachment state
+        // Create a color blend attachment state
         vk::PipelineColorBlendAttachmentState colorBlendAttachment{
             .blendEnable = VK_FALSE,
             .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
@@ -202,7 +216,7 @@ bool Renderer::createGraphicsPipeline() {
         };
 
         // Create dynamic state info
-        std::vector<vk::DynamicState> dynamicStates = {
+        std::vector dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };
@@ -275,23 +289,21 @@ bool Renderer::createPBRPipeline() {
         }
 
         // Read shader code
-        auto vertShaderCode = readFile("shaders/pbr.spv");
-        auto fragShaderCode = readFile("shaders/pbr.spv");
+        auto shaderCode = readFile("shaders/pbr.spv");
 
         // Create shader modules
-        vk::raii::ShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-        vk::raii::ShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+        vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
         // Create shader stage info
         vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eVertex,
-            .module = *vertShaderModule,
+            .module = *shaderModule,
             .pName = "VSMain"
         };
 
         vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eFragment,
-            .module = *fragShaderModule,
+            .module = *shaderModule,
             .pName = "PSMain"
         };
 
@@ -305,7 +317,7 @@ bool Renderer::createPBRPipeline() {
         };
 
         // Define vertex attribute descriptions
-        std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
+        std::array attributeDescriptions = {
             // Position attribute
             vk::VertexInputAttributeDescription{
                 .location = 0,
@@ -381,7 +393,7 @@ bool Renderer::createPBRPipeline() {
             .stencilTestEnable = VK_FALSE
         };
 
-        // Create color blend attachment state
+        // Create a color blend attachment state
         vk::PipelineColorBlendAttachmentState colorBlendAttachment{
             .blendEnable = VK_FALSE,
             .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
@@ -396,7 +408,7 @@ bool Renderer::createPBRPipeline() {
         };
 
         // Create dynamic state info
-        std::vector<vk::DynamicState> dynamicStates = {
+        std::vector dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };
@@ -413,7 +425,7 @@ bool Renderer::createPBRPipeline() {
             .size = sizeof(MaterialProperties)
         };
 
-        // Create pipeline layout using the PBR descriptor set layout
+        // Create a pipeline layout using the PBR descriptor set layout
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
             .setLayoutCount = 1,
             .pSetLayouts = &*pbrDescriptorSetLayout,
@@ -436,7 +448,7 @@ bool Renderer::createPBRPipeline() {
             .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
-        // Create graphics pipeline
+        // Create a graphics pipeline
         vk::GraphicsPipelineCreateInfo pipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &pbrPipelineRenderingCreateInfo,
@@ -466,27 +478,25 @@ bool Renderer::createPBRPipeline() {
     }
 }
 
-// Create lighting pipeline
+// Create a lighting pipeline
 bool Renderer::createLightingPipeline() {
     try {
         // Read shader code
-        auto vertShaderCode = readFile("shaders/lighting.spv");
-        auto fragShaderCode = readFile("shaders/lighting.spv");
+        auto shaderCode = readFile("shaders/lighting.spv");
 
         // Create shader modules
-        vk::raii::ShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-        vk::raii::ShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+        vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
         // Create shader stage info
         vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eVertex,
-            .module = *vertShaderModule,
+            .module = *shaderModule,
             .pName = "VSMain"
         };
 
         vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
             .stage = vk::ShaderStageFlagBits::eFragment,
-            .module = *fragShaderModule,
+            .module = *shaderModule,
             .pName = "PSMain"
         };
 
@@ -541,7 +551,7 @@ bool Renderer::createLightingPipeline() {
             .stencilTestEnable = VK_FALSE
         };
 
-        // Create color blend attachment state
+        // Create a color blend attachment state
         vk::PipelineColorBlendAttachmentState colorBlendAttachment{
             .blendEnable = VK_TRUE,
             .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
@@ -562,7 +572,7 @@ bool Renderer::createLightingPipeline() {
         };
 
         // Create dynamic state info
-        std::vector<vk::DynamicState> dynamicStates = {
+        std::vector dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };
@@ -602,7 +612,7 @@ bool Renderer::createLightingPipeline() {
             .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
-        // Create graphics pipeline
+        // Create a graphics pipeline
         vk::GraphicsPipelineCreateInfo pipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &lightingPipelineRenderingCreateInfo,
@@ -633,6 +643,6 @@ bool Renderer::createLightingPipeline() {
 }
 
 // Push material properties to the pipeline
-void Renderer::pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) {
+void Renderer::pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const {
     commandBuffer.pushConstants(*pbrPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(MaterialProperties), &material);
 }

@@ -79,19 +79,19 @@ public:
         std::cout << "Setting rigid body angular velocity to (" << velocity.x << ", " << velocity.y << ", " << velocity.z << ")" << std::endl;
     }
 
-    glm::vec3 GetPosition() const override {
+    [[nodiscard]] glm::vec3 GetPosition() const override {
         return position;
     }
 
-    glm::quat GetRotation() const override {
+    [[nodiscard]] glm::quat GetRotation() const override {
         return rotation;
     }
 
-    glm::vec3 GetLinearVelocity() const override {
+    [[nodiscard]] glm::vec3 GetLinearVelocity() const override {
         return linearVelocity;
     }
 
-    glm::vec3 GetAngularVelocity() const override {
+    [[nodiscard]] glm::vec3 GetAngularVelocity() const override {
         return angularVelocity;
     }
 
@@ -100,35 +100,35 @@ public:
         std::cout << "Setting rigid body kinematic to " << (kinematic ? "true" : "false") << std::endl;
     }
 
-    bool IsKinematic() const override {
+    [[nodiscard]] bool IsKinematic() const override {
         return kinematic;
     }
 
-    Entity* GetEntity() const {
+    [[nodiscard]] Entity* GetEntity() const {
         return entity;
     }
 
-    CollisionShape GetShape() const {
+    [[nodiscard]] CollisionShape GetShape() const {
         return shape;
     }
 
-    float GetMass() const {
+    [[nodiscard]] float GetMass() const {
         return mass;
     }
 
-    float GetInverseMass() const {
+    [[nodiscard]] float GetInverseMass() const {
         return mass > 0.0f ? 1.0f / mass : 0.0f;
     }
 
-    float GetRestitution() const {
+    [[nodiscard]] float GetRestitution() const {
         return restitution;
     }
 
-    float GetFriction() const {
+    [[nodiscard]] float GetFriction() const {
         return friction;
     }
 
-    void Update(float deltaTime, const glm::vec3& gravity) {
+    void Update(const float deltaTime, const glm::vec3& gravity) {
         if (kinematic) {
             return;
         }
@@ -140,7 +140,7 @@ public:
         position += linearVelocity * deltaTime;
 
         // Update rotation
-        glm::quat angularVelocityQuat(0.0f, angularVelocity.x, angularVelocity.y, angularVelocity.z);
+        const glm::quat angularVelocityQuat(0.0f, angularVelocity.x, angularVelocity.y, angularVelocity.z);
         rotation += 0.5f * deltaTime * angularVelocityQuat * rotation;
         rotation = glm::normalize(rotation);
 
@@ -170,10 +170,6 @@ private:
     friend class PhysicsSystem;
 };
 
-PhysicsSystem::PhysicsSystem() {
-    // Constructor implementation
-}
-
 PhysicsSystem::~PhysicsSystem() {
     // Destructor implementation
     if (initialized && gpuAccelerationEnabled) {
@@ -188,7 +184,7 @@ bool PhysicsSystem::Initialize() {
 
     std::cout << "Initializing physics system" << std::endl;
 
-    // Initialize Vulkan resources if GPU acceleration is enabled and renderer is set
+    // Initialize Vulkan resources if GPU acceleration is enabled and the renderer is set
     if (gpuAccelerationEnabled && renderer) {
         if (!InitializeVulkanResources()) {
             std::cerr << "Failed to initialize Vulkan resources for physics system" << std::endl;
@@ -201,14 +197,14 @@ bool PhysicsSystem::Initialize() {
 }
 
 void PhysicsSystem::Update(float deltaTime) {
-    // If GPU acceleration is enabled and we have a renderer, use the GPU
+    // If GPU acceleration is enabled, and we have a renderer, use the GPU
     if (initialized && gpuAccelerationEnabled && renderer && rigidBodies.size() <= maxGPUObjects) {
         SimulatePhysicsOnGPU(deltaTime);
     } else {
         // Fall back to CPU physics
         // Update all rigid bodies
         for (auto& rigidBody : rigidBodies) {
-            auto concreteRigidBody = static_cast<ConcreteRigidBody*>(rigidBody.get());
+            auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBody.get());
             concreteRigidBody->Update(deltaTime, gravity);
         }
 
@@ -222,19 +218,18 @@ RigidBody* PhysicsSystem::CreateRigidBody(Entity* entity, CollisionShape shape, 
     auto rigidBody = std::make_unique<ConcreteRigidBody>(entity, shape, mass);
 
     // Store the rigid body
-    RigidBody* rigidBodyPtr = rigidBody.get();
     rigidBodies.push_back(std::move(rigidBody));
 
     std::cout << "Rigid body created for entity: " << (entity ? entity->GetName() : "null") << std::endl;
-    return rigidBodyPtr;
+    return rigidBodies.back().get();
 }
 
 bool PhysicsSystem::RemoveRigidBody(RigidBody* rigidBody) {
     // Find the rigid body in the vector
-    auto it = std::find_if(rigidBodies.begin(), rigidBodies.end(),
-        [rigidBody](const std::unique_ptr<RigidBody>& rb) {
-            return rb.get() == rigidBody;
-        });
+    auto it = std::ranges::find_if(rigidBodies,
+                                   [rigidBody](const std::unique_ptr<RigidBody>& rb) {
+                                       return rb.get() == rigidBody;
+                                   });
 
     if (it != rigidBodies.end()) {
         // Remove the rigid body
@@ -259,11 +254,7 @@ glm::vec3 PhysicsSystem::GetGravity() const {
 }
 
 bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
-                          glm::vec3* hitPosition, glm::vec3* hitNormal, Entity** hitEntity) {
-    std::cout << "Performing raycast from (" << origin.x << ", " << origin.y << ", " << origin.z << ") "
-              << "in direction (" << direction.x << ", " << direction.y << ", " << direction.z << ") "
-              << "with max distance " << maxDistance << std::endl;
-
+                          glm::vec3* hitPosition, glm::vec3* hitNormal, Entity** hitEntity) const {
     // Normalize the direction vector
     glm::vec3 normalizedDirection = glm::normalize(direction);
 
@@ -276,7 +267,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
 
     // Check each rigid body for intersection
     for (const auto& rigidBody : rigidBodies) {
-        auto concreteRigidBody = static_cast<ConcreteRigidBody*>(rigidBody.get());
+        auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBody.get());
         Entity* entity = concreteRigidBody->GetEntity();
 
         // Skip if the entity is null
@@ -311,7 +302,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                     // Calculate intersection distance
                     float t = (-b - std::sqrt(discriminant)) / (2.0f * a);
 
-                    // Check if intersection is within range
+                    // Check if the intersection is within range
                     if (t > 0 && t < closestHitDistance) {
                         hitDistance = t;
                         localHitPosition = origin + normalizedDirection * t;
@@ -363,7 +354,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                     }
                 }
 
-                // Check if intersection is within range
+                // Check if the intersection is within range
                 if (tmin > 0 && tmin < closestHitDistance) {
                     hitDistance = tmin;
                     localHitPosition = origin + normalizedDirection * tmin;
@@ -395,7 +386,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                 glm::vec3 capsuleA = position + glm::vec3(0, -halfHeight, 0);
                 glm::vec3 capsuleB = position + glm::vec3(0, halfHeight, 0);
 
-                // Calculate closest point on line segment
+                // Calculate the closest point on a line segment
                 glm::vec3 ab = capsuleB - capsuleA;
                 glm::vec3 ao = origin - capsuleA;
 
@@ -404,21 +395,19 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
 
                 glm::vec3 closestPoint = capsuleA + ab * t;
 
-                // Sphere intersection test with closest point
+                // Sphere intersection test with the closest point
                 glm::vec3 oc = origin - closestPoint;
                 float a = glm::dot(normalizedDirection, normalizedDirection);
                 float b = 2.0f * glm::dot(oc, normalizedDirection);
                 float c = glm::dot(oc, oc) - radius * radius;
-                float discriminant = b * b - 4 * a * c;
 
-                if (discriminant >= 0) {
+                if (float discriminant = b * b - 4 * a * c; discriminant >= 0) {
                     // Calculate intersection distance
-                    float t = (-b - std::sqrt(discriminant)) / (2.0f * a);
 
-                    // Check if intersection is within range
-                    if (t > 0 && t < closestHitDistance) {
-                        hitDistance = t;
-                        localHitPosition = origin + normalizedDirection * t;
+                    // Check if the intersection is within range
+                    if (float id = (-b - std::sqrt(discriminant)) / (2.0f * a); id > 0 && id < closestHitDistance) {
+                        hitDistance = id;
+                        localHitPosition = origin + normalizedDirection * id;
                         localHitNormal = glm::normalize(localHitPosition - closestPoint);
                         hit = true;
                     }
@@ -443,7 +432,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                     // Calculate intersection distance
                     float t = (-b - std::sqrt(discriminant)) / (2.0f * a);
 
-                    // Check if intersection is within range
+                    // Check if the intersection is within range
                     if (t > 0 && t < closestHitDistance) {
                         hitDistance = t;
                         localHitPosition = origin + normalizedDirection * t;
@@ -457,7 +446,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                 break;
         }
 
-        // Update closest hit if a hit was found
+        // Update the closest hit if a hit was found
         if (hit && hitDistance < closestHitDistance) {
             closestHitDistance = hitDistance;
             closestHitPosition = localHitPosition;
@@ -497,11 +486,11 @@ static std::vector<char> readFile(const std::string& filename) {
         throw std::runtime_error("Failed to open file: " + filename);
     }
 
-    size_t fileSize = (size_t)file.tellg();
+    size_t fileSize = file.tellg();
     std::vector<char> buffer(fileSize);
 
     file.seekg(0);
-    file.read(buffer.data(), fileSize);
+    file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
     file.close();
 
     return buffer;
@@ -514,7 +503,7 @@ static vk::raii::ShaderModule createShaderModule(const vk::raii::Device& device,
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     try {
-        return vk::raii::ShaderModule(device, createInfo);
+        return {device, createInfo};
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to create shader module: " + std::string(e.what()));
     }
@@ -595,24 +584,14 @@ bool PhysicsSystem::InitializeVulkanResources() {
         vk::DescriptorSetLayoutCreateInfo layoutInfo;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
         layoutInfo.pBindings = bindings.data();
-
-        try {
-            vulkanResources.descriptorSetLayout = vk::raii::DescriptorSetLayout(raiiDevice, layoutInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create descriptor set layout: " + std::string(e.what()));
-        }
+        vulkanResources.descriptorSetLayout = vk::raii::DescriptorSetLayout(raiiDevice, layoutInfo);
 
         // Create pipeline layout
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
         pipelineLayoutInfo.setLayoutCount = 1;
         vk::DescriptorSetLayout descriptorSetLayout = *vulkanResources.descriptorSetLayout;
         pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-
-        try {
-            vulkanResources.pipelineLayout = vk::raii::PipelineLayout(raiiDevice, pipelineLayoutInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create pipeline layout: " + std::string(e.what()));
-        }
+        vulkanResources.pipelineLayout = vk::raii::PipelineLayout(raiiDevice, pipelineLayoutInfo);
 
         // Create compute pipelines
         vk::ComputePipelineCreateInfo pipelineInfo;
@@ -625,12 +604,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         integrateStageInfo.module = *vulkanResources.integrateShaderModule;
         integrateStageInfo.pName = "IntegrateCS";
         pipelineInfo.stage = integrateStageInfo;
-
-        try {
-            vulkanResources.integratePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create integrate compute pipeline: " + std::string(e.what()));
-        }
+        vulkanResources.integratePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
 
         // Broad phase pipeline
         vk::PipelineShaderStageCreateInfo broadPhaseStageInfo;
@@ -638,12 +612,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         broadPhaseStageInfo.module = *vulkanResources.broadPhaseShaderModule;
         broadPhaseStageInfo.pName = "BroadPhaseCS";
         pipelineInfo.stage = broadPhaseStageInfo;
-
-        try {
-            vulkanResources.broadPhasePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create broad phase compute pipeline: " + std::string(e.what()));
-        }
+        vulkanResources.broadPhasePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
 
         // Narrow phase pipeline
         vk::PipelineShaderStageCreateInfo narrowPhaseStageInfo;
@@ -651,12 +620,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         narrowPhaseStageInfo.module = *vulkanResources.narrowPhaseShaderModule;
         narrowPhaseStageInfo.pName = "NarrowPhaseCS";
         pipelineInfo.stage = narrowPhaseStageInfo;
-
-        try {
-            vulkanResources.narrowPhasePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create narrow phase compute pipeline: " + std::string(e.what()));
-        }
+        vulkanResources.narrowPhasePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
 
         // Resolve pipeline
         vk::PipelineShaderStageCreateInfo resolveStageInfo;
@@ -664,12 +628,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         resolveStageInfo.module = *vulkanResources.resolveShaderModule;
         resolveStageInfo.pName = "ResolveCS";
         pipelineInfo.stage = resolveStageInfo;
-
-        try {
-            vulkanResources.resolvePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create resolve compute pipeline: " + std::string(e.what()));
-        }
+        vulkanResources.resolvePipeline = vk::raii::Pipeline(raiiDevice, nullptr, pipelineInfo);
 
         // Create buffers
         vk::DeviceSize physicsBufferSize = sizeof(GPUPhysicsData) * maxGPUObjects;
@@ -678,7 +637,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         vk::DeviceSize counterBufferSize = sizeof(uint32_t) * 2;
         vk::DeviceSize paramsBufferSize = sizeof(PhysicsParams);
 
-        // Create physics buffer
+        // Create a physics buffer
         vk::BufferCreateInfo bufferInfo;
         bufferInfo.size = physicsBufferSize;
         bufferInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer;
@@ -702,7 +661,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
             throw std::runtime_error("Failed to create physics buffer: " + std::string(e.what()));
         }
 
-        // Create collision buffer
+        // Create a collision buffer
         bufferInfo.size = collisionBufferSize;
         try {
             vulkanResources.collisionBuffer = vk::raii::Buffer(raiiDevice, bufferInfo);
@@ -722,7 +681,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
             throw std::runtime_error("Failed to create collision buffer: " + std::string(e.what()));
         }
 
-        // Create pair buffer
+        // Create a pair buffer
         bufferInfo.size = pairBufferSize;
         try {
             vulkanResources.pairBuffer = vk::raii::Buffer(raiiDevice, bufferInfo);
@@ -742,7 +701,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
             throw std::runtime_error("Failed to create pair buffer: " + std::string(e.what()));
         }
 
-        // Create counter buffer
+        // Create counter-buffer
         bufferInfo.size = counterBufferSize;
         try {
             vulkanResources.counterBuffer = vk::raii::Buffer(raiiDevice, bufferInfo);
@@ -762,7 +721,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
             throw std::runtime_error("Failed to create counter buffer: " + std::string(e.what()));
         }
 
-        // Create params buffer
+        // Create a params buffer
         bufferInfo.size = paramsBufferSize;
         bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
         try {
@@ -783,14 +742,14 @@ bool PhysicsSystem::InitializeVulkanResources() {
             throw std::runtime_error("Failed to create params buffer: " + std::string(e.what()));
         }
 
-        // Initialize counter buffer
+        // Initialize counter-buffer
         uint32_t initialCounters[2] = { 0, 0 }; // [0] = pair count, [1] = collision count
         void* data = vulkanResources.counterBufferMemory.mapMemory(0, sizeof(initialCounters));
         memcpy(data, initialCounters, sizeof(initialCounters));
         vulkanResources.counterBufferMemory.unmapMemory();
 
-        // Create descriptor pool
-        std::array<vk::DescriptorPoolSize, 2> poolSizes = {
+        // Create a descriptor pool
+        std::array poolSizes = {
             vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 4),
             vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, 1)
         };
@@ -799,12 +758,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
         poolInfo.maxSets = 1;
-
-        try {
-            vulkanResources.descriptorPool = vk::raii::DescriptorPool(raiiDevice, poolInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create descriptor pool: " + std::string(e.what()));
-        }
+        vulkanResources.descriptorPool = vk::raii::DescriptorPool(raiiDevice, poolInfo);
 
         // Allocate descriptor sets
         vk::DescriptorSetAllocateInfo descriptorSetAllocInfo;
@@ -893,16 +847,11 @@ bool PhysicsSystem::InitializeVulkanResources() {
 
         raiiDevice.updateDescriptorSets(descriptorWrites, nullptr);
 
-        // Create command pool
+        // Create a command pool
         vk::CommandPoolCreateInfo commandPoolInfo;
         commandPoolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        commandPoolInfo.queueFamilyIndex = 0; // Assuming compute queue family index is 0
-
-        try {
-            vulkanResources.commandPool = vk::raii::CommandPool(raiiDevice, commandPoolInfo);
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Failed to create command pool: " + std::string(e.what()));
-        }
+        commandPoolInfo.queueFamilyIndex = 0; // Assuming the compute queue family index is 0
+        vulkanResources.commandPool = vk::raii::CommandPool(raiiDevice, commandPoolInfo);
 
         // Allocate command buffer
         vk::CommandBufferAllocateInfo commandBufferInfo;
@@ -960,7 +909,7 @@ void PhysicsSystem::CleanupVulkanResources() {
     vulkanResources.integrateShaderModule = nullptr;
 }
 
-void PhysicsSystem::UpdateGPUPhysicsData() {
+void PhysicsSystem::UpdateGPUPhysicsData() const {
     if (!renderer) {
         return;
     }
@@ -973,16 +922,13 @@ void PhysicsSystem::UpdateGPUPhysicsData() {
         return;
     }
 
-    const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
-
-
     // Map the physics buffer
     void* data = vulkanResources.physicsBufferMemory.mapMemory(0, sizeof(GPUPhysicsData) * rigidBodies.size());
 
     // Copy physics data to the buffer
-    GPUPhysicsData* gpuData = static_cast<GPUPhysicsData*>(data);
+    auto* gpuData = static_cast<GPUPhysicsData*>(data);
     for (size_t i = 0; i < rigidBodies.size(); i++) {
-        auto concreteRigidBody = static_cast<ConcreteRigidBody*>(rigidBodies[i].get());
+        const auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBodies[i].get());
 
         gpuData[i].position = glm::vec4(concreteRigidBody->GetPosition(), concreteRigidBody->GetInverseMass());
         gpuData[i].rotation = glm::vec4(concreteRigidBody->GetRotation().x, concreteRigidBody->GetRotation().y,
@@ -992,9 +938,8 @@ void PhysicsSystem::UpdateGPUPhysicsData() {
         gpuData[i].force = glm::vec4(glm::vec3(0.0f), concreteRigidBody->IsKinematic() ? 1.0f : 0.0f);
         gpuData[i].torque = glm::vec4(glm::vec3(0.0f), 1.0f); // Always use gravity
 
-        // Set collider data based on collider type
-        CollisionShape shape = concreteRigidBody->GetShape();
-        switch (shape) {
+        // Set collider data based on a collider type
+        switch (concreteRigidBody->GetShape()) {
             case CollisionShape::Sphere:
                 gpuData[i].colliderData = glm::vec4(0.5f, 0.0f, 0.0f, static_cast<float>(0)); // 0 = Sphere
                 gpuData[i].colliderData2 = glm::vec4(0.0f);
@@ -1019,7 +964,7 @@ void PhysicsSystem::UpdateGPUPhysicsData() {
     vulkanResources.counterBufferMemory.unmapMemory();
 
     // Update params buffer
-    PhysicsParams params;
+    PhysicsParams params{};
     params.deltaTime = 1.0f / 60.0f; // Fixed time step
     params.gravity = gravity;
     params.numBodies = static_cast<uint32_t>(rigidBodies.size());
@@ -1030,7 +975,7 @@ void PhysicsSystem::UpdateGPUPhysicsData() {
     vulkanResources.paramsBufferMemory.unmapMemory();
 }
 
-void PhysicsSystem::ReadbackGPUPhysicsData() {
+void PhysicsSystem::ReadbackGPUPhysicsData() const {
     if (!renderer) {
         return;
     }
@@ -1041,16 +986,13 @@ void PhysicsSystem::ReadbackGPUPhysicsData() {
         return;
     }
 
-    const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
-
-
     // Map the physics buffer
     void* data = vulkanResources.physicsBufferMemory.mapMemory(0, sizeof(GPUPhysicsData) * rigidBodies.size());
 
     // Copy physics data from the buffer
-    GPUPhysicsData* gpuData = static_cast<GPUPhysicsData*>(data);
+    const auto* gpuData = static_cast<GPUPhysicsData*>(data);
     for (size_t i = 0; i < rigidBodies.size(); i++) {
-        auto concreteRigidBody = static_cast<ConcreteRigidBody*>(rigidBodies[i].get());
+        const auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBodies[i].get());
 
         // Skip kinematic bodies
         if (concreteRigidBody->IsKinematic()) {
@@ -1067,7 +1009,7 @@ void PhysicsSystem::ReadbackGPUPhysicsData() {
     vulkanResources.physicsBufferMemory.unmapMemory();
 }
 
-void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
+void PhysicsSystem::SimulatePhysicsOnGPU(float) const {
     if (!renderer) {
         return;
     }
@@ -1081,13 +1023,10 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
         return;
     }
 
-    const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
-
-
     // Update physics data on the GPU
     UpdateGPUPhysicsData();
 
-    // Reset command buffer before beginning (required for reuse)
+    // Reset the command buffer before beginning (required for reuse)
     vulkanResources.commandBuffer.reset();
 
     // Begin command buffer
@@ -1129,7 +1068,7 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
     uint32_t numPairs = (rigidBodies.size() * (rigidBodies.size() - 1)) / 2;
     vulkanResources.commandBuffer.dispatch((numPairs + 63) / 64, 1, 1);
 
-    // Memory barrier to ensure broad phase is complete before narrow phase
+    // Memory barrier to ensure the broad phase is complete before the narrow phase
     vulkanResources.commandBuffer.pipelineBarrier(
         vk::PipelineStageFlagBits::eComputeShader,
         vk::PipelineStageFlagBits::eComputeShader,
@@ -1144,7 +1083,7 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
     // We don't know how many pairs were generated, so we use a conservative estimate
     vulkanResources.commandBuffer.dispatch((maxGPUCollisions + 63) / 64, 1, 1);
 
-    // Memory barrier to ensure narrow phase is complete before resolution
+    // Memory barrier to ensure a narrow phase is complete before resolution
     vulkanResources.commandBuffer.pipelineBarrier(
         vk::PipelineStageFlagBits::eComputeShader,
         vk::PipelineStageFlagBits::eComputeShader,

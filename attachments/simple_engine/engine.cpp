@@ -40,40 +40,59 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
 
     // Set mouse callback
     platform->SetMouseCallback([this](float x, float y, uint32_t buttons) {
-        // Handle camera rotation when left mouse button is pressed
-        if (buttons & 1) { // Left mouse button (bit 0)
-            if (!cameraControl.mouseLeftPressed) {
-                cameraControl.mouseLeftPressed = true;
-                cameraControl.firstMouse = true;
+        // Check if ImGui wants to capture mouse input first
+        bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
+
+        if (!imguiWantsMouse) {
+            // Handle mouse click for poke functionality (right mouse button)
+            if (buttons & 2) { // Right mouse button (bit 1)
+                if (!cameraControl.mouseRightPressed) {
+                    cameraControl.mouseRightPressed = true;
+                    // Perform poke on mouse click
+                    HandleMousePoke(x, y);
+                }
+            } else {
+                cameraControl.mouseRightPressed = false;
             }
 
-            if (cameraControl.firstMouse) {
+            // Handle camera rotation when left mouse button is pressed
+            if (buttons & 1) { // Left mouse button (bit 0)
+                if (!cameraControl.mouseLeftPressed) {
+                    cameraControl.mouseLeftPressed = true;
+                    cameraControl.firstMouse = true;
+                }
+
+                if (cameraControl.firstMouse) {
+                    cameraControl.lastMouseX = x;
+                    cameraControl.lastMouseY = y;
+                    cameraControl.firstMouse = false;
+                }
+
+                float xOffset = x - cameraControl.lastMouseX;
+                float yOffset = cameraControl.lastMouseY - y; // Reversed since y-coordinates go from bottom to top
                 cameraControl.lastMouseX = x;
                 cameraControl.lastMouseY = y;
-                cameraControl.firstMouse = false;
+
+                xOffset *= cameraControl.mouseSensitivity;
+                yOffset *= cameraControl.mouseSensitivity;
+
+                cameraControl.yaw += xOffset;
+                cameraControl.pitch += yOffset;
+
+                // Constrain pitch to avoid gimbal lock
+                if (cameraControl.pitch > 89.0f) cameraControl.pitch = 89.0f;
+                if (cameraControl.pitch < -89.0f) cameraControl.pitch = -89.0f;
+            } else {
+                cameraControl.mouseLeftPressed = false;
             }
-
-            float xOffset = x - cameraControl.lastMouseX;
-            float yOffset = cameraControl.lastMouseY - y; // Reversed since y-coordinates go from bottom to top
-            cameraControl.lastMouseX = x;
-            cameraControl.lastMouseY = y;
-
-            xOffset *= cameraControl.mouseSensitivity;
-            yOffset *= cameraControl.mouseSensitivity;
-
-            cameraControl.yaw += xOffset;
-            cameraControl.pitch += yOffset;
-
-            // Constrain pitch to avoid gimbal lock
-            if (cameraControl.pitch > 89.0f) cameraControl.pitch = 89.0f;
-            if (cameraControl.pitch < -89.0f) cameraControl.pitch = -89.0f;
-        } else {
-            cameraControl.mouseLeftPressed = false;
         }
 
         if (imguiSystem) {
             imguiSystem->HandleMouse(x, y, buttons);
         }
+
+        // Always perform hover detection (even when ImGui is active)
+        HandleMouseHover(x, y);
     });
 
     // Set keyboard callback
@@ -104,6 +123,7 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
             case GLFW_KEY_PAGE_DOWN:
                 cameraControl.moveDown = pressed;
                 break;
+            default: break;
         }
 
         if (imguiSystem) {
@@ -137,7 +157,7 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
         return false;
     }
 
-    // Initialize physics system
+    // Initialize a physics system
     physicsSystem->SetRenderer(renderer.get());
     if (!physicsSystem->Initialize()) {
         return false;
@@ -148,7 +168,7 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
         return false;
     }
 
-    // Connect ImGui system to audio system for UI controls
+    // Connect ImGui system to an audio system for UI controls
     imguiSystem->SetAudioSystem(audioSystem.get());
 
     initialized = true;
@@ -207,19 +227,16 @@ void Engine::Cleanup() {
 
 Entity* Engine::CreateEntity(const std::string& name) {
     // Check if an entity with this name already exists
-    if (entityMap.find(name) != entityMap.end()) {
+    if (entityMap.contains(name)) {
         return nullptr;
     }
 
     // Create the entity
     auto entity = std::make_unique<Entity>(name);
-    Entity* entityPtr = entity.get();
-
     // Add to the map and vector
-    entityMap[name] = entityPtr;
     entities.push_back(std::move(entity));
 
-    return entityPtr;
+    return entities.back().get();
 }
 
 Entity* Engine::GetEntity(const std::string& name) {
@@ -310,10 +327,7 @@ ImGuiSystem* Engine::GetImGuiSystem() const {
 }
 
 void Engine::Update(float deltaTime) {
-    // Check for completed background loading and create entities if ready
-    CheckAndCreateLoadedEntities();
-
-    // Update physics system
+    // Update a physics system
     physicsSystem->Update(deltaTime);
 
     // Update audio system
@@ -380,7 +394,7 @@ float Engine::CalculateDeltaTime() {
     return delta / 1000.0f; // Convert to seconds
 }
 
-void Engine::HandleResize(int width, int height) {
+void Engine::HandleResize(int width, int height) const {
     // Update the active camera's aspect ratio
     if (activeCamera) {
         activeCamera->SetAspectRatio(static_cast<float>(width) / static_cast<float>(height));
@@ -397,11 +411,11 @@ void Engine::HandleResize(int width, int height) {
     }
 }
 
-void Engine::UpdateCameraControls(float deltaTime) {
+void Engine::UpdateCameraControls(float deltaTime) const {
     if (!activeCamera) return;
 
-    // Get camera transform component
-    TransformComponent* cameraTransform = activeCamera->GetOwner()->GetComponent<TransformComponent>();
+    // Get a camera transform component
+    auto* cameraTransform = activeCamera->GetOwner()->GetComponent<TransformComponent>();
     if (!cameraTransform) return;
 
     // Calculate movement speed
@@ -409,16 +423,16 @@ void Engine::UpdateCameraControls(float deltaTime) {
 
     // Calculate camera direction vectors based on yaw and pitch
     glm::vec3 front;
-    front.x = cos(glm::radians(cameraControl.yaw)) * cos(glm::radians(cameraControl.pitch));
-    front.y = sin(glm::radians(cameraControl.pitch));
-    front.z = sin(glm::radians(cameraControl.yaw)) * cos(glm::radians(cameraControl.pitch));
+    front.x = cosf(glm::radians(cameraControl.yaw)) * cosf(glm::radians(cameraControl.pitch));
+    front.y = sinf(glm::radians(cameraControl.pitch));
+    front.z = sinf(glm::radians(cameraControl.yaw)) * cosf(glm::radians(cameraControl.pitch));
     front = glm::normalize(front);
 
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
     glm::vec3 right = glm::normalize(glm::cross(front, up));
     up = glm::normalize(glm::cross(right, front));
 
-    // Get current camera position
+    // Get the current camera position
     glm::vec3 position = cameraTransform->GetPosition();
 
     // Apply movement based on input
@@ -444,25 +458,139 @@ void Engine::UpdateCameraControls(float deltaTime) {
     // Update camera position
     cameraTransform->SetPosition(position);
 
-    // Update camera target based on direction
+    // Update camera target based on a direction
     glm::vec3 target = position + front;
     activeCamera->SetTarget(target);
 }
 
-void Engine::CheckAndCreateLoadedEntities() {
-    // Check if background loading is complete
-    if (g_loadingState.loadingComplete && !g_loadingState.loadedMaterials.empty()) {
-        // Create entities from loaded materials on the main thread
-        CreateEntitiesFromLoadedMaterials(this);
-
-        // Reset the loading complete flag
-        g_loadingState.loadingComplete = false;
+void Engine::HandleMousePoke(float mouseX, float mouseY) const {
+    if (!activeCamera || !physicsSystem) {
+        return;
     }
 
-    // Check for loading errors
-    if (g_loadingState.loadingFailed) {
-        std::cerr << "Background loading failed: " << g_loadingState.errorMessage << std::endl;
-        g_loadingState.loadingFailed = false; // Reset the flag
+    // Get window dimensions
+    int windowWidth, windowHeight;
+    platform->GetWindowSize(&windowWidth, &windowHeight);
+
+    // Convert mouse coordinates to normalized device coordinates (-1 to 1)
+    float ndcX = (2.0f * mouseX) / static_cast<float>(windowWidth) - 1.0f;
+    float ndcY = 1.0f - (2.0f * mouseY) / static_cast<float>(windowHeight);
+
+    // Get camera matrices
+    glm::mat4 viewMatrix = activeCamera->GetViewMatrix();
+    glm::mat4 projMatrix = activeCamera->GetProjectionMatrix();
+
+    // Calculate inverse matrices
+    glm::mat4 invView = glm::inverse(viewMatrix);
+    glm::mat4 invProj = glm::inverse(projMatrix);
+
+    // Convert NDC to world space
+    glm::vec4 rayClip = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+    glm::vec4 rayEye = invProj * rayClip;
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+    glm::vec4 rayWorld = invView * rayEye;
+
+    // Get ray origin and direction
+    glm::vec3 rayOrigin = activeCamera->GetPosition();
+    glm::vec3 rayDirection = glm::normalize(glm::vec3(rayWorld));
+
+    // Perform raycast
+    glm::vec3 hitPosition;
+    glm::vec3 hitNormal;
+    Entity* hitEntity = nullptr;
+
+    if (physicsSystem->Raycast(rayOrigin, rayDirection, 1000.0f, &hitPosition, &hitNormal, &hitEntity)) {
+        if (hitEntity) {
+            std::cout << "Mouse poke hit entity: " << hitEntity->GetName() << std::endl;
+
+            // Find or create rigid body for the entity
+            RigidBody* rigidBody = nullptr;
+
+            // Check if entity already has a rigid body (this is a simplified approach)
+            // In a real implementation, you'd have a component system to track this
+            rigidBody = physicsSystem->CreateRigidBody(hitEntity, CollisionShape::Box, 1.0f);
+
+            if (rigidBody) {
+                // Apply a small impulse in the direction of the ray
+                glm::vec3 impulse = rayDirection * 0.5f; // Small force magnitude as requested
+                rigidBody->ApplyImpulse(impulse, glm::vec3(0.0f));
+
+                std::cout << "Applied poke impulse to " << hitEntity->GetName() << std::endl;
+            }
+        }
+    } else {
+        std::cout << "Mouse poke missed - no entity hit" << std::endl;
+    }
+}
+
+void Engine::HandleMouseHover(float mouseX, float mouseY) {
+    if (!activeCamera || !physicsSystem) {
+        return;
+    }
+
+    // Update current mouse position
+    currentMouseX = mouseX;
+    currentMouseY = mouseY;
+
+    // Get window dimensions
+    int windowWidth, windowHeight;
+    platform->GetWindowSize(&windowWidth, &windowHeight);
+
+    // Convert mouse coordinates to normalized device coordinates (-1 to 1)
+    float ndcX = (2.0f * mouseX) / static_cast<float>(windowWidth) - 1.0f;
+    float ndcY = 1.0f - (2.0f * mouseY) / static_cast<float>(windowHeight);
+
+    // Get camera matrices
+    glm::mat4 viewMatrix = activeCamera->GetViewMatrix();
+    glm::mat4 projMatrix = activeCamera->GetProjectionMatrix();
+
+    // Calculate inverse matrices
+    glm::mat4 invView = glm::inverse(viewMatrix);
+    glm::mat4 invProj = glm::inverse(projMatrix);
+
+    // Convert NDC to world space
+    glm::vec4 rayClip = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+    glm::vec4 rayEye = invProj * rayClip;
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+    glm::vec4 rayWorld = invView * rayEye;
+
+    // Get ray origin and direction
+    glm::vec3 rayOrigin = activeCamera->GetPosition();
+    glm::vec3 rayDirection = glm::normalize(glm::vec3(rayWorld));
+
+    // Perform raycast
+    glm::vec3 hitPosition;
+    glm::vec3 hitNormal;
+    Entity* hitEntity = nullptr;
+
+    if (physicsSystem->Raycast(rayOrigin, rayDirection, 1000.0f, &hitPosition, &hitNormal, &hitEntity)) {
+        if (hitEntity) {
+            // Check if this entity is pokeable (has "_SMALL_POKEABLE" suffix)
+            std::string entityName = hitEntity->GetName();
+
+            if (entityName.find("_SMALL_POKEABLE") != std::string::npos) {
+                // Update a hovered entity if it's different from the current one
+                if (hoveredEntity != hitEntity) {
+                    hoveredEntity = hitEntity;
+                    renderer->SetHighlightedEntity(hoveredEntity);
+                    std::cout << "Now hovering over pokeable entity: " << entityName << std::endl;
+                }
+            } else {
+                // Clear hover if we're over a non-pokeable entity
+                if (hoveredEntity != nullptr) {
+                    std::cout << "No longer hovering over pokeable entity" << std::endl;
+                    hoveredEntity = nullptr;
+                    renderer->SetHighlightedEntity(nullptr);
+                }
+            }
+        }
+    } else {
+        // Clear hover if no entity is hit
+        if (hoveredEntity != nullptr) {
+            std::cout << "No longer hovering over pokeable entity" << std::endl;
+            hoveredEntity = nullptr;
+            renderer->SetHighlightedEntity(nullptr);
+        }
     }
 }
 

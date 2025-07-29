@@ -109,22 +109,82 @@ void ImGuiSystem::NewFrame() {
     // Create HRTF Audio Control UI
     ImGui::Begin("HRTF Audio Controls");
     ImGui::Text("Hello, Vulkan!");
-    // PBR Rendering Controls
+    // Lighting Controls - BRDF/PBR is now the default lighting model
     ImGui::Separator();
-    ImGui::Text("PBR Rendering Controls:");
+    ImGui::Text("Lighting Controls:");
 
-    if (ImGui::Checkbox("Enable PBR Rendering", &pbrEnabled)) {
-        std::cout << "PBR rendering " << (pbrEnabled ? "enabled" : "disabled") << std::endl;
+    // Invert the checkbox logic - now controls basic lighting instead of PBR
+    bool useBasicLighting = !pbrEnabled;
+    if (ImGui::Checkbox("Use Basic Lighting (Phong)", &useBasicLighting)) {
+        pbrEnabled = !useBasicLighting;
+        std::cout << "Lighting mode: " << (pbrEnabled ? "BRDF/PBR (default)" : "Basic Phong") << std::endl;
     }
 
     if (pbrEnabled) {
-        ImGui::Text("Status: PBR pipeline active for supported models");
-        ImGui::Text("Models using PBR: Bistro scene");
+        ImGui::Text("Status: BRDF/PBR pipeline active (default)");
+        ImGui::Text("All models rendered with physically-based lighting");
     } else {
-        ImGui::Text("Status: Using basic rendering pipeline");
-        ImGui::Text("All models rendered with basic shading");
+        ImGui::Text("Status: Basic Phong pipeline active");
+        ImGui::Text("All models rendered with basic Phong shading");
     }
 
+    // BRDF Quality Controls - always available since BRDF is now default
+    ImGui::Separator();
+    ImGui::Text("BRDF Quality Controls:");
+
+    // Gamma correction slider
+    static float gamma = 2.2f;
+    if (ImGui::SliderFloat("Gamma Correction", &gamma, 1.0f, 3.0f, "%.2f")) {
+        // Update gamma in renderer
+        if (renderer) {
+            renderer->SetGamma(gamma);
+        }
+        std::cout << "Gamma set to: " << gamma << std::endl;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##Gamma")) {
+        gamma = 2.2f;
+        if (renderer) {
+            renderer->SetGamma(gamma);
+        }
+        std::cout << "Gamma reset to: " << gamma << std::endl;
+    }
+
+    // Exposure slider
+    static float exposure = 3.0f; // Higher default for emissive lighting
+    if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f, "%.2f")) {
+        // Update exposure in renderer
+        if (renderer) {
+            renderer->SetExposure(exposure);
+        }
+        std::cout << "Exposure set to: " << exposure << std::endl;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##Exposure")) {
+        exposure = 3.0f; // Reset to higher value for emissive lighting
+        if (renderer) {
+            renderer->SetExposure(exposure);
+        }
+        std::cout << "Exposure reset to: " << exposure << std::endl;
+    }
+
+    // Shadow toggle
+    static bool shadowsEnabled = true; // Default shadows on
+    if (ImGui::Checkbox("Enable Shadows", &shadowsEnabled)) {
+        // Update shadows in renderer
+        if (renderer) {
+            renderer->SetShadowsEnabled(shadowsEnabled);
+        }
+        std::cout << "Shadows " << (shadowsEnabled ? "enabled" : "disabled") << std::endl;
+    }
+
+    ImGui::Text("Tip: Adjust gamma if scene looks too dark/bright");
+    ImGui::Text("Tip: Adjust exposure if scene looks washed out");
+    if (!pbrEnabled) {
+        ImGui::Text("Note: Quality controls affect BRDF rendering only");
+    }
+
+    ImGui::Separator();
     ImGui::Text("3D Audio Position Control");
 
     // Audio source selection

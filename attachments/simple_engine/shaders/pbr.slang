@@ -17,18 +17,31 @@ struct VSOutput {
     float4 Tangent : TANGENT;
 };
 
-// Uniform buffer
+// Light data structure for storage buffer
+struct LightData {
+    float4 position;      // Light position (w component unused)
+    float4 color;         // Light color and intensity
+    float4x4 lightSpaceMatrix; // Light space matrix for shadow mapping
+    int lightType;        // 0=Point, 1=Directional, 2=Spot, 3=Emissive
+    float range;          // Light range
+    float innerConeAngle; // For spot lights
+    float outerConeAngle; // For spot lights
+};
+
+// Uniform buffer (now without fixed light arrays)
 struct UniformBufferObject {
     float4x4 model;
     float4x4 view;
     float4x4 proj;
-    float4 lightPositions[4];
-    float4 lightColors[4];
     float4 camPos;
     float exposure;
     float gamma;
     float prefilteredCubeMipLevels;
     float scaleIBLAmbient;
+    int lightCount;             // Number of active lights (dynamic)
+    int shadowMapCount;         // Number of active shadow maps (dynamic)
+    float shadowBias;           // Shadow bias to prevent shadow acne
+    float padding;              // Padding for alignment
 };
 
 // Push constants for material properties
@@ -43,6 +56,8 @@ struct PushConstants {
     int emissiveTextureSet;
     float alphaMask;
     float alphaMaskCutoff;
+    float3 emissiveFactor;  // Emissive factor for HDR emissive sources
+    float emissiveStrength; // KHR_materials_emissive_strength extension
 };
 
 // Constants
@@ -55,6 +70,8 @@ static const float PI = 3.14159265359;
 [[vk::binding(3, 0)]] Sampler2D normalMap;
 [[vk::binding(4, 0)]] Sampler2D occlusionMap;
 [[vk::binding(5, 0)]] Sampler2D emissiveMap;
+[[vk::binding(6, 0)]] Sampler2D shadowMaps[16]; // Array of individual shadow maps for lights
+[[vk::binding(7, 0)]] StructuredBuffer<LightData> lightBuffer; // Dynamic light storage buffer
 
 [[vk::push_constant]] PushConstants material;
 
@@ -83,6 +100,49 @@ float GeometrySmith(float NdotV, float NdotL, float roughness) {
 
 float3 FresnelSchlick(float cosTheta, float3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Shadow mapping functions
+float calculateShadow(float4 fragPosLightSpace, int shadowMapIndex, float3 normal, float3 lightDir) {
+    // Add bounds checking to prevent accessing invalid shadow map indices
+    if (shadowMapIndex < 0 || shadowMapIndex >= 16) {
+        return 0.0; // No shadow for invalid indices
+    }
+
+    // Perform perspective divide
+    float3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+
+    // Transform to [0,1] range
+    projCoords = projCoords * 0.5 + 0.5;
+
+    // Check if fragment is outside light's frustum
+    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0) {
+        return 0.0; // No shadow outside frustum
+    }
+
+    // Calculate bias to prevent shadow acne
+    float bias = max(ubo.shadowBias * (1.0 - dot(normal, lightDir)), ubo.shadowBias * 0.1);
+
+    // Get closest depth value from light's perspective
+    float closestDepth = shadowMaps[shadowMapIndex].Sample(projCoords.xy).r;
+
+    // Get depth of current fragment from light's perspective
+    float currentDepth = projCoords.z;
+
+    // PCF (Percentage Closer Filtering) for smooth shadows
+    float shadow = 0.0;
+    float2 texelSize = 1.0 / float2(2048.0, 2048.0); // Shadow map resolution
+
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = shadowMaps[shadowMapIndex].Sample(projCoords.xy + float2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0; // Average the 9 samples
+
+    return shadow;
 }
 
 // Vertex shader entry point
@@ -120,7 +180,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float metallic = metallicRoughness.x * material.metallicFactor;
     float roughness = metallicRoughness.y * material.roughnessFactor;
     float ao = occlusionMap.Sample(input.UV).r;
-    float3 emissive = emissiveMap.Sample(input.UV).rgb;
+    float3 emissive = emissiveMap.Sample(input.UV).rgb * material.emissiveFactor * material.emissiveStrength;
 
     // Calculate normal in tangent space
     float3 N = normalize(input.Normal);
@@ -144,50 +204,116 @@ float4 PSMain(VSOutput input) : SV_TARGET
     // Initialize lighting
     float3 Lo = float3(0.0, 0.0, 0.0);
 
-    // Calculate lighting for each light
-    for (int i = 0; i < 4; i++) {
-        float3 lightPos = ubo.lightPositions[i].xyz;
-        float3 lightColor = ubo.lightColors[i].rgb;
+    // Calculate lighting for each light (dynamic count - no limit)
+    for (int i = 0; i < ubo.lightCount; i++) {
+        LightData light = lightBuffer[i];
+        float3 lightPos = light.position.xyz;
+        float3 lightColor = light.color.rgb;
 
-        // Calculate light direction and distance
-        float3 L = normalize(lightPos - input.WorldPos);
-        float distance = length(lightPos - input.WorldPos);
-        float attenuation = 1.0 / (distance * distance);
-        float3 radiance = lightColor * attenuation;
+        // Handle emissive lights differently
+        if (light.lightType == 3) { // Emissive light
+            // For emissive lights, treat them as area lights with enhanced contribution
+            // Calculate light direction and distance
+            float3 L = normalize(lightPos - input.WorldPos);
+            float distance = length(lightPos - input.WorldPos);
 
-        // Calculate half vector
-        float3 H = normalize(V + L);
+            // Enhanced attenuation for emissive lights to make them more effective
+            float attenuation = 1.0 / (1.0 + 0.1 * distance + 0.01 * distance * distance);
 
-        // Calculate BRDF terms
-        float NdotL = max(dot(N, L), 0.0);
-        float NdotV = max(dot(N, V), 0.0);
-        float NdotH = max(dot(N, H), 0.0);
-        float HdotV = max(dot(H, V), 0.0);
+            // Boost emissive light intensity to make them more visible
+            float3 radiance = lightColor * attenuation * 2.0; // 2x multiplier for emissive lights
 
-        // Specular BRDF
-        float D = DistributionGGX(NdotH, roughness);
-        float G = GeometrySmith(NdotV, NdotL, roughness);
-        float3 F = FresnelSchlick(HdotV, F0);
+            // Calculate half vector
+            float3 H = normalize(V + L);
 
-        float3 numerator = D * G * F;
-        float denominator = 4.0 * NdotV * NdotL + 0.0001;
-        float3 specular = numerator / denominator;
+            // Calculate BRDF terms
+            float NdotL = max(dot(N, L), 0.0);
+            float NdotV = max(dot(N, V), 0.0);
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0);
 
-        // Energy conservation
-        float3 kS = F;
-        float3 kD = float3(1.0, 1.0, 1.0) - kS;
-        kD *= 1.0 - metallic;
+            // Calculate shadow factor for emissive lights
+            float shadow = 0.0;
+            if (i < ubo.shadowMapCount) {
+                // Transform fragment position to light space
+                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
+                shadow = calculateShadow(fragPosLightSpace, i, N, L);
+            }
 
-        // Add to outgoing radiance
-        Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
+            // Specular BRDF
+            float D = DistributionGGX(NdotH, roughness);
+            float G = GeometrySmith(NdotV, NdotL, roughness);
+            float3 F = FresnelSchlick(HdotV, F0);
+
+            float3 numerator = D * G * F;
+            float denominator = 4.0 * NdotV * NdotL + 0.0001;
+            float3 specular = numerator / denominator;
+
+            // Energy conservation
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= 1.0 - metallic;
+
+            // Apply shadow factor to lighting
+            float shadowFactor = 1.0 - shadow;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+
+        } else { // Regular lights (Point, Directional, Spot)
+            // Calculate light direction and distance
+            float3 L = normalize(lightPos - input.WorldPos);
+            float distance = length(lightPos - input.WorldPos);
+            float attenuation = 1.0 / (distance * distance);
+            float3 radiance = lightColor * attenuation;
+
+            // Calculate half vector
+            float3 H = normalize(V + L);
+
+            // Calculate BRDF terms
+            float NdotL = max(dot(N, L), 0.0);
+            float NdotV = max(dot(N, V), 0.0);
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0);
+
+            // Calculate shadow factor
+            float shadow = 0.0;
+            if (i < ubo.shadowMapCount) {
+                // Transform fragment position to light space
+                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
+                shadow = calculateShadow(fragPosLightSpace, i, N, L);
+            }
+
+            // Specular BRDF
+            float D = DistributionGGX(NdotH, roughness);
+            float G = GeometrySmith(NdotV, NdotL, roughness);
+            float3 F = FresnelSchlick(HdotV, F0);
+
+            float3 numerator = D * G * F;
+            float denominator = 4.0 * NdotV * NdotL + 0.0001;
+            float3 specular = numerator / denominator;
+
+            // Energy conservation
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= 1.0 - metallic;
+
+            // Apply shadow factor to lighting (1.0 - shadow means 0 shadow = full light, 1 shadow = no light)
+            float shadowFactor = 1.0 - shadow;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+        }
     }
 
     // Add only emissive (no hardcoded ambient - use only model-defined lights)
-    // Scale down emissive contribution to reduce excessive brightness
-    float3 color = Lo + emissive * 0.1;
+    // Use full emissive contribution for proper HDR rendering
+    float3 color = Lo + emissive;
 
-    // HDR tonemapping and gamma correction
-    color = color / (color + float3(1.0, 1.0, 1.0));
+    // Apply exposure before tone mapping for proper HDR workflow
+    color *= ubo.exposure;
+
+    // Standard Reinhard tone mapping - simple and effective
+    // This prevents excessive brightness while preserving color relationships
+    color = color / (1.0 + color);
+
+    // Gamma correction (convert from linear to sRGB)
     color = pow(color, float3(1.0 / ubo.gamma, 1.0 / ubo.gamma, 1.0 / ubo.gamma));
 
     return float4(color, baseColor.a);

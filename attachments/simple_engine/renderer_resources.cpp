@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "model_loader.h"
+#include "mesh_component.h"
 #include <fstream>
 #include <stdexcept>
 #include <array>
@@ -9,6 +10,10 @@
 // Define STB_IMAGE_IMPLEMENTATION before including stb_image.h to provide the implementation
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+// KTX2 support
+#include <ktx.h>
+#include <ktxvulkan.h>
 
 // This file contains resource-related methods from the Renderer class
 
@@ -66,15 +71,95 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
             return true;
         }
 
-        // Load texture image
-        int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        if (!pixels) {
-            std::cerr << "Failed to load texture image: " << texturePath << std::endl;
-            return false;
-        }
+        // Check if this is a KTX2 file
+        bool isKtx2 = texturePath.find(".ktx2") != std::string::npos;
 
-        vk::DeviceSize imageSize = texWidth * texHeight * 4;
+        int texWidth, texHeight, texChannels;
+        stbi_uc* pixels = nullptr;
+        ktxTexture2* ktxTex = nullptr;
+        vk::DeviceSize imageSize;
+
+        uint32_t mipLevels = 1;
+        std::vector<vk::BufferImageCopy> copyRegions;
+
+        if (isKtx2) {
+            // Load KTX2 file
+            KTX_error_code result = ktxTexture2_CreateFromNamedFile(texturePath.c_str(),
+                                                                   KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+                                                                   &ktxTex);
+            if (result != KTX_SUCCESS) {
+                std::cerr << "Failed to load KTX2 texture: " << texturePath << " (error: " << result << ")" << std::endl;
+                return false;
+            }
+
+            // Check if texture needs transcoding (Basis Universal compressed)
+            bool wasTranscoded = ktxTexture2_NeedsTranscoding(ktxTex);
+            if (wasTranscoded) {
+                // Transcode to RGBA8 uncompressed format for Vulkan compatibility
+                ktx_transcode_fmt_e transcodeFormat = KTX_TTF_RGBA32;
+
+                result = ktxTexture2_TranscodeBasis(ktxTex, transcodeFormat, 0);
+                if (result != KTX_SUCCESS) {
+                    std::cerr << "Failed to transcode KTX2 texture: " << texturePath << " (error: " << result << ")" << std::endl;
+                    ktxTexture_Destroy((ktxTexture*)ktxTex);
+                    return false;
+                }
+            }
+
+            texWidth = ktxTex->baseWidth;
+            texHeight = ktxTex->baseHeight;
+            texChannels = 4; // KTX2 textures are typically RGBA
+            // Disable mipmapping - only use base level (level 0)
+            mipLevels = 1;
+
+            // Calculate size for base level only
+            if (wasTranscoded) {
+                imageSize = texWidth * texHeight * 4; // RGBA = 4 bytes per pixel
+            } else {
+                imageSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0); // Only level 0
+            }
+
+            // Create single copy region for base level only
+            copyRegions.push_back({
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+                .imageSubresource = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .imageOffset = {0, 0, 0},
+                .imageExtent = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1}
+            });
+
+            std::cout << "Loaded KTX2 texture: " << texturePath
+                      << " (" << texWidth << "x" << texHeight << ", base level only, size: " << imageSize << " bytes)" << std::endl;
+        } else {
+            // Load standard image formats using stb_image
+            pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            if (!pixels) {
+                std::cerr << "Failed to load texture image: " << texturePath << std::endl;
+                return false;
+            }
+            imageSize = texWidth * texHeight * 4;
+
+            // Create single copy region for non-KTX2 textures
+            copyRegions.push_back({
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+                .imageSubresource = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .imageOffset = {0, 0, 0},
+                .imageExtent = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1}
+            });
+        }
 
         // Create staging buffer
         auto [stagingBuffer, stagingBufferMemory] = createBuffer(
@@ -85,17 +170,51 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
 
         // Copy pixel data to staging buffer
         void* data = stagingBufferMemory.mapMemory(0, imageSize);
-        memcpy(data, pixels, static_cast<size_t>(imageSize));
+
+        if (isKtx2) {
+            // Copy KTX2 texture data for base level only (level 0)
+            size_t levelSize;
+            const void* levelData;
+
+            if (ktxTexture2_NeedsTranscoding(ktxTex)) {
+                // For transcoded textures, get data from the transcoded buffer
+                levelSize = texWidth * texHeight * 4; // RGBA = 4 bytes per pixel
+                ktx_size_t offset;
+                ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
+                levelData = ktxTexture_GetData((ktxTexture*)ktxTex) + offset;
+            } else {
+                // For non-transcoded textures, get data directly
+                levelSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
+                ktx_size_t offset;
+                ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
+                levelData = ktxTexture_GetData((ktxTexture*)ktxTex) + offset;
+            }
+
+            memcpy(data, levelData, levelSize);
+        } else {
+            // Copy regular image data
+            memcpy(data, pixels, static_cast<size_t>(imageSize));
+        }
+
         stagingBufferMemory.unmapMemory();
 
         // Free pixel data
-        stbi_image_free(pixels);
+        if (isKtx2) {
+            ktxTexture_Destroy((ktxTexture*)ktxTex);
+        } else {
+            stbi_image_free(pixels);
+        }
+
+        // Determine appropriate texture format based on texture type
+        vk::Format textureFormat = Renderer::determineTextureFormat(texturePath);
+        std::cout << "Loading external texture " << texturePath << " with format: "
+                  << (textureFormat == vk::Format::eR8G8B8A8Srgb ? "sRGB" : "Linear") << std::endl;
 
         // Create texture image using memory pool
         auto [textureImg, textureImgAllocation] = createImagePooled(
             texWidth,
             texHeight,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
             vk::MemoryPropertyFlagBits::eDeviceLocal
@@ -107,9 +226,10 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
         // Transition image layout for copy
         transitionImageLayout(
             *resources.textureImage,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal
+            vk::ImageLayout::eTransferDstOptimal,
+            mipLevels
         );
 
         // Copy buffer to image
@@ -117,16 +237,22 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
             *stagingBuffer,
             *resources.textureImage,
             static_cast<uint32_t>(texWidth),
-            static_cast<uint32_t>(texHeight)
+            static_cast<uint32_t>(texHeight),
+            copyRegions
         );
 
         // Transition image layout for shader access
         transitionImageLayout(
             *resources.textureImage,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageLayout::eTransferDstOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            mipLevels
         );
+
+        // Store the format and mipLevels for createTextureImageView
+        resources.format = textureFormat;
+        resources.mipLevels = mipLevels;
 
         // Create texture image view
         if (!createTextureImageView(resources)) {
@@ -153,8 +279,9 @@ bool Renderer::createTextureImageView(TextureResources& resources) {
     try {
         resources.textureImageView = createImageView(
             resources.textureImage,
-            vk::Format::eR8G8B8A8Srgb,
-            vk::ImageAspectFlagBits::eColor
+            resources.format, // Use the stored format instead of hardcoded sRGB
+            vk::ImageAspectFlagBits::eColor,
+            resources.mipLevels // Use the stored mipLevels
         );
         return true;
     } catch (const std::exception& e) {
@@ -166,9 +293,6 @@ bool Renderer::createTextureImageView(TextureResources& resources) {
 // Create shared default PBR textures (to avoid creating hundreds of identical textures)
 bool Renderer::createSharedDefaultPBRTextures() {
     try {
-        std::cout << "Creating shared default PBR textures..." << std::endl;
-
-        // Create shared default albedo texture (neutral gray to reduce excessive brightness)
         unsigned char whitePixel[4] = {128, 128, 128, 255}; // 50% gray instead of pure white
         if (!LoadTextureFromMemory(SHARED_DEFAULT_ALBEDO_ID, whitePixel, 1, 1, 4)) {
             std::cerr << "Failed to create shared default albedo texture" << std::endl;
@@ -255,11 +379,25 @@ bool Renderer::createDefaultTextureResources() {
         );
 
         // Copy buffer to image
+        std::vector<vk::BufferImageCopy> regions = {{
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            },
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {width, height, 1}
+        }};
         copyBufferToImage(
             *stagingBuffer,
             *defaultTextureResources.textureImage,
             width,
-            height
+            height,
+            regions
         );
 
         // Transition image layout for shader access
@@ -291,11 +429,11 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
         // Get physical device properties
         vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 
-        // Create sampler
+        // Create sampler (mipmapping disabled)
         vk::SamplerCreateInfo samplerInfo{
             .magFilter = vk::Filter::eLinear,
             .minFilter = vk::Filter::eLinear,
-            .mipmapMode = vk::SamplerMipmapMode::eLinear,
+            .mipmapMode = vk::SamplerMipmapMode::eNearest, // Disable mipmap filtering
             .addressModeU = vk::SamplerAddressMode::eRepeat,
             .addressModeV = vk::SamplerAddressMode::eRepeat,
             .addressModeW = vk::SamplerAddressMode::eRepeat,
@@ -305,7 +443,7 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
             .compareEnable = VK_FALSE,
             .compareOp = vk::CompareOp::eAlways,
             .minLod = 0.0f,
-            .maxLod = 0.0f,
+            .maxLod = 0.0f, // Force single mip level (no mipmapping)
             .borderColor = vk::BorderColor::eIntOpaqueBlack,
             .unnormalizedCoordinates = VK_FALSE
         };
@@ -347,6 +485,21 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
     return success;
 }
 
+// Determine appropriate texture format based on texture type
+vk::Format Renderer::determineTextureFormat(const std::string& textureId) {
+    // BaseColor/Albedo textures should be in sRGB space for proper gamma correction
+    if (textureId.find("BaseColor") != std::string::npos ||
+        textureId.find("Albedo") != std::string::npos ||
+        textureId.find("Diffuse") != std::string::npos ||
+        textureId == Renderer::SHARED_DEFAULT_ALBEDO_ID) {
+        return vk::Format::eR8G8B8A8Srgb;
+    }
+
+    // All other PBR textures (normal, metallic-roughness, occlusion, emissive) should be linear
+    // because they contain non-color data that shouldn't be gamma corrected
+    return vk::Format::eR8G8B8A8Unorm;
+}
+
 // Load texture from raw image data in memory
 bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigned char* imageData,
                                     int width, int height, int channels) {
@@ -369,7 +522,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
         int targetChannels = 4; // Always use RGBA for consistency
         vk::DeviceSize imageSize = width * height * targetChannels;
 
-        // Create staging buffer
+        // Create a staging buffer
         auto [stagingBuffer, stagingBufferMemory] = createBuffer(
             imageSize,
             vk::BufferUsageFlagBits::eTransferSrc,
@@ -378,7 +531,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
 
         // Copy and convert pixel data to staging buffer
         void* data = stagingBufferMemory.mapMemory(0, imageSize);
-        unsigned char* stagingData = static_cast<unsigned char*>(data);
+        auto* stagingData = static_cast<unsigned char*>(data);
 
         if (channels == 4) {
             // Already RGBA, direct copy
@@ -415,11 +568,13 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
 
         stagingBufferMemory.unmapMemory();
 
+        // Determine the appropriate texture format based on the texture type
+        vk::Format textureFormat = determineTextureFormat(textureId);
         // Create texture image using memory pool
         auto [textureImg, textureImgAllocation] = createImagePooled(
             width,
             height,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
             vk::MemoryPropertyFlagBits::eDeviceLocal
@@ -431,31 +586,48 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
         // Transition image layout for copy
         transitionImageLayout(
             *resources.textureImage,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eTransferDstOptimal
         );
 
         // Copy buffer to image
+        std::vector<vk::BufferImageCopy> regions = {{
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            },
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1}
+        }};
         copyBufferToImage(
             *stagingBuffer,
             *resources.textureImage,
             static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height)
+            static_cast<uint32_t>(height),
+            regions
         );
 
         // Transition image layout for shader access
         transitionImageLayout(
             *resources.textureImage,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageLayout::eTransferDstOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal
         );
 
+        // Store the format for createTextureImageView
+        resources.format = textureFormat;
+
         // Create texture image view
         resources.textureImageView = createImageView(
             resources.textureImage,
-            vk::Format::eR8G8B8A8Srgb,
+            textureFormat,
             vk::ImageAspectFlagBits::eColor
         );
 
@@ -559,122 +731,6 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
     }
 }
 
-// REMOVED: Create material-specific mesh resources for PBR rendering - Memory inefficient approach
-// This function was creating separate vertex/index buffers for each material, multiplying memory usage
-/*
-bool Renderer::createMaterialMeshResources(const std::string& modelName) {
-    try {
-        // Check if material mesh resources already exist
-        auto it = materialMeshResources.find(modelName);
-        if (it != materialMeshResources.end()) {
-            return true;
-        }
-
-        // Get material meshes from model loader
-        if (!modelLoader) {
-            std::cerr << "ModelLoader not available for creating material mesh resources" << std::endl;
-            return false;
-        }
-
-        std::vector<MaterialMesh> materialMeshes = modelLoader->GetMaterialMeshes(modelName);
-        if (materialMeshes.empty()) {
-            std::cerr << "No material meshes found for model: " << modelName << std::endl;
-            return false;
-        }
-
-        std::cout << "Creating material mesh resources for model: " << modelName
-                  << " (" << materialMeshes.size() << " materials)" << std::endl;
-
-        // Create material mesh resources
-        MaterialMeshResources resources;
-        resources.materialMeshes.reserve(materialMeshes.size());
-        resources.materialNames.reserve(materialMeshes.size());
-        resources.materialIndices.reserve(materialMeshes.size());
-
-        for (const auto& materialMesh : materialMeshes) {
-            const auto& vertices = materialMesh.vertices;
-            const auto& indices = materialMesh.indices;
-
-            if (vertices.empty() || indices.empty()) {
-                std::cerr << "Material mesh has no vertices or indices: " << materialMesh.materialName << std::endl;
-                continue;
-            }
-
-            std::cout << "  Creating buffers for material: " << materialMesh.materialName
-                      << " (" << vertices.size() << " vertices, " << indices.size() << " indices)" << std::endl;
-
-            // Create vertex buffer
-            vk::DeviceSize vertexBufferSize = sizeof(vertices[0]) * vertices.size();
-            auto [stagingVertexBuffer, stagingVertexBufferMemory] = createBuffer(
-                vertexBufferSize,
-                vk::BufferUsageFlagBits::eTransferSrc,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-            );
-
-            // Copy vertex data to staging buffer
-            void* vertexData = stagingVertexBufferMemory.mapMemory(0, vertexBufferSize);
-            memcpy(vertexData, vertices.data(), static_cast<size_t>(vertexBufferSize));
-            stagingVertexBufferMemory.unmapMemory();
-
-            // Create vertex buffer on device
-            auto [vertexBuffer, vertexBufferMemory] = createBuffer(
-                vertexBufferSize,
-                vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-                vk::MemoryPropertyFlagBits::eDeviceLocal
-            );
-
-            // Copy from staging buffer to device buffer
-            copyBuffer(stagingVertexBuffer, vertexBuffer, vertexBufferSize);
-
-            // Create index buffer
-            vk::DeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
-            auto [stagingIndexBuffer, stagingIndexBufferMemory] = createBuffer(
-                indexBufferSize,
-                vk::BufferUsageFlagBits::eTransferSrc,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-            );
-
-            // Copy index data to staging buffer
-            void* indexData = stagingIndexBufferMemory.mapMemory(0, indexBufferSize);
-            memcpy(indexData, indices.data(), static_cast<size_t>(indexBufferSize));
-            stagingIndexBufferMemory.unmapMemory();
-
-            // Create index buffer on device
-            auto [indexBuffer, indexBufferMemory] = createBuffer(
-                indexBufferSize,
-                vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-                vk::MemoryPropertyFlagBits::eDeviceLocal
-            );
-
-            // Copy from staging buffer to device buffer
-            copyBuffer(stagingIndexBuffer, indexBuffer, indexBufferSize);
-
-            // Create mesh resources for this material
-            MeshResources meshRes;
-            meshRes.vertexBuffer = std::move(vertexBuffer);
-            meshRes.vertexBufferMemory = std::move(vertexBufferMemory);
-            meshRes.indexBuffer = std::move(indexBuffer);
-            meshRes.indexBufferMemory = std::move(indexBufferMemory);
-            meshRes.indexCount = static_cast<uint32_t>(indices.size());
-
-            // Store the mesh resources and metadata
-            resources.materialMeshes.emplace_back(std::move(meshRes));
-            resources.materialNames.emplace_back(materialMesh.materialName);
-            resources.materialIndices.emplace_back(materialMesh.materialIndex);
-        }
-
-        // Add to material mesh resources map
-        materialMeshResources[modelName] = std::move(resources);
-
-        std::cout << "Successfully created material mesh resources for model: " << modelName << std::endl;
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to create material mesh resources: " << e.what() << std::endl;
-        return false;
-    }
-}
-*/
-
 // Create uniform buffers
 bool Renderer::createUniformBuffers(Entity* entity) {
     try {
@@ -720,21 +776,25 @@ bool Renderer::createUniformBuffers(Entity* entity) {
 // Create descriptor pool
 bool Renderer::createDescriptorPool() {
     try {
-        // Calculate pool sizes for all Bistro materials (131) plus additional entities
+        // Calculate pool sizes for all Bistro materials plus additional entities
+        // The Bistro model creates many more entities than initially expected
         // Each entity needs descriptor sets for both basic and PBR pipelines
-        // PBR pipeline needs 6 descriptors per set (1 UBO + 5 textures)
+        // PBR pipeline needs 7 descriptors per set (1 UBO + 5 PBR textures + 1 shadow map array with 16 shadow maps)
         // Basic pipeline needs 2 descriptors per set (1 UBO + 1 texture)
-        const uint32_t maxEntities = 200; // Support up to 200 entities (131 Bistro + extras)
+        const uint32_t maxEntities = 2500; // Increased to 2500 entities to handle large models like bistro with extra safety margin
         const uint32_t maxDescriptorSets = MAX_FRAMES_IN_FLIGHT * maxEntities * 2; // 2 pipeline types per entity
 
         // Calculate descriptor counts
         // UBO descriptors: 1 per descriptor set
         const uint32_t uboDescriptors = maxDescriptorSets;
-        // Texture descriptors: Basic pipeline uses 1, PBR uses 5, so average ~3 per set
-        // But allocate for worst case: all entities using PBR (5 textures each)
-        const uint32_t textureDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities * 5;
+        // Texture descriptors: Basic pipeline uses 1, PBR uses 21 (5 PBR textures + 16 shadow maps)
+        // Allocate for worst case: all entities using PBR (21 texture descriptors each)
+        const uint32_t textureDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities * 21;
+        // Storage buffer descriptors: PBR pipeline uses 1 light storage buffer per descriptor set
+        // Only PBR entities need storage buffers, so allocate for all entities using PBR
+        const uint32_t storageBufferDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities;
 
-        std::array<vk::DescriptorPoolSize, 2> poolSizes = {
+        std::array<vk::DescriptorPoolSize, 3> poolSizes = {
             vk::DescriptorPoolSize{
                 .type = vk::DescriptorType::eUniformBuffer,
                 .descriptorCount = uboDescriptors
@@ -742,6 +802,10 @@ bool Renderer::createDescriptorPool() {
             vk::DescriptorPoolSize{
                 .type = vk::DescriptorType::eCombinedImageSampler,
                 .descriptorCount = textureDescriptors
+            },
+            vk::DescriptorPoolSize{
+                .type = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = storageBufferDescriptors
             }
         };
 
@@ -752,11 +816,6 @@ bool Renderer::createDescriptorPool() {
             .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
             .pPoolSizes = poolSizes.data()
         };
-
-        std::cout << "Creating descriptor pool with capacity for " << maxEntities << " entities:" << std::endl;
-        std::cout << "  Max descriptor sets: " << maxDescriptorSets << std::endl;
-        std::cout << "  UBO descriptors: " << uboDescriptors << std::endl;
-        std::cout << "  Texture descriptors: " << textureDescriptors << std::endl;
 
         descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
         return true;
@@ -776,29 +835,43 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             return false;
         }
 
-        // Get texture resources - don't move them out of the map!
+        // Get texture resources - use default texture as fallback if specific texture fails
         TextureResources* textureRes = nullptr;
         if (!texturePath.empty()) {
             auto textureIt = textureResources.find(texturePath);
             if (textureIt == textureResources.end()) {
-                // Create texture resources if they don't exist
+                // Try to create texture resources
                 TextureResources tempRes;
                 if (!createTextureImage(texturePath, tempRes)) {
-                    return false;
+                    // Texture loading failed - use default texture instead of failing descriptor set creation
+                    std::cerr << "Warning: Failed to load texture " << texturePath
+                              << " for entity " << entity->GetName()
+                              << ", using default texture instead" << std::endl;
+
+                    // Use default texture resources instead
+                    textureRes = &defaultTextureResources;
+                } else {
+                    // Texture loaded successfully, find it in the map
+                    textureIt = textureResources.find(texturePath);
+                    if (textureIt == textureResources.end()) {
+                        std::cerr << "Warning: Failed to find texture after creation: " << texturePath
+                                  << ", using default texture instead" << std::endl;
+                        textureRes = &defaultTextureResources;
+                    } else {
+                        textureRes = &textureIt->second;
+                    }
                 }
-                // The texture should now be in the map, find it again
-                textureIt = textureResources.find(texturePath);
-                if (textureIt == textureResources.end()) {
-                    std::cerr << "Failed to find texture after creation: " << texturePath << std::endl;
-                    return false;
-                }
+            } else {
+                textureRes = &textureIt->second;
             }
-            textureRes = &textureIt->second;
+        } else {
+            // No texture path specified, use default texture
+            textureRes = &defaultTextureResources;
         }
 
         // Create descriptor sets using RAII - choose layout based on pipeline type
         vk::DescriptorSetLayout selectedLayout = usePBR ? *pbrDescriptorSetLayout : *descriptorSetLayout;
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, selectedLayout);
+        std::vector layouts(MAX_FRAMES_IN_FLIGHT, selectedLayout);
         vk::DescriptorSetAllocateInfo allocInfo{
             .descriptorPool = *descriptorPool,
             .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
@@ -818,7 +891,6 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             targetDescriptorSets.reserve(MAX_FRAMES_IN_FLIGHT);
             for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
                 targetDescriptorSets.emplace_back(std::move(raiiDescriptorSets[i]));
-                std::cout << "Created " << (usePBR ? "PBR" : "basic") << " descriptor set " << i << " with handle: " << *targetDescriptorSets[i] << std::endl;
             }
         }
 
@@ -832,11 +904,12 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             };
 
             if (usePBR) {
-                // PBR pipeline: Create 6 descriptor writes (UBO + 5 textures)
-                std::array<vk::WriteDescriptorSet, 6> descriptorWrites;
+                // PBR pipeline: Create 8 descriptor writes (UBO + 5 textures + shadow map array + light storage buffer)
+                std::array<vk::WriteDescriptorSet, 8> descriptorWrites;
                 std::array<vk::DescriptorImageInfo, 5> imageInfos;
+                std::array<vk::DescriptorImageInfo, 16> shadowMapInfos;
 
-                // Uniform buffer descriptor write (binding 0)
+                // Uniform buffer descriptor writes (binding 0)
                 descriptorWrites[0] = vk::WriteDescriptorSet{
                     .dstSet = targetDescriptorSets[i],
                     .dstBinding = 0,
@@ -846,31 +919,47 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                     .pBufferInfo = &bufferInfo
                 };
 
-                // Try to use loaded textures instead of default white texture
-                vk::DescriptorImageInfo defaultImageInfo{
-                    .sampler = *defaultTextureResources.textureSampler,
-                    .imageView = *defaultTextureResources.textureImageView,
-                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                // Get all PBR texture paths from the entity's MeshComponent
+                auto meshComponent = entity->GetComponent<MeshComponent>();
+                std::vector pbrTexturePaths = {
+                    // Binding 1: baseColor - use GLTF texture or fallback to shared default
+                    (meshComponent && !meshComponent->GetBaseColorTexturePath().empty()) ?
+                        meshComponent->GetBaseColorTexturePath() : SHARED_DEFAULT_ALBEDO_ID,
+                    // Binding 2: metallicRoughness - use GLTF texture or fallback to shared default
+                    (meshComponent && !meshComponent->GetMetallicRoughnessTexturePath().empty()) ?
+                        meshComponent->GetMetallicRoughnessTexturePath() : SHARED_DEFAULT_METALLIC_ROUGHNESS_ID,
+                    // Binding 3: normal - use GLTF texture or fallback to shared default
+                    (meshComponent && !meshComponent->GetNormalTexturePath().empty()) ?
+                        meshComponent->GetNormalTexturePath() : SHARED_DEFAULT_NORMAL_ID,
+                    // Binding 4: occlusion - use GLTF texture or fallback to shared default
+                    (meshComponent && !meshComponent->GetOcclusionTexturePath().empty()) ?
+                        meshComponent->GetOcclusionTexturePath() : SHARED_DEFAULT_OCCLUSION_ID,
+                    // Binding 5: emissive - use GLTF texture or fallback to shared default
+                    (meshComponent && !meshComponent->GetEmissiveTexturePath().empty()) ?
+                        meshComponent->GetEmissiveTexturePath() : SHARED_DEFAULT_EMISSIVE_ID
                 };
 
-                // Use entity-specific texture if available, otherwise fall back to default
-                bool hasValidTexture = !texturePath.empty() &&
-                                      textureResources.find(texturePath) != textureResources.end();
-
+                // Create image infos for each PBR texture binding
                 for (int j = 0; j < 5; j++) {
-                    if (hasValidTexture) {
-                        // Use the entity's specific texture for all PBR bindings
-                        const auto& texRes = textureResources.at(texturePath);
+                    const std::string& currentTexturePath = pbrTexturePaths[j];
+
+                    // Find the texture resources for this binding
+                    auto textureIt = textureResources.find(currentTexturePath);
+                    if (textureIt != textureResources.end()) {
+                        // Use the specific texture for this binding
+                        const auto& texRes = textureIt->second;
                         imageInfos[j] = vk::DescriptorImageInfo{
                             .sampler = *texRes.textureSampler,
                             .imageView = *texRes.textureImageView,
                             .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
                         };
-                        std::cout << "Using entity texture for PBR binding " << (j+1) << ": " << texturePath << std::endl;
                     } else {
-                        // Fall back to default texture
-                        imageInfos[j] = defaultImageInfo;
-                        std::cout << "Using default texture for PBR binding " << (j+1) << std::endl;
+                        // Fall back to default white texture if the specific texture is not found
+                        imageInfos[j] = vk::DescriptorImageInfo{
+                            .sampler = *defaultTextureResources.textureSampler,
+                            .imageView = *defaultTextureResources.textureImageView,
+                            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                        };
                     }
                 }
 
@@ -886,7 +975,78 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                     };
                 }
 
-                // Update descriptor sets with all 6 descriptors
+                // Create shadow map image infos for binding 6
+                for (int j = 0; j < 16; j++) {
+                    if (j < static_cast<int>(shadowMaps.size()) && *shadowMaps[j].shadowMapImageView) {
+                        // Use actual shadow map
+                        shadowMapInfos[j] = vk::DescriptorImageInfo{
+                            .sampler = *shadowMaps[j].shadowMapSampler,
+                            .imageView = *shadowMaps[j].shadowMapImageView,
+                            .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal
+                        };
+                    } else {
+                        // Use default texture as placeholder for unused shadow map slots
+                        shadowMapInfos[j] = vk::DescriptorImageInfo{
+                            .sampler = *defaultTextureResources.textureSampler,
+                            .imageView = *defaultTextureResources.textureImageView,
+                            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                        };
+                    }
+                }
+
+                // Create descriptor write for shadow map array (binding 6)
+                descriptorWrites[6] = vk::WriteDescriptorSet{
+                    .dstSet = targetDescriptorSets[i],
+                    .dstBinding = 6,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 16, // Array of 16 shadow maps
+                    .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                    .pImageInfo = shadowMapInfos.data()
+                };
+
+                // Create descriptor write for light storage buffer (binding 7)
+                // Check if light storage buffers are initialized
+                if (i < lightStorageBuffers.size() && *lightStorageBuffers[i].buffer) {
+                    vk::DescriptorBufferInfo lightBufferInfo{
+                        .buffer = *lightStorageBuffers[i].buffer,
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    };
+
+                    descriptorWrites[7] = vk::WriteDescriptorSet{
+                        .dstSet = targetDescriptorSets[i],
+                        .dstBinding = 7,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = vk::DescriptorType::eStorageBuffer,
+                        .pBufferInfo = &lightBufferInfo
+                    };
+                } else {
+                    // Ensure light storage buffers are initialized before creating descriptor sets
+                    // Initialize with at least 1 light to create the buffers
+                    if (!createOrResizeLightStorageBuffers(1)) {
+                        std::cerr << "Failed to initialize light storage buffers for descriptor set creation" << std::endl;
+                        return false;
+                    }
+
+                    // Now use the properly initialized light storage buffer
+                    vk::DescriptorBufferInfo lightBufferInfo{
+                        .buffer = *lightStorageBuffers[i].buffer,
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    };
+
+                    descriptorWrites[7] = vk::WriteDescriptorSet{
+                        .dstSet = targetDescriptorSets[i],
+                        .dstBinding = 7,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = vk::DescriptorType::eStorageBuffer,
+                        .pBufferInfo = &lightBufferInfo
+                    };
+                }
+
+                // Update descriptor sets with all 8 descriptors
                 device.updateDescriptorSets(descriptorWrites, {});
             } else {
                 // Basic pipeline: Create 2 descriptor writes (UBO + 1 texture)
@@ -1175,15 +1335,16 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
     vk::Format format,
     vk::ImageTiling tiling,
     vk::ImageUsageFlags usage,
-    vk::MemoryPropertyFlags properties) {
+    vk::MemoryPropertyFlags properties,
+    uint32_t mipLevels) {
     try {
         if (!memoryPool) {
             throw std::runtime_error("Memory pool not initialized");
         }
 
-        // Use memory pool for allocation
+        // Use memory pool for allocation (mipmap support limited by memory pool API)
         auto [image, allocation] = memoryPool->createImage(width, height, format, tiling, usage, properties);
-        std::cout << "Created image using memory pool: " << width << "x" << height << " format=" << static_cast<int>(format) << std::endl;
+        std::cout << "Created image using memory pool: " << width << "x" << height << " format=" << static_cast<int>(format) << " mipLevels=" << mipLevels << std::endl;
 
         return {std::move(image), std::move(allocation)};
 
@@ -1193,8 +1354,8 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
     }
 }
 
-// Create image view
-vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
+// Create an image view
+vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels) {
     try {
         // Create image view
         vk::ImageViewCreateInfo viewInfo{
@@ -1204,13 +1365,13 @@ vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format
             .subresourceRange = {
                 .aspectMask = aspectFlags,
                 .baseMipLevel = 0,
-                .levelCount = 1,
+                .levelCount = mipLevels,
                 .baseArrayLayer = 0,
                 .layerCount = 1
             }
         };
 
-        return vk::raii::ImageView(device, viewInfo);
+        return { device, viewInfo };
     } catch (const std::exception& e) {
         std::cerr << "Failed to create image view: " << e.what() << std::endl;
         throw;
@@ -1218,9 +1379,9 @@ vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format
 }
 
 // Transition image layout
-void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
+void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels) {
     try {
-        // Create command buffer using RAII
+        // Create a command buffer using RAII
         vk::CommandBufferAllocateInfo allocInfo{
             .commandPool = *commandPool,
             .level = vk::CommandBufferLevel::ePrimary,
@@ -1237,7 +1398,7 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 
         commandBuffer.begin(beginInfo);
 
-        // Create image barrier
+        // Create an image barrier
         vk::ImageMemoryBarrier barrier{
             .oldLayout = oldLayout,
             .newLayout = newLayout,
@@ -1249,7 +1410,7 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
                     ? vk::ImageAspectFlagBits::eDepth
                     : vk::ImageAspectFlagBits::eColor,
                 .baseMipLevel = 0,
-                .levelCount = 1,
+                .levelCount = mipLevels,
                 .baseArrayLayer = 0,
                 .layerCount = 1
             }
@@ -1277,11 +1438,18 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 
             sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
             destinationStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+        } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eDepthStencilReadOnlyOptimal) {
+            // Support for shadow map creation: transition from undefined to read-only depth layout
+            barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+            barrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentRead;
+
+            sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+            destinationStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
         } else {
             throw std::invalid_argument("Unsupported layout transition!");
         }
 
-        // Add barrier to command buffer
+        // Add a barrier to command buffer
         commandBuffer.pipelineBarrier(
             sourceStage, destinationStage,
             vk::DependencyFlagBits::eByRegion,
@@ -1294,14 +1462,14 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
         commandBuffer.end();
 
         // Submit command buffer
-        vk::SubmitInfo submitInfo{
-            .commandBufferCount = 1,
-            .pCommandBuffers = &*commandBuffer
-        };
 
-        // Use mutex to ensure thread-safe access to graphics queue
+        // Use mutex to ensure thread-safe access to the graphics queue
         {
-            std::lock_guard<std::mutex> lock(queueMutex);
+            vk::SubmitInfo submitInfo{
+                .commandBufferCount = 1,
+                .pCommandBuffers = &*commandBuffer
+            };
+            std::lock_guard lock(queueMutex);
             graphicsQueue.submit(submitInfo, nullptr);
             graphicsQueue.waitIdle();
         }
@@ -1312,9 +1480,9 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 }
 
 // Copy buffer to image
-void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height) {
+void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, const std::vector<vk::BufferImageCopy>& regions) const {
     try {
-        // Create command buffer using RAII
+        // Create a command buffer using RAII
         vk::CommandBufferAllocateInfo allocInfo{
             .commandPool = *commandPool,
             .level = vk::CommandBufferLevel::ePrimary,
@@ -1331,27 +1499,12 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
 
         commandBuffer.begin(beginInfo);
 
-        // Create buffer image copy region
-        vk::BufferImageCopy region{
-            .bufferOffset = 0,
-            .bufferRowLength = 0,
-            .bufferImageHeight = 0,
-            .imageSubresource = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .mipLevel = 0,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            },
-            .imageOffset = {0, 0, 0},
-            .imageExtent = {width, height, 1}
-        };
-
-        // Copy buffer to image
+        // Copy buffer to image using provided regions
         commandBuffer.copyBufferToImage(
             buffer,
             image,
             vk::ImageLayout::eTransferDstOptimal,
-            region
+            regions
         );
 
         // End command buffer
@@ -1372,5 +1525,190 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer to image: " << e.what() << std::endl;
         throw;
+    }
+}
+
+// Create or resize light storage buffers to accommodate the given number of lights
+bool Renderer::createOrResizeLightStorageBuffers(size_t lightCount) {
+    try {
+        // Ensure we have storage buffers for each frame in flight
+        if (lightStorageBuffers.size() != MAX_FRAMES_IN_FLIGHT) {
+            lightStorageBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        }
+
+        // Check if we need to resize buffers
+        bool needsResize = false;
+        for (auto& buffer : lightStorageBuffers) {
+            if (buffer.capacity < lightCount) {
+                needsResize = true;
+                break;
+            }
+        }
+
+        if (!needsResize) {
+            return true; // Buffers are already large enough
+        }
+
+        // Calculate new capacity (with some headroom for growth)
+        size_t newCapacity = std::max(lightCount * 2, size_t(64));
+        vk::DeviceSize bufferSize = sizeof(LightData) * newCapacity;
+
+        // Wait for device to be idle before destroying old buffers to prevent validation errors
+        // This ensures no GPU operations are using the old buffers
+        device.waitIdle();
+
+        // Create new buffers for each frame
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            auto& buffer = lightStorageBuffers[i];
+
+            // Clean up old buffer if it exists (now safe after waitIdle)
+            if (buffer.allocation) {
+                buffer.buffer = nullptr;
+                buffer.allocation.reset();
+                buffer.mapped = nullptr;
+            }
+
+            // Create new storage buffer
+            auto [newBuffer, newAllocation] = createBufferPooled(
+                bufferSize,
+                vk::BufferUsageFlagBits::eStorageBuffer,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+            );
+
+            // Get the mapped pointer from the allocation
+            void* mapped = newAllocation->mappedPtr;
+
+            // Store the new buffer
+            buffer.buffer = std::move(newBuffer);
+            buffer.allocation = std::move(newAllocation);
+            buffer.mapped = mapped;
+            buffer.capacity = newCapacity;
+            buffer.size = 0;
+        }
+
+        // Update all existing descriptor sets to reference the new light storage buffers
+        updateAllDescriptorSetsWithNewLightBuffers();
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create or resize light storage buffers: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Update all existing descriptor sets with new light storage buffer references
+void Renderer::updateAllDescriptorSetsWithNewLightBuffers() {
+    try {
+        // Iterate through all entity resources and update their PBR descriptor sets
+        for (auto& [entity, resources] : entityResources) {
+            // Only update PBR descriptor sets (they have light buffer bindings)
+            if (!resources.pbrDescriptorSets.empty()) {
+                for (size_t i = 0; i < resources.pbrDescriptorSets.size() && i < lightStorageBuffers.size(); ++i) {
+                    if (i < lightStorageBuffers.size() && *lightStorageBuffers[i].buffer) {
+                        // Create descriptor write for light storage buffer (binding 7)
+                        vk::DescriptorBufferInfo lightBufferInfo{
+                            .buffer = *lightStorageBuffers[i].buffer,
+                            .offset = 0,
+                            .range = VK_WHOLE_SIZE
+                        };
+
+                        vk::WriteDescriptorSet descriptorWrite{
+                            .dstSet = *resources.pbrDescriptorSets[i],
+                            .dstBinding = 7,
+                            .dstArrayElement = 0,
+                            .descriptorCount = 1,
+                            .descriptorType = vk::DescriptorType::eStorageBuffer,
+                            .pBufferInfo = &lightBufferInfo
+                        };
+
+                        // Update the descriptor set
+                        device.updateDescriptorSets(descriptorWrite, {});
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to update descriptor sets with new light buffers: " << e.what() << std::endl;
+    }
+}
+
+// Update the light storage buffer with current light data
+bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<ExtractedLight>& lights) {
+    try {
+        // Ensure buffers are large enough and properly initialized
+        if (!createOrResizeLightStorageBuffers(lights.size())) {
+            return false;
+        }
+
+        // Now check frame index after buffers are properly initialized
+        if (frameIndex >= lightStorageBuffers.size()) {
+            std::cerr << "Invalid frame index for light storage buffer update: " << frameIndex
+                      << " >= " << lightStorageBuffers.size() << std::endl;
+            return false;
+        }
+
+        auto& buffer = lightStorageBuffers[frameIndex];
+        if (!buffer.mapped) {
+            std::cerr << "Light storage buffer not mapped" << std::endl;
+            return false;
+        }
+
+        // Convert ExtractedLight data to LightData format
+        auto* lightData = static_cast<LightData*>(buffer.mapped);
+        for (size_t i = 0; i < lights.size(); ++i) {
+            const auto& light = lights[i];
+
+            // Set the light position
+            lightData[i].position = glm::vec4(light.position, 1.0f);
+
+            // Set light color with proper intensity conversion
+            float intensity = light.intensity;
+            if (intensity < 1.0f) intensity = 1.0f; // Clamp weak intensities
+
+            float lummenFromBlender = intensity * 1.0f / 683.0f;
+
+            lightData[i].color = glm::vec4(light.color * lummenFromBlender, 1.0f);
+
+            // Calculate light space matrix for shadow mapping
+            glm::mat4 lightProjection, lightView;
+            if (light.type == ExtractedLight::Type::Directional) {
+                float orthoSize = 50.0f;
+                lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, 100.0f);
+                lightView = glm::lookAt(light.position, light.position + light.direction, glm::vec3(0.0f, 1.0f, 0.0f));
+            } else {
+                lightProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, light.range);
+                lightView = glm::lookAt(light.position, light.position + light.direction, glm::vec3(0.0f, 1.0f, 0.0f));
+            }
+            lightData[i].lightSpaceMatrix = lightProjection * lightView;
+
+            // Set light type
+            switch (light.type) {
+                case ExtractedLight::Type::Point:
+                    lightData[i].lightType = 0;
+                    break;
+                case ExtractedLight::Type::Directional:
+                    lightData[i].lightType = 1;
+                    break;
+                case ExtractedLight::Type::Spot:
+                    lightData[i].lightType = 2;
+                    break;
+                case ExtractedLight::Type::Emissive:
+                    lightData[i].lightType = 3;
+                    break;
+            }
+
+            // Set other light properties
+            lightData[i].range = light.range;
+            lightData[i].innerConeAngle = light.innerConeAngle;
+            lightData[i].outerConeAngle = light.outerConeAngle;
+        }
+
+        // Update buffer size
+        buffer.size = lights.size();
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to update light storage buffer: " << e.what() << std::endl;
+        return false;
     }
 }

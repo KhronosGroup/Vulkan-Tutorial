@@ -1,12 +1,10 @@
 #include "engine.h"
 #include "transform_component.h"
-#include "mesh_component.h"
 #include "camera_component.h"
 #include "scene_loading.h"
 
 #include <iostream>
 #include <stdexcept>
-#include <thread>
 
 // Constants
 constexpr int WINDOW_WIDTH = 800;
@@ -36,13 +34,10 @@ void SetupScene(Engine* engine) {
     // Set the camera as the active camera
     engine->SetActiveCamera(camera);
 
-    // Start loading Bistro.glb model in background thread
-    if (ModelLoader* modelLoader = engine->GetModelLoader()) {
-        std::cout << "Starting threaded loading of Bistro model..." << std::endl;
-        std::thread loadingThread(LoadBistroModelAsync, modelLoader);
-        loadingThread.detach(); // Let the thread run independently
-        std::cout << "Background loading thread started. Application will continue running..." << std::endl;
-    }
+    // Load GLTF model synchronously on the main thread
+    std::cout << "Loading GLTF model synchronously..." << std::endl;
+    LoadGLTFModel(engine, "../Assets/bistro_gltf/bistro.gltf");
+    std::cout << "GLTF model loading completed." << std::endl;
 }
 
 #if PLATFORM_ANDROID

@@ -17,34 +17,18 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
     const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) {
 
-    // // Check if this is a shader debug printf message
-    // if (messageType & vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation) {
-    //     std::string message(pCallbackData->pMessage);
-    //     if (message.find("DEBUG-PRINTF") != std::string::npos) {
-    //         // This is a shader debug printf message - always show it
-    //         std::cout << "FINDME =====   SHADER DEBUG: " << pCallbackData->pMessage << std::endl;
-    //         return VK_FALSE;
-    //     }
-    // }
-    printf("Received %s\n", pCallbackData->pMessage);
+    // Check if this is a shader debug printf message
+    if (messageType & vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation) {
+        std::string message(pCallbackData->pMessage);
+        if (message.find("DEBUG-PRINTF") != std::string::npos) {
+            // This is a shader debug printf message - always show it
+            std::cout << "FINDME =====   SHADER DEBUG: " << pCallbackData->pMessage << std::endl;
+            return VK_FALSE;
+        }
+    }
 
-    // if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-    //     // Print message to console
-    //     std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
-    // }
-
-    return VK_FALSE;
-}
-
-// Debug callback
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) {
-
-    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        // Print message to console
+    if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+        // Print a message to the console
         std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
     }
 
@@ -72,7 +56,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     vk::detail::DynamicLoader dl;
     auto vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-    // Create Vulkan instance
+    // Create a Vulkan instance
     if (!createInstance(appName, enableValidationLayers)) {
         return false;
     }
@@ -181,6 +165,30 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     // Create shared default PBR textures (to avoid creating hundreds of identical textures)
     if (!createSharedDefaultPBRTextures()) {
         std::cerr << "Failed to create shared default PBR textures" << std::endl;
+        return false;
+    }
+
+    // Create shadow maps for shadow mapping
+    if (!createShadowMaps()) {
+        std::cerr << "Failed to create shadow maps" << std::endl;
+        return false;
+    }
+
+    // Create a shadow map render pass
+    if (!createShadowMapRenderPass()) {
+        std::cerr << "Failed to create shadow map render pass" << std::endl;
+        return false;
+    }
+
+    // Create shadow map framebuffers
+    if (!createShadowMapFramebuffers()) {
+        std::cerr << "Failed to create shadow map framebuffers" << std::endl;
+        return false;
+    }
+
+    // Create a shadow map descriptor set layout
+    if (!createShadowMapDescriptorSetLayout()) {
+        std::cerr << "Failed to create shadow map descriptor set layout" << std::endl;
         return false;
     }
 
@@ -329,7 +337,7 @@ bool Renderer::createSurface() {
     }
 }
 
-// Pick physical device
+// Pick a physical device
 bool Renderer::pickPhysicalDevice() {
     try {
         // Get available physical devices
@@ -399,10 +407,9 @@ bool Renderer::pickPhysicalDevice() {
             addSupportedOptionalExtensions();
 
             return true;
-        } else {
-            std::cerr << "Failed to find a suitable GPU. Make sure your GPU supports Vulkan and has the required extensions." << std::endl;
-            return false;
         }
+        std::cerr << "Failed to find a suitable GPU. Make sure your GPU supports Vulkan and has the required extensions." << std::endl;
+        return false;
     } catch (const std::exception& e) {
         std::cerr << "Failed to pick physical device: " << e.what() << std::endl;
         return false;
@@ -417,10 +424,8 @@ void Renderer::addSupportedOptionalExtensions() {
 
         // Check which optional extensions are supported and add them to deviceExtensions
         for (const auto& optionalExt : optionalDeviceExtensions) {
-            bool supported = false;
             for (const auto& availableExt : availableExtensions) {
                 if (strcmp(availableExt.extensionName, optionalExt) == 0) {
-                    supported = true;
                     deviceExtensions.push_back(optionalExt);
                     std::cout << "Adding optional extension: " << optionalExt << std::endl;
                     break;
@@ -435,9 +440,9 @@ void Renderer::addSupportedOptionalExtensions() {
 // Create logical device
 bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     try {
-        // Create queue create infos for each unique queue family
+        // Create queue create info for each unique queue family
         std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = {
+        std::set uniqueQueueFamilies = {
             queueFamilyIndices.graphicsFamily.value(),
             queueFamilyIndices.presentFamily.value(),
             queueFamilyIndices.computeFamily.value()
@@ -457,13 +462,39 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
         auto features = physicalDevice.getFeatures2();
         features.features.samplerAnisotropy = vk::True;
 
+        // Explicitly configure device features to prevent validation layer warnings
+        // These features are required by extensions or other features, so we enable them explicitly
+
+        // Timeline semaphore features (required for synchronization2)
+        vk::PhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures;
+        timelineSemaphoreFeatures.timelineSemaphore = vk::True;
+
+        // Vulkan memory model features (required for some shader operations)
+        vk::PhysicalDeviceVulkanMemoryModelFeatures memoryModelFeatures;
+        memoryModelFeatures.vulkanMemoryModel = vk::True;
+        memoryModelFeatures.vulkanMemoryModelDeviceScope = vk::True;
+
+        // Buffer device address features (required for some buffer operations)
+        vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures;
+        bufferDeviceAddressFeatures.bufferDeviceAddress = vk::True;
+
+        // 8-bit storage features (required for some shader storage operations)
+        vk::PhysicalDevice8BitStorageFeatures storage8BitFeatures;
+        storage8BitFeatures.storageBuffer8BitAccess = vk::True;
+
         // Enable Vulkan 1.3 features
         vk::PhysicalDeviceVulkan13Features vulkan13Features;
         vulkan13Features.dynamicRendering = vk::True;
         vulkan13Features.synchronization2 = vk::True;
-        features.pNext = &vulkan13Features;
 
-        // Create device
+        // Chain the feature structures together
+        timelineSemaphoreFeatures.pNext = &memoryModelFeatures;
+        memoryModelFeatures.pNext = &bufferDeviceAddressFeatures;
+        bufferDeviceAddressFeatures.pNext = &storage8BitFeatures;
+        storage8BitFeatures.pNext = &vulkan13Features;
+        features.pNext = &timelineSemaphoreFeatures;
+
+        // Create a device
         vk::DeviceCreateInfo createInfo{
             .pNext = &features,
             .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
@@ -497,7 +528,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
 }
 
 // Check validation layer support
-bool Renderer::checkValidationLayerSupport() {
+bool Renderer::checkValidationLayerSupport() const {
     // Get available layers
     std::vector<vk::LayerProperties> availableLayers = context.enumerateInstanceLayerProperties();
 

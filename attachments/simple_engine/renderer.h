@@ -14,6 +14,7 @@
 #include "mesh_component.h"
 #include "camera_component.h"
 #include "memory_pool.h"
+#include "model_loader.h"
 
 // Forward declarations
 class ImGuiSystem;
@@ -26,7 +27,7 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> presentFamily;
     std::optional<uint32_t> computeFamily;
 
-    bool isComplete() const {
+    [[nodiscard]] bool isComplete() const {
         return graphicsFamily.has_value() && presentFamily.has_value() && computeFamily.has_value();
     }
 };
@@ -41,30 +42,53 @@ struct SwapChainSupportDetails {
 };
 
 /**
- * @brief Structure for uniform buffer object.
+ * @brief Structure for individual light data in storage buffer.
+ */
+struct LightData {
+    alignas(16) glm::vec4 position;      // Light position (w component unused)
+    alignas(16) glm::vec4 color;         // Light color and intensity
+    alignas(16) glm::mat4 lightSpaceMatrix; // Light space matrix for shadow mapping
+    alignas(4) int lightType;            // 0=Point, 1=Directional, 2=Spot, 3=Emissive
+    alignas(4) float range;              // Light range
+    alignas(4) float innerConeAngle;     // For spot lights
+    alignas(4) float outerConeAngle;     // For spot lights
+};
+
+/**
+ * @brief Structure for uniform buffer object (now without fixed light arrays).
  */
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
-    alignas(16) glm::vec4 lightPositions[4];
-    alignas(16) glm::vec4 lightColors[4];
     alignas(16) glm::vec4 camPos;
     alignas(4) float exposure;
     alignas(4) float gamma;
     alignas(4) float prefilteredCubeMipLevels;
     alignas(4) float scaleIBLAmbient;
+    alignas(4) int lightCount;                 // Number of active lights (dynamic)
+    alignas(4) int shadowMapCount;             // Number of active shadow maps (dynamic)
+    alignas(4) float shadowBias;               // Shadow bias to prevent shadow acne
+    alignas(4) float padding;                  // Padding for alignment
 };
 
 /**
- * @brief Structure for material properties.
+ * @brief Structure for PBR material properties.
+ * This structure must match the PushConstants structure in the PBR shader.
  */
 struct MaterialProperties {
-    alignas(16) glm::vec4 ambientColor;
-    alignas(16) glm::vec4 diffuseColor;
-    alignas(16) glm::vec4 specularColor;
-    alignas(4) float shininess;
-    alignas(4) float padding[3]; // Padding to ensure alignment
+    alignas(16) glm::vec4 baseColorFactor;
+    alignas(4) float metallicFactor;
+    alignas(4) float roughnessFactor;
+    alignas(4) int baseColorTextureSet;
+    alignas(4) int physicalDescriptorTextureSet;
+    alignas(4) int normalTextureSet;
+    alignas(4) int occlusionTextureSet;
+    alignas(4) int emissiveTextureSet;
+    alignas(4) float alphaMask;
+    alignas(4) float alphaMaskCutoff;
+    alignas(16) glm::vec3 emissiveFactor;  // Emissive factor for HDR emissive sources
+    alignas(4) float emissiveStrength;     // KHR_materials_emissive_strength extension
 };
 
 /**
@@ -247,7 +271,21 @@ public:
      * @param height The image height.
      */
     void CopyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height) {
-        copyBufferToImage(buffer, image, width, height);
+        // Create default single region for backward compatibility
+        std::vector<vk::BufferImageCopy> regions = {{
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            },
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {width, height, 1}
+        }};
+        copyBufferToImage(buffer, image, width, height, regions);
     }
 
     /**
@@ -281,6 +319,73 @@ public:
     void SetModelLoader(class ModelLoader* modelLoader) {
         this->modelLoader = modelLoader;
     }
+
+    /**
+     * @brief Set static lights loaded during model initialization.
+     * @param lights The lights to store statically.
+     */
+    void SetStaticLights(const std::vector<ExtractedLight>& lights) { staticLights = lights; }
+
+    /**
+     * @brief Set the gamma correction value for PBR rendering.
+     * @param gamma The gamma correction value (typically 2.2).
+     */
+    void SetGamma(float gamma) {
+        this->gamma = gamma;
+    }
+
+    /**
+     * @brief Set the exposure value for HDR tone mapping.
+     * @param exposure The exposure value (1.0 = no adjustment).
+     */
+    void SetExposure(float exposure) {
+        this->exposure = exposure;
+    }
+
+    /**
+     * @brief Enable or disable shadow rendering.
+     * @param enabled True to enable shadows, false to disable.
+     * @note Shadows should be pre-computed and cached during model loading for optimal performance.
+     *       Toggling this flag should only affect shader uniform values, not trigger recomputation.
+     */
+    void SetShadowsEnabled(bool enabled) {
+        // Only update if the value actually changed to avoid unnecessary uniform buffer updates
+        if (this->shadowsEnabled != enabled) {
+            this->shadowsEnabled = enabled;
+            // TODO: Update uniform buffer with shadow enable/disable flag
+            // Shadow maps should remain cached and not be recomputed
+        }
+    }
+
+    /**
+     * @brief Set the entity to be highlighted during rendering.
+     * @param entity The entity to highlight, or nullptr to clear highlighting.
+     */
+    void SetHighlightedEntity(Entity* entity) {
+        this->highlightedEntity = entity;
+    }
+
+    /**
+     * @brief Create or resize light storage buffers to accommodate the given number of lights.
+     * @param lightCount The number of lights to accommodate.
+     * @return True if successful, false otherwise.
+     */
+    bool createOrResizeLightStorageBuffers(size_t lightCount);
+
+    /**
+     * @brief Update light storage buffer with current light data.
+     * @param frameIndex The current frame index.
+     * @param lights The light data to upload.
+     * @return True if successful, false otherwise.
+     */
+    bool updateLightStorageBuffer(uint32_t frameIndex, const std::vector<ExtractedLight>& lights);
+
+    /**
+     * @brief Update all existing descriptor sets with new light storage buffer references.
+     * Called when light storage buffers are recreated to ensure descriptor sets reference valid buffers.
+     */
+    void updateAllDescriptorSetsWithNewLightBuffers();
+
     vk::Format findDepthFormat();
 
     /**
@@ -297,12 +402,27 @@ public:
     static const std::string SHARED_DEFAULT_OCCLUSION_ID;
     static const std::string SHARED_DEFAULT_EMISSIVE_ID;
 
+    /**
+     * @brief Determine appropriate texture format based on texture type.
+     * @param textureId The texture identifier to analyze.
+     * @return The appropriate Vulkan format (sRGB for baseColor, linear for others).
+     */
+    static vk::Format determineTextureFormat(const std::string& textureId);
+
 private:
     // Platform
     Platform* platform = nullptr;
 
     // Model loader reference for accessing extracted lights
     class ModelLoader* modelLoader = nullptr;
+
+    // PBR rendering parameters
+    float gamma = 2.2f;     // Gamma correction value
+    float exposure = 3.0f;  // HDR exposure value (higher for emissive lighting)
+    bool shadowsEnabled = true;  // Shadow rendering enabled by default
+
+    // Entity highlighting
+    Entity* highlightedEntity = nullptr;
 
     // Vulkan RAII context
     vk::raii::Context context;
@@ -396,12 +516,42 @@ private:
         std::unique_ptr<MemoryPool::Allocation> textureImageAllocation = nullptr;
         vk::raii::ImageView textureImageView = nullptr;
         vk::raii::Sampler textureSampler = nullptr;
+        vk::Format format = vk::Format::eR8G8B8A8Srgb; // Store texture format for proper color space handling
+        uint32_t mipLevels = 1; // Store number of mipmap levels
     };
     std::unordered_map<std::string, TextureResources> textureResources;
 
     // Default texture resources (used when no texture is provided)
     TextureResources defaultTextureResources;
 
+    // Shadow mapping resources
+    struct ShadowMapResources {
+        vk::raii::Image shadowMapImage = nullptr;
+        std::unique_ptr<MemoryPool::Allocation> shadowMapImageAllocation = nullptr;
+        vk::raii::ImageView shadowMapImageView = nullptr;
+        vk::raii::Sampler shadowMapSampler = nullptr;
+        vk::raii::Framebuffer shadowMapFramebuffer = nullptr;
+        vk::raii::RenderPass shadowMapRenderPass = nullptr;
+        uint32_t shadowMapSize = 2048; // Default shadow map resolution
+    };
+    std::vector<ShadowMapResources> shadowMaps; // One shadow map per light
+
+    // Shadow mapping constants
+    static constexpr uint32_t MAX_SHADOW_MAPS = 16; // Match actual shadow map count for performance
+    static constexpr uint32_t DEFAULT_SHADOW_MAP_SIZE = 2048;
+
+    // Static lights loaded during model initialization
+    std::vector<ExtractedLight> staticLights;
+
+    // Dynamic lighting system using storage buffers
+    struct LightStorageBuffer {
+        vk::raii::Buffer buffer = nullptr;
+        std::unique_ptr<MemoryPool::Allocation> allocation = nullptr;
+        void* mapped = nullptr;
+        size_t capacity = 0;  // Current capacity in number of lights
+        size_t size = 0;      // Current number of lights
+    };
+    std::vector<LightStorageBuffer> lightStorageBuffers; // One per frame in flight
 
     // Entity resources (contains descriptor sets - must be declared before descriptor pool)
     struct EntityResources {
@@ -455,7 +605,7 @@ private:
     bool createInstance(const std::string& appName, bool enableValidationLayers);
     bool setupDebugMessenger(bool enableValidationLayers);
     bool createSurface();
-    bool checkValidationLayerSupport();
+    bool checkValidationLayerSupport() const;
     bool pickPhysicalDevice();
     void addSupportedOptionalExtensions();
     bool createLogicalDevice(bool enableValidationLayers);
@@ -468,8 +618,16 @@ private:
     bool createPBRPipeline();
     bool createLightingPipeline();
     bool createComputePipeline();
-    void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material);
+    void pushMaterialProperties(vk::CommandBuffer commandBuffer, const MaterialProperties& material) const;
     bool createCommandPool();
+
+    // Shadow mapping methods
+    bool createShadowMaps();
+    bool createShadowMapRenderPass();
+    bool createShadowMapFramebuffers();
+    bool createShadowMapDescriptorSetLayout();
+    void renderShadowMaps(const std::vector<Entity*>& entities, const std::vector<ExtractedLight>& lights);
+    void updateShadowMapUniforms(uint32_t lightIndex, const ExtractedLight& light);
     bool createComputeCommandPool();
     bool createDepthResources();
     bool createTextureImage(const std::string& texturePath, TextureResources& resources);
@@ -507,11 +665,11 @@ private:
     void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 
     std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
-    std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> createImagePooled(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
-    void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
-    void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
+    std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> createImagePooled(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, uint32_t mipLevels = 1);
+    void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels = 1);
+    void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, const std::vector<vk::BufferImageCopy>& regions) const;
 
-    vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags);
+    vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels = 1);
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
     bool hasStencilComponent(vk::Format format);
 

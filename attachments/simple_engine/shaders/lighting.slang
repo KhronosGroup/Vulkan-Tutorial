@@ -1,11 +1,13 @@
-// Combined vertex and fragment shader for basic lighting
-// This shader implements the Phong lighting model with push constants for material properties
+// Combined vertex and fragment shader for basic/legacy lighting
+// This shader implements the Phong lighting model as a fallback when BRDF/PBR is disabled
+// Note: BRDF/PBR is now the default lighting model - this is used only when explicitly requested
 
 // Input from vertex buffer
 struct VSInput {
     float3 Position : POSITION;
     float3 Normal : NORMAL;
     float2 TexCoord : TEXCOORD0;
+    float4 Tangent : TANGENT; // Added to match vertex layout (unused in basic lighting)
 };
 
 // Output from vertex shader / Input to fragment shader
@@ -14,6 +16,7 @@ struct VSOutput {
     float3 WorldPos : POSITION;
     float3 Normal : NORMAL;
     float2 TexCoord : TEXCOORD0;
+    float4 Tangent : TANGENT; // Pass through tangent (unused in basic lighting)
 };
 
 // Uniform buffer for transformation matrices and light information
@@ -59,6 +62,9 @@ VSOutput VSMain(VSInput input)
 
     // Pass texture coordinates
     output.TexCoord = input.TexCoord;
+
+    // Pass tangent (unused in basic lighting but required for vertex layout compatibility)
+    output.Tangent = input.Tangent;
 
     return output;
 }

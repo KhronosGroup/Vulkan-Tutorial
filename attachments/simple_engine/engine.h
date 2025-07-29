@@ -191,6 +191,7 @@ private:
         bool moveUp = false;
         bool moveDown = false;
         bool mouseLeftPressed = false;
+        bool mouseRightPressed = false;
         float lastMouseX = 0.0f;
         float lastMouseY = 0.0f;
         float yaw = 0.0f;   // Horizontal rotation
@@ -199,6 +200,11 @@ private:
         float cameraSpeed = 5.0f;
         float mouseSensitivity = 0.1f;
     } cameraControl;
+
+    // Hover state tracking
+    Entity* hoveredEntity = nullptr;
+    float currentMouseX = 0.0f;
+    float currentMouseY = 0.0f;
 
     /**
      * @brief Update the engine state.
@@ -222,16 +228,26 @@ private:
      * @param width The new width of the window.
      * @param height The new height of the window.
      */
-    void HandleResize(int width, int height);
+    void HandleResize(int width, int height) const;
 
     /**
      * @brief Update camera controls based on input state.
      * @param deltaTime The time elapsed since the last update.
      */
-    void UpdateCameraControls(float deltaTime);
+    void UpdateCameraControls(float deltaTime) const;
 
     /**
-     * @brief Check for completed background loading and create entities if ready.
+     * @brief Handle mouse poke interaction to apply forces to clicked objects.
+     * @param mouseX The x-coordinate of the mouse click.
+     * @param mouseY The y-coordinate of the mouse click.
      */
-    void CheckAndCreateLoadedEntities();
+    void HandleMousePoke(float mouseX, float mouseY) const;
+
+    /**
+     * @brief Handle mouse hover detection for highlighting pokeable entities.
+     * @param mouseX The x-coordinate of the mouse position.
+     * @param mouseY The y-coordinate of the mouse position.
+     */
+    void HandleMouseHover(float mouseX, float mouseY);
+
 };

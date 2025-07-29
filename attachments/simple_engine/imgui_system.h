@@ -154,7 +154,7 @@ private:
     bool initialized = false;
 
     // PBR rendering state
-    bool pbrEnabled = false;
+    bool pbrEnabled = true;
 
     /**
      * @brief Create Vulkan resources for ImGui.

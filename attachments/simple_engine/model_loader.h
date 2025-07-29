@@ -1,10 +1,12 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include "mesh_component.h"
 
 class Renderer;
@@ -18,10 +20,10 @@ namespace tinygltf {
 
 class Material {
     public:
-        Material(const std::string& name) : name(name) {}
+        explicit Material(std::string  name) : name(std::move(name)) {}
         ~Material() = default;
 
-        const std::string& GetName() const { return name; }
+        [[nodiscard]] const std::string& GetName() const { return name; }
 
         // PBR properties
         glm::vec3 albedo = glm::vec3(1.0f);
@@ -29,6 +31,7 @@ class Material {
         float roughness = 1.0f;
         float ao = 1.0f;
         glm::vec3 emissive = glm::vec3(0.0f);
+        float emissiveStrength = 1.0f;  // KHR_materials_emissive_strength extension
 
         // Texture paths for PBR materials
         std::string albedoTexturePath;
@@ -65,6 +68,29 @@ struct ExtractedLight {
 };
 
 /**
+ * @brief Structure representing camera data extracted from GLTF.
+ */
+struct CameraData {
+    std::string name;
+    bool isPerspective = true;
+
+    // Perspective camera properties
+    float fov = 0.785398f;  // 45 degrees in radians
+    float aspectRatio = 1.0f;
+
+    // Orthographic camera properties
+    float orthographicSize = 1.0f;
+
+    // Common properties
+    float nearPlane = 0.1f;
+    float farPlane = 1000.0f;
+
+    // Transform properties
+    glm::vec3 position = glm::vec3(0.0f);
+    glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);  // Identity quaternion
+};
+
+/**
  * @brief Structure representing mesh data for a specific material.
  */
 struct MaterialMesh {
@@ -72,7 +98,14 @@ struct MaterialMesh {
     std::string materialName;
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    std::string texturePath;  // Primary texture path for this material
+
+    // All PBR texture paths for this material
+    std::string texturePath;           // Primary texture path (baseColor) - kept for backward compatibility
+    std::string baseColorTexturePath;  // Base color (albedo) texture
+    std::string normalTexturePath;     // Normal map texture
+    std::string metallicRoughnessTexturePath;  // Metallic-roughness texture
+    std::string occlusionTexturePath;  // Ambient occlusion texture
+    std::string emissiveTexturePath;   // Emissive texture
 };
 
 /**
@@ -80,18 +113,25 @@ struct MaterialMesh {
  */
 class Model {
 public:
-    Model(const std::string& name) : name(name) {}
+    explicit Model(std::string  name) : name(std::move(name)) {}
     ~Model() = default;
 
-    const std::string& GetName() const { return name; }
+    [[nodiscard]] const std::string& GetName() const { return name; }
 
     // Mesh data access methods
-    const std::vector<Vertex>& GetVertices() const { return vertices; }
-    const std::vector<uint32_t>& GetIndices() const { return indices; }
+    [[nodiscard]] const std::vector<Vertex>& GetVertices() const { return vertices; }
+    [[nodiscard]] const std::vector<uint32_t>& GetIndices() const { return indices; }
 
     // Methods to set mesh data (used by parser)
     void SetVertices(const std::vector<Vertex>& newVertices) { vertices = newVertices; }
     void SetIndices(const std::vector<uint32_t>& newIndices) { indices = newIndices; }
+
+    // Camera data access methods
+    [[nodiscard]] const std::vector<CameraData>& GetCameras() const { return cameras; }
+
+public:
+    // Public access to cameras for model loader
+    std::vector<CameraData> cameras;
 
 private:
     std::string name;
@@ -108,7 +148,7 @@ public:
     /**
      * @brief Default constructor.
      */
-    ModelLoader();
+    ModelLoader() = default;
 
     /**
      * @brief Destructor for proper cleanup.
@@ -199,11 +239,11 @@ public:
     Material* GetMaterial(const std::string& materialName) const;
 
     /**
-     * @brief Parse GLTF file data without creating Vulkan resources (thread-safe).
+     * @brief Load embedded GLTF textures.
      * @param filename The path to the GLTF file.
-     * @return Vector of material meshes with raw data only.
+     * @return True if textures were loaded successfully, false otherwise.
      */
-    std::vector<MaterialMesh> ParseGLTFDataOnly(const std::string& filename);
+    bool LoadEmbeddedGLTFTextures(const std::string& filename) const;
 
 private:
     // Reference to the renderer
@@ -244,7 +284,7 @@ private:
                         const std::string& normalMap,
                         const std::string& metallicRoughnessMap,
                         const std::string& aoMap,
-                        const std::string& emissiveMap);
+                        const std::string& emissiveMap) const;
 
     /**
      * @brief Extract lights from GLTF punctual lights extension.

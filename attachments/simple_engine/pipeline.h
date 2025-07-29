@@ -11,14 +11,22 @@
 #include "swap_chain.h"
 
 /**
- * @brief Structure for material properties.
+ * @brief Structure for PBR material properties.
+ * This structure must match the PushConstants structure in the PBR shader.
  */
 struct MaterialProperties {
-    alignas(16) glm::vec4 ambientColor;
-    alignas(16) glm::vec4 diffuseColor;
-    alignas(16) glm::vec4 specularColor;
-    alignas(4) float shininess;
-    alignas(4) float padding[3]; // Padding to ensure alignment
+    alignas(16) glm::vec4 baseColorFactor;
+    alignas(4) float metallicFactor;
+    alignas(4) float roughnessFactor;
+    alignas(4) int baseColorTextureSet;
+    alignas(4) int physicalDescriptorTextureSet;
+    alignas(4) int normalTextureSet;
+    alignas(4) int occlusionTextureSet;
+    alignas(4) int emissiveTextureSet;
+    alignas(4) float alphaMask;
+    alignas(4) float alphaMaskCutoff;
+    alignas(16) glm::vec3 emissiveFactor;  // Emissive factor for HDR emissive sources
+    alignas(4) float emissiveStrength;     // KHR_materials_emissive_strength extension
 };
 
 /**

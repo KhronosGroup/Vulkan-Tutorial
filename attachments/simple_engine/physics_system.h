@@ -1,12 +1,9 @@
 #pragma once
 
-#include <string>
 #include <vector>
 #include <memory>
-#include <unordered_map>
 #include <glm/glm.hpp>
 #include <vulkan/vulkan_raii.hpp>
-#include <vulkan/vk_platform.h>
 
 class Entity;
 class Renderer;
@@ -181,7 +178,7 @@ public:
     /**
      * @brief Default constructor.
      */
-    PhysicsSystem();
+    PhysicsSystem() = default;
 
     /**
      * @brief Destructor for proper cleanup.
@@ -239,7 +236,7 @@ public:
      * @return True if the ray hit something, false otherwise.
      */
     bool Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
-                glm::vec3* hitPosition, glm::vec3* hitNormal, Entity** hitEntity);
+                glm::vec3* hitPosition, glm::vec3* hitNormal, Entity** hitEntity) const;
 
     /**
      * @brief Enable or disable GPU acceleration.
@@ -325,11 +322,11 @@ private:
     void CleanupVulkanResources();
 
     // Update physics data on the GPU
-    void UpdateGPUPhysicsData();
+    void UpdateGPUPhysicsData() const;
 
     // Read back physics data from the GPU
-    void ReadbackGPUPhysicsData();
+    void ReadbackGPUPhysicsData() const;
 
     // Perform GPU-accelerated physics simulation
-    void SimulatePhysicsOnGPU(float deltaTime);
+    void SimulatePhysicsOnGPU(float deltaTime) const;
 };

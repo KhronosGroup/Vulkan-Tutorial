@@ -1,38 +1,28 @@
 #pragma once
 
-#include <atomic>
-#include <mutex>
 #include <vector>
 #include <string>
+#include <glm/glm.hpp>
 #include "model_loader.h"
 
 // Forward declarations
 class Engine;
 class ModelLoader;
 
-// Structure to track threaded loading state
-struct LoadingState {
-    std::atomic<bool> isLoading{false};
-    std::atomic<bool> loadingComplete{false};
-    std::atomic<bool> loadingFailed{false};
-    std::atomic<int> materialsLoaded{0};
-    std::atomic<int> totalMaterials{0};
-    std::mutex entityCreationMutex;
-    std::vector<MaterialMesh> loadedMaterials;
-    std::string errorMessage;
-};
-
-// Global loading state
-extern LoadingState g_loadingState;
-
 /**
- * @brief Background thread function to load the Bistro model.
- * @param modelLoader Pointer to the model loader.
- */
-void LoadBistroModelAsync(ModelLoader* modelLoader);
-
-/**
- * @brief Create entities from loaded materials (called from main thread).
+ * @brief Load a GLTF model synchronously on the main thread.
  * @param engine The engine to create entities in.
+ * @param modelPath The path to the GLTF model file.
+ * @param position The position to place the model.
+ * @param rotation The rotation to apply to the model.
+ * @param scale The scale to apply to the model.
  */
-void CreateEntitiesFromLoadedMaterials(Engine* engine);
+void LoadGLTFModel(Engine* engine, const std::string& modelPath,
+                   const glm::vec3& position, const glm::vec3& rotation, const glm::vec3& scale);
+
+/**
+ * @brief Load a GLTF model with default transform values.
+ * @param engine The engine to create entities in.
+ * @param modelPath The path to the GLTF model file.
+ */
+void LoadGLTFModel(Engine* engine, const std::string& modelPath);

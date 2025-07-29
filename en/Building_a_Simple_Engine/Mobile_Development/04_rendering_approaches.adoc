@@ -110,7 +110,7 @@ vk::RenderPass render_pass = device.createRenderPass(render_pass_info);
 
 * *Optimize for Tile Size*: Consider the tile size when designing your
 rendering algorithm. For example, if you know the tile size is 16x16, you
-might organize your data or algorithms to work efficiently with that size.Ok
+might organize your data or algorithms to work efficiently with that size.
 
 ===== Memory Management
 

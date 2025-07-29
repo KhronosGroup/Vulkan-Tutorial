@@ -217,9 +217,9 @@ Once your application passes all tests, the final stage is packaging and distrib
 * Include the appropriate Vulkan loader for each platform
 * Package shader files or pre-compiled SPIR-V
 * Consider using platform-specific packaging tools:
-  * Windows: NSIS, WiX, or MSIX
-  * Linux: AppImage, Flatpak, or .deb/.rpm packages
-  * macOS: DMG or App Store packages
+  ** Windows: NSIS, WiX, or MSIX
+  ** Linux: AppImage, Flatpak, or .deb/.rpm packages
+  ** macOS: DMG or App Store packages
 
 ==== Handling Vulkan Dependencies
 

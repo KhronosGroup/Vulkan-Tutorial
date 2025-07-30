@@ -287,7 +287,7 @@ These instructions will be aimed at Ubuntu, Fedora and Arch Linux users, but
  you may be able to follow along by changing the package manager-specific
  commands to the ones that are appropriate for you.
 You should have a compiler that supports C{pp}20 (GCC 7+ or Clang 5+).
-You'll also need You'll also need `cmake`. Most of this can be installed via
+You'll also need `cmake`. Most of this can be installed via
  larger packages such as build-essentials.
 
 We recommend using CLion or another IDE; however, as with most things in Linux, GUIs are entirely optional.

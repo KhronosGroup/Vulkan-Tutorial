@@ -2,6 +2,11 @@
 
 In this chapter, we'll explore the fundamentals of lighting and materials in 3D rendering, with a focus on Physically Based Rendering (PBR). Lighting is a crucial aspect of creating realistic and visually appealing 3D scenes. Without proper lighting, even the most detailed models can appear flat and lifeless.
 
+[NOTE]
+====
+*About PBR References*: Throughout this tutorial, you may encounter references to PBR (Physically Based Rendering) before reaching this chapter. PBR is a modern rendering approach that simulates how light interacts with surfaces based on physical principles. We'll cover PBR in detail in the sections that follow, so don't worry if you're not familiar with these concepts yet.
+====
+
 This chapter serves as the foundation for understanding how light interacts with different materials in a physically accurate way. The concepts you'll learn here will be applied in later chapters, including the Loading_Models chapter where we'll use this knowledge to render glTF models with PBR materials.
 
 Throughout our engine implementation, we'll be using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.

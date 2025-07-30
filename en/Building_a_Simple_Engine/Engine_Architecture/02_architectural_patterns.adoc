@@ -70,8 +70,8 @@ image::../../../images/component_based_architecture_diagram.svg[Component-Based 
 
 * *Boxes*: Blue boxes represent Entities, orange boxes represent Components, and green boxes represent Systems
 * *Line Types*:
-  ** Dashed lines show ownership/containment (Entities contain Components)
-  ** Solid lines show processing relationships (Systems process specific Components)
+** Dashed lines show ownership/containment (Entities contain Components)
+** Solid lines show processing relationships (Systems process specific Components)
 * *Text*: All text elements use dark colors for visibility in both light and dark modes
 * *Directional Flow*: Arrows indicate the direction of relationships between elements
 ====

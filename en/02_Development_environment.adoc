@@ -65,9 +65,9 @@ contains the libraries.
 Lastly, there's the `include` directory that contains the Vulkan headers.
 Feel free to explore the other files, but we won't need them for this tutorial.
 
-To automatically set the environment variables up that VulkanSDK will use to
-make life easier with the CMake project configuration and various other
-tooling, We recommend using the `setup-env` script. This can be added to
+To automatically set the environment variables that VulkanSDK will use, we
+recommend using the `setup-env` script. This makes life easier with the CMake
+project configuration and various other tooling. The script can be added to
 your auto-start for your terminal and IDE setup such that those environment
 variables work everywhere.
 
@@ -154,9 +154,9 @@ target_sources(VulkanCppModule
 )
 ----
 
-The VulkanCppModule target only needs to be defined once, then add it to the
-dependency of your consuming project, and it will be built automatically, and
-you won't need to also add Vulkan::Vulkan to your project.
+The VulkanCppModule target only needs to be defined once. Then add it to the
+dependency of your consuming project, and it will be built automatically.
+You won't need to also add Vulkan::Vulkan to your project.
 
 [,cmake]
 ----
@@ -245,7 +245,7 @@ GLFW on the https://www.glfw.org/download.html[official website].
 In this tutorial, we'll be using the 64-bit binaries, but you can of course also
 choose to build in 32-bit mode. In that case make sure to link with the Vulkan
 SDK binaries in the `Lib32` directory instead of `Lib`. After downloading it, extract the archive
-to a convenient location. I've chosen to create a `Libraries` directory in the
+to a convenient location. We've chosen to create a `Libraries` directory in the
 Visual Studio directory under documents.
 
 image::/images/glfw_directory.png[]
@@ -272,7 +272,7 @@ Now that you have installed all the dependencies, we can set up a basic
 CMake project for Vulkan and write a little bit of code to make sure that
 everything works.
 
-I will assume that you already have some basic experience with CMake, like
+We will assume that you already have some basic experience with CMake, like
 how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
 You can now use the link:/attachments/[attachments] directory in this tutorial
@@ -410,7 +410,7 @@ Now that you have installed all the dependencies, we can set up a basic
 CMake project for Vulkan and write a little bit of code to make sure that
 everything works.
 
-I will assume that you already have some basic experience with CMake, like
+We will assume that you already have some basic experience with CMake, like
 how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
 You can now use the link:/attachments/[attachments] directory in this tutorial as a template for your

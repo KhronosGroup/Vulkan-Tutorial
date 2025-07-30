@@ -110,7 +110,7 @@ vk::RenderPass render_pass = device.createRenderPass(render_pass_info);
 
 * *Optimize for Tile Size*: Consider the tile size when designing your
 rendering algorithm. For example, if you know the tile size is 16x16, you
-might organize your data or algorithms to work efficiently with that size.Ok
+might organize your data or algorithms to work efficiently with that size.
 
 ===== Memory Management
 
@@ -183,9 +183,9 @@ Proper depth testing is crucial for TBR performance:
 
 * *Avoid Operations That Disable Early-Z*: The following operations can prevent effective early depth testing:
   - Using the discard instruction in fragment shaders
-  - Writing to gl_FragDepth explicitly
+  - Writing to gl_FragDepth (GLSL) SV_Depth (slang) explicitly
   - Using storage images or storage buffers
-  - Using gl_SampleMask
+  - Using gl_SampleMask (GLSL explicit way to turn on/off specific pixels)
   - Enabling both depth bounds and depth write
   - Enabling both blending and depth write
 

@@ -183,9 +183,9 @@ Proper depth testing is crucial for TBR performance:
 
 * *Avoid Operations That Disable Early-Z*: The following operations can prevent effective early depth testing:
   - Using the discard instruction in fragment shaders
-  - Writing to gl_FragDepth explicitly
+  - Writing to gl_FragDepth (GLSL) SV_Depth (slang) explicitly
   - Using storage images or storage buffers
-  - Using gl_SampleMask
+  - Using gl_SampleMask (GLSL explicit way to turn on/off specific pixels)
   - Enabling both depth bounds and depth write
   - Enabling both blending and depth write
 

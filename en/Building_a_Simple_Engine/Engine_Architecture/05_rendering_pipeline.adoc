@@ -17,7 +17,7 @@ A well-designed rendering pipeline is essential for creating a flexible and effi
 
 The following diagram provides a high-level overview of a modern Vulkan rendering pipeline:
 
-image::../../../images/rendering_pipeline_flowchart.svg[Rendering Pipeline Flowchart, width=600, alt="Flowchart showing the stages of a modern Vulkan rendering pipeline"]
+image::../../../images/rendering_pipeline_flowchart.png[Rendering Pipeline Flowchart, width=600, alt="Flowchart showing the stages of a modern Vulkan rendering pipeline"]
 
 [NOTE]
 ====

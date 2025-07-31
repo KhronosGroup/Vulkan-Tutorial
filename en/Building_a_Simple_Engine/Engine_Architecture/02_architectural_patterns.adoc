@@ -62,7 +62,7 @@ For detailed information and implementation examples, see the link:../Appendix/a
 
 Component-based architecture is widely used in modern game engines and forms the foundation of our Vulkan rendering engine. It promotes composition over inheritance and allows for more flexible entity design.
 
-image::../../../images/component_based_architecture_diagram.svg[Component-Based Architecture Diagram, width=600, alt="Component-Based Architecture Diagram showing entities, components, and systems"]
+image::../../../images/component_based_architecture_diagram.png[Component-Based Architecture Diagram, width=600, alt="Component-Based Architecture Diagram showing entities, components, and systems"]
 
 [NOTE]
 ====

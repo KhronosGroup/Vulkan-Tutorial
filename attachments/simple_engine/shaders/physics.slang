@@ -32,10 +32,12 @@ struct CollisionData {
 [[vk::binding(4, 0)]] ConstantBuffer<PhysicsParams> params;
 
 struct PhysicsParams {
-    float deltaTime;        // Time step
-    float3 gravity;         // Gravity vector
-    uint numBodies;         // Number of rigid bodies
-    uint maxCollisions;     // Maximum number of collisions
+    float deltaTime;        // Time step - 4 bytes
+    uint numBodies;         // Number of rigid bodies - 4 bytes
+    uint maxCollisions;     // Maximum number of collisions - 4 bytes
+    float padding;          // Explicit padding to align gravity to 16-byte boundary - 4 bytes
+    float4 gravity;         // Gravity vector (xyz) + padding (w) - 16 bytes
+    // Total: 32 bytes (aligned to 16-byte boundaries for std140 layout)
 };
 
 // Quaternion multiplication
@@ -71,6 +73,7 @@ void IntegrateCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     // Get physics data for this body
     PhysicsData body = physicsBuffer[index];
 
+
     // Skip kinematic bodies
     if (body.force.w > 0.5) {
         return;
@@ -78,12 +81,16 @@ void IntegrateCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
     // Apply gravity if enabled
     if (body.torque.w > 0.5) {
-        body.force.xyz += params.gravity / body.position.w;
+        float3 gravityForce = params.gravity.xyz * body.position.w;
+        body.force.xyz += gravityForce;
+
     }
 
     // Integrate forces
-    body.linearVelocity.xyz += body.force.xyz * body.position.w * params.deltaTime;
+    float3 velocityChange = body.force.xyz * body.position.w * params.deltaTime;
+    body.linearVelocity.xyz += velocityChange;
     body.angularVelocity.xyz += body.torque.xyz * params.deltaTime; // Simplified, should use inertia tensor
+
 
     // Apply damping
     const float linearDamping = 0.01;
@@ -92,7 +99,9 @@ void IntegrateCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     body.angularVelocity.xyz *= (1.0 - angularDamping);
 
     // Integrate velocities
-    body.position.xyz += body.linearVelocity.xyz * params.deltaTime;
+    float3 positionChange = body.linearVelocity.xyz * params.deltaTime;
+    body.position.xyz += positionChange;
+
 
     // Update rotation
     float4 angularVelocityQuat = float4(body.angularVelocity.xyz * 0.5, 0.0);
@@ -101,6 +110,7 @@ void IntegrateCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
     // Write updated data back to buffer
     physicsBuffer[index] = body;
+
 }
 
 // Compute AABB for a body
@@ -119,6 +129,13 @@ void computeAABB(PhysicsData body, out float3 min, out float3 max) {
         max = center + float3(radius, radius, radius);
     }
     else if (colliderType == 1) { // Box
+        float3 halfExtents = body.colliderData.xyz;
+        float3 center = body.position.xyz + body.colliderData2.xyz;
+        // This is simplified - should account for rotation
+        min = center - halfExtents;
+        max = center + halfExtents;
+    }
+    else if (colliderType == 2) { // Mesh (represented as large bounding box)
         float3 halfExtents = body.colliderData.xyz;
         float3 center = body.position.xyz + body.colliderData2.xyz;
         // This is simplified - should account for rotation
@@ -145,20 +162,27 @@ void BroadPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     }
 
     // Convert linear index to pair indices (i, j) where i < j
+    // Use a more robust algorithm that avoids floating-point precision issues
     uint i = 0;
     uint j = 0;
 
-    // This is a mathematical formula to convert a linear index to a pair of indices
-    uint row = uint(floor(sqrt(float(2 * index + 0.25)) - 0.5));
-    i = row;
-    j = index - (row * (row + 1)) / 2;
+    // Find i and j using integer arithmetic to avoid precision errors
+    uint remaining = index;
+    uint currentRow = 0;
 
-    // Ensure j > i
-    j += i + 1;
+    // Find which row (i value) this index belongs to
+    while (remaining >= (params.numBodies - 1 - currentRow)) {
+        remaining -= (params.numBodies - 1 - currentRow);
+        currentRow++;
+    }
+
+    i = currentRow;
+    j = i + 1 + remaining;
 
     // Get physics data for both bodies
     PhysicsData bodyA = physicsBuffer[i];
     PhysicsData bodyB = physicsBuffer[j];
+
 
     // Skip if both bodies are kinematic
     if (bodyA.force.w > 0.5 && bodyB.force.w > 0.5) {
@@ -211,7 +235,7 @@ void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     int shapeA = int(bodyA.colliderData.w);
     int shapeB = int(bodyB.colliderData.w);
 
-    // Only handle sphere-sphere collisions for simplicity
+    // Handle sphere-sphere collisions
     if (shapeA == 0 && shapeB == 0) { // Both are spheres
         float radiusA = bodyA.colliderData.x;
         float radiusB = bodyB.colliderData.x;
@@ -244,7 +268,46 @@ void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
             }
         }
     }
-    // Add other collision types here (box-box, sphere-box, etc.)
+    // Handle sphere-geometry collisions (sphere vs mesh represented as box)
+    else if ((shapeA == 0 && shapeB == 2) || (shapeA == 2 && shapeB == 0)) {
+        // Determine which is sphere and which is geometry
+        PhysicsData sphere = (shapeA == 0) ? bodyA : bodyB;
+        PhysicsData geometry = (shapeA == 0) ? bodyB : bodyA;
+        uint sphereIndex = (shapeA == 0) ? bodyIndexA : bodyIndexB;
+        uint geometryIndex = (shapeA == 0) ? bodyIndexB : bodyIndexA;
+
+        float sphereRadius = sphere.colliderData.x;
+        float3 spherePos = sphere.position.xyz + sphere.colliderData2.xyz;
+        float3 geometryPos = geometry.position.xyz + geometry.colliderData2.xyz;
+        float3 geometryHalfExtents = geometry.colliderData.xyz;
+
+        // Simple sphere-box collision detection
+        float3 closestPoint = clamp(spherePos, geometryPos - geometryHalfExtents, geometryPos + geometryHalfExtents);
+        float3 direction = spherePos - closestPoint;
+        float distance = length(direction);
+
+        if (distance < sphereRadius) {
+            // Collision detected
+            uint collisionIndex;
+            InterlockedAdd(counterBuffer[1], 1, collisionIndex);
+
+            if (collisionIndex < params.maxCollisions) {
+                // Calculate normal (from geometry to sphere)
+                float3 normal = (distance > 0.0001) ? direction / distance : float3(0, 1, 0);
+                float penetration = sphereRadius - distance;
+
+                // Create collision data
+                CollisionData collision;
+                collision.bodyA = sphereIndex;
+                collision.bodyB = geometryIndex;
+                collision.contactNormal = float4(normal, penetration);
+                collision.contactPoint = float4(closestPoint, 0);
+
+                // Store collision data
+                collisionBuffer[collisionIndex] = collision;
+            }
+        }
+    }
 }
 
 // Collision resolution - resolves detected collisions

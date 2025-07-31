@@ -138,6 +138,11 @@ void AndroidPlatform::SetCharCallback(std::function<void(uint32_t)> callback) {
     charCallback = std::move(callback);
 }
 
+void AndroidPlatform::SetWindowTitle(const std::string& title) {
+    // No-op on Android - mobile apps don't have window titles
+    (void)title; // Suppress unused parameter warning
+}
+
 void AndroidPlatform::DetectDeviceCapabilities() {
     if (!app) {
         return;
@@ -421,6 +426,12 @@ void DesktopPlatform::SetKeyboardCallback(std::function<void(uint32_t, bool)> ca
 
 void DesktopPlatform::SetCharCallback(std::function<void(uint32_t)> callback) {
     charCallback = std::move(callback);
+}
+
+void DesktopPlatform::SetWindowTitle(const std::string& title) {
+    if (window) {
+        glfwSetWindowTitle(window, title.c_str());
+    }
 }
 
 void DesktopPlatform::WindowResizeCallback(GLFWwindow* window, int width, int height) {

@@ -401,6 +401,7 @@ public:
     static const std::string SHARED_DEFAULT_METALLIC_ROUGHNESS_ID;
     static const std::string SHARED_DEFAULT_OCCLUSION_ID;
     static const std::string SHARED_DEFAULT_EMISSIVE_ID;
+    static const std::string SHARED_BRIGHT_RED_ID;
 
     /**
      * @brief Determine appropriate texture format based on texture type.

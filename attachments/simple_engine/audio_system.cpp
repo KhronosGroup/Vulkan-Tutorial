@@ -439,7 +439,7 @@ private:
 
             // Upload audio data to OpenAL buffer
             alBufferData(buffer, format, pcmBuffer.data(),
-                        samplesProcessed * sizeof(int16_t), sampleRate);
+                        static_cast<ALsizei>(samplesProcessed * sizeof(int16_t)), static_cast<ALsizei>(sampleRate));
             CheckOpenALError("alBufferData");
 
             // Queue the buffer
@@ -793,10 +793,9 @@ AudioSource* AudioSystem::CreateAudioSource(const std::string& name) {
     }
 
     // Store the source
-    AudioSource* sourcePtr = source.get();
     sources.push_back(std::move(source));
 
-    return sourcePtr;
+    return sources.back().get();
 }
 
 AudioSource* AudioSystem::CreateDebugPingSource(const std::string& name) {
@@ -804,7 +803,7 @@ AudioSource* AudioSystem::CreateDebugPingSource(const std::string& name) {
     auto source = std::make_unique<ConcreteAudioSource>(name);
 
     // Set up debug ping parameters
-    // The ping will cycle every 1.5 seconds (0.5s ping + 1.0s silence)
+    // The ping will cycle every 1.5 seconds (0.5 s ping + 1.0 s silence)
     constexpr float sampleRate = 44100.0f;
     constexpr float pingDuration = 0.5f;
     constexpr float silenceDuration = 1.0f;
@@ -814,20 +813,19 @@ AudioSource* AudioSystem::CreateDebugPingSource(const std::string& name) {
     source->SetAudioLength(totalCycleSamples);
 
     // Store the source
-    AudioSource* sourcePtr = source.get();
     sources.push_back(std::move(source));
 
-    return sourcePtr;
+    return sources.back().get();
 }
 
-void AudioSystem::SetListenerPosition(float x, float y, float z) {
+void AudioSystem::SetListenerPosition(const float x, const float y, const float z) {
     listenerPosition[0] = x;
     listenerPosition[1] = y;
     listenerPosition[2] = z;
 }
 
-void AudioSystem::SetListenerOrientation(float forwardX, float forwardY, float forwardZ,
-                                       float upX, float upY, float upZ) {
+void AudioSystem::SetListenerOrientation(const float forwardX, const float forwardY, const float forwardZ,
+                                       const float upX, const float upY, const float upZ) {
     listenerOrientation[0] = forwardX;
     listenerOrientation[1] = forwardY;
     listenerOrientation[2] = forwardZ;
@@ -836,17 +834,17 @@ void AudioSystem::SetListenerOrientation(float forwardX, float forwardY, float f
     listenerOrientation[5] = upZ;
 }
 
-void AudioSystem::SetListenerVelocity(float x, float y, float z) {
+void AudioSystem::SetListenerVelocity(const float x, const float y, const float z) {
     listenerVelocity[0] = x;
     listenerVelocity[1] = y;
     listenerVelocity[2] = z;
 }
 
-void AudioSystem::SetMasterVolume(float volume) {
+void AudioSystem::SetMasterVolume(const float volume) {
     masterVolume = volume;
 }
 
-void AudioSystem::EnableHRTF(bool enable) {
+void AudioSystem::EnableHRTF(const bool enable) {
     hrtfEnabled = enable;
 }
 
@@ -854,7 +852,7 @@ bool AudioSystem::IsHRTFEnabled() const {
     return hrtfEnabled;
 }
 
-void AudioSystem::SetHRTFCPUOnly(bool cpuOnly) {
+void AudioSystem::SetHRTFCPUOnly(const bool cpuOnly) {
     hrtfCPUOnly = cpuOnly;
 }
 
@@ -868,15 +866,12 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
     constexpr uint32_t hrtfSampleCount = 256;  // Number of samples per impulse response
     constexpr uint32_t positionCount = 36 * 13; // 36 azimuths (10-degree steps) * 13 elevations (15-degree steps)
     constexpr uint32_t channelCount = 2;       // Stereo (left and right ears)
-    const float sampleRate = 44100.0f;    // Sample rate for HRTF data
-    const float speedOfSound = 343.0f;    // Speed of sound in m/s
-    const float headRadius = 0.0875f;     // Average head radius in meters
+    // const float headRadius = 0.0875f;     // Average head radius in meters
 
-    // Try to load from file first (only if filename is provided)
+    // Try to load from a file first (only if the filename is provided)
     if (!filename.empty()) {
-        std::ifstream file(filename, std::ios::binary);
-        if (file.is_open()) {
-        // Read file header to determine format
+        if (std::ifstream file(filename, std::ios::binary); file.is_open()) {
+        // Read the file header to determine a format
         char header[4];
         file.read(header, 4);
 
@@ -889,7 +884,7 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
 
             if (fileChannelCount == channelCount) {
                 hrtfData.resize(fileHrtfSize * filePositionCount * fileChannelCount);
-                file.read(reinterpret_cast<char*>(hrtfData.data()), hrtfData.size() * sizeof(float));
+                file.read(reinterpret_cast<char*>(hrtfData.data()), static_cast<std::streamsize>(hrtfData.size() * sizeof(float)));
 
                 hrtfSize = fileHrtfSize;
                 numHrtfPositions = filePositionCount;
@@ -921,6 +916,8 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
         float z = std::cos(elevation) * std::cos(azimuth);
 
         for (uint32_t channel = 0; channel < channelCount; channel++) {
+            constexpr float speedOfSound = 343.0f;
+            constexpr float sampleRate = 44100.0f;
             // Calculate ear position (left ear: -0.1m, right ear: +0.1m on x-axis)
             float earX = (channel == 0) ? -0.1f : 0.1f;
 
@@ -944,7 +941,6 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
 
 
             // Generate impulse response
-            uint32_t samplesGenerated = 0;
             for (uint32_t i = 0; i < hrtfSampleCount; i++) {
                 float value = 0.0f;
 

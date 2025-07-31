@@ -319,6 +319,45 @@ void ImGuiSystem::NewFrame() {
         ImGui::Text("HRTF Processing: DISABLED");
     }
 
+    // Ball Debugging Controls
+    ImGui::Separator();
+    ImGui::Text("Ball Debugging Controls:");
+
+    if (ImGui::Checkbox("Ball-Only Rendering", &ballOnlyRenderingEnabled)) {
+        std::cout << "Ball-only rendering " << (ballOnlyRenderingEnabled ? "enabled" : "disabled") << std::endl;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("?##BallOnlyHelp")) {
+        // Help tooltip will be shown on hover
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("When enabled, only balls will be rendered.\nAll other geometry (bistro scene) will be hidden.");
+    }
+
+    if (ImGui::Checkbox("Camera Track Ball", &cameraTrackingEnabled)) {
+        std::cout << "Camera tracking " << (cameraTrackingEnabled ? "enabled" : "disabled") << std::endl;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("?##CameraTrackHelp")) {
+        // Help tooltip will be shown on hover
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("When enabled, camera will automatically\nfollow and look at the ball.");
+    }
+
+    // Status display
+    if (ballOnlyRenderingEnabled) {
+        ImGui::Text("Status: Only balls are being rendered");
+    } else {
+        ImGui::Text("Status: All geometry is being rendered");
+    }
+
+    if (cameraTrackingEnabled) {
+        ImGui::Text("Camera: Tracking ball automatically");
+    } else {
+        ImGui::Text("Camera: Manual control (WASD + mouse)");
+    }
+
     ImGui::End();
 }
 

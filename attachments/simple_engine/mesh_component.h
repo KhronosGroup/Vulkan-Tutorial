@@ -171,6 +171,14 @@ public:
     void CreateCube(float size = 1.0f, const glm::vec3& color = glm::vec3(1.0f));
 
     /**
+     * @brief Create a simple sphere mesh.
+     * @param radius The radius of the sphere.
+     * @param color The color of the sphere.
+     * @param segments The number of segments (resolution).
+     */
+    void CreateSphere(float radius = 1.0f, const glm::vec3& color = glm::vec3(1.0f), int segments = 16);
+
+    /**
      * @brief Load mesh data from a Model.
      * @param model Pointer to the model to load from.
      */

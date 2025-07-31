@@ -17,19 +17,12 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
     const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) {
 
-    // Check if this is a shader debug printf message
-    if (messageType & vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation) {
-        std::string message(pCallbackData->pMessage);
-        if (message.find("DEBUG-PRINTF") != std::string::npos) {
-            // This is a shader debug printf message - always show it
-            std::cout << "FINDME =====   SHADER DEBUG: " << pCallbackData->pMessage << std::endl;
-            return VK_FALSE;
-        }
-    }
-
     if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
         // Print a message to the console
         std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    } else {
+        // Print a message to the console
+        std::cout << "Validation layer: " << pCallbackData->pMessage << std::endl;
     }
 
     return VK_FALSE;

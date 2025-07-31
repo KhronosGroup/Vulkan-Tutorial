@@ -23,6 +23,7 @@ const std::string Renderer::SHARED_DEFAULT_NORMAL_ID = "__shared_default_normal_
 const std::string Renderer::SHARED_DEFAULT_METALLIC_ROUGHNESS_ID = "__shared_default_metallic_roughness__";
 const std::string Renderer::SHARED_DEFAULT_OCCLUSION_ID = "__shared_default_occlusion__";
 const std::string Renderer::SHARED_DEFAULT_EMISSIVE_ID = "__shared_default_emissive__";
+const std::string Renderer::SHARED_BRIGHT_RED_ID = "__shared_bright_red__";
 
 // Create depth resources
 bool Renderer::createDepthResources() {
@@ -324,6 +325,13 @@ bool Renderer::createSharedDefaultPBRTextures() {
         unsigned char emissivePixel[4] = {0, 0, 0, 255};
         if (!LoadTextureFromMemory(SHARED_DEFAULT_EMISSIVE_ID, emissivePixel, 1, 1, 4)) {
             std::cerr << "Failed to create shared default emissive texture" << std::endl;
+            return false;
+        }
+
+        // Create shared bright red texture for ball visibility
+        unsigned char brightRedPixel[4] = {255, 0, 0, 255}; // Bright red (R=255, G=0, B=0, A=255)
+        if (!LoadTextureFromMemory(SHARED_BRIGHT_RED_ID, brightRedPixel, 1, 1, 4)) {
+            std::cerr << "Failed to create shared bright red texture" << std::endl;
             return false;
         }
 

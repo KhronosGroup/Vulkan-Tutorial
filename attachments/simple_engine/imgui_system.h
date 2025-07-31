@@ -107,6 +107,18 @@ public:
      */
     bool IsPBREnabled() const { return pbrEnabled; }
 
+    /**
+     * @brief Get the current ball-only rendering state.
+     * @return True if ball-only rendering is enabled, false otherwise.
+     */
+    bool IsBallOnlyRenderingEnabled() const { return ballOnlyRenderingEnabled; }
+
+    /**
+     * @brief Get the current camera tracking state.
+     * @return True if camera tracking is enabled, false otherwise.
+     */
+    bool IsCameraTrackingEnabled() const { return cameraTrackingEnabled; }
+
 private:
     // ImGui context
     ImGuiContext* context = nullptr;
@@ -155,6 +167,10 @@ private:
 
     // PBR rendering state
     bool pbrEnabled = true;
+
+    // Ball-only rendering and camera tracking state
+    bool ballOnlyRenderingEnabled = false;
+    bool cameraTrackingEnabled = false;
 
     /**
      * @brief Create Vulkan resources for ImGui.

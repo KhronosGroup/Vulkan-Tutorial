@@ -216,19 +216,10 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         }
 
         int entitiesCreated = 0;
-        int smallObjectsCreated = 0;
         for (const auto& materialMesh : materialMeshes) {
-            // Calculate bounding box size to determine if this is a small object
-            glm::vec3 boundingBoxSize = CalculateBoundingBoxSize(materialMesh);
-            bool isSmall = IsSmallObject(boundingBoxSize);
-
-            // Create an entity name based on model and material, with special marking for small objects
+            // Create an entity name based on model and material
             std::string entityName = modelName + "_Material_" + std::to_string(materialMesh.materialIndex) +
                                     "_" + materialMesh.materialName;
-            if (isSmall) {
-                entityName += "_SMALL_POKEABLE";
-                smallObjectsCreated++;
-            }
 
             if (Entity* materialEntity = engine->CreateEntity(entityName)) {
                 // Add a transform component with provided parameters
@@ -271,6 +262,21 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                     // Continue with other entities even if one fails
                 }
 
+                // Create physics body for collision with balls
+                // Use mesh collision shape for accurate geometry interaction
+                PhysicsSystem* physicsSystem = engine->GetPhysicsSystem();
+                if (physicsSystem) {
+                    RigidBody* rigidBody = physicsSystem->CreateRigidBody(materialEntity, CollisionShape::Mesh, 0.0f); // Mass 0 = static
+                    if (rigidBody) {
+                        rigidBody->SetKinematic(true); // Static geometry doesn't move
+                        rigidBody->SetRestitution(0.15f); // Very low bounce - balls lose 85%+ momentum
+                        rigidBody->SetFriction(0.5f); // Moderate friction
+                        std::cout << "Created physics body for geometry entity: " << entityName << std::endl;
+                    } else {
+                        std::cerr << "Failed to create physics body for entity: " << entityName << std::endl;
+                    }
+                }
+
                 entitiesCreated++;
             } else {
                 std::cerr << "Failed to create entity for material " << materialMesh.materialName << std::endl;
@@ -278,7 +284,6 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         }
 
         std::cout << "Successfully created " << entitiesCreated << " entities from loaded materials" << std::endl;
-        std::cout << "  - " << smallObjectsCreated << " small pokeable objects identified" << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "Error loading GLTF model: " << e.what() << std::endl;

@@ -481,6 +481,14 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
     // Render each entity
     for (auto entity : entities) {
+        // Check if ball-only rendering is enabled and filter entities accordingly
+        if (imguiSystem && imguiSystem->IsBallOnlyRenderingEnabled()) {
+            // Only render entities whose names contain "Ball_"
+            if (entity->GetName().find("Ball_") == std::string::npos) {
+                continue; // Skip non-ball entities
+            }
+        }
+
         // Get the mesh component
         auto meshComponent = entity->GetComponent<MeshComponent>();
         if (!meshComponent) {

@@ -118,6 +118,12 @@ public:
      * @param callback The callback function to be called when character input is received.
      */
     virtual void SetCharCallback(std::function<void(uint32_t)> callback) = 0;
+
+    /**
+     * @brief Set the window title.
+     * @param title The new window title.
+     */
+    virtual void SetWindowTitle(const std::string& title) = 0;
 };
 
 #if PLATFORM_ANDROID
@@ -274,6 +280,12 @@ public:
     void SetCharCallback(std::function<void(uint32_t)> callback) override;
 
     /**
+     * @brief Set the window title (no-op on Android).
+     * @param title The new window title.
+     */
+    void SetWindowTitle(const std::string& title) override;
+
+    /**
      * @brief Get the Android app.
      * @return The Android app.
      */
@@ -417,6 +429,12 @@ public:
      * @param callback The callback function to be called when character input is received.
      */
     void SetCharCallback(std::function<void(uint32_t)> callback) override;
+
+    /**
+     * @brief Set the window title.
+     * @param title The new window title.
+     */
+    void SetWindowTitle(const std::string& title) override;
 
     /**
      * @brief Get the GLFW window.

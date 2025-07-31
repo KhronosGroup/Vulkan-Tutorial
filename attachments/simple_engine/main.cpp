@@ -35,9 +35,7 @@ void SetupScene(Engine* engine) {
     engine->SetActiveCamera(camera);
 
     // Load GLTF model synchronously on the main thread
-    std::cout << "Loading GLTF model synchronously..." << std::endl;
-    LoadGLTFModel(engine, "../Assets/bistro_gltf/bistro.gltf");
-    std::cout << "GLTF model loading completed." << std::endl;
+    LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
 }
 
 #if PLATFORM_ANDROID

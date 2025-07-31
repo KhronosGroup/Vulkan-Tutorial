@@ -1,10 +1,12 @@
 #include "engine.h"
 #include "scene_loading.h"
+#include "mesh_component.h"
 
 #include <chrono>
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
+#include <random>
 
 // This implementation corresponds to the Engine_Architecture chapter in the tutorial:
 // @see en/Building_a_Simple_Engine/Engine_Architecture/02_architectural_patterns.adoc
@@ -44,12 +46,12 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
         bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
 
         if (!imguiWantsMouse) {
-            // Handle mouse click for poke functionality (right mouse button)
+            // Handle mouse click for ball throwing (right mouse button)
             if (buttons & 2) { // Right mouse button (bit 1)
                 if (!cameraControl.mouseRightPressed) {
                     cameraControl.mouseRightPressed = true;
-                    // Perform poke on mouse click
-                    HandleMousePoke(x, y);
+                    // Throw a ball on mouse click
+                    ThrowBall(x, y);
                 }
             } else {
                 cameraControl.mouseRightPressed = false;
@@ -159,6 +161,10 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
 
     // Initialize a physics system
     physicsSystem->SetRenderer(renderer.get());
+
+    // Enable GPU acceleration for physics calculations to drastically speed up computations
+    physicsSystem->SetGPUAccelerationEnabled(true);
+
     if (!physicsSystem->Initialize()) {
         return false;
     }
@@ -170,6 +176,13 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
 
     // Connect ImGui system to an audio system for UI controls
     imguiSystem->SetAudioSystem(audioSystem.get());
+
+    // Generate ball material properties once at load time
+    GenerateBallMaterial();
+
+    // Initialize physics scaling system
+    InitializePhysicsScaling();
+
 
     initialized = true;
     return true;
@@ -184,7 +197,9 @@ void Engine::Run() {
     running = true;
 
     // Main loop
+    int loopCount = 0;
     while (running) {
+        loopCount++;
         // Process platform events
         if (!platform->ProcessEvents()) {
             running = false;
@@ -193,6 +208,25 @@ void Engine::Run() {
 
         // Calculate delta time
         deltaTime = CalculateDeltaTime();
+
+        // Update frame counter and FPS
+        frameCount++;
+        fpsUpdateTimer += deltaTime;
+
+        // Update window title with FPS and frame count every second
+        if (fpsUpdateTimer >= 1.0f) {
+            uint64_t framesSinceLastUpdate = frameCount - lastFPSUpdateFrame;
+            currentFPS = framesSinceLastUpdate / fpsUpdateTimer;
+
+            // Update window title with frame count and FPS
+            std::string title = "Simple Engine - Frame: " + std::to_string(frameCount) +
+                               " | FPS: " + std::to_string(static_cast<int>(currentFPS));
+            platform->SetWindowTitle(title);
+
+            // Reset timer and frame counter for next update
+            fpsUpdateTimer = 0.0f;
+            lastFPSUpdateFrame = frameCount;
+        }
 
         // Update
         Update(deltaTime);
@@ -327,7 +361,19 @@ ImGuiSystem* Engine::GetImGuiSystem() const {
 }
 
 void Engine::Update(float deltaTime) {
-    // Update a physics system
+    // Debug: Verify Update method is being called
+    static int updateCallCount = 0;
+    updateCallCount++;
+    // Process pending ball creations (outside rendering loop to avoid memory pool constraints)
+    ProcessPendingBalls();
+
+
+    if (activeCamera) {
+        glm::vec3 currentCameraPosition = activeCamera->GetPosition();
+        physicsSystem->SetCameraPosition(currentCameraPosition);
+    }
+
+    // Use real deltaTime for physics to maintain proper timing
     physicsSystem->Update(deltaTime);
 
     // Update audio system
@@ -418,6 +464,37 @@ void Engine::UpdateCameraControls(float deltaTime) const {
     auto* cameraTransform = activeCamera->GetOwner()->GetComponent<TransformComponent>();
     if (!cameraTransform) return;
 
+    // Check if camera tracking is enabled
+    if (imguiSystem && imguiSystem->IsCameraTrackingEnabled()) {
+        // Find the first active ball entity
+        Entity* ballEntity = nullptr;
+        for (const auto& entity : entities) {
+            if (entity->IsActive() && entity->GetName().find("Ball_") != std::string::npos) {
+                ballEntity = entity.get();
+                break;
+            }
+        }
+
+        if (ballEntity) {
+            // Get ball's transform component
+            auto* ballTransform = ballEntity->GetComponent<TransformComponent>();
+            if (ballTransform) {
+                glm::vec3 ballPosition = ballTransform->GetPosition();
+
+                // Position camera at a fixed offset from the ball for good viewing
+                glm::vec3 cameraOffset = glm::vec3(2.0f, 1.5f, 2.0f); // Behind and above the ball
+                glm::vec3 cameraPosition = ballPosition + cameraOffset;
+
+                // Update camera position and target
+                cameraTransform->SetPosition(cameraPosition);
+                activeCamera->SetTarget(ballPosition);
+
+                return; // Skip manual controls when tracking
+            }
+        }
+    }
+
+    // Manual camera controls (only when tracking is disabled)
     // Calculate movement speed
     float velocity = cameraControl.cameraSpeed * deltaTime;
 
@@ -463,7 +540,84 @@ void Engine::UpdateCameraControls(float deltaTime) const {
     activeCamera->SetTarget(target);
 }
 
-void Engine::HandleMousePoke(float mouseX, float mouseY) const {
+void Engine::GenerateBallMaterial() {
+    // Generate 8 random material properties for PBR
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+
+    // Generate bright, vibrant albedo colors for better visibility
+    std::uniform_real_distribution<float> brightDis(0.6f, 1.0f); // Ensure bright colors
+    ballMaterial.albedo = glm::vec3(brightDis(gen), brightDis(gen), brightDis(gen));
+
+    // Random metallic value (0.0 to 1.0)
+    ballMaterial.metallic = dis(gen);
+
+    // Random roughness value (0.0 to 1.0)
+    ballMaterial.roughness = dis(gen);
+
+    // Random ambient occlusion (typically 0.8 to 1.0 for good lighting)
+    ballMaterial.ao = 0.8f + dis(gen) * 0.2f;
+
+    // Random emissive color (usually subtle)
+    ballMaterial.emissive = glm::vec3(dis(gen) * 0.3f, dis(gen) * 0.3f, dis(gen) * 0.3f);
+
+    // Very low bounciness (0.05 to 0.15 for 85-95% momentum loss per bounce)
+    ballMaterial.bounciness = 0.05f + dis(gen) * 0.1f;
+
+    std::cout << "Generated ball material - Albedo: (" << ballMaterial.albedo.x << ", "
+              << ballMaterial.albedo.y << ", " << ballMaterial.albedo.z << "), "
+              << "Metallic: " << ballMaterial.metallic << ", Roughness: " << ballMaterial.roughness
+              << ", Bounciness: " << ballMaterial.bounciness << std::endl;
+}
+
+void Engine::InitializePhysicsScaling() {
+    // Based on issue analysis: balls reaching 120+ m/s and extreme positions like (-244, -360, -244)
+    // The previous 200.0f force scale was causing supersonic speeds and balls flying out of scene
+    // Need much more conservative scaling for realistic visual gameplay
+
+    // Use smaller game unit scale for more controlled physics
+    physicsScaling.gameUnitsToMeters = 0.1f;  // 1 game unit = 0.1 meter (10cm) - smaller scale
+
+    // Much reduced force scaling to prevent extreme speeds
+    // With base forces 0.01f-0.05f, this gives final forces of 0.001f-0.005f
+    physicsScaling.forceScale = 1.0f;         // Minimal force scaling for realistic movement
+    physicsScaling.physicsTimeScale = 1.0f;   // Keep time scale normal
+    physicsScaling.gravityScale = 1.0f;       // Keep gravity proportional to scale
+
+    std::cout << "Physics scaling initialized:" << std::endl;
+    std::cout << "  Game units to meters: " << physicsScaling.gameUnitsToMeters << std::endl;
+    std::cout << "  Force scale: " << physicsScaling.forceScale << std::endl;
+    std::cout << "  Time scale: " << physicsScaling.physicsTimeScale << std::endl;
+    std::cout << "  Gravity scale: " << physicsScaling.gravityScale << std::endl;
+
+    // Apply scaled gravity to physics system
+    glm::vec3 realWorldGravity(0.0f, -9.81f, 0.0f);
+    glm::vec3 scaledGravity = ScaleGravityForPhysics(realWorldGravity);
+    physicsSystem->SetGravity(scaledGravity);
+}
+
+
+float Engine::ScaleForceForPhysics(float gameForce) const {
+    // Scale force based on the relationship between game units and real world
+    // and the force scaling factor to make physics feel right
+    return gameForce * physicsScaling.forceScale * physicsScaling.gameUnitsToMeters;
+}
+
+glm::vec3 Engine::ScaleGravityForPhysics(const glm::vec3& realWorldGravity) const {
+    // Scale gravity based on game unit scale and gravity scaling factor
+    // If 1 game unit = 1 meter, then gravity should remain -9.81
+    // If 1 game unit = 0.1 meter, then gravity should be -0.981
+    return realWorldGravity * physicsScaling.gravityScale * physicsScaling.gameUnitsToMeters;
+}
+
+float Engine::ScaleTimeForPhysics(float deltaTime) const {
+    // Scale time for physics simulation if needed
+    // This can be used to slow down or speed up physics relative to rendering
+    return deltaTime * physicsScaling.physicsTimeScale;
+}
+
+void Engine::ThrowBall(float mouseX, float mouseY) {
     if (!activeCamera || !physicsSystem) {
         return;
     }
@@ -484,115 +638,141 @@ void Engine::HandleMousePoke(float mouseX, float mouseY) const {
     glm::mat4 invView = glm::inverse(viewMatrix);
     glm::mat4 invProj = glm::inverse(projMatrix);
 
-    // Convert NDC to world space
+    // Convert NDC to world space for direction
     glm::vec4 rayClip = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
     glm::vec4 rayEye = invProj * rayClip;
     rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
     glm::vec4 rayWorld = invView * rayEye;
 
-    // Get ray origin and direction
-    glm::vec3 rayOrigin = activeCamera->GetPosition();
-    glm::vec3 rayDirection = glm::normalize(glm::vec3(rayWorld));
+    // Calculate screen center in world coordinates
+    // Screen center is at NDC (0, 0) which corresponds to the center of the view
+    glm::vec4 screenCenterClip = glm::vec4(0.0f, 0.0f, -1.0f, 1.0f);
+    glm::vec4 screenCenterEye = invProj * screenCenterClip;
+    screenCenterEye = glm::vec4(screenCenterEye.x, screenCenterEye.y, -1.0f, 0.0f);
+    glm::vec4 screenCenterWorld = invView * screenCenterEye;
+    glm::vec3 screenCenterDirection = glm::normalize(glm::vec3(screenCenterWorld));
 
-    // Perform raycast
-    glm::vec3 hitPosition;
-    glm::vec3 hitNormal;
-    Entity* hitEntity = nullptr;
+    // Calculate world position for screen center at a reasonable distance from camera
+    glm::vec3 cameraPosition = activeCamera->GetPosition();
+    glm::vec3 screenCenterWorldPos = cameraPosition + screenCenterDirection * 2.0f; // 2 units in front of camera
 
-    if (physicsSystem->Raycast(rayOrigin, rayDirection, 1000.0f, &hitPosition, &hitNormal, &hitEntity)) {
-        if (hitEntity) {
-            std::cout << "Mouse poke hit entity: " << hitEntity->GetName() << std::endl;
+    // Calculate throw direction from screen center toward mouse position
+    glm::vec3 throwDirection = glm::normalize(glm::vec3(rayWorld));
 
-            // Find or create rigid body for the entity
-            RigidBody* rigidBody = nullptr;
+    // Add upward component for realistic arc trajectory
+    throwDirection.y += 0.3f; // Add upward bias for throwing arc
+    throwDirection = glm::normalize(throwDirection); // Re-normalize after modification
 
-            // Check if entity already has a rigid body (this is a simplified approach)
-            // In a real implementation, you'd have a component system to track this
-            rigidBody = physicsSystem->CreateRigidBody(hitEntity, CollisionShape::Box, 1.0f);
+    // Generate ball properties now
+    static int ballCounter = 0;
+    std::string ballName = "Ball_" + std::to_string(ballCounter++);
 
-            if (rigidBody) {
-                // Apply a small impulse in the direction of the ray
-                glm::vec3 impulse = rayDirection * 0.5f; // Small force magnitude as requested
-                rigidBody->ApplyImpulse(impulse, glm::vec3(0.0f));
+    std::random_device rd;
+    std::mt19937 gen(rd());
 
-                std::cout << "Applied poke impulse to " << hitEntity->GetName() << std::endl;
-            }
-        }
-    } else {
-        std::cout << "Mouse poke missed - no entity hit" << std::endl;
+    // Launch balls from screen center toward mouse cursor
+    glm::vec3 spawnPosition = screenCenterWorldPos;
+
+    // Add small random variation to avoid identical paths
+    std::uniform_real_distribution<float> posDis(-0.1f, 0.1f);
+    spawnPosition.x += posDis(gen);
+    spawnPosition.y += posDis(gen);
+    spawnPosition.z += posDis(gen);
+
+    // Log camera, screen center, and spawn positions for debugging
+    std::cout << "CAMERA POSITION: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
+    std::cout << "SCREEN CENTER WORLD POS: (" << screenCenterWorldPos.x << ", " << screenCenterWorldPos.y << ", " << screenCenterWorldPos.z << ")" << std::endl;
+    std::cout << "BALL SPAWN POSITION: (" << spawnPosition.x << ", " << spawnPosition.y << ", " << spawnPosition.z << ")" << std::endl;
+    std::cout << "THROW DIRECTION: (" << throwDirection.x << ", " << throwDirection.y << ", " << throwDirection.z << ")" << std::endl;
+    std::cout << "MOUSE NDC: (" << ndcX << ", " << ndcY << ")" << std::endl;
+    std::uniform_real_distribution<float> spinDis(-10.0f, 10.0f);
+    std::uniform_real_distribution<float> forceDis(15.0f, 35.0f); // Stronger force range for proper throwing feel
+
+    // Store ball creation data for processing outside rendering loop
+    PendingBall pendingBall;
+    pendingBall.spawnPosition = spawnPosition;
+    pendingBall.throwDirection = throwDirection; // This is now the corrected direction toward geometry
+    pendingBall.throwForce = ScaleForceForPhysics(forceDis(gen)); // Apply physics scaling to force
+    pendingBall.randomSpin = glm::vec3(spinDis(gen), spinDis(gen), spinDis(gen));
+    pendingBall.ballName = ballName;
+
+    pendingBalls.push_back(pendingBall);
+}
+
+void Engine::ProcessPendingBalls() {
+    if (pendingBalls.empty()) {
+        return;
     }
+
+    // Process all pending balls
+    for (const auto& pendingBall : pendingBalls) {
+        // Create ball entity
+        Entity* ballEntity = CreateEntity(pendingBall.ballName);
+        if (!ballEntity) {
+            std::cerr << "Failed to create ball entity: " << pendingBall.ballName << std::endl;
+            continue;
+        }
+
+        // Add transform component
+        auto* transform = ballEntity->AddComponent<TransformComponent>();
+        if (!transform) {
+            std::cerr << "Failed to add TransformComponent to ball: " << pendingBall.ballName << std::endl;
+            continue;
+        }
+        transform->SetPosition(pendingBall.spawnPosition);
+        transform->SetScale(glm::vec3(1.0f)); // Tennis ball size scale
+
+        // Add mesh component with sphere geometry
+        auto* mesh = ballEntity->AddComponent<MeshComponent>();
+        if (!mesh) {
+            std::cerr << "Failed to add MeshComponent to ball: " << pendingBall.ballName << std::endl;
+            continue;
+        }
+        // Create tennis ball-sized, bright red sphere
+        glm::vec3 brightRed(1.0f, 0.0f, 0.0f);
+        mesh->CreateSphere(0.0335f, brightRed, 32); // Tennis ball radius, bright color, high detail
+        mesh->SetTexturePath(renderer->SHARED_BRIGHT_RED_ID); // Use bright red texture for visibility
+
+        // Verify mesh geometry was created
+        const auto& vertices = mesh->GetVertices();
+        const auto& indices = mesh->GetIndices();
+        if (vertices.empty() || indices.empty()) {
+            std::cerr << "ERROR: CreateSphere failed to generate geometry!" << std::endl;
+            continue;
+        }
+
+        // Pre-allocate Vulkan resources for this entity (now outside rendering loop)
+        if (!renderer->preAllocateEntityResources(ballEntity)) {
+            std::cerr << "Failed to pre-allocate resources for ball: " << pendingBall.ballName << std::endl;
+            continue;
+        }
+
+        // Create rigid body with sphere collision shape
+        RigidBody* rigidBody = physicsSystem->CreateRigidBody(ballEntity, CollisionShape::Sphere, 1.0f);
+        if (rigidBody) {
+            // Set bounciness from material
+            rigidBody->SetRestitution(ballMaterial.bounciness);
+
+            // Apply throw force and spin
+            glm::vec3 throwImpulse = pendingBall.throwDirection * pendingBall.throwForce;
+            rigidBody->ApplyImpulse(throwImpulse, glm::vec3(0.0f));
+            rigidBody->SetAngularVelocity(pendingBall.randomSpin);
+
+            std::cout << "Ball " << pendingBall.ballName << " created successfully with force "
+                      << pendingBall.throwForce << std::endl;
+        }
+    }
+
+    // Clear processed balls
+    pendingBalls.clear();
 }
 
 void Engine::HandleMouseHover(float mouseX, float mouseY) {
-    if (!activeCamera || !physicsSystem) {
-        return;
-    }
-
-    // Update current mouse position
+    // Update current mouse position for any systems that might need it
     currentMouseX = mouseX;
     currentMouseY = mouseY;
-
-    // Get window dimensions
-    int windowWidth, windowHeight;
-    platform->GetWindowSize(&windowWidth, &windowHeight);
-
-    // Convert mouse coordinates to normalized device coordinates (-1 to 1)
-    float ndcX = (2.0f * mouseX) / static_cast<float>(windowWidth) - 1.0f;
-    float ndcY = 1.0f - (2.0f * mouseY) / static_cast<float>(windowHeight);
-
-    // Get camera matrices
-    glm::mat4 viewMatrix = activeCamera->GetViewMatrix();
-    glm::mat4 projMatrix = activeCamera->GetProjectionMatrix();
-
-    // Calculate inverse matrices
-    glm::mat4 invView = glm::inverse(viewMatrix);
-    glm::mat4 invProj = glm::inverse(projMatrix);
-
-    // Convert NDC to world space
-    glm::vec4 rayClip = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
-    glm::vec4 rayEye = invProj * rayClip;
-    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
-    glm::vec4 rayWorld = invView * rayEye;
-
-    // Get ray origin and direction
-    glm::vec3 rayOrigin = activeCamera->GetPosition();
-    glm::vec3 rayDirection = glm::normalize(glm::vec3(rayWorld));
-
-    // Perform raycast
-    glm::vec3 hitPosition;
-    glm::vec3 hitNormal;
-    Entity* hitEntity = nullptr;
-
-    if (physicsSystem->Raycast(rayOrigin, rayDirection, 1000.0f, &hitPosition, &hitNormal, &hitEntity)) {
-        if (hitEntity) {
-            // Check if this entity is pokeable (has "_SMALL_POKEABLE" suffix)
-            std::string entityName = hitEntity->GetName();
-
-            if (entityName.find("_SMALL_POKEABLE") != std::string::npos) {
-                // Update a hovered entity if it's different from the current one
-                if (hoveredEntity != hitEntity) {
-                    hoveredEntity = hitEntity;
-                    renderer->SetHighlightedEntity(hoveredEntity);
-                    std::cout << "Now hovering over pokeable entity: " << entityName << std::endl;
-                }
-            } else {
-                // Clear hover if we're over a non-pokeable entity
-                if (hoveredEntity != nullptr) {
-                    std::cout << "No longer hovering over pokeable entity" << std::endl;
-                    hoveredEntity = nullptr;
-                    renderer->SetHighlightedEntity(nullptr);
-                }
-            }
-        }
-    } else {
-        // Clear hover if no entity is hit
-        if (hoveredEntity != nullptr) {
-            std::cout << "No longer hovering over pokeable entity" << std::endl;
-            hoveredEntity = nullptr;
-            renderer->SetHighlightedEntity(nullptr);
-        }
-    }
 }
+
 
 #if PLATFORM_ANDROID
 // Android-specific implementation
@@ -610,6 +790,22 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
 
     // Set mouse callback
     platform->SetMouseCallback([this](float x, float y, uint32_t buttons) {
+        // Check if ImGui wants to capture mouse input first
+        bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
+
+        if (!imguiWantsMouse) {
+            // Handle mouse click for ball throwing (right mouse button)
+            if (buttons & 2) { // Right mouse button (bit 1)
+                if (!cameraControl.mouseRightPressed) {
+                    cameraControl.mouseRightPressed = true;
+                    // Throw a ball on mouse click
+                    ThrowBall(x, y);
+                }
+            } else {
+                cameraControl.mouseRightPressed = false;
+            }
+        }
+
         if (imguiSystem) {
             imguiSystem->HandleMouse(x, y, buttons);
         }
@@ -650,6 +846,10 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
 
     // Initialize physics system
     physicsSystem->SetRenderer(renderer.get());
+
+    // Enable GPU acceleration for physics calculations to drastically speed up computations
+    physicsSystem->SetGPUAccelerationEnabled(true);
+
     if (!physicsSystem->Initialize()) {
         return false;
     }
@@ -665,6 +865,12 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
 
     // Connect ImGui system to audio system for UI controls
     imguiSystem->SetAudioSystem(audioSystem.get());
+
+    // Generate ball material properties once at load time
+    GenerateBallMaterial();
+
+    // Initialize physics scaling system
+    InitializePhysicsScaling();
 
     initialized = true;
     return true;

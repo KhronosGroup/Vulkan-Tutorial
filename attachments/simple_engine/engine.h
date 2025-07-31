@@ -182,6 +182,12 @@ private:
     float deltaTime = 0.0f;
     uint64_t lastFrameTime = 0;
 
+    // Frame counter and FPS calculation
+    uint64_t frameCount = 0;
+    float fpsUpdateTimer = 0.0f;
+    float currentFPS = 0.0f;
+    uint64_t lastFPSUpdateFrame = 0;
+
     // Camera control state
     struct CameraControlState {
         bool moveForward = false;
@@ -201,10 +207,45 @@ private:
         float mouseSensitivity = 0.1f;
     } cameraControl;
 
-    // Hover state tracking
-    Entity* hoveredEntity = nullptr;
+    // Mouse position tracking
     float currentMouseX = 0.0f;
     float currentMouseY = 0.0f;
+
+    // Ball material properties for PBR
+    struct BallMaterial {
+        glm::vec3 albedo;
+        float metallic;
+        float roughness;
+        float ao;
+        glm::vec3 emissive;
+        float bounciness;
+    };
+
+    BallMaterial ballMaterial;
+
+    // Physics scaling configuration
+    // The bistro scene spans roughly 20 game units and represents a realistic cafe/bistro space
+    // Based on issue feedback: game units should NOT equal 1m and need proper scaling
+    // Analysis shows bistro geometry pieces are much smaller than assumed
+    struct PhysicsScaling {
+        float gameUnitsToMeters = 0.1f;     // 1 game unit = 0.1 meter (10cm) - more realistic scale
+        float physicsTimeScale = 1.0f;      // Normal time scale for stable physics
+        float forceScale = 2.0f;            // Much reduced force scaling for visual gameplay (was 10.0f)
+        float gravityScale = 0.1f;          // Scaled gravity for smaller world scale
+    };
+
+    PhysicsScaling physicsScaling;
+
+    // Pending ball creation data (to avoid memory pool constraints during rendering)
+    struct PendingBall {
+        glm::vec3 spawnPosition;
+        glm::vec3 throwDirection;
+        float throwForce;
+        glm::vec3 randomSpin;
+        std::string ballName;
+    };
+
+    std::vector<PendingBall> pendingBalls;
 
     /**
      * @brief Update the engine state.
@@ -237,14 +278,52 @@ private:
     void UpdateCameraControls(float deltaTime) const;
 
     /**
-     * @brief Handle mouse poke interaction to apply forces to clicked objects.
+     * @brief Generate random PBR material properties for the ball.
+     */
+    void GenerateBallMaterial();
+
+    /**
+     * @brief Initialize physics scaling based on scene analysis.
+     */
+    void InitializePhysicsScaling();
+
+
+    /**
+     * @brief Convert a force value from game units to physics units.
+     * @param gameForce Force in game units.
+     * @return Force scaled for physics simulation.
+     */
+    float ScaleForceForPhysics(float gameForce) const;
+
+    /**
+     * @brief Convert gravity from real-world units to game physics units.
+     * @param realWorldGravity Gravity in m/s².
+     * @return Gravity scaled for game physics.
+     */
+    glm::vec3 ScaleGravityForPhysics(const glm::vec3& realWorldGravity) const;
+
+    /**
+     * @brief Convert time delta for physics simulation.
+     * @param deltaTime Real delta time.
+     * @return Scaled delta time for physics.
+     */
+    float ScaleTimeForPhysics(float deltaTime) const;
+
+    /**
+     * @brief Throw a ball into the scene with random properties.
      * @param mouseX The x-coordinate of the mouse click.
      * @param mouseY The y-coordinate of the mouse click.
      */
-    void HandleMousePoke(float mouseX, float mouseY) const;
+    void ThrowBall(float mouseX, float mouseY);
+
 
     /**
-     * @brief Handle mouse hover detection for highlighting pokeable entities.
+     * @brief Process pending ball creations outside the rendering loop.
+     */
+    void ProcessPendingBalls();
+
+    /**
+     * @brief Handle mouse hover to track current mouse position.
      * @param mouseX The x-coordinate of the mouse position.
      * @param mouseY The y-coordinate of the mouse position.
      */

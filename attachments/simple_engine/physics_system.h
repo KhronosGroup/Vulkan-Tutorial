@@ -99,25 +99,25 @@ public:
      * @brief Get the position of the rigid body.
      * @return The position.
      */
-    virtual glm::vec3 GetPosition() const = 0;
+    [[nodiscard]] virtual glm::vec3 GetPosition() const = 0;
 
     /**
      * @brief Get the rotation of the rigid body.
      * @return The rotation quaternion.
      */
-    virtual glm::quat GetRotation() const = 0;
+    [[nodiscard]] virtual glm::quat GetRotation() const = 0;
 
     /**
      * @brief Get the linear velocity of the rigid body.
      * @return The linear velocity.
      */
-    virtual glm::vec3 GetLinearVelocity() const = 0;
+    [[nodiscard]] virtual glm::vec3 GetLinearVelocity() const = 0;
 
     /**
      * @brief Get the angular velocity of the rigid body.
      * @return The angular velocity.
      */
-    virtual glm::vec3 GetAngularVelocity() const = 0;
+    [[nodiscard]] virtual glm::vec3 GetAngularVelocity() const = 0;
 
     /**
      * @brief Set whether the rigid body is kinematic.
@@ -129,7 +129,7 @@ public:
      * @brief Check if the rigid body is kinematic.
      * @return True if kinematic, false otherwise.
      */
-    virtual bool IsKinematic() const = 0;
+    [[nodiscard]] virtual bool IsKinematic() const = 0;
 };
 
 /**
@@ -160,10 +160,24 @@ struct GPUCollisionData {
  * @brief Structure for physics simulation parameters.
  */
 struct PhysicsParams {
-    float deltaTime;        // Time step
-    glm::vec3 gravity;      // Gravity vector
-    uint32_t numBodies;     // Number of rigid bodies
-    uint32_t maxCollisions; // Maximum number of collisions
+    float deltaTime;        // Time step - 4 bytes
+    uint32_t numBodies;     // Number of rigid bodies - 4 bytes
+    uint32_t maxCollisions; // Maximum number of collisions - 4 bytes
+    float padding;          // Explicit padding to align gravity to 16-byte boundary - 4 bytes
+    glm::vec4 gravity;      // Gravity vector (xyz) + padding (w) - 16 bytes
+    // Total: 32 bytes (aligned to 16-byte boundaries for std140 layout)
+};
+
+/**
+ * @brief Structure to store collision prediction data for ray-based collision system.
+ */
+struct CollisionPrediction {
+    float collisionTime = -1.0f;        // Time within deltaTime when collision occurs (-1 = no collision)
+    glm::vec3 collisionPoint;           // World position where collision occurs
+    glm::vec3 collisionNormal;          // Surface normal at collision point
+    glm::vec3 newVelocity;              // Predicted velocity after bounce
+    Entity* hitEntity = nullptr;        // Entity that was hit
+    bool isValid = false;               // Whether this prediction is valid
 };
 
 /**
@@ -223,7 +237,7 @@ public:
      * @brief Get the gravity of the physics world.
      * @return The gravity vector.
      */
-    glm::vec3 GetGravity() const;
+    [[nodiscard]] glm::vec3 GetGravity() const;
 
     /**
      * @brief Perform a raycast.
@@ -248,7 +262,7 @@ public:
      * @brief Check if GPU acceleration is enabled.
      * @return True if GPU acceleration is enabled, false otherwise.
      */
-    bool IsGPUAccelerationEnabled() const { return gpuAccelerationEnabled; }
+    [[nodiscard]] bool IsGPUAccelerationEnabled() const { return gpuAccelerationEnabled; }
 
     /**
      * @brief Set the maximum number of objects that can be simulated on the GPU.
@@ -262,7 +276,17 @@ public:
      */
     void SetRenderer(Renderer* renderer) { this->renderer = renderer; }
 
+    /**
+     * @brief Set the current camera position for geometry-relative ball checking.
+     * @param cameraPosition The current camera position.
+     */
+    void SetCameraPosition(const glm::vec3& cameraPosition) { this->cameraPosition = cameraPosition; }
+
 private:
+    /**
+     * @brief Clean up rigid bodies that are marked for removal.
+     */
+    void CleanupMarkedBodies();
     // Rigid bodies
     std::vector<std::unique_ptr<RigidBody>> rigidBodies;
 
@@ -277,6 +301,9 @@ private:
     uint32_t maxGPUObjects = 1024;
     uint32_t maxGPUCollisions = 4096;
     Renderer* renderer = nullptr;
+
+    // Camera position for geometry-relative ball checking
+    glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 0.0f);
 
     // Vulkan resources for physics simulation
     struct VulkanResources {
@@ -296,7 +323,7 @@ private:
 
         // Descriptor pool and sets
         vk::raii::DescriptorPool descriptorPool = nullptr;
-        std::vector<vk::DescriptorSet> descriptorSets;
+        std::vector<vk::raii::DescriptorSet> descriptorSets;
 
         // Buffers for physics data
         vk::raii::Buffer physicsBuffer = nullptr;
@@ -310,9 +337,17 @@ private:
         vk::raii::Buffer paramsBuffer = nullptr;
         vk::raii::DeviceMemory paramsBufferMemory = nullptr;
 
+        // Persistent mapped memory pointers for improved performance
+        void* persistentPhysicsMemory = nullptr;
+        void* persistentCounterMemory = nullptr;
+        void* persistentParamsMemory = nullptr;
+
         // Command buffer for compute operations
         vk::raii::CommandPool commandPool = nullptr;
         vk::raii::CommandBuffer commandBuffer = nullptr;
+
+        // Dedicated fence for compute synchronization
+        vk::raii::Fence computeFence = nullptr;
     };
 
     VulkanResources vulkanResources;
@@ -322,11 +357,11 @@ private:
     void CleanupVulkanResources();
 
     // Update physics data on the GPU
-    void UpdateGPUPhysicsData() const;
+    void UpdateGPUPhysicsData(float deltaTime) const;
 
     // Read back physics data from the GPU
     void ReadbackGPUPhysicsData() const;
 
     // Perform GPU-accelerated physics simulation
-    void SimulatePhysicsOnGPU(float deltaTime) const;
+    void SimulatePhysicsOnGPU(float deltaTime);
 };

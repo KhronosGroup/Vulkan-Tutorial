@@ -258,6 +258,6 @@ vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX, uint32_t groupCo
         std::cerr << "Failed to dispatch compute shader: " << e.what() << std::endl;
         // Return a null fence on error
         vk::FenceCreateInfo fenceInfo{};
-        return vk::raii::Fence(device, fenceInfo);
+        return {device, fenceInfo};
     }
 }

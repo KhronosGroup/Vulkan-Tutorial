@@ -21,7 +21,7 @@ Throughout this chapter, we've delved into several key aspects of engine archite
 
 2. *Component Systems* - We implemented a flexible component-based architecture that allows for modular and reusable code. This approach promotes composition over inheritance, making it easier to create diverse game objects without deep inheritance hierarchies.
 
-3. *Resource Management* - We designed a robust resource management system that efficiently handles assets like textures, meshes, and shaders. Our system includes features like reference counting, caching, and hot reloading to optimize memory usage and improve development workflow.
+3. *Resource Management* - We designed a robust resource management system that efficiently handles assets like textures, meshes, and shaders. Our system includes features such as reference counting, caching, and hot reloading to optimize memory usage and improve development workflow.
 
 4. *Rendering Pipeline* - We structured a flexible rendering pipeline that can accommodate different rendering techniques and effects. Our pipeline includes stages for scene culling, render pass management, command generation, and post-processing.
 

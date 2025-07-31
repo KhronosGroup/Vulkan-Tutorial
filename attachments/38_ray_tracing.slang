@@ -141,14 +141,30 @@ void apply_reflection(float3 P, float3 N, inout float4 baseColor) {
     reflectionRayDesc.TMax = 1e4;
 
     // Initialize a ray-query for reflections
-    RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-             RAY_FLAG_FORCE_OPAQUE> rq;
-    let rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-             RAY_FLAG_FORCE_OPAQUE;
+    RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> rq;
+    let rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES;
 
     rq.TraceRayInline(accelerationStructure, rayFlags, 0xFF, reflectionRayDesc);
 
-    rq.Proceed();
+    while (rq.Proceed())
+    {
+        uint instanceID = rq.CandidateInstanceID();
+        uint primIndex = rq.CandidatePrimitiveIndex();
+
+        float2 uv = intersection_uv(instanceID, primIndex, rq.CandidateTriangleBarycentrics());
+
+        uint materialID = instanceLUTBuffer[instanceID].materialID;
+        float4 intersection_color = textures[materialID].Sample(textureSampler, uv);
+
+        if (intersection_color.a < 0.5) {
+            // If the triangle is transparent, we continue to trace
+            // to find the next opaque triangle.
+        } else {
+            // If we hit an opaque triangle, we stop tracing.
+            rq.CommitNonOpaqueTriangleHit();
+        }
+
+    }
 
     bool hit = (rq.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
 

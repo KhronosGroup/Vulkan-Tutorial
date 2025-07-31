@@ -38,7 +38,6 @@ constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
 constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/plant_on_table.obj";
-const std::string TEXTURE_PATH = "textures/nettle_plant_diff_4k.png";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector validationLayers = {
@@ -85,6 +84,10 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
 };
 
+struct PushConstant {
+    uint32_t materialIndex;
+};
+
 class HelloTriangleApplication {
 public:
     void run() {
@@ -122,9 +125,9 @@ private:
     vk::raii::DeviceMemory depthImageMemory = nullptr;
     vk::raii::ImageView depthImageView = nullptr;
 
-    vk::raii::Image textureImage = nullptr;
-    vk::raii::DeviceMemory textureImageMemory = nullptr;
-    vk::raii::ImageView textureImageView = nullptr;
+    std::vector<vk::raii::Image> textureImages;
+    std::vector<vk::raii::DeviceMemory> textureImageMemories;
+    std::vector<vk::raii::ImageView> textureImageViews;
     vk::raii::Sampler textureSampler = nullptr;
 
     std::vector<Vertex> vertices;
@@ -137,6 +140,17 @@ private:
     std::vector<vk::raii::Buffer> uniformBuffers;
     std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
+
+    struct SubMesh {
+        uint32_t indexOffset;
+        uint32_t indexCount;
+        int materialID;
+        uint32_t firstVertex;
+        uint32_t maxVertex;
+        bool alphaCut;
+    };
+    std::vector<SubMesh> submeshes;
+    std::vector<tinyobj::material_t> materials;
 
     vk::raii::DescriptorPool descriptorPool = nullptr;
     std::vector<vk::raii::DescriptorSet> descriptorSets;
@@ -187,8 +201,6 @@ private:
         createGraphicsPipeline();
         createCommandPool();
         createDepthResources();
-        createTextureImage();
-        createTextureImageView();
         createTextureSampler();
         loadModel();
         createVertexBuffer();
@@ -519,7 +531,13 @@ private:
         };
         vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data() };
 
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0 };
+        vk::PushConstantRange pushConstantRange {
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .offset = 0,
+            .size = sizeof(PushConstant)
+        };
+
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
 
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
@@ -589,9 +607,9 @@ private:
         return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
     }
 
-    void createTextureImage() {
+    std::pair<vk::raii::Image, vk::raii::DeviceMemory> createTextureImage(const std::string& path) {
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         vk::DeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
@@ -608,15 +626,20 @@ private:
 
         stbi_image_free(pixels);
 
+        vk::raii::Image textureImage = nullptr;
+        vk::raii::DeviceMemory textureImageMemory = nullptr;
+
         createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, textureImage, textureImageMemory);
 
         transitionImageLayout(textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
         copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
         transitionImageLayout(textureImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        return std::make_pair(std::move(textureImage), std::move(textureImageMemory));
     }
 
-    void createTextureImageView() {
-        textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+    vk::raii::ImageView createTextureImageView(vk::raii::Image& textureImage) {
+        return createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
     }
 
     void createTextureSampler() {
@@ -720,16 +743,27 @@ private:
     void loadModel() {
         tinyobj::attrib_t attrib;
         std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
+        std::vector<tinyobj::material_t> localMaterials;
         std::string warn, err;
 
-        if (!LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+        if (!LoadObj(&attrib, &shapes, &localMaterials, &warn, &err, MODEL_PATH.c_str(), MODEL_PATH.substr(0, MODEL_PATH.find_last_of("/\\")).c_str())) {
             throw std::runtime_error(warn + err);
         }
 
+        size_t materialOffset = materials.size();
+        size_t oldTextureCount = textureImageViews.size();
+
+        materials.insert(materials.end(), localMaterials.begin(), localMaterials.end());
+
         std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+        uint32_t indexOffset = 0;
 
         for (const auto& shape : shapes) {
+            std::cout << "Loading mesh: " << shape.name << ": " << shape.mesh.indices.size()/3 << " triangles\n";
+
+            uint32_t startOffset = indexOffset;
+            uint32_t localMaxV = 0;
+
             for (const auto& index : shape.mesh.indices) {
                 Vertex vertex{};
 
@@ -752,6 +786,51 @@ private:
                 }
 
                 indices.push_back(uniqueVertices[vertex]);
+
+                indexOffset++;
+
+                uint32_t vi;
+                auto it = uniqueVertices.find(vertex);
+                if (it != uniqueVertices.end()) {
+                    vi = it->second;
+                } else {
+                    vi = static_cast<uint32_t>(vertices.size());
+                    uniqueVertices[vertex] = vi;
+                    vertices.push_back(vertex);
+                }
+
+                localMaxV = std::max(localMaxV, vi);
+            }
+
+            int localMaterialID = shape.mesh.material_ids.empty() ? -1 : shape.mesh.material_ids[0];
+            int globalMaterialID = (localMaterialID < 0) ? -1 : static_cast<int>(materialOffset + localMaterialID);
+
+            uint32_t indexCount = indexOffset - startOffset;
+
+            // Note that this is only valid for this particular MODEL_PATH
+            bool alphaCut = (shape.name.find("nettle_plant") != std::string::npos);
+
+            submeshes.push_back({
+                .indexOffset = startOffset,
+                .indexCount = indexCount,
+                .materialID = globalMaterialID,
+                .firstVertex = 0u,
+                .maxVertex = localMaxV + 1,
+                .alphaCut = alphaCut
+            });
+        }
+
+        for (size_t i = 0; i < localMaterials.size(); ++i) {
+            const auto& material = localMaterials[i];
+
+            if (!material.diffuse_texname.empty()) {
+                std::string texturePath = MODEL_PATH.substr(0, MODEL_PATH.find_last_of("/\\")) + "/" + material.diffuse_texname;
+                auto [img, mem] = createTextureImage(texturePath);
+                textureImages.push_back(std::move(img));
+                textureImageMemories.push_back(std::move(mem));
+                textureImageViews.emplace_back(createTextureImageView(textureImages.back()));
+            } else {
+                std::cout << "No texture for material: " << material.name << std::endl;
             }
         }
     }
@@ -836,7 +915,7 @@ private:
             };
             vk::DescriptorImageInfo imageInfo{
                 .sampler = textureSampler,
-                .imageView = textureImageView,
+                .imageView = textureImageViews[0],
                 .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
             };
             std::array descriptorWrites{
@@ -1001,7 +1080,13 @@ private:
         commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
         commandBuffers[currentFrame].bindIndexBuffer( *indexBuffer, 0, vk::IndexType::eUint32 );
         commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
-        commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
+
+        for (auto& sub : submeshes) {
+            uint32_t idx = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID);
+            commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, PushConstant{ .materialIndex = idx });
+            commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
+        }
+
         commandBuffers[currentFrame].endRendering();
         // After rendering, transition the swapchain image to PRESENT_SRC
         transition_image_layout(

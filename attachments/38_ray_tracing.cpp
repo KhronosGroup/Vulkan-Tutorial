@@ -91,6 +91,7 @@ struct UniformBufferObject {
 
 struct PushConstant {
     uint32_t materialIndex;
+    uint32_t reflective;
 };
 
 class HelloTriangleApplication {
@@ -180,6 +181,7 @@ private:
         uint32_t firstVertex;
         uint32_t maxVertex;
         bool alphaCut;
+        bool reflective;
     };
     std::vector<SubMesh> submeshes;
     std::vector<tinyobj::material_t> materials;
@@ -913,6 +915,7 @@ private:
 
             // Note that this is only valid for this particular MODEL_PATH
             bool alphaCut = (shape.name.find("nettle_plant") != std::string::npos);
+            bool reflective = (shape.name.find("table") != std::string::npos);
 
             submeshes.push_back({
                 .indexOffset = startOffset,
@@ -920,7 +923,8 @@ private:
                 .materialID = globalMaterialID,
                 .firstVertex = 0u,
                 .maxVertex = localMaxV + 1,
-                .alphaCut = alphaCut
+                .alphaCut = alphaCut,
+                .reflective = reflective
             });
         }
 
@@ -1652,7 +1656,7 @@ private:
 
         for (auto& sub : submeshes) {
             uint32_t idx = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID);
-            commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, PushConstant{ .materialIndex = idx });
+            commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, PushConstant{ .materialIndex = idx, .reflective = sub.reflective });
             commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
         }
 

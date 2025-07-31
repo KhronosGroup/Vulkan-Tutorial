@@ -57,6 +57,7 @@ Texture2D<float4> textures[];
 
 struct PushConstant {
     uint materialIndex;
+    uint reflective;
 };
 [push_constant]
 PushConstant pc;
@@ -133,6 +134,10 @@ float4 fragMain(VSOutput vertIn) : SV_TARGET {
 
    // Alpha test
    if (baseColor.a < 0.5) discard;
+
+   if (pc.reflective > 0) {
+       baseColor.rgb = float3(1.0, 0.0, 0.0);
+   }
 
    bool inShadow = in_shadow(vertIn.worldPos);
 

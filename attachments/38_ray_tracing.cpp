@@ -195,7 +195,8 @@ private:
         vk::KHRCreateRenderpass2ExtensionName,
         vk::KHRAccelerationStructureExtensionName,
         vk::KHRBufferDeviceAddressExtensionName,
-        vk::KHRDeferredHostOperationsExtensionName
+        vk::KHRDeferredHostOperationsExtensionName,
+        vk::KHRRayQueryExtensionName
     };
 
     void initWindow() {
@@ -372,7 +373,8 @@ private:
                 vk::PhysicalDeviceVulkan12Features,
                 vk::PhysicalDeviceVulkan13Features,
                 vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-                vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+                vk::PhysicalDeviceRayQueryFeaturesKHR>();
             bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
                                             features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                             features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
@@ -382,7 +384,8 @@ private:
                                             features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
                                             features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
                                             features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
-                                            features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure;
+                                            features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure &&
+                                            features.template get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
           } );
@@ -447,14 +450,15 @@ private:
         // query for Vulkan 1.3 features
         vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan12Features,
             vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHR> featureChain = {
-                {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayQueryFeaturesKHR> featureChain = {
+                {.features = {.samplerAnisotropy = true } },                       // vk::PhysicalDeviceFeatures2
                 {.shaderSampledImageArrayNonUniformIndexing = true, .descriptorBindingSampledImageUpdateAfterBind = true,
                  .descriptorBindingPartiallyBound = true, .descriptorBindingVariableDescriptorCount = true,
-                 .runtimeDescriptorArray = true, .bufferDeviceAddress = true }, // vk::PhysicalDeviceVulkan12Features
-                {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
-                {.extendedDynamicState = true },                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
-                {.accelerationStructure = true },                         // vk::PhysicalDeviceAccelerationStructureFeaturesKHR
+                 .runtimeDescriptorArray = true, .bufferDeviceAddress = true },    // vk::PhysicalDeviceVulkan12Features
+                {.synchronization2 = true, .dynamicRendering = true },             // vk::PhysicalDeviceVulkan13Features
+                {.extendedDynamicState = true },                                   // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+                {.accelerationStructure = true },                                  // vk::PhysicalDeviceAccelerationStructureFeaturesKHR
+                {.rayQuery = true }                                                // vk::PhysicalDeviceRayQueryFeaturesKHR
         };
 
         // create a Device
@@ -1002,13 +1006,9 @@ private:
             vk::AccelerationStructureGeometryDataKHR geomData(trianglesData);
             vk::AccelerationStructureGeometryKHR blasGeometry{
                 .geometryType = vk::GeometryTypeKHR::eTriangles,
-                .geometry = geomData
+                .geometry = geomData,
+                .flags = vk::GeometryFlagBitsKHR::eOpaque
             };
-
-            if (!submesh.alphaCut)
-            {
-                blasGeometry.flags = vk::GeometryFlagBitsKHR::eOpaque;
-            }
 
             vk::AccelerationStructureBuildRangeInfoKHR blasRangeInfo{
                 .primitiveCount = static_cast<uint32_t>(submesh.indexCount / 3),

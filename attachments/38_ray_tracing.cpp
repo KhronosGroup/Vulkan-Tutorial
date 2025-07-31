@@ -117,7 +117,8 @@ private:
     vk::Extent2D swapChainExtent;
     std::vector<vk::raii::ImageView> swapChainImageViews;
 
-    vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
+    vk::raii::DescriptorSetLayout descriptorSetLayoutGlobal = nullptr;
+    vk::raii::DescriptorSetLayout descriptorSetLayoutMaterial = nullptr;
     vk::raii::PipelineLayout pipelineLayout = nullptr;
     vk::raii::Pipeline graphicsPipeline = nullptr;
 
@@ -153,7 +154,8 @@ private:
     std::vector<tinyobj::material_t> materials;
 
     vk::raii::DescriptorPool descriptorPool = nullptr;
-    std::vector<vk::raii::DescriptorSet> descriptorSets;
+    std::vector<vk::raii::DescriptorSet> globalDescriptorSets;
+    std::vector<vk::raii::DescriptorSet> materialDescriptorSets;
 
     vk::raii::CommandPool commandPool = nullptr;
     std::vector<vk::raii::CommandBuffer> commandBuffers;
@@ -197,12 +199,12 @@ private:
         createLogicalDevice();
         createSwapChain();
         createImageViews();
+        createCommandPool();
+        loadModel();
         createDescriptorSetLayout();
         createGraphicsPipeline();
-        createCommandPool();
         createDepthResources();
         createTextureSampler();
-        loadModel();
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -343,10 +345,18 @@ private:
                                                                  { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                                    } );
 
-            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2,
+                vk::PhysicalDeviceVulkan12Features,
+                vk::PhysicalDeviceVulkan13Features,
+                vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
                                             features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+                                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
           } );
@@ -409,10 +419,14 @@ private:
         }
 
         // query for Vulkan 1.3 features
-        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-            {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
-            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
-            {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan12Features,
+            vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+                {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
+                {.shaderSampledImageArrayNonUniformIndexing = true, .descriptorBindingSampledImageUpdateAfterBind = true,
+                 .descriptorBindingPartiallyBound = true, .descriptorBindingVariableDescriptorCount = true,
+                 .runtimeDescriptorArray = true }, // vk::PhysicalDeviceVulkan12Features
+                {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
+                {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
         };
 
         // create a Device
@@ -462,13 +476,41 @@ private:
     }
 
     void createDescriptorSetLayout() {
-        std::array bindings = {
-            vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
-            vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr)
+        // Use descriptor set 0 for global data
+        std::array global_bindings = {
+            vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
         };
 
-        vk::DescriptorSetLayoutCreateInfo layoutInfo{ .bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data() };
-        descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
+        vk::DescriptorSetLayoutCreateInfo globalLayoutInfo{ .bindingCount = static_cast<uint32_t>(global_bindings.size()), .pBindings = global_bindings.data() };
+
+        descriptorSetLayoutGlobal = vk::raii::DescriptorSetLayout(device, globalLayoutInfo);
+
+        // Use descriptor set 1 for bindless material data
+        uint32_t textureCount = static_cast<uint32_t>(textureImageViews.size());
+
+        std::array material_bindings = {
+            vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
+			vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eSampledImage, static_cast<uint32_t>(textureCount), vk::ShaderStageFlagBits::eFragment, nullptr)
+        };
+
+        std::vector<vk::DescriptorBindingFlags> bindingFlags = {
+            vk::DescriptorBindingFlagBits::eUpdateAfterBind,
+            vk::DescriptorBindingFlagBits::ePartiallyBound | vk::DescriptorBindingFlagBits::eVariableDescriptorCount | vk::DescriptorBindingFlagBits::eUpdateAfterBind
+        };
+
+        vk::DescriptorSetLayoutBindingFlagsCreateInfo flagsCreateInfo{
+            .bindingCount = static_cast<uint32_t>(bindingFlags.size()),
+            .pBindingFlags = bindingFlags.data()
+        };
+
+        vk::DescriptorSetLayoutCreateInfo materialLayoutInfo{
+            .pNext = &flagsCreateInfo,
+            .flags = vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool,
+            .bindingCount = static_cast<uint32_t>(material_bindings.size()),
+            .pBindings = material_bindings.data(),
+        };
+
+        descriptorSetLayoutMaterial = vk::raii::DescriptorSetLayout(device, materialLayoutInfo);
     }
 
     void createGraphicsPipeline() {
@@ -531,13 +573,15 @@ private:
         };
         vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data() };
 
+        vk::DescriptorSetLayout setLayouts[] = {*descriptorSetLayoutGlobal, *descriptorSetLayoutMaterial};
+
         vk::PushConstantRange pushConstantRange {
             .stageFlags = vk::ShaderStageFlagBits::eFragment,
             .offset = 0,
             .size = sizeof(PushConstant)
         };
 
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 2, .pSetLayouts = setLayouts, .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
 
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
@@ -885,11 +929,13 @@ private:
     void createDescriptorPool() {
         std::array poolSize {
             vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
-            vk::DescriptorPoolSize(  vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT)
+            vk::DescriptorPoolSize( vk::DescriptorType::eSampler, MAX_FRAMES_IN_FLIGHT),
+            vk::DescriptorPoolSize( vk::DescriptorType::eSampledImage, (uint32_t)materials.size())
         };
         vk::DescriptorPoolCreateInfo poolInfo{
-            .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-            .maxSets = MAX_FRAMES_IN_FLIGHT,
+            .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet |
+                vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind,
+            .maxSets = MAX_FRAMES_IN_FLIGHT + 1, // + 1 for bindless materials
             .poolSizeCount = static_cast<uint32_t>(poolSize.size()),
             .pPoolSizes = poolSize.data()
         };
@@ -897,47 +943,95 @@ private:
     }
 
     void createDescriptorSets() {
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
-        vk::DescriptorSetAllocateInfo allocInfo{
+        // Global descriptor sets (per frame)
+        std::vector<vk::DescriptorSetLayout> globalLayouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayoutGlobal);
+
+        vk::DescriptorSetAllocateInfo allocInfoGlobal{
             .descriptorPool = descriptorPool,
-            .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
-            .pSetLayouts = layouts.data()
+            .descriptorSetCount = static_cast<uint32_t>(globalLayouts.size()),
+            .pSetLayouts = globalLayouts.data()
         };
 
-        descriptorSets.clear();
-        descriptorSets = device.allocateDescriptorSets(allocInfo);
+        globalDescriptorSets.clear();
+        globalDescriptorSets = device.allocateDescriptorSets(allocInfoGlobal);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+             // Uniform buffer
             vk::DescriptorBufferInfo bufferInfo{
                 .buffer = uniformBuffers[i],
                 .offset = 0,
                 .range = sizeof(UniformBufferObject)
             };
-            vk::DescriptorImageInfo imageInfo{
-                .sampler = textureSampler,
-                .imageView = textureImageViews[0],
-                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+
+            vk::WriteDescriptorSet bufferWrite{
+                .dstSet = globalDescriptorSets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
+                .pBufferInfo = &bufferInfo
             };
-            std::array descriptorWrites{
-                vk::WriteDescriptorSet{
-                    .dstSet = descriptorSets[i],
-                    .dstBinding = 0,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eUniformBuffer,
-                    .pBufferInfo = &bufferInfo
-                },
-                vk::WriteDescriptorSet{
-                    .dstSet = descriptorSets[i],
-                    .dstBinding = 1,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                    .pImageInfo = &imageInfo
-                }
-            };
+
+            std::array<vk::WriteDescriptorSet, 1> descriptorWrites{bufferWrite};
+
             device.updateDescriptorSets(descriptorWrites, {});
         }
+
+        // Material descriptor sets (per material)
+        std::vector<uint32_t> variableCounts = { static_cast<uint32_t>(textureImageViews.size()) };
+        vk::DescriptorSetVariableDescriptorCountAllocateInfo variableCountInfo{
+            .descriptorSetCount = 1,
+            .pDescriptorCounts = variableCounts.data()
+        };
+
+        std::vector<vk::DescriptorSetLayout> layouts{ *descriptorSetLayoutMaterial };
+
+        vk::DescriptorSetAllocateInfo allocInfo {
+            .pNext = &variableCountInfo,
+            .descriptorPool = descriptorPool,
+            .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+            .pSetLayouts = layouts.data()
+        };
+
+        materialDescriptorSets = device.allocateDescriptorSets(allocInfo);
+
+        // Sampler
+        vk::DescriptorImageInfo samplerInfo{
+            .sampler = textureSampler
+		};
+
+        vk::WriteDescriptorSet samplerWrite{
+            .dstSet = materialDescriptorSets[0],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eSampler,
+            .pImageInfo = &samplerInfo
+        };
+
+        device.updateDescriptorSets({samplerWrite}, {});
+
+        // Textures
+        std::vector<vk::DescriptorImageInfo> imageInfos;
+        imageInfos.reserve(textureImageViews.size());
+        for (auto& iv : textureImageViews) {
+            vk::DescriptorImageInfo imageInfo{
+                .imageView = iv,
+                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            };
+            imageInfos.push_back(imageInfo);
+        }
+
+        vk::WriteDescriptorSet materialWrite{
+            .dstSet = materialDescriptorSets[0],
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
+            .descriptorType = vk::DescriptorType::eSampledImage,
+            .pImageInfo = imageInfos.data()
+        };
+
+        device.updateDescriptorSets({materialWrite}, {});
     }
 
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& bufferMemory) {
@@ -1079,7 +1173,8 @@ private:
         commandBuffers[currentFrame].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
         commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
         commandBuffers[currentFrame].bindIndexBuffer( *indexBuffer, 0, vk::IndexType::eUint32 );
-        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
+        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *globalDescriptorSets[currentFrame], nullptr);
+        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 1, *materialDescriptorSets[0], nullptr);
 
         for (auto& sub : submeshes) {
             uint32_t idx = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID);

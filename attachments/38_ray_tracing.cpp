@@ -142,6 +142,8 @@ private:
     vk::raii::DeviceMemory vertexBufferMemory = nullptr;
     vk::raii::Buffer indexBuffer = nullptr;
     vk::raii::DeviceMemory indexBufferMemory = nullptr;
+    vk::raii::Buffer uvBuffer = nullptr;
+    vk::raii::DeviceMemory uvBufferMemory = nullptr;
 
     std::vector<vk::raii::Buffer> blasBuffers;
     std::vector<vk::raii::DeviceMemory> blasMemories;
@@ -156,6 +158,14 @@ private:
     vk::raii::Buffer tlasScratchBuffer = nullptr;
     vk::raii::DeviceMemory tlasScratchMemory = nullptr;
     vk::raii::AccelerationStructureKHR tlas = nullptr;
+
+    struct InstanceLUT {
+        uint32_t materialID;
+        uint32_t indexBufferOffset;
+    };
+    std::vector<InstanceLUT> instanceLUTs;
+    vk::raii::Buffer instanceLUTBuffer = nullptr;
+    vk::raii::DeviceMemory instanceLUTBufferMemory = nullptr;
 
     UniformBufferObject ubo{};
 
@@ -232,7 +242,9 @@ private:
         createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
+        createUVBuffer();
         createAccelerationStructures();
+        createInstanceLUTBuffer();
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
@@ -514,6 +526,9 @@ private:
         std::array global_bindings = {
             vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
 			vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
+			vk::DescriptorSetLayoutBinding( 2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
+			vk::DescriptorSetLayoutBinding( 3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
+			vk::DescriptorSetLayoutBinding( 4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr)
         };
 
         vk::DescriptorSetLayoutCreateInfo globalLayoutInfo{ .bindingCount = static_cast<uint32_t>(global_bindings.size()), .pBindings = global_bindings.data() };
@@ -957,6 +972,47 @@ private:
         copyBuffer(stagingBuffer, indexBuffer, bufferSize);
     }
 
+    void createUVBuffer() {
+        // Extract all texCoords into a separate vector
+        std::vector<glm::vec2> uvs;
+        uvs.reserve(vertices.size());
+        for (auto& v: vertices) {
+            uvs.push_back(v.texCoord);
+        }
+
+        vk::DeviceSize bufferSize = sizeof(uvs[0]) * uvs.size();
+
+        vk::raii::Buffer stagingBuffer({});
+        vk::raii::DeviceMemory stagingBufferMemory({});
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+        void* dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
+        memcpy(dataStaging, uvs.data(), bufferSize);
+        stagingBufferMemory.unmapMemory();
+
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal, uvBuffer, uvBufferMemory);
+
+        copyBuffer(stagingBuffer, uvBuffer, bufferSize);
+    }
+
+    void createInstanceLUTBuffer() {
+        vk::DeviceSize bufferSize = sizeof(InstanceLUT) * instanceLUTs.size();
+
+        vk::raii::Buffer stagingBuffer({});
+        vk::raii::DeviceMemory stagingBufferMemory({});
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+        void* dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
+        memcpy(dataStaging, instanceLUTs.data(), bufferSize);
+        stagingBufferMemory.unmapMemory();
+
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal, instanceLUTBuffer, instanceLUTBufferMemory);
+
+        copyBuffer(stagingBuffer, instanceLUTBuffer, bufferSize);
+    }
+
     void createUniformBuffers() {
         uniformBuffers.clear();
         uniformBuffersMemory.clear();
@@ -1008,9 +1064,13 @@ private:
             vk::AccelerationStructureGeometryDataKHR geomData(trianglesData);
             vk::AccelerationStructureGeometryKHR blasGeometry{
                 .geometryType = vk::GeometryTypeKHR::eTriangles,
-                .geometry = geomData,
-                .flags = vk::GeometryFlagBitsKHR::eOpaque
+                .geometry = geomData
             };
+
+            if (!submesh.alphaCut)
+            {
+                blasGeometry.flags = vk::GeometryFlagBitsKHR::eOpaque;
+            }
 
             vk::AccelerationStructureBuildRangeInfoKHR blasRangeInfo{
                 .primitiveCount = static_cast<uint32_t>(submesh.indexCount / 3),
@@ -1080,11 +1140,13 @@ private:
 
             vk::AccelerationStructureInstanceKHR instance{};
             instance.setTransform(tm)
+                .setInstanceCustomIndex(static_cast<uint32_t>(i)) // Used to retrieve intersection information from instance LUT
                 .setMask(0xFF)
                 .setAccelerationStructureReference(blasDeviceAddr)
                 .setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
 
             instances.push_back(instance);
+            instanceLUTs.push_back({ static_cast<uint32_t>(submesh.materialID), submesh.indexOffset });
         }
 
         // Prepare instance data for the TLAS
@@ -1272,6 +1334,7 @@ private:
         std::array poolSize {
             vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
             vk::DescriptorPoolSize( vk::DescriptorType::eAccelerationStructureKHR, MAX_FRAMES_IN_FLIGHT),
+            vk::DescriptorPoolSize( vk::DescriptorType::eStorageBuffer, MAX_FRAMES_IN_FLIGHT * 3), // indices, UVs, instance LUT
             vk::DescriptorPoolSize( vk::DescriptorType::eSampler, MAX_FRAMES_IN_FLIGHT),
             vk::DescriptorPoolSize( vk::DescriptorType::eSampledImage, (uint32_t)materials.size())
         };
@@ -1330,7 +1393,55 @@ private:
                 .descriptorType = vk::DescriptorType::eAccelerationStructureKHR
             };
 
-            std::array<vk::WriteDescriptorSet, 2> descriptorWrites{bufferWrite, asWrite};
+            // Indices SSBO
+            vk::DescriptorBufferInfo indexBufferInfo{
+                .buffer = indexBuffer,
+                .offset = 0,
+                .range = sizeof(uint32_t) * indices.size()
+            };
+
+            vk::WriteDescriptorSet indexBufferWrite{
+                .dstSet = globalDescriptorSets[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .pBufferInfo = &indexBufferInfo
+            };
+
+            // UVs SSBO
+            vk::DescriptorBufferInfo uvBufferInfo{
+                .buffer = uvBuffer,
+                .offset = 0,
+                .range = sizeof(glm::vec2) * vertices.size()
+            };
+
+            vk::WriteDescriptorSet uvBufferWrite{
+                .dstSet = globalDescriptorSets[i],
+                .dstBinding = 3,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .pBufferInfo = &uvBufferInfo
+            };
+
+            // Instance LUT SSBO
+            vk::DescriptorBufferInfo instanceLUTBufferInfo{
+                .buffer = instanceLUTBuffer,
+                .offset = 0,
+                .range = sizeof(InstanceLUT) * instanceLUTs.size()
+            };
+
+            vk::WriteDescriptorSet instanceLUTBufferWrite{
+                .dstSet = globalDescriptorSets[i],
+                .dstBinding = 4,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .pBufferInfo = &instanceLUTBufferInfo
+            };
+
+            std::array<vk::WriteDescriptorSet, 5> descriptorWrites{bufferWrite, asWrite, indexBufferWrite, uvBufferWrite, instanceLUTBufferWrite};
 
             device.updateDescriptorSets(descriptorWrites, {});
         }

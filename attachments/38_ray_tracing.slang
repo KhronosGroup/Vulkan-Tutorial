@@ -16,6 +16,19 @@ ConstantBuffer<UniformBuffer> ubo;
 [[vk::binding(1,0)]]
 RaytracingAccelerationStructure accelerationStructure;
 
+[[vk::binding(2,0)]]
+StructuredBuffer<uint> indexBuffer;
+
+[[vk::binding(3,0)]]
+StructuredBuffer<float2> uvBuffer;
+
+struct InstanceLUT {
+    uint materialID;
+    uint indexBufferOffset;
+};
+[[vk::binding(4,0)]]
+StructuredBuffer<InstanceLUT> instanceLUTBuffer;
+
 struct VSOutput
 {
     float4 pos : SV_Position;
@@ -53,6 +66,24 @@ static const float3 lightDir = float3(-6.0, 0.0, 6.0);
 // Small epsilon to avoid self-intersection
 static const float EPSILON = 0.01;
 
+float2 intersection_uv(uint instanceID, uint primIndex, float2 barycentrics) {
+    uint indexOffset = instanceLUTBuffer[instanceID].indexBufferOffset;
+
+    uint i0 = indexBuffer[indexOffset + (primIndex * 3 + 0)];
+    uint i1 = indexBuffer[indexOffset + (primIndex * 3 + 1)];
+    uint i2 = indexBuffer[indexOffset + (primIndex * 3 + 2)];
+
+    float2 uv0 = uvBuffer[i0];
+    float2 uv1 = uvBuffer[i1];
+    float2 uv2 = uvBuffer[i2];
+
+    float w0 = 1.0 - barycentrics.x - barycentrics.y;
+    float w1 = barycentrics.x;
+    float w2 = barycentrics.y;
+
+    return w0 * uv0 + w1 * uv1 + w2 * uv2;
+}
+
 bool in_shadow(float3 P)
 {
     // Build the shadow ray from the world position toward the light
@@ -70,7 +101,25 @@ bool in_shadow(float3 P)
 
     sq.TraceRayInline(accelerationStructure, rayFlags, 0xFF, shadowRayDesc);
 
-    sq.Proceed();
+    while (sq.Proceed())
+    {
+        uint instanceID = sq.CandidateInstanceID();
+        uint primIndex = sq.CandidatePrimitiveIndex();
+
+        float2 uv = intersection_uv(instanceID, primIndex, sq.CandidateTriangleBarycentrics());
+
+        uint materialID = instanceLUTBuffer[instanceID].materialID;
+        float4 intersection_color = textures[materialID].Sample(textureSampler, uv);
+
+        if (intersection_color.a < 0.5) {
+            // If the triangle is transparent, we continue to trace
+            // to find the next opaque triangle.
+        } else {
+            // If we hit an opaque triangle, we stop tracing.
+            sq.CommitNonOpaqueTriangleHit();
+        }
+
+    }
 
     // If the shadow ray intersects an opaque triangle, we consider the pixel in shadow
     bool hit = (sq.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
@@ -81,6 +130,9 @@ bool in_shadow(float3 P)
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
    float4 baseColor = textures[pc.materialIndex].Sample(textureSampler, vertIn.fragTexCoord);
+
+   // Alpha test
+   if (baseColor.a < 0.5) discard;
 
    bool inShadow = in_shadow(vertIn.worldPos);
 

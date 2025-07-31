@@ -157,6 +157,8 @@ private:
     vk::raii::DeviceMemory tlasScratchMemory = nullptr;
     vk::raii::AccelerationStructureKHR tlas = nullptr;
 
+    UniformBufferObject ubo{};
+
     std::vector<vk::raii::Buffer> uniformBuffers;
     std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
@@ -1171,6 +1173,101 @@ private:
         endSingleTimeCommands(*cmd);
     }
 
+    void updateTopLevelAS(const glm::mat4 & model) {
+        // Assign the model transform to each instance
+        vk::TransformMatrixKHR tm{};
+        auto &M = model;
+        tm.matrix = std::array<std::array<float,4>,3>{{
+            std::array<float,4>{M[0][0], M[1][0], M[2][0], M[3][0]},
+            std::array<float,4>{M[0][1], M[1][1], M[2][1], M[3][1]},
+            std::array<float,4>{M[0][2], M[1][2], M[2][2], M[3][2]}
+        }};
+
+        for (auto & instance : instances) {
+            instance.setTransform(tm);
+        }
+
+        vk::DeviceSize instBufferSize = sizeof(instances[0]) * instances.size();
+
+        vk::raii::Buffer stagingBuffer({});
+        vk::raii::DeviceMemory stagingBufferMemory({});
+        createBuffer(instBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+        void* dataStaging = stagingBufferMemory.mapMemory(0, instBufferSize);
+        memcpy(dataStaging, instances.data(), instBufferSize);
+        stagingBufferMemory.unmapMemory();
+
+        copyBuffer(stagingBuffer, instanceBuffer, instBufferSize);
+
+        auto cmd = beginSingleTimeCommands();
+
+        // Pre-build barrier
+        vk::MemoryBarrier preBarrier {
+            .srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR | vk::AccessFlagBits::eTransferWrite | vk::AccessFlagBits::eShaderRead,
+            .dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eAccelerationStructureWriteKHR
+        };
+        cmd->pipelineBarrier(
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR | vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eFragmentShader, // srcStageMask
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // dstStageMask
+            {}, // dependencyFlags
+            preBarrier, // memoryBarriers
+            {}, // bufferMemoryBarriers
+            {} // imageMemoryBarriers
+        );
+
+        // Re-build TLAS in place
+        vk::BufferDeviceAddressInfo instanceAddrInfo{ .buffer = instanceBuffer };
+        vk::DeviceAddress instanceAddr = device.getBufferAddressKHR(instanceAddrInfo);
+        vk::AccelerationStructureGeometryKHR tlasGeometry{
+            .geometryType = vk::GeometryTypeKHR::eInstances,
+            .geometry = vk::AccelerationStructureGeometryDataKHR{
+                vk::AccelerationStructureGeometryInstancesDataKHR{
+                    .arrayOfPointers = vk::False,
+                    .data = instanceAddr
+                }
+            }
+        };
+
+        vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildInfo{
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+            .flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+            .mode = vk::BuildAccelerationStructureModeKHR::eUpdate,
+            .geometryCount = 1,
+            .pGeometries = &tlasGeometry
+        };
+
+        vk::AccelerationStructureBuildRangeInfoKHR tlasRangeInfo{
+            .primitiveCount = static_cast<uint32_t>(instances.size()),
+            .primitiveOffset = 0,
+            .firstVertex = 0,
+            .transformOffset = 0
+        };
+
+        tlasBuildInfo.dstAccelerationStructure = tlas;
+        tlasBuildInfo.srcAccelerationStructure = tlas;
+        vk::BufferDeviceAddressInfo scratchAddrInfo2 { .buffer = *tlasScratchBuffer };
+        vk::DeviceAddress tlasScratchAddr = device.getBufferAddressKHR(scratchAddrInfo2);
+        tlasBuildInfo.scratchData.deviceAddress = tlasScratchAddr;
+        cmd->buildAccelerationStructuresKHR({ tlasBuildInfo }, { &tlasRangeInfo });
+
+        // Post-build barrier
+        vk::MemoryBarrier postBarrier {
+            .srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR,
+            .dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eShaderRead
+        };
+
+        cmd->pipelineBarrier(
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // srcStageMask
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR | vk::PipelineStageFlagBits::eFragmentShader, // dstStageMask
+            {}, // dependencyFlags
+            postBarrier, // memoryBarriers
+            {}, // bufferMemoryBarriers
+            {} // imageMemoryBarriers
+        );
+
+        endSingleTimeCommands(*cmd);
+    }
+
     void createDescriptorPool() {
         std::array poolSize {
             vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
@@ -1513,15 +1610,16 @@ private:
         }
     }
 
-    void updateUniformBuffer(uint32_t currentImage) const {
+    void updateUniformBuffer(uint32_t currentImage) {
         static auto startTime = std::chrono::high_resolution_clock::now();
 
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float>(currentTime - startTime).count();
 
-        UniformBufferObject ubo{};
-        ubo.model = rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto eye = glm::vec3(2.0f, 2.0f, 2.0f);
+
+        ubo.model = rotate(glm::mat4(1.0f), time * 0.1f * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = lookAt(eye, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
@@ -1541,6 +1639,7 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
         updateUniformBuffer(currentFrame);
+        updateTopLevelAS(ubo.model);
 
         device.resetFences(  *inFlightFences[currentFrame] );
         commandBuffers[currentFrame].reset();

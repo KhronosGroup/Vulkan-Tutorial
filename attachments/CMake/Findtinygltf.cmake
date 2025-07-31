@@ -156,7 +156,7 @@ elseif(TARGET tinygltf)
         INTERFACE_INCLUDE_DIRECTORIES "${tinygltf_INCLUDE_DIR}"
       )
     endif()
-  endif()
+endif()
 endif()
 
 mark_as_advanced(tinygltf_INCLUDE_DIR)

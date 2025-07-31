@@ -130,10 +130,12 @@ function (add_chapter CHAPTER_NAME)
     target_link_libraries (${CHAPTER_NAME} ${CHAPTER_LIBS})
   endif ()
   if (DEFINED CHAPTER_MODELS)
-    file (COPY assets/${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
+    list(TRANSFORM CHAPTER_MODELS PREPEND "${CMAKE_SOURCE_DIR}/assets/")
+    file (COPY ${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
   endif ()
   if (DEFINED CHAPTER_TEXTURES)
-    file (COPY assets/${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
+    list(TRANSFORM CHAPTER_TEXTURES PREPEND "${CMAKE_SOURCE_DIR}/assets/")
+    file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
   endif ()
 endfunction ()
 
@@ -275,3 +277,13 @@ add_chapter (36_multiple_objects
 add_chapter (37_multithreading
   SHADER 37_shader_compute
   LIBS glm::glm)
+
+add_chapter (38_ray_tracing
+  SHADER 38_ray_tracing
+  MODELS plant_on_table.obj
+  MODELS plant_on_table.mtl
+  TEXTURES plant_on_table_textures/nettle_plant_diff_4k.png
+  TEXTURES plant_on_table_textures/potted_plant_02_pot_diff_1k.png
+  TEXTURES plant_on_table_textures/wooden_picnic_table_bottom_diff_1k.png
+  TEXTURES plant_on_table_textures/wooden_picnic_table_top_diff_1k.png
+  LIBS glm::glm tinyobjloader::tinyobjloader)

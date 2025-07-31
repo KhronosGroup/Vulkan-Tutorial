@@ -13,6 +13,9 @@ struct UniformBuffer {
 [[vk::binding(0,0)]]
 ConstantBuffer<UniformBuffer> ubo;
 
+[[vk::binding(1,0)]]
+RaytracingAccelerationStructure accelerationStructure;
+
 struct VSOutput
 {
     float4 pos : SV_Position;

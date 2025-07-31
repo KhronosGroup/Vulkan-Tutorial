@@ -143,6 +143,20 @@ private:
     vk::raii::Buffer indexBuffer = nullptr;
     vk::raii::DeviceMemory indexBufferMemory = nullptr;
 
+    std::vector<vk::raii::Buffer> blasBuffers;
+    std::vector<vk::raii::DeviceMemory> blasMemories;
+    std::vector<vk::raii::AccelerationStructureKHR> blasHandles;
+
+    std::vector<vk::AccelerationStructureInstanceKHR> instances;
+    vk::raii::Buffer instanceBuffer = nullptr;
+    vk::raii::DeviceMemory instanceMemory = nullptr;
+
+    vk::raii::Buffer tlasBuffer = nullptr;
+    vk::raii::DeviceMemory tlasMemory = nullptr;
+    vk::raii::Buffer tlasScratchBuffer = nullptr;
+    vk::raii::DeviceMemory tlasScratchMemory = nullptr;
+    vk::raii::AccelerationStructureKHR tlas = nullptr;
+
     std::vector<vk::raii::Buffer> uniformBuffers;
     std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
@@ -178,7 +192,10 @@ private:
         vk::KHRSwapchainExtensionName,
         vk::KHRSpirv14ExtensionName,
         vk::KHRSynchronization2ExtensionName,
-        vk::KHRCreateRenderpass2ExtensionName
+        vk::KHRCreateRenderpass2ExtensionName,
+        vk::KHRAccelerationStructureExtensionName,
+        vk::KHRBufferDeviceAddressExtensionName,
+        vk::KHRDeferredHostOperationsExtensionName
     };
 
     void initWindow() {
@@ -212,6 +229,7 @@ private:
         createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
+        createAccelerationStructures();
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
@@ -353,7 +371,8 @@ private:
             auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2,
                 vk::PhysicalDeviceVulkan12Features,
                 vk::PhysicalDeviceVulkan13Features,
-                vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+                vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
             bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
                                             features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                             features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
@@ -361,7 +380,9 @@ private:
                                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&
                                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
                                             features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
-                                            features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing;
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
+                                            features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
+                                            features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
           } );
@@ -425,13 +446,15 @@ private:
 
         // query for Vulkan 1.3 features
         vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan12Features,
-            vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+            vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR> featureChain = {
                 {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
                 {.shaderSampledImageArrayNonUniformIndexing = true, .descriptorBindingSampledImageUpdateAfterBind = true,
                  .descriptorBindingPartiallyBound = true, .descriptorBindingVariableDescriptorCount = true,
-                 .runtimeDescriptorArray = true }, // vk::PhysicalDeviceVulkan12Features
+                 .runtimeDescriptorArray = true, .bufferDeviceAddress = true }, // vk::PhysicalDeviceVulkan12Features
                 {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
-                {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+                {.extendedDynamicState = true },                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+                {.accelerationStructure = true },                         // vk::PhysicalDeviceAccelerationStructureFeaturesKHR
         };
 
         // create a Device
@@ -484,6 +507,7 @@ private:
         // Use descriptor set 0 for global data
         std::array global_bindings = {
             vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
+			vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
         };
 
         vk::DescriptorSetLayoutCreateInfo globalLayoutInfo{ .bindingCount = static_cast<uint32_t>(global_bindings.size()), .pBindings = global_bindings.data() };
@@ -904,7 +928,8 @@ private:
         memcpy(dataStaging, vertices.data(), bufferSize);
         stagingBufferMemory.unmapMemory();
 
-        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
+            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
 
         copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
     }
@@ -920,7 +945,8 @@ private:
         memcpy(data, indices.data(), bufferSize);
         stagingBufferMemory.unmapMemory();
 
-        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
+        createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
+            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
 
         copyBuffer(stagingBuffer, indexBuffer, bufferSize);
     }
@@ -941,9 +967,214 @@ private:
         }
     }
 
+    void createAccelerationStructures() {
+        vk::BufferDeviceAddressInfo vai{ .buffer = *vertexBuffer };
+        vk::DeviceAddress vertexAddr = device.getBufferAddressKHR(vai);
+        vk::BufferDeviceAddressInfo iai{ .buffer = *indexBuffer };
+        vk::DeviceAddress indexAddr = device.getBufferAddressKHR(iai);
+
+        instances.reserve(submeshes.size());
+        blasBuffers.reserve(submeshes.size());
+        blasMemories.reserve(submeshes.size());
+        blasHandles.reserve(submeshes.size());
+
+        vk::TransformMatrixKHR tm{};
+        tm.matrix = std::array<std::array<float,4>,3>{{
+            std::array<float,4>{1.f, 0.f, 0.f, 0.f},
+            std::array<float,4>{0.f, 1.f, 0.f, 0.f},
+            std::array<float,4>{0.f, 0.f, 1.f, 0.f}
+        }};
+
+        // Build a bottom level acceleration structure for each submesh
+        for (size_t i = 0; i < submeshes.size(); ++i) {
+            const auto& submesh = submeshes[i];
+
+            // Prepare geometry data
+            auto trianglesData = vk::AccelerationStructureGeometryTrianglesDataKHR{
+                .vertexFormat = vk::Format::eR32G32B32Sfloat,
+                .vertexData = vertexAddr,
+                .vertexStride = sizeof(Vertex),
+                .maxVertex = submesh.maxVertex,
+                .indexType = vk::IndexType::eUint32,
+                .indexData = indexAddr + submesh.indexOffset * sizeof(uint32_t)
+            };
+
+            vk::AccelerationStructureGeometryDataKHR geomData(trianglesData);
+            vk::AccelerationStructureGeometryKHR blasGeometry{
+                .geometryType = vk::GeometryTypeKHR::eTriangles,
+                .geometry = geomData
+            };
+
+            if (!submesh.alphaCut)
+            {
+                blasGeometry.flags = vk::GeometryFlagBitsKHR::eOpaque;
+            }
+
+            vk::AccelerationStructureBuildRangeInfoKHR blasRangeInfo{
+                .primitiveCount = static_cast<uint32_t>(submesh.indexCount / 3),
+                .primitiveOffset = 0,
+                .firstVertex = submesh.firstVertex,
+                .transformOffset = 0
+            };
+
+            // Prepare BLAS handle and buffer
+            vk::AccelerationStructureBuildGeometryInfoKHR blasBuildInfo{
+                .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
+                .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+                .geometryCount = 1,
+                .pGeometries = &blasGeometry,
+            };
+
+            vk::AccelerationStructureBuildSizesInfoKHR blasSizeInfo =
+                device.getAccelerationStructureBuildSizesKHR(
+                    vk::AccelerationStructureBuildTypeKHR::eDevice,
+                    blasBuildInfo,
+                    { blasRangeInfo.primitiveCount }
+            );
+
+            vk::raii::Buffer blasBuffer = nullptr;
+            vk::raii::DeviceMemory blasMemory = nullptr;
+            blasBuffers.emplace_back(std::move(blasBuffer));
+            blasMemories.emplace_back(std::move(blasMemory));
+            createBuffer(blasSizeInfo.accelerationStructureSize,
+                         vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
+                         vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                         vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal,
+                         blasBuffers[i], blasMemories[i]);
+
+            vk::AccelerationStructureCreateInfoKHR blasCreateInfo{
+                .buffer = blasBuffers[i],
+                .offset = 0,
+                .size = blasSizeInfo.accelerationStructureSize,
+                .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
+            };
+
+            blasHandles.emplace_back(device.createAccelerationStructureKHR(blasCreateInfo));
+
+            // Allocate a scratch buffer for BLAS and build it
+            vk::raii::Buffer scratchBuffer = nullptr;
+            vk::raii::DeviceMemory scratchMemory = nullptr;
+            createBuffer(blasSizeInfo.buildScratchSize,
+                         vk::BufferUsageFlagBits::eStorageBuffer |
+                         vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal,
+                         scratchBuffer, scratchMemory);
+
+            vk::BufferDeviceAddressInfo scratchAddressInfo{ .buffer = *scratchBuffer };
+            vk::DeviceAddress scratchAddr = device.getBufferAddressKHR(scratchAddressInfo);
+
+            auto cmd = beginSingleTimeCommands();
+            blasBuildInfo.dstAccelerationStructure = blasHandles[i];
+            blasBuildInfo.scratchData.deviceAddress = scratchAddr;
+            cmd->buildAccelerationStructuresKHR({ blasBuildInfo }, { &blasRangeInfo });
+            endSingleTimeCommands(*cmd);
+
+            // Create an instance for the TLAS
+            vk::AccelerationStructureDeviceAddressInfoKHR addrInfo{
+                .accelerationStructure = *blasHandles[i]
+            };
+            vk::DeviceAddress blasDeviceAddr = device.getAccelerationStructureAddressKHR(addrInfo);
+
+            vk::AccelerationStructureInstanceKHR instance{};
+            instance.setTransform(tm)
+                .setMask(0xFF)
+                .setAccelerationStructureReference(blasDeviceAddr)
+                .setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
+
+            instances.push_back(instance);
+        }
+
+        // Prepare instance data for the TLAS
+        vk::DeviceSize instBufferSize = sizeof(instances[0]) * instances.size();
+        createBuffer(instBufferSize,
+                     vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                     vk::BufferUsageFlagBits::eTransferDst |
+                     vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                     vk::MemoryPropertyFlagBits::eHostVisible |
+                     vk::MemoryPropertyFlagBits::eHostCoherent,
+                     instanceBuffer, instanceMemory);
+
+        void *ptr = instanceMemory.mapMemory(0, instBufferSize);
+        memcpy(ptr, instances.data(), instBufferSize);
+        instanceMemory.unmapMemory();
+
+        vk::BufferDeviceAddressInfo instanceAddrInfo{ .buffer = instanceBuffer };
+        vk::DeviceAddress instanceAddr = device.getBufferAddressKHR(instanceAddrInfo);
+
+        vk::AccelerationStructureGeometryKHR tlasGeometry{
+            .geometryType = vk::GeometryTypeKHR::eInstances,
+            .geometry = vk::AccelerationStructureGeometryDataKHR{
+                vk::AccelerationStructureGeometryInstancesDataKHR{
+                    .arrayOfPointers = vk::False,
+                    .data = instanceAddr
+                }
+            }
+        };
+
+        vk::AccelerationStructureBuildRangeInfoKHR tlasRangeInfo{
+            .primitiveCount = static_cast<uint32_t>(instances.size()),
+            .primitiveOffset = 0,
+            .firstVertex = 0,
+            .transformOffset = 0
+        };
+
+        // Prepare TLAS handle and buffer
+        vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildInfo{
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+            .flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+            .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+            .geometryCount = 1,
+            .pGeometries = &tlasGeometry
+        };
+
+        auto tlasSizeInfo = device.getAccelerationStructureBuildSizesKHR(
+            vk::AccelerationStructureBuildTypeKHR::eDevice,
+            tlasBuildInfo,
+            { tlasRangeInfo.primitiveCount }
+        );
+
+        createBuffer(
+            tlasSizeInfo.accelerationStructureSize,
+            vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
+            vk::BufferUsageFlagBits::eShaderDeviceAddress |
+            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            tlasBuffer, tlasMemory
+        );
+
+        vk::AccelerationStructureCreateInfoKHR tlasCreateInfo{
+            .buffer = tlasBuffer,
+            .offset = 0,
+            .size = tlasSizeInfo.accelerationStructureSize,
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel
+        };
+
+        tlas = device.createAccelerationStructureKHR(tlasCreateInfo);
+
+        // Allocate a scratch buffer for TLAS and build it
+        createBuffer(
+            tlasSizeInfo.buildScratchSize,
+            vk::BufferUsageFlagBits::eStorageBuffer |
+            vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            tlasScratchBuffer, tlasScratchMemory
+        );
+
+        vk::BufferDeviceAddressInfo scratchAddressInfo{ .buffer = *tlasScratchBuffer };
+        vk::DeviceAddress scratchAddr = device.getBufferAddressKHR(scratchAddressInfo);
+
+        auto cmd = beginSingleTimeCommands();
+        tlasBuildInfo.dstAccelerationStructure = tlas;
+        tlasBuildInfo.scratchData.deviceAddress = scratchAddr;
+        cmd->buildAccelerationStructuresKHR({ tlasBuildInfo }, { &tlasRangeInfo });
+        endSingleTimeCommands(*cmd);
+    }
+
     void createDescriptorPool() {
         std::array poolSize {
             vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
+            vk::DescriptorPoolSize( vk::DescriptorType::eAccelerationStructureKHR, MAX_FRAMES_IN_FLIGHT),
             vk::DescriptorPoolSize( vk::DescriptorType::eSampler, MAX_FRAMES_IN_FLIGHT),
             vk::DescriptorPoolSize( vk::DescriptorType::eSampledImage, (uint32_t)materials.size())
         };
@@ -987,7 +1218,22 @@ private:
                 .pBufferInfo = &bufferInfo
             };
 
-            std::array<vk::WriteDescriptorSet, 1> descriptorWrites{bufferWrite};
+            // Acceleration structure
+            vk::WriteDescriptorSetAccelerationStructureKHR asInfo{
+                .accelerationStructureCount = 1,
+                .pAccelerationStructures = {&*tlas}
+            };
+
+            vk::WriteDescriptorSet asWrite{
+                .pNext = &asInfo,
+                .dstSet = globalDescriptorSets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eAccelerationStructureKHR
+            };
+
+            std::array<vk::WriteDescriptorSet, 2> descriptorWrites{bufferWrite, asWrite};
 
             device.updateDescriptorSets(descriptorWrites, {});
         }
@@ -1061,6 +1307,11 @@ private:
             .allocationSize = memRequirements.size,
             .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)
         };
+        vk::MemoryAllocateFlagsInfo allocFlagsInfo{};
+        if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress) {
+            allocFlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+            allocInfo.pNext = &allocFlagsInfo;
+        }
         bufferMemory = vk::raii::DeviceMemory(device, allocInfo);
         buffer.bindMemory(bufferMemory, 0);
     }

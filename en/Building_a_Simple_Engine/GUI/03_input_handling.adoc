@@ -156,9 +156,9 @@ void processInput(float deltaTime) {
 }
 ----
 
-=== Platform-Specific Input Implementation
+=== Implementing Platform Adapters for Input
 
-Our platform-agnostic input system needs specific implementations for each windowing library to capture input events. Here's an example implementation using GLFW, a popular windowing library:
+While our input system design is platform-agnostic, we still need platform-specific adapters to bridge between our unified interface and each windowing library's native input events. Here's an example implementation using GLFW, a popular windowing library:
 
 ==== Example: GLFW Implementation
 

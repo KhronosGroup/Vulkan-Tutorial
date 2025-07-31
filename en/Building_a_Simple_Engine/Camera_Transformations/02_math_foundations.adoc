@@ -1,10 +1,9 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Camera & Transformations: Mathematical Foundations
 :doctype: book
 :sectnums:
 :sectnumlevels: 4
-:toc: left
 :icons: font
 :source-highlighter: highlightjs
 :source-language: c++
@@ -97,34 +96,6 @@ glm::vec3 crossProduct = glm::cross(a, b); // (-3.0, 6.0, -3.0)
 glm::vec3 normalized = glm::normalize(a); // (0.267, 0.535, 0.802)
 ----
 
-==== The Right-Hand Rule
-
-The right-hand rule is a convention used in 3D graphics and mathematics to determine the orientation of coordinate systems and the direction of cross products.
-
-* *For Cross Products*: When calculating A × B:
-  1. Point your right hand's index finger in the direction of vector A
-  2. Point your middle finger in the direction of vector B (perpendicular to A)
-  3. Your thumb now points in the direction of the resulting cross product
-
-* *For Coordinate Systems*: In a right-handed coordinate system:
-  1. Point your right hand's index finger along the positive X-axis
-  2. Point your middle finger along the positive Y-axis
-  3. Your thumb points along the positive Z-axis
-
-[source,cpp]
-----
-// The cross product direction follows the right-hand rule
-glm::vec3 xAxis(1.0f, 0.0f, 0.0f);  // Point right (positive X)
-glm::vec3 yAxis(0.0f, 1.0f, 0.0f);  // Point up (positive Y)
-
-// Cross product gives the Z axis in a right-handed system
-glm::vec3 zAxis = glm::cross(xAxis, yAxis);  // Points forward (positive Z)
-// zAxis will be (0.0f, 0.0f, 1.0f)
-
-// If we reverse the order, we get the opposite direction
-glm::vec3 negativeZ = glm::cross(yAxis, xAxis);  // Points backward (negative Z)
-// negativeZ will be (0.0f, 0.0f, -1.0f)
-----
 
 === Matrices and Transformations
 
@@ -177,9 +148,31 @@ glm::mat4 modelMatrix = translationMatrix * rotationMatrix * scaleMatrix;
 
 ==== Matrix Order Matters
 
-The order of matrix multiplication is crucial:
-* In `A * B`, the transformation B is applied first, then A
-* For our camera: `projectionMatrix * viewMatrix * modelMatrix * vertex`
+The order of matrix multiplication is crucial because transformations are applied from right to left. Getting the order wrong can completely change your object's final position and orientation.
+
+Consider this practical example: if you want to rotate a cube around its own center and then move it to a new position, you must apply the transformations in the correct order:
+
+[source,cpp]
+----
+// CORRECT: Scale first, then rotate, then translate
+// This rotates the cube around its own center, then moves it
+glm::mat4 modelMatrix = translationMatrix * rotationMatrix * scaleMatrix;
+
+// WRONG: Translate first, then rotate
+// This would move the cube away from origin, then rotate it around the world origin
+// The cube would orbit around the world center instead of rotating in place!
+glm::mat4 wrongMatrix = rotationMatrix * translationMatrix * scaleMatrix;
+----
+
+For our camera pipeline: `projectionMatrix * viewMatrix * modelMatrix * vertex`
+Each transformation prepares the data for the next stage, and changing this order would break the rendering pipeline.
+
+==== Visual Example: Why Matrix Order Matters
+
+The following diagram illustrates the difference between correct and incorrect matrix multiplication order when transforming a cube:
+
+.Matrix Transformation Order Comparison
+image::../../../images/matrix-order-comparison.svg[Matrix Order Comparison showing correct T×R×S vs incorrect R×T×S transformation sequences]
 
 ==== Row-Major vs Column-Major Representation
 

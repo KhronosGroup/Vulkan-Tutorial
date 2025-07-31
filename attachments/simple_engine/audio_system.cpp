@@ -183,9 +183,6 @@ public:
         this->channels = channels;
         this->bufferSize = bufferSize;
 
-        std::cout << "Initializing OpenAL audio output device: " << sampleRate << "Hz, "
-                  << channels << " channels, buffer size: " << bufferSize << std::endl;
-
         // Initialize OpenAL
         device = alcOpenDevice(nullptr); // Use default device
         if (!device) {
@@ -359,8 +356,6 @@ private:
     }
 
     void AudioThreadFunction() {
-        std::cout << "OpenAL audio playback thread started" << std::endl;
-
         // Calculate sleep time for audio buffer updates (in milliseconds)
         const auto sleepTime = std::chrono::milliseconds(
             static_cast<int>((bufferSize * 1000) / sampleRate / 8) // Eighth buffer time for responsiveness
@@ -370,8 +365,6 @@ private:
             ProcessAudioBuffer();
             std::this_thread::sleep_for(sleepTime);
         }
-
-        std::cout << "OpenAL audio playback thread stopped" << std::endl;
     }
 
     void ProcessAudioBuffer() {
@@ -1364,7 +1357,6 @@ void AudioSystem::startAudioThread() {
     audioThreadRunning.store(true);
 
     audioThread = std::thread(&AudioSystem::audioThreadLoop, this);
-    std::cout << "Audio processing thread started" << std::endl;
 }
 
 void AudioSystem::stopAudioThread() {
@@ -1384,7 +1376,6 @@ void AudioSystem::stopAudioThread() {
     }
 
     audioThreadRunning.store(false);
-    std::cout << "Audio processing thread stopped" << std::endl;
 }
 
 void AudioSystem::audioThreadLoop() {

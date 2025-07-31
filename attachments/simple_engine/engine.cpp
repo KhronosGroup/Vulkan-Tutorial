@@ -564,11 +564,6 @@ void Engine::GenerateBallMaterial() {
 
     // Very low bounciness (0.05 to 0.15 for 85-95% momentum loss per bounce)
     ballMaterial.bounciness = 0.05f + dis(gen) * 0.1f;
-
-    std::cout << "Generated ball material - Albedo: (" << ballMaterial.albedo.x << ", "
-              << ballMaterial.albedo.y << ", " << ballMaterial.albedo.z << "), "
-              << "Metallic: " << ballMaterial.metallic << ", Roughness: " << ballMaterial.roughness
-              << ", Bounciness: " << ballMaterial.bounciness << std::endl;
 }
 
 void Engine::InitializePhysicsScaling() {
@@ -584,12 +579,6 @@ void Engine::InitializePhysicsScaling() {
     physicsScaling.forceScale = 1.0f;         // Minimal force scaling for realistic movement
     physicsScaling.physicsTimeScale = 1.0f;   // Keep time scale normal
     physicsScaling.gravityScale = 1.0f;       // Keep gravity proportional to scale
-
-    std::cout << "Physics scaling initialized:" << std::endl;
-    std::cout << "  Game units to meters: " << physicsScaling.gameUnitsToMeters << std::endl;
-    std::cout << "  Force scale: " << physicsScaling.forceScale << std::endl;
-    std::cout << "  Time scale: " << physicsScaling.physicsTimeScale << std::endl;
-    std::cout << "  Gravity scale: " << physicsScaling.gravityScale << std::endl;
 
     // Apply scaled gravity to physics system
     glm::vec3 realWorldGravity(0.0f, -9.81f, 0.0f);
@@ -679,12 +668,6 @@ void Engine::ThrowBall(float mouseX, float mouseY) {
     spawnPosition.y += posDis(gen);
     spawnPosition.z += posDis(gen);
 
-    // Log camera, screen center, and spawn positions for debugging
-    std::cout << "CAMERA POSITION: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
-    std::cout << "SCREEN CENTER WORLD POS: (" << screenCenterWorldPos.x << ", " << screenCenterWorldPos.y << ", " << screenCenterWorldPos.z << ")" << std::endl;
-    std::cout << "BALL SPAWN POSITION: (" << spawnPosition.x << ", " << spawnPosition.y << ", " << spawnPosition.z << ")" << std::endl;
-    std::cout << "THROW DIRECTION: (" << throwDirection.x << ", " << throwDirection.y << ", " << throwDirection.z << ")" << std::endl;
-    std::cout << "MOUSE NDC: (" << ndcX << ", " << ndcY << ")" << std::endl;
     std::uniform_real_distribution<float> spinDis(-10.0f, 10.0f);
     std::uniform_real_distribution<float> forceDis(15.0f, 35.0f); // Stronger force range for proper throwing feel
 
@@ -757,9 +740,6 @@ void Engine::ProcessPendingBalls() {
             glm::vec3 throwImpulse = pendingBall.throwDirection * pendingBall.throwForce;
             rigidBody->ApplyImpulse(throwImpulse, glm::vec3(0.0f));
             rigidBody->SetAngularVelocity(pendingBall.randomSpin);
-
-            std::cout << "Ball " << pendingBall.ballName << " created successfully with force "
-                      << pendingBall.throwForce << std::endl;
         }
     }
 

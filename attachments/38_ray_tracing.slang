@@ -9,6 +9,7 @@ struct UniformBuffer {
     float4x4 model;
     float4x4 view;
     float4x4 proj;
+    float3   cameraPos;
 };
 [[vk::binding(0,0)]]
 ConstantBuffer<UniformBuffer> ubo;
@@ -128,6 +129,43 @@ bool in_shadow(float3 P)
     return hit;
 }
 
+void apply_reflection(float3 P, float3 N, inout float4 baseColor) {
+    // Build the reflections ray
+    float3 V = normalize(ubo.cameraPos - P);
+    float3 R = reflect(-V, N);
+
+    RayDesc reflectionRayDesc;
+    reflectionRayDesc.Origin = P;
+    reflectionRayDesc.Direction = R;
+    reflectionRayDesc.TMin = EPSILON;
+    reflectionRayDesc.TMax = 1e4;
+
+    // Initialize a ray-query for reflections
+    RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_FORCE_OPAQUE> rq;
+    let rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_FORCE_OPAQUE;
+
+    rq.TraceRayInline(accelerationStructure, rayFlags, 0xFF, reflectionRayDesc);
+
+    rq.Proceed();
+
+    bool hit = (rq.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
+
+    if (hit)
+    {
+        uint instanceID = rq.CommittedInstanceID();
+        uint primIndex = rq.CommittedPrimitiveIndex();
+
+        float2 uv = intersection_uv(instanceID, primIndex, rq.CommittedTriangleBarycentrics());
+
+        uint materialID = instanceLUTBuffer[instanceID].materialID;
+        float4 intersectionColor = textures[materialID].Sample(textureSampler, uv);
+
+        baseColor.rgb = lerp(baseColor.rgb, intersectionColor.rgb, 0.7);
+    }
+}
+
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
    float4 baseColor = textures[pc.materialIndex].Sample(textureSampler, vertIn.fragTexCoord);
@@ -135,11 +173,14 @@ float4 fragMain(VSOutput vertIn) : SV_TARGET {
    // Alpha test
    if (baseColor.a < 0.5) discard;
 
+   float3 P = vertIn.worldPos;
+   float3 N = vertIn.fragNormal;
+
    if (pc.reflective > 0) {
-       baseColor.rgb = float3(1.0, 0.0, 0.0);
+       apply_reflection(P, N, baseColor);
    }
 
-   bool inShadow = in_shadow(vertIn.worldPos);
+   bool inShadow = in_shadow(P);
 
    // Darken if in shadow
    if (inShadow) {

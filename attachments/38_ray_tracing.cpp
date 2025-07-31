@@ -87,6 +87,7 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+    alignas(16) glm::vec3 cameraPos;
 };
 
 struct PushConstant {
@@ -1737,6 +1738,7 @@ private:
         ubo.view = lookAt(eye, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
+        ubo.cameraPos = eye;
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }

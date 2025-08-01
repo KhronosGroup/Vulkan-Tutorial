@@ -156,7 +156,8 @@ if not exist "C:\Program Files\Slang" (
 
         REM Add Slang to PATH (requires restart or new command prompt)
         echo Adding Slang to system PATH...
-        setx PATH "%PATH%;C:\Program Files\Slang\bin" /M
+        for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') do set "CURRENT_PATH=%%B"
+        setx PATH "%CURRENT_PATH%;C:\Program Files\Slang\bin" /M
         echo Note: You may need to restart your command prompt for Slang to be available in PATH
     ) else (
         echo Failed to download Slang compiler. Please install manually from:

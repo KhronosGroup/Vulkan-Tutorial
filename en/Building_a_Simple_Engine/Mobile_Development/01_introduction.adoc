@@ -1,0 +1,40 @@
+::pp: {plus}{plus}
+
+= Mobile Development: Introduction
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Introduction to Mobile Development
+
+In previous chapters, we've built a solid foundation for our simple engine, implementing core components like the rendering pipeline, camera systems, model loading, essential subsystems, and tooling. Now, we're ready to explore how to adapt our engine for mobile platforms, specifically Android and iOS.
+
+Mobile development presents unique challenges and opportunities for Vulkan applications. The constraints of mobile hardware—limited power, memory, and thermal capacity—require careful optimization and consideration of platform-specific features. At the same time, mobile platforms offer exciting possibilities for reaching a wider audience with your applications.
+
+=== What We'll Cover
+
+In this chapter, we'll explore:
+
+* *Platform Considerations for Android and iOS*: We'll discuss the specific requirements and constraints of developing Vulkan applications for Android and iOS, including platform-specific setup, lifecycle management, and input handling.
+
+* *Performance Optimizations for Mobile*: We'll explore techniques for optimizing your engine for mobile hardware, focusing on power-of-two textures, efficient texture formats, and other mobile-specific optimizations.
+
+* *Rendering Approaches*: We'll compare Tile-Based Rendering (TBR) and Immediate Mode Rendering (IMR), understanding their implications for mobile GPU architectures.
+
+* *Vulkan Extensions for Mobile*: We'll explore extensions like VK_KHR_dynamic_rendering_local_read, VK_KHR_dynamic_rendering, and VK_EXT_shader_tile_image that can significantly improve performance on mobile devices.
+
+=== Prerequisites
+
+Before diving into this chapter, you should be familiar with:
+
+* The basics of Vulkan and our engine architecture from previous chapters
+* Modern C++ concepts, particularly those introduced in C++17 and C++20
+* Basic understanding of mobile development concepts
+
+Let's begin by exploring the platform considerations for Android and iOS.
+
+link:../Tooling/07_conclusion.adoc[Previous: Tooling Conclusion] | link:02_platform_considerations.adoc[Next: Platform Considerations for Android and iOS]

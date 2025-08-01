@@ -1,0 +1,40 @@
+::pp: {plus}{plus}
+
+= Loading Models: Introduction
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Introduction
+
+Welcome to the "Loading Models" chapter of our "Building a Simple Engine" series! After exploring engine architecture and camera systems in the previous chapters, we're now ready to focus on handling 3D assets within our engine framework.
+
+In this chapter, we'll set up a robust model loading system that can handle modern 3D assets. Building upon the engine architecture we've established and the camera system we've implemented, we'll now add the ability to load and render complex 3D models. In the link:../../15_GLTF_KTX2_Migration.html[chapter on glTF and KTX2] from the main tutorial, we learned about migrating from OBJ to glTF format and the basics of loading glTF models. Now, we'll integrate that knowledge into our engine structure to create a more complete implementation.
+
+In this chapter, we'll focus on:
+
+* Building a scene graph to organize 3D objects hierarchically
+* Implementing animation support for glTF models
+* Creating a PBR material system
+* Rendering multiple objects with different transformations
+* Structuring our code in a more engine-like way
+
+This approach will serve as the foundation for our engine and allow us to create more complex scenes with animated models.
+
+== Prerequisites
+
+Before starting this chapter, you should have completed the main Vulkan tutorial up to at least Chapter 16 (Multiple Objects). You should also be familiar with:
+
+* Basic Vulkan concepts:
+** link:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** link:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* link:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and link:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* link:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+* link:../../06_Texture_mapping/00_Images.adoc[Texture mapping]
+* Basic 3D math (matrices, vectors, quaternions) - See link:../../Building_a_Simple_Engine/Camera_Transformations/02_math_foundations.adoc[Camera Transformations] for a refresher on 3D math.
+
+link:../GUI/06_conclusion.adoc[Previous: GUI] | link:02_project_setup.adoc[Next: Setting Up the Project]

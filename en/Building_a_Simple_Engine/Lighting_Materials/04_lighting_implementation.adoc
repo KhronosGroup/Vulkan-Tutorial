@@ -1,0 +1,509 @@
+= PBR Lighting Implementation
+
+In this section, we'll implement a Physically Based Rendering (PBR) shader based on the concepts we've explored in the previous sections. This shader will use the metallic-roughness workflow that's compatible with glTF models and push constants for material properties. We'll examine the shader implementation and then discuss how to integrate it with our engine.
+
+Throughout our engine implementation, we're using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
+
+== Implementing the PBR Shader
+
+Let's create a PBR shader, which we'll name `pbr.slang`. This shader implements the metallic-roughness workflow that we've discussed, making it compatible with glTF models. It uses push constants for material properties and uniform buffers for transformation matrices and light information.
+
+[source,slang]
+----
+// Combined vertex and fragment shader for PBR rendering
+
+// Input from vertex buffer
+struct VSInput {
+    float3 Position : POSITION;
+    float3 Normal : NORMAL;
+    float2 UV : TEXCOORD0;
+    float4 Tangent : TANGENT;
+};
+
+// Output from vertex shader / Input to fragment shader
+struct VSOutput {
+    float4 Position : SV_POSITION;
+    float3 WorldPos : POSITION;
+    float3 Normal : NORMAL;
+    float2 UV : TEXCOORD0;
+    float4 Tangent : TANGENT;
+};
+
+// Uniform buffer
+struct UniformBufferObject {
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+    float4 lightPositions[4];
+    float4 lightColors[4];
+    float4 camPos;
+    float exposure;
+    float gamma;
+    float prefilteredCubeMipLevels;
+    float scaleIBLAmbient;
+};
+
+// Push constants for material properties
+struct PushConstants {
+    float4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureSet;
+    int physicalDescriptorTextureSet;
+    int normalTextureSet;
+    int occlusionTextureSet;
+    int emissiveTextureSet;
+    float alphaMask;
+    float alphaMaskCutoff;
+};
+
+// Constants
+static const float PI = 3.14159265359;
+
+// Bindings
+[[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
+[[vk::binding(1, 0)]] Texture2D baseColorMap;
+[[vk::binding(1, 0)]] SamplerState baseColorSampler;
+[[vk::binding(2, 0)]] Texture2D metallicRoughnessMap;
+[[vk::binding(2, 0)]] SamplerState metallicRoughnessSampler;
+[[vk::binding(3, 0)]] Texture2D normalMap;
+[[vk::binding(3, 0)]] SamplerState normalSampler;
+[[vk::binding(4, 0)]] Texture2D occlusionMap;
+[[vk::binding(4, 0)]] SamplerState occlusionSampler;
+[[vk::binding(5, 0)]] Texture2D emissiveMap;
+[[vk::binding(5, 0)]] SamplerState emissiveSampler;
+
+[[vk::push_constant]] PushConstants material;
+
+// PBR functions
+float DistributionGGX(float NdotH, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH2 = NdotH * NdotH;
+
+    float nom = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return nom / denom;
+}
+
+float GeometrySmith(float NdotV, float NdotL, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+
+    float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
+    float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
+
+    return ggx1 * ggx2;
+}
+
+float3 FresnelSchlick(float cosTheta, float3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Vertex shader entry point
+[[shader("vertex")]]
+VSOutput VSMain(VSInput input)
+{
+    VSOutput output;
+
+    // Transform position to clip space
+    float4 worldPos = mul(ubo.model, float4(input.Position, 1.0));
+    output.Position = mul(ubo.proj, mul(ubo.view, worldPos));
+
+    // Pass world position to fragment shader
+    output.WorldPos = worldPos.xyz;
+
+    // Transform normal to world space
+    output.Normal = normalize(mul((float3x3)ubo.model, input.Normal));
+
+    // Pass texture coordinates
+    output.UV = input.UV;
+
+    // Pass tangent
+    output.Tangent = input.Tangent;
+
+    return output;
+}
+
+// Fragment shader entry point
+[[shader("fragment")]]
+float4 PSMain(VSOutput input) : SV_TARGET
+{
+    // Sample material textures
+    float4 baseColor = baseColorMap.Sample(baseColorSampler, input.UV) * material.baseColorFactor;
+    float2 metallicRoughness = metallicRoughnessMap.Sample(metallicRoughnessSampler, input.UV).bg;
+    float metallic = metallicRoughness.x * material.metallicFactor;
+    float roughness = metallicRoughness.y * material.roughnessFactor;
+    float ao = occlusionMap.Sample(occlusionSampler, input.UV).r;
+    float3 emissive = emissiveMap.Sample(emissiveSampler, input.UV).rgb;
+
+    // Calculate normal in tangent space
+    float3 N = normalize(input.Normal);
+    if (material.normalTextureSet >= 0) {
+        // Apply normal mapping
+        float3 tangentNormal = normalMap.Sample(normalSampler, input.UV).xyz * 2.0 - 1.0;
+        float3 T = normalize(input.Tangent.xyz);
+        float3 B = normalize(cross(N, T)) * input.Tangent.w;
+        float3x3 TBN = float3x3(T, B, N);
+        N = normalize(mul(tangentNormal, TBN));
+    }
+
+    // Calculate view and reflection vectors
+    float3 V = normalize(ubo.camPos.xyz - input.WorldPos);
+    float3 R = reflect(-V, N);
+
+    // Calculate F0 (base reflectivity)
+    float3 F0 = float3(0.04, 0.04, 0.04);
+    F0 = lerp(F0, baseColor.rgb, metallic);
+
+    // Initialize lighting
+    float3 Lo = float3(0.0, 0.0, 0.0);
+
+    // Calculate lighting for each light
+    for (int i = 0; i < 4; i++) {
+        float3 lightPos = ubo.lightPositions[i].xyz;
+        float3 lightColor = ubo.lightColors[i].rgb;
+
+        // Calculate light direction and distance
+        float3 L = normalize(lightPos - input.WorldPos);
+        float distance = length(lightPos - input.WorldPos);
+        float attenuation = 1.0 / (distance * distance);
+        float3 radiance = lightColor * attenuation;
+
+        // Calculate half vector
+        float3 H = normalize(V + L);
+
+        // Calculate BRDF terms
+        float NdotL = max(dot(N, L), 0.0);
+        float NdotV = max(dot(N, V), 0.0);
+        float NdotH = max(dot(N, H), 0.0);
+        float HdotV = max(dot(H, V), 0.0);
+
+        // Specular BRDF
+        float D = DistributionGGX(NdotH, roughness);
+        float G = GeometrySmith(NdotV, NdotL, roughness);
+        float3 F = FresnelSchlick(HdotV, F0);
+
+        float3 numerator = D * G * F;
+        float denominator = 4.0 * NdotV * NdotL + 0.0001;
+        float3 specular = numerator / denominator;
+
+        // Energy conservation
+        float3 kS = F;
+        float3 kD = float3(1.0, 1.0, 1.0) - kS;
+        kD *= 1.0 - metallic;
+
+        // Add to outgoing radiance
+        Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
+    }
+
+    // Add ambient and emissive
+    float3 ambient = float3(0.03, 0.03, 0.03) * baseColor.rgb * ao;
+    float3 color = ambient + Lo + emissive;
+
+    // HDR tonemapping and gamma correction
+    color = color / (color + float3(1.0, 1.0, 1.0));
+    color = pow(color, float3(1.0 / ubo.gamma, 1.0 / ubo.gamma, 1.0 / ubo.gamma));
+
+    return float4(color, baseColor.a);
+}
+----
+
+This shader implements the PBR lighting model with the metallic-roughness workflow. It includes:
+
+1. *Normal Distribution Function (D)*: Using the GGX (Trowbridge-Reitz) distribution
+2. *Geometry Function (G)*: Using the Smith shadowing-masking function
+3. *Fresnel Term (F)*: Using Schlick's approximation
+4. *Energy Conservation*: Ensuring that diffuse and specular reflection don't exceed the incoming light
+5. *Normal Mapping*: For adding surface detail without increasing geometric complexity
+6. *HDR Tonemapping*: For handling high dynamic range lighting
+7. *Gamma Correction*: For proper color representation
+
+== Extending the Renderer
+
+Now that we have our PBR shader, we need to extend our renderer to support it. We'll need to:
+
+1. Add a new pipeline for our PBR shader
+2. Add support for push constants
+3. Update the uniform buffer to include light information
+
+Let's start by adding a new function to create the PBR pipeline:
+
+[source,cpp]
+----
+bool Renderer::createPBRPipeline() {
+    try {
+        // Load combined PBR shader
+        auto shaderCode = readFile("shaders/pbr.spv");
+
+        // Create shader module with vk::raii
+        vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
+
+        // Set up shader stage info
+        vk::PipelineShaderStageCreateInfo vertShaderStageInfo;
+        vertShaderStageInfo.setStage(vk::ShaderStageFlagBits::eVertex)
+                          .setModule(*shaderModule)
+                          .setPName("VSMain");  // Entry point for vertex shader
+
+        vk::PipelineShaderStageCreateInfo fragShaderStageInfo;
+        fragShaderStageInfo.setStage(vk::ShaderStageFlagBits::eFragment)
+                          .setModule(*shaderModule)
+                          .setPName("PSMain");  // Entry point for fragment shader
+
+        std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages = {vertShaderStageInfo, fragShaderStageInfo};
+
+        // Vertex input state
+        vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+
+        // Define vertex binding and attributes for PBR
+        vk::VertexInputBindingDescription bindingDescription;
+        bindingDescription.setBinding(0)
+                         .setStride(sizeof(float) * 14) // pos(3) + normal(3) + texCoord(2) + tangent(4) + bitangent(2)
+                         .setInputRate(vk::VertexInputRate::eVertex);
+
+        std::array<vk::VertexInputAttributeDescription, 5> attributeDescriptions;
+        // Position
+        attributeDescriptions[0].setBinding(0)
+                               .setLocation(0)
+                               .setFormat(vk::Format::eR32G32B32Sfloat)
+                               .setOffset(0);
+        // Normal
+        attributeDescriptions[1].setBinding(0)
+                               .setLocation(1)
+                               .setFormat(vk::Format::eR32G32B32Sfloat)
+                               .setOffset(sizeof(float) * 3);
+        // Texture coordinates
+        attributeDescriptions[2].setBinding(0)
+                               .setLocation(2)
+                               .setFormat(vk::Format::eR32G32Sfloat)
+                               .setOffset(sizeof(float) * 6);
+        // Tangent
+        attributeDescriptions[3].setBinding(0)
+                               .setLocation(3)
+                               .setFormat(vk::Format::eR32G32B32A32Sfloat)
+                               .setOffset(sizeof(float) * 8);
+        // Bitangent
+        attributeDescriptions[4].setBinding(0)
+                               .setLocation(4)
+                               .setFormat(vk::Format::eR32G32Sfloat)
+                               .setOffset(sizeof(float) * 12);
+
+        vertexInputInfo.setVertexBindingDescriptionCount(1)
+                      .setPVertexBindingDescriptions(&bindingDescription)
+                      .setVertexAttributeDescriptionCount(static_cast<uint32_t>(attributeDescriptions.size()))
+                      .setPVertexAttributeDescriptions(attributeDescriptions.data());
+
+        // Input assembly state
+        vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
+        inputAssembly.setTopology(vk::PrimitiveTopology::eTriangleList)
+                    .setPrimitiveRestartEnable(false);
+
+        // Viewport and scissor state
+        vk::PipelineViewportStateCreateInfo viewportState;
+        viewportState.setViewportCount(1)
+                    .setScissorCount(1);
+
+        // Dynamic state for viewport and scissor
+        std::vector<vk::DynamicState> dynamicStates = {
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor
+        };
+
+        vk::PipelineDynamicStateCreateInfo dynamicState;
+        dynamicState.setDynamicStateCount(static_cast<uint32_t>(dynamicStates.size()))
+                   .setPDynamicStates(dynamicStates.data());
+
+        // Rasterization state
+        vk::PipelineRasterizationStateCreateInfo rasterizer;
+        rasterizer.setDepthClampEnable(false)
+                 .setRasterizerDiscardEnable(false)
+                 .setPolygonMode(vk::PolygonMode::eFill)
+                 .setLineWidth(1.0f)
+                 .setCullMode(vk::CullModeFlagBits::eBack)
+                 .setFrontFace(vk::FrontFace::eCounterClockwise)
+                 .setDepthBiasEnable(false);
+
+        // Multisample state
+        vk::PipelineMultisampleStateCreateInfo multisampling;
+        multisampling.setSampleShadingEnable(false)
+                    .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+        // Depth and stencil state
+        vk::PipelineDepthStencilStateCreateInfo depthStencil;
+        depthStencil.setDepthTestEnable(true)
+                   .setDepthWriteEnable(true)
+                   .setDepthCompareOp(vk::CompareOp::eLess)
+                   .setDepthBoundsTestEnable(false)
+                   .setStencilTestEnable(false);
+
+        // Color blend state
+        vk::PipelineColorBlendAttachmentState colorBlendAttachment;
+        colorBlendAttachment.setColorWriteMask(
+            vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA)
+                           .setBlendEnable(true)
+                           .setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
+                           .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)
+                           .setColorBlendOp(vk::BlendOp::eAdd)
+                           .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+                           .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+                           .setAlphaBlendOp(vk::BlendOp::eAdd);
+
+        vk::PipelineColorBlendStateCreateInfo colorBlending;
+        colorBlending.setLogicOpEnable(false)
+                    .setAttachmentCount(1)
+                    .setPAttachments(&colorBlendAttachment);
+
+        // Set up push constant range for material properties
+        vk::PushConstantRange pushConstantRange;
+        pushConstantRange.setStageFlags(vk::ShaderStageFlagBits::eFragment)
+                        .setOffset(0)
+                        .setSize(sizeof(PushConstantBlock)); // Size of our push constant data
+
+        // Create pipeline layout with push constants
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+        pipelineLayoutInfo.setSetLayoutCount(1)
+                         .setPSetLayouts(&*descriptorSetLayout)
+                         .setPushConstantRangeCount(1)
+                         .setPPushConstantRanges(&pushConstantRange);
+
+        // Create pipeline layout with vk::raii
+        pbrPipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+
+        // Create the PBR graphics pipeline
+        vk::GraphicsPipelineCreateInfo pipelineInfo;
+        pipelineInfo.setStageCount(static_cast<uint32_t>(shaderStages.size()))
+                   .setPStages(shaderStages.data())
+                   .setPVertexInputState(&vertexInputInfo)
+                   .setPInputAssemblyState(&inputAssembly)
+                   .setPViewportState(&viewportState)
+                   .setPRasterizationState(&rasterizer)
+                   .setPMultisampleState(&multisampling)
+                   .setPDepthStencilState(&depthStencil)
+                   .setPColorBlendState(&colorBlending)
+                   .setPDynamicState(&dynamicState)
+                   .setLayout(*pbrPipelineLayout)
+                   .setRenderPass(nullptr) // Using dynamic rendering
+                   .setSubpass(0)
+                   .setBasePipelineHandle(nullptr);
+
+        // Set up dynamic rendering info
+        vk::PipelineRenderingCreateInfo renderingInfo;
+        renderingInfo.setColorAttachmentCount(1)
+                    .setPColorAttachmentFormats(&swapChainImageFormat)
+                    .setDepthAttachmentFormat(findDepthFormat());
+        pipelineInfo.setPNext(&renderingInfo);
+
+        // Create graphics pipeline with vk::raii
+        pbrPipeline = device.createGraphicsPipeline(nullptr, pipelineInfo);
+
+        // With vk::raii, shader module is automatically destroyed when it goes out of scope
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error creating PBR pipeline: " << e.what() << std::endl;
+        return false;
+    }
+}
+----
+
+This function creates a new pipeline for our PBR shader, including support for push constants. We'll also need to update our uniform buffer to include light information:
+
+[source,cpp]
+----
+// Update uniform buffer
+void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera) {
+    // Get the transform component from the entity
+    auto transform = entity->GetComponent<TransformComponent>();
+    if (!transform) {
+        std::cerr << "Entity does not have a transform component" << std::endl;
+        return;
+    }
+
+    // Create the uniform buffer object
+    UniformBufferObject ubo{};
+
+    // Set the model matrix from the entity's transform
+    ubo.model = transform->GetModelMatrix();
+
+    // Set the view and projection matrices from the camera
+    if (camera) {
+        ubo.view = camera->GetViewMatrix();
+        ubo.proj = camera->GetProjectionMatrix();
+    } else {
+        // Default view and projection matrices if no camera is provided
+        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+        ubo.proj[1][1] *= -1; // Flip Y coordinate for Vulkan
+    }
+
+    // Set up lights
+    // Light 1: White light from above
+    ubo.lightPositions[0] = glm::vec4(0.0f, 5.0f, 5.0f, 1.0f);
+    ubo.lightColors[0] = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f);
+
+    // Light 2: Blue light from the left
+    ubo.lightPositions[1] = glm::vec4(-5.0f, 0.0f, 0.0f, 1.0f);
+    ubo.lightColors[1] = glm::vec4(0.0f, 0.0f, 300.0f, 1.0f);
+
+    // Light 3: Red light from the right
+    ubo.lightPositions[2] = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
+    ubo.lightColors[2] = glm::vec4(300.0f, 0.0f, 0.0f, 1.0f);
+
+    // Light 4: Green light from behind
+    ubo.lightPositions[3] = glm::vec4(0.0f, -5.0f, 0.0f, 1.0f);
+    ubo.lightColors[3] = glm::vec4(0.0f, 300.0f, 0.0f, 1.0f);
+
+    // Set camera position for view-dependent effects
+    ubo.camPos = glm::vec4(camera ? camera->GetPosition() : glm::vec3(2.0f, 2.0f, 2.0f), 1.0f);
+
+    // Set PBR parameters
+    ubo.exposure = 4.5f;
+    ubo.gamma = 2.2f;
+    ubo.prefilteredCubeMipLevels = 1.0f;
+    ubo.scaleIBLAmbient = 1.0f;
+
+    // Copy the uniform buffer object to the device memory using vk::raii
+    // With vk::raii, we can use the mapped memory directly
+    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+}
+----
+
+Finally, we need to add support for pushing material properties to the shader:
+
+[source,cpp]
+----
+// Push material properties to shader
+void Renderer::pushMaterialProperties(vk::CommandBuffer commandBuffer, const Model* model, uint32_t materialIndex) {
+    // Get material from the model
+    const Material& material = model->materials[materialIndex];
+
+    // Define push constants
+    PushConstantBlock pushConstants{};
+    pushConstants.baseColorFactor = material.baseColorFactor;
+    pushConstants.metallicFactor = material.metallicFactor;
+    pushConstants.roughnessFactor = material.roughnessFactor;
+    pushConstants.baseColorTextureSet = material.baseColorTextureIndex;
+    pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex;
+    pushConstants.normalTextureSet = material.normalTextureIndex;
+    pushConstants.occlusionTextureSet = material.occlusionTextureIndex;
+    pushConstants.emissiveTextureSet = material.emissiveTextureIndex;
+    pushConstants.alphaMask = material.alphaMode == AlphaMode::MASK ? 1.0f : 0.0f;
+    pushConstants.alphaMaskCutoff = material.alphaCutoff;
+
+    // Push constants to shader using vk::raii
+    commandBuffer.pushConstants(
+        *pbrPipelineLayout,
+        vk::ShaderStageFlagBits::eFragment,
+        0,
+        sizeof(PushConstantBlock),
+        &pushConstants
+    );
+}
+----
+
+In the next section, we'll integrate our lighting implementation with the rest of the Vulkan rendering pipeline.
+
+link:03_push_constants.adoc[Previous: Push Constants] | link:05_vulkan_integration.adoc[Next: Vulkan Integration]

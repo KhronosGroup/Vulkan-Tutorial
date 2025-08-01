@@ -1,0 +1,628 @@
+::pp: {plus}{plus}
+
+= Loading Models: Rendering the Scene
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Rendering the Scene
+
+=== Introduction to Scene Rendering
+
+Scene rendering is the process of transforming a 3D scene description into a 2D image that can be displayed on screen. In our engine, this involves traversing the scene graph, applying transformations, setting material properties, and issuing draw commands to the GPU.
+
+The scene rendering process is a critical part of the rendering pipeline, as it's where all the components we've built so far come together:
+
+* The model system provides the scene graph structure and mesh data
+* The material system defines the appearance of objects
+* The camera system determines the viewpoint
+* The lighting system illuminates the scene
+
+In this chapter, we'll explore how these components work together to render a complete scene.
+
+=== Scene Graph Traversal
+
+A scene graph is a hierarchical tree structure that organizes objects in a scene. Each node in the tree can have a transformation (position, rotation, scale) and may contain a mesh to render. Nodes can also have child nodes, which inherit their parent's transformation.
+
+To render a scene graph, we need to traverse it in a depth-first manner, calculating the global transformation matrix for each node and rendering any meshes we encounter:
+
+[source,cpp]
+----
+void renderScene(const vk::raii::CommandBuffer& commandBuffer, Model& model, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) {
+    // Start traversal from the root nodes with an identity matrix
+    glm::mat4 rootMatrix = glm::mat4(1.0f);
+    renderNode(commandBuffer, model.nodes, rootMatrix);
+}
+----
+
+The `renderNode` function is the heart of our scene rendering system. It recursively traverses the scene graph, calculating the global transformation matrix for each node and rendering any meshes it contains:
+
+[source,cpp]
+----
+void renderNode(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix) {
+    for (const auto node : nodes) {
+        // Calculate global matrix for this node
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+        // If this node has a mesh, render it
+        if (!node->mesh.vertices.empty() && !node->mesh.indices.empty() &&
+            node->vertexBufferIndex >= 0 && node->indexBufferIndex >= 0) {
+
+            // Set up push constants for material properties
+            PushConstantBlock pushConstants{};
+
+            if (node->mesh.materialIndex >= 0 && node->mesh.materialIndex < static_cast<int>(model.materials.size())) {
+                const auto& material = model.materials[node->mesh.materialIndex];
+                pushConstants.baseColorFactor = material.baseColorFactor;
+                pushConstants.metallicFactor = material.metallicFactor;
+                pushConstants.roughnessFactor = material.roughnessFactor;
+                pushConstants.baseColorTextureSet = material.baseColorTextureIndex >= 0 ? 1 : -1;
+                pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex >= 0 ? 2 : -1;
+                pushConstants.normalTextureSet = material.normalTextureIndex >= 0 ? 3 : -1;
+                pushConstants.occlusionTextureSet = material.occlusionTextureIndex >= 0 ? 4 : -1;
+                pushConstants.emissiveTextureSet = material.emissiveTextureIndex >= 0 ? 5 : -1;
+            } else {
+                // Default material properties
+                pushConstants.baseColorFactor = glm::vec4(1.0f);
+                pushConstants.metallicFactor = 1.0f;
+                pushConstants.roughnessFactor = 1.0f;
+                pushConstants.baseColorTextureSet = 1;
+                pushConstants.physicalDescriptorTextureSet = -1;
+                pushConstants.normalTextureSet = -1;
+                pushConstants.occlusionTextureSet = -1;
+                pushConstants.emissiveTextureSet = -1;
+            }
+
+            // Update model matrix in push constants
+            commandBuffer.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstantBlock), &pushConstants);
+
+            // Bind vertex and index buffers
+            commandBuffer.bindVertexBuffers(0, *vertexBuffers[node->vertexBufferIndex], {0});
+            commandBuffer.bindIndexBuffer(*indexBuffers[node->indexBufferIndex], 0, vk::IndexType::eUint32);
+
+            // Draw the mesh
+            commandBuffer.drawIndexed(static_cast<uint32_t>(node->mesh.indices.size()), 1, 0, 0, 0);
+        }
+
+        // Recursively render children
+        if (!node->children.empty()) {
+            renderNode(commandBuffer, node->children, nodeMatrix);
+        }
+    }
+}
+----
+
+This traversal approach ensures that:
+
+1. Each node's transformation is correctly combined with its parent's transformation
+2. Child nodes are rendered with the correct global transformation
+3. The scene graph hierarchy is preserved during rendering
+
+=== Understanding the Rendering Process
+
+Let's break down the rendering process in more detail:
+
+==== Transformation Calculation
+
+The first step in rendering a node is calculating its global transformation matrix:
+
+[source,cpp]
+----
+// Calculate global matrix for this node
+glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+----
+
+This combines the node's local transformation (position, rotation, scale) with its parent's global transformation. The result is a matrix that transforms from the node's local space to world space.
+
+The `getLocalMatrix` method (defined in the `Node` class) combines the node's translation, rotation, and scale properties:
+
+[source,cpp]
+----
+glm::mat4 getLocalMatrix() {
+    return glm::translate(glm::mat4(1.0f), translation) *
+           glm::toMat4(rotation) *
+           glm::scale(glm::mat4(1.0f), scale) *
+           matrix;
+}
+----
+
+==== Material Setup
+
+If the node has a mesh, we need to set up its material properties before rendering:
+
+[source,cpp]
+----
+// Set up push constants for material properties
+PushConstantBlock pushConstants{};
+
+if (node->mesh.materialIndex >= 0 && node->mesh.materialIndex < static_cast<int>(model.materials.size())) {
+    const auto& material = model.materials[node->mesh.materialIndex];
+    pushConstants.baseColorFactor = material.baseColorFactor;
+    pushConstants.metallicFactor = material.metallicFactor;
+    pushConstants.roughnessFactor = material.roughnessFactor;
+    pushConstants.baseColorTextureSet = material.baseColorTextureIndex >= 0 ? 1 : -1;
+    pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex >= 0 ? 2 : -1;
+    pushConstants.normalTextureSet = material.normalTextureIndex >= 0 ? 3 : -1;
+    pushConstants.occlusionTextureSet = material.occlusionTextureIndex >= 0 ? 4 : -1;
+    pushConstants.emissiveTextureSet = material.emissiveTextureIndex >= 0 ? 5 : -1;
+} else {
+    // Default material properties
+    pushConstants.baseColorFactor = glm::vec4(1.0f);
+    pushConstants.metallicFactor = 1.0f;
+    pushConstants.roughnessFactor = 1.0f;
+    pushConstants.baseColorTextureSet = 1;
+    pushConstants.physicalDescriptorTextureSet = -1;
+    pushConstants.normalTextureSet = -1;
+    pushConstants.occlusionTextureSet = -1;
+    pushConstants.emissiveTextureSet = -1;
+}
+
+// Update push constants
+commandBuffer.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstantBlock), &pushConstants);
+----
+
+This code:
+
+1. Retrieves the material associated with the mesh
+2. Sets up push constants with the material properties
+3. Passes these properties to the fragment shader using push constants
+
+The material properties include:
+
+* Base color factor (albedo)
+* Metallic factor
+* Roughness factor
+* Texture set indices for various material maps (base color, metallic-roughness, normal, occlusion, emissive)
+
+==== Mesh Rendering
+
+Once the transformation and material are set up, we can render the mesh:
+
+[source,cpp]
+----
+// Bind vertex and index buffers
+commandBuffer.bindVertexBuffers(0, *vertexBuffers[node->vertexBufferIndex], {0});
+commandBuffer.bindIndexBuffer(*indexBuffers[node->indexBufferIndex], 0, vk::IndexType::eUint32);
+
+// Draw the mesh
+commandBuffer.drawIndexed(static_cast<uint32_t>(node->mesh.indices.size()), 1, 0, 0, 0);
+----
+
+This code:
+
+1. Binds the vertex buffer containing the mesh's vertices
+2. Binds the index buffer containing the mesh's indices
+3. Issues a draw command to render the mesh
+
+==== Recursive Traversal
+
+After rendering the current node, we recursively traverse its children:
+
+[source,cpp]
+----
+// Recursively render children
+if (!node->children.empty()) {
+    renderNode(commandBuffer, node->children, nodeMatrix);
+}
+----
+
+This ensures that all nodes in the scene graph are visited and rendered with the correct transformations.
+
+=== Integrating Scene Rendering in the Main Loop
+
+To use our scene rendering system in the main rendering loop, we need to set up the necessary Vulkan state and call the `renderScene` function:
+
+[source,cpp]
+----
+void drawFrame() {
+    // ... (standard Vulkan frame setup)
+
+    // Begin command buffer recording
+    commandBuffer.begin({});
+
+    // Transition image layout for rendering
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        {},
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    // Set up rendering attachments
+    vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+    vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
+
+    vk::RenderingAttachmentInfo colorAttachmentInfo = {
+        .imageView = swapChainImageViews[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearColor
+    };
+
+    vk::RenderingAttachmentInfo depthAttachmentInfo = {
+        .imageView = depthImageView,
+        .imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearDepth
+    };
+
+    vk::RenderingInfo renderingInfo = {
+        .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachmentInfo,
+        .pDepthAttachment = &depthAttachmentInfo
+    };
+
+    // Begin dynamic rendering
+    commandBuffer.beginRendering(renderingInfo);
+
+    // Bind pipeline
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+
+    // Set viewport and scissor
+    commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+    commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+
+    // Bind descriptor set with uniform buffer and textures
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics,
+        pipelineLayout,
+        0,
+        1,
+        &descriptorSets[currentFrame],
+        0,
+        nullptr
+    );
+
+    // Update view and projection in uniform buffer
+    UniformBufferObject ubo{};
+    ubo.view = camera.getViewMatrix();
+    ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
+    ubo.proj[1][1] *= -1;  // Vulkan's Y coordinate is inverted
+
+    // Copy to uniform buffer
+    memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+
+    // Render the scene
+    renderScene(commandBuffer, model, ubo.view, ubo.proj);
+
+    // End dynamic rendering
+    commandBuffer.endRendering();
+
+    // Transition image layout for presentation
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe
+    );
+
+    // End command buffer recording
+    commandBuffer.end();
+
+    // ... (submit command buffer and present)
+}
+----
+
+This code:
+
+1. Sets up the Vulkan rendering state (command buffer, image transitions, rendering attachments)
+2. Binds the graphics pipeline and descriptor sets
+3. Updates the view and projection matrices in the uniform buffer
+4. Calls `renderScene` to render the entire scene
+5. Finalizes the rendering and presents the result
+
+=== Performance Considerations
+
+Rendering a complex scene can be performance-intensive. Here are some techniques to optimize scene rendering:
+
+==== Frustum Culling
+
+Frustum culling is the process of skipping the rendering of objects that are outside the camera's view frustum. This can significantly improve performance by reducing the number of draw calls:
+
+[source,cpp]
+----
+bool isNodeVisible(const Node* node, const glm::mat4& viewProjection) {
+    // Calculate the node's bounding sphere in world space
+    glm::vec3 center = glm::vec3(node->getGlobalMatrix() * glm::vec4(node->boundingSphere.center, 1.0f));
+    float radius = node->boundingSphere.radius * glm::length(glm::vec3(node->getGlobalMatrix()[0])); // Scale radius by the largest scale factor
+
+    // Check if the bounding sphere is visible in the view frustum
+    for (int i = 0; i < 6; i++) {
+        // Extract frustum planes from the view-projection matrix
+        glm::vec4 plane = getFrustumPlane(viewProjection, i);
+
+        // Calculate the signed distance from the sphere center to the plane
+        float distance = glm::dot(glm::vec4(center, 1.0f), plane);
+
+        // If the sphere is completely behind the plane, it's not visible
+        if (distance < -radius) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void renderNodeWithCulling(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix, const glm::mat4& viewProjection) {
+    for (const auto node : nodes) {
+        // Calculate global matrix for this node
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+        // Check if the node is visible
+        if (isNodeVisible(node, viewProjection)) {
+            // Render the node (same as before)
+            // ...
+
+            // Recursively render children
+            if (!node->children.empty()) {
+                renderNodeWithCulling(commandBuffer, node->children, nodeMatrix, viewProjection);
+            }
+        }
+    }
+}
+----
+
+==== Level of Detail (LOD)
+
+Level of Detail (LOD) involves using simpler versions of models for objects that are far from the camera:
+
+[source,cpp]
+----
+void renderNodeWithLOD(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix, const glm::vec3& cameraPosition) {
+    for (const auto node : nodes) {
+        // Calculate global matrix for this node
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+        // Calculate distance to camera
+        glm::vec3 nodePosition = glm::vec3(nodeMatrix[3]);
+        float distanceToCamera = glm::distance(nodePosition, cameraPosition);
+
+        // Select LOD level based on distance
+        int lodLevel = 0;
+        if (distanceToCamera > 50.0f) {
+            lodLevel = 2; // Low detail
+        } else if (distanceToCamera > 20.0f) {
+            lodLevel = 1; // Medium detail
+        }
+
+        // Render the node with the selected LOD level
+        // ...
+
+        // Recursively render children
+        if (!node->children.empty()) {
+            renderNodeWithLOD(commandBuffer, node->children, nodeMatrix, cameraPosition);
+        }
+    }
+}
+----
+
+==== Occlusion Culling
+
+Occlusion culling involves skipping the rendering of objects that are hidden behind other objects:
+
+[source,cpp]
+----
+void renderNodeWithOcclusion(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix) {
+    // Sort nodes by distance to camera (front to back)
+    std::vector<std::pair<Node*, float>> sortedNodes;
+    for (const auto node : nodes) {
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+        glm::vec3 nodePosition = glm::vec3(nodeMatrix[3]);
+        float distanceToCamera = glm::length(nodePosition - cameraPosition);
+        sortedNodes.push_back({node, distanceToCamera});
+    }
+    std::sort(sortedNodes.begin(), sortedNodes.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
+
+    // Render nodes from front to back
+    for (const auto& [node, distance] : sortedNodes) {
+        // Calculate global matrix for this node
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+        // Begin occlusion query
+        vk::QueryPool occlusionQueryPool = createOcclusionQueryPool();
+        commandBuffer.beginQuery(occlusionQueryPool, 0, {});
+
+        // Render the node's bounding box with depth write but no color write
+        renderBoundingBox(commandBuffer, node, nodeMatrix);
+
+        // End occlusion query
+        commandBuffer.endQuery(occlusionQueryPool, 0);
+
+        // Check if the node is visible
+        uint64_t occlusionResult = getOcclusionQueryResult(occlusionQueryPool);
+        if (occlusionResult > 0) {
+            // Node is visible, render it
+            // ...
+
+            // Recursively render children
+            if (!node->children.empty()) {
+                renderNodeWithOcclusion(commandBuffer, node->children, nodeMatrix);
+            }
+        }
+    }
+}
+----
+
+==== Instanced Rendering
+
+For scenes with many identical objects, instanced rendering can significantly improve performance:
+
+[source,cpp]
+----
+void renderInstanced(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const std::vector<glm::mat4>& instanceMatrices) {
+    for (const auto node : nodes) {
+        // If this node has a mesh, render it with instancing
+        if (!node->mesh.vertices.empty() && !node->mesh.indices.empty() &&
+            node->vertexBufferIndex >= 0 && node->indexBufferIndex >= 0) {
+
+            // Set up material properties (same as before)
+            // ...
+
+            // Bind vertex and index buffers
+            commandBuffer.bindVertexBuffers(0, *vertexBuffers[node->vertexBufferIndex], {0});
+            commandBuffer.bindIndexBuffer(*indexBuffers[node->indexBufferIndex], 0, vk::IndexType::eUint32);
+
+            // Create and bind instance buffer
+            vk::raii::Buffer instanceBuffer = createInstanceBuffer(instanceMatrices);
+            commandBuffer.bindVertexBuffers(1, *instanceBuffer, {0});
+
+            // Draw the mesh with instancing
+            commandBuffer.drawIndexedInstanced(
+                static_cast<uint32_t>(node->mesh.indices.size()),
+                static_cast<uint32_t>(instanceMatrices.size()),
+                0, 0, 0
+            );
+        }
+
+        // Recursively render children
+        if (!node->children.empty()) {
+            renderInstanced(commandBuffer, node->children, instanceMatrices);
+        }
+    }
+}
+----
+
+=== Advanced Scene Rendering Techniques
+
+Beyond basic scene rendering, there are several advanced techniques that can enhance the visual quality and performance of your renderer:
+
+==== Hierarchical Culling
+
+Hierarchical culling involves using the scene graph structure to accelerate culling operations:
+
+[source,cpp]
+----
+bool isNodeAndChildrenVisible(const Node* node, const glm::mat4& viewProjection, const glm::mat4& parentMatrix) {
+    // Calculate global matrix for this node
+    glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+    // Check if the node's bounding volume is visible
+    if (!isNodeVisible(node, viewProjection, nodeMatrix)) {
+        // If the node is not visible, none of its children are visible either
+        return false;
+    }
+
+    // Node is visible, check if it has a mesh to render
+    bool hasVisibleContent = !node->mesh.vertices.empty() && !node->mesh.indices.empty();
+
+    // Recursively check children
+    for (const auto child : node->children) {
+        hasVisibleContent |= isNodeAndChildrenVisible(child, viewProjection, nodeMatrix);
+    }
+
+    return hasVisibleContent;
+}
+
+void renderNodeHierarchical(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix, const glm::mat4& viewProjection) {
+    for (const auto node : nodes) {
+        // Calculate global matrix for this node
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+        // Check if the node and its children are visible
+        if (isNodeAndChildrenVisible(node, viewProjection, glm::mat4(1.0f))) {
+            // Render the node if it has a mesh
+            if (!node->mesh.vertices.empty() && !node->mesh.indices.empty() &&
+                node->vertexBufferIndex >= 0 && node->indexBufferIndex >= 0) {
+                // Render the node (same as before)
+                // ...
+            }
+
+            // Recursively render children
+            if (!node->children.empty()) {
+                renderNodeHierarchical(commandBuffer, node->children, nodeMatrix, viewProjection);
+            }
+        }
+    }
+}
+----
+
+==== Deferred Rendering
+
+Deferred rendering separates the geometry and lighting passes, which can improve performance for scenes with many lights:
+
+[source,cpp]
+----
+void renderSceneDeferred(const vk::raii::CommandBuffer& commandBuffer, Model& model) {
+    // Geometry pass: render scene to G-buffer
+    beginGeometryPass(commandBuffer);
+    renderNode(commandBuffer, model.nodes, glm::mat4(1.0f));
+    endGeometryPass(commandBuffer);
+
+    // Lighting pass: apply lighting to G-buffer
+    beginLightingPass(commandBuffer);
+    for (const auto& light : lights) {
+        renderLight(commandBuffer, light);
+    }
+    endLightingPass(commandBuffer);
+}
+----
+
+==== Clustered Rendering
+
+Clustered rendering divides the view frustum into 3D cells to efficiently handle many lights:
+
+[source,cpp]
+----
+void setupLightClusters() {
+    // Divide the view frustum into a 3D grid of clusters
+    const int clusterCountX = 16;
+    const int clusterCountY = 9;
+    const int clusterCountZ = 24;
+
+    // Assign lights to clusters based on their position and radius
+    for (const auto& light : lights) {
+        for (int x = 0; x < clusterCountX; x++) {
+            for (int y = 0; y < clusterCountY; y++) {
+                for (int z = 0; z < clusterCountZ; z++) {
+                    if (lightAffectsCluster(light, x, y, z)) {
+                        lightClusters[x][y][z].push_back(light.index);
+                    }
+                }
+            }
+        }
+    }
+
+    // Upload light cluster data to GPU
+    updateLightClusterBuffer();
+}
+
+void renderSceneClustered(const vk::raii::CommandBuffer& commandBuffer, Model& model) {
+    // Bind light cluster buffer
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics,
+        pipelineLayout,
+        1,
+        1,
+        &lightClusterDescriptorSet,
+        0,
+        nullptr
+    );
+
+    // Render scene normally
+    renderNode(commandBuffer, model.nodes, glm::mat4(1.0f));
+}
+----
+
+=== Conclusion
+
+In this chapter, we've explored the process of rendering a scene using a scene graph. We've seen how to traverse the scene graph, calculate transformations, apply materials, and render meshes. We've also discussed various optimization techniques to improve performance.
+
+The scene rendering system we've built is flexible and extensible, allowing for the rendering of complex scenes with multiple objects, materials, and lighting conditions. In the next chapter, we'll build on this foundation to implement animations, bringing our scenes to life.
+
+link:06_multiple_objects.adoc[Previous: Rendering Multiple Objects] | link:08_animations.adoc[Next: Updating Animations]

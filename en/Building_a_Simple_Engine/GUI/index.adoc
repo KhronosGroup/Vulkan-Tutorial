@@ -1,0 +1,22 @@
+::pp: {plus}{plus}
+
+= GUI: Introduce working with a GUI and handling input
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+include::01_introduction.adoc[]
+
+include::02_imgui_setup.adoc[]
+
+include::03_input_handling.adoc[]
+
+include::04_ui_elements.adoc[]
+
+include::05_vulkan_integration.adoc[]
+
+include::06_conclusion.adoc[]

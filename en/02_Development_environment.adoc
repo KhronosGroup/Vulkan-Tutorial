@@ -107,7 +107,7 @@ well tested and is a good starting point.
 To use it, add it to your CMAKE_MODULE_PATH like this:
 [,cmake]
 ----
-`list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")`
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 ----
 
 This will allow other projects that distribute via Find*.cmake to be placed
@@ -180,10 +180,6 @@ An unfortunate disadvantage is GLFW doesn't work in Android or iOS; it is a
 desktop-only solution. SDL does offer mobile support; however, mobile
 windowing support is best done by interfacing with the Operating system such
  as using the JNI in Android.
-
-While mobile is beyond the scope of this initial tutorial, plans exist to
-eventually cover it in detail, and
-https://developer.android.com/ndk/guides/graphics/getting-started[Google has excellent documentation].
 
 === GLM
 
@@ -493,3 +489,7 @@ image::/images/xcode_variables.png[]
 Finally, you should be all set!
 
 You are now all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[the real thing].
+
+== Android
+
+Vulkan is a first-class API on Android and widely supported. But using it differs in several key areas from window management to build systems. So while the basic chapters focus on desktop platforms, the tutorial also has a xref:14_Android.adoc[dedicated chapter] that walks you through setting up your development environment and getting the tutorial code up-and-running on Android.

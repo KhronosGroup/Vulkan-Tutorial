@@ -352,7 +352,7 @@ renderPassInfo.pDependencies = &dependency;
 The `VkRenderPassCreateInfo` struct has two fields to specify an array of dependencies.
 
 The above is completely optional and not reproduced in the
-link:../../../attachments/15_hello_triangle.cpp[demo code.]
+link:/attachments/15_hello_triangle.cpp[demo code.]
 
 == Presentation
 

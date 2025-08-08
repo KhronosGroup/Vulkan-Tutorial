@@ -198,7 +198,6 @@ Besides GPUInfo.org, several other tools can help you develop and debug Vulkan a
 * *Vendor-specific Tools*:
 ** NVIDIA Nsight Graphics
 ** AMD Radeon GPU Profiler
-** Intel Graphics Performance Analyzers
 
 == Supporting Older GPUs
 

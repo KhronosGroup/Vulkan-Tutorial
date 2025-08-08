@@ -66,24 +66,28 @@ endif()
 # Find Slang shaders
 file(GLOB SLANG_SHADER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang)
 
-# Find slangc executable
-find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
+# Find slangc executable (optional)
+find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin)
 
-# Compile Slang shaders using slangc
-foreach(SHADER ${SLANG_SHADER_SOURCES})
-    get_filename_component(SHADER_NAME ${SHADER} NAME)
-    get_filename_component(SHADER_NAME_WE ${SHADER_NAME} NAME_WE)
-    string(REGEX REPLACE "\.slang$" "" OUTPUT_NAME ${SHADER_NAME})
-    add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-        COMMAND ${SLANGC_EXECUTABLE} ${SHADER} -target spirv -profile spirv_1_4 -emit-spirv-directly -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-        DEPENDS ${SHADER}
-        COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
-    )
-    list(APPEND SHADER_SPVS ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
-endforeach()
-
-add_custom_target(shaders DEPENDS ${SHADER_SPVS})
+# Compile Slang shaders using slangc if available
+if(SLANGC_EXECUTABLE)
+    foreach(SHADER ${SLANG_SHADER_SOURCES})
+        get_filename_component(SHADER_NAME ${SHADER} NAME)
+        get_filename_component(SHADER_NAME_WE ${SHADER_NAME} NAME_WE)
+        string(REGEX REPLACE "\.slang$" "" OUTPUT_NAME ${SHADER_NAME})
+        add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
+            COMMAND ${SLANGC_EXECUTABLE} ${SHADER} -target spirv -profile spirv_1_4 -emit-spirv-directly -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
+            DEPENDS ${SHADER}
+            COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
+        )
+        list(APPEND SHADER_SPVS ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
+    endforeach()
+    add_custom_target(shaders DEPENDS ${SHADER_SPVS})
+else()
+    message(STATUS "slangc not found. Skipping shader compilation step.")
+    add_custom_target(shaders)
+endif()
 
 # Source files
 set(SOURCES
@@ -131,7 +135,7 @@ target_link_libraries(SimpleEngine PRIVATE
     OpenAL::OpenAL
 )
 
-if(NOT DEFINED ANDROID)
+if(NOT ANDROID)
     target_link_libraries(SimpleEngine PRIVATE glfw)
 endif()
 

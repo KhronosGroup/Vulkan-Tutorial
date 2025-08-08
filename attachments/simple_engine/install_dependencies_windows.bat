@@ -61,11 +61,14 @@ if %errorLevel% neq 0 (
     )
 )
 
+set "CHOCO_EXE=choco"
+if exist "%ProgramData%\chocolatey\bin\choco.exe" set "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+
 REM Install CMake if not present
 where cmake >nul 2>&1
 if %errorLevel% neq 0 (
     echo Installing CMake...
-    choco install cmake -y
+    "%CHOCO_EXE%" install cmake -y
     if %errorLevel% neq 0 (
         echo Failed to install CMake via Chocolatey. Please install manually from https://cmake.org/download/
     )
@@ -75,7 +78,7 @@ REM Install Git if not present
 where git >nul 2>&1
 if %errorLevel% neq 0 (
     echo Installing Git...
-    choco install git -y
+    "%CHOCO_EXE%" install git -y
     if %errorLevel% neq 0 (
         echo Failed to install Git via Chocolatey. Please install manually from https://git-scm.com/download/win
     )
@@ -85,7 +88,7 @@ REM Install Vulkan SDK
 echo Installing Vulkan SDK...
 if not exist "C:\VulkanSDK" (
     echo Downloading and installing Vulkan SDK...
-    choco install vulkan-sdk -y
+    "%CHOCO_EXE%" install vulkan-sdk -y
     if %errorLevel% neq 0 (
         echo Failed to install Vulkan SDK via Chocolatey.
         echo Please download and install manually from https://vulkan.lunarg.com/sdk/home#windows
@@ -156,8 +159,7 @@ if not exist "C:\Program Files\Slang" (
 
         REM Add Slang to PATH (requires restart or new command prompt)
         echo Adding Slang to system PATH...
-        for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') do set "CURRENT_PATH=%%B"
-        setx PATH "%CURRENT_PATH%;C:\Program Files\Slang\bin" /M
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if(-not ($p -split ';' | ForEach-Object { $_.ToLower() }) -contains 'c:\\program files\\slang\\bin'){ [Environment]::SetEnvironmentVariable('Path',($p + ';C:\\Program Files\\Slang\\bin'),'Machine'); Write-Host 'Added Slang to machine PATH'; } else { Write-Host 'Slang already in machine PATH'; }"
         echo Note: You may need to restart your command prompt for Slang to be available in PATH
     ) else (
         echo Failed to download Slang compiler. Please install manually from:

@@ -54,12 +54,10 @@ target_sources(VulkanCppModule
 # Platform-specific settings
 if(ANDROID)
     # Android-specific settings
-    add_definitions(-DPLATFORM_ANDROID=1)
-    add_definitions(-DPLATFORM_DESKTOP=0)
+    add_definitions(-DPLATFORM_ANDROID)
 else()
     # Desktop-specific settings
-    add_definitions(-DPLATFORM_ANDROID=0)
-    add_definitions(-DPLATFORM_DESKTOP=1)
+    add_definitions(-DPLATFORM_DESKTOP)
 endif()
 
 # Shader compilation
@@ -69,8 +67,11 @@ file(GLOB SLANG_SHADER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang)
 # Find slangc executable (optional)
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin)
 
-# Compile Slang shaders using slangc if available
 if(SLANGC_EXECUTABLE)
+    # Ensure the output directory for compiled shaders exists
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+
+    # Compile Slang shaders using slangc
     foreach(SHADER ${SLANG_SHADER_SOURCES})
         get_filename_component(SHADER_NAME ${SHADER} NAME)
         get_filename_component(SHADER_NAME_WE ${SHADER_NAME} NAME_WE)
@@ -83,6 +84,7 @@ if(SLANGC_EXECUTABLE)
         )
         list(APPEND SHADER_SPVS ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
     endforeach()
+
     add_custom_target(shaders DEPENDS ${SHADER_SPVS})
 else()
     message(STATUS "slangc not found. Skipping shader compilation step.")
@@ -189,7 +191,9 @@ endif()
 
 # Include binary and resource directories in the package
 install(TARGETS SimpleEngine DESTINATION bin)
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/shaders DESTINATION share/SimpleEngine)
+if(SLANGC_EXECUTABLE)
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/shaders DESTINATION share/SimpleEngine)
+endif()
 
 # Install models and textures if they exist
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/models)

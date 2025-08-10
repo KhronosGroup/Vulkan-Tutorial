@@ -193,9 +193,7 @@ public:
      * @brief End a performance measurement and log the result.
      * @param name The name of the measurement.
      */
-    void EndMeasurement(const std::string& name) {
-        std::lock_guard<std::mutex> lock(mutex);
-
+    void StopMeasurement(const std::string& name) {
         auto now = std::chrono::high_resolution_clock::now();
         auto it = measurements.find(name);
 

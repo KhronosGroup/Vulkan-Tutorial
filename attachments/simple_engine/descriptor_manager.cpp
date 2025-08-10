@@ -1,7 +1,7 @@
 #include "descriptor_manager.h"
 #include <iostream>
 #include <array>
-#include <string.h>
+#include <cstring>
 #include "transform_component.h"
 #include "camera_component.h"
 
@@ -11,9 +11,7 @@ DescriptorManager::DescriptorManager(VulkanDevice& device)
 }
 
 // Destructor
-DescriptorManager::~DescriptorManager() {
-    // RAII will handle destruction
-}
+DescriptorManager::~DescriptorManager() = default;
 
 // Create descriptor pool
 bool DescriptorManager::createDescriptorPool(uint32_t maxSets) {
@@ -88,9 +86,58 @@ bool DescriptorManager::createUniformBuffers(Entity* entity, uint32_t maxFramesI
     }
 }
 
+bool DescriptorManager::update_descriptor_sets(Entity* entity, uint32_t maxFramesInFlight, bool& value1) {
+    assert(entityResources[entity].uniformBuffers.size() == maxFramesInFlight);
+    // Update descriptor sets
+    for (size_t i = 0; i < maxFramesInFlight; i++) {
+        // Create descriptor buffer info
+        vk::DescriptorBufferInfo bufferInfo{
+            .buffer = *entityResources[entity].uniformBuffers[i],
+            .offset = 0,
+            .range = sizeof(UniformBufferObject)
+        };
+
+        // Create descriptor image info
+        vk::DescriptorImageInfo imageInfo{
+            // These would be set based on the texture resources
+            // .sampler = textureSampler,
+            // .imageView = textureImageView,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+
+        // Create descriptor writes
+        std::array<vk::WriteDescriptorSet, 2> descriptorWrites = {
+            vk::WriteDescriptorSet{
+                .dstSet = entityResources[entity].descriptorSets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &bufferInfo,
+                .pTexelBufferView = nullptr
+            },
+            vk::WriteDescriptorSet{
+                .dstSet = entityResources[entity].descriptorSets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .pImageInfo = &imageInfo,
+                .pBufferInfo = nullptr,
+                .pTexelBufferView = nullptr
+            }
+        };
+
+        // Update descriptor sets
+        device.getDevice().updateDescriptorSets(descriptorWrites, nullptr);
+    }
+    return false;
+}
 // Create descriptor sets for an entity
 bool DescriptorManager::createDescriptorSets(Entity* entity, const std::string& texturePath, vk::DescriptorSetLayout descriptorSetLayout, uint32_t maxFramesInFlight) {
     try {
+        assert(entityResources.find(entity) != entityResources.end());
         // Create descriptor sets for each frame in flight
         std::vector<vk::DescriptorSetLayout> layouts(maxFramesInFlight, descriptorSetLayout);
 
@@ -101,61 +148,10 @@ bool DescriptorManager::createDescriptorSets(Entity* entity, const std::string& 
             .pSetLayouts = layouts.data()
         };
 
-        // Allocate descriptor sets
-        auto descriptorSets = device.getDevice().allocateDescriptorSets(allocInfo);
+        entityResources[entity].descriptorSets = device.getDevice().allocateDescriptorSets(allocInfo);
 
-        // Store descriptor sets
-        // Convert from vk::raii::DescriptorSet to vk::DescriptorSet
-        std::vector<vk::DescriptorSet> nonRaiiDescriptorSets;
-        for (const auto& ds : descriptorSets) {
-            nonRaiiDescriptorSets.push_back(*ds);
-        }
-        entityResources[entity].descriptorSets = nonRaiiDescriptorSets;
-
-        // Update descriptor sets
-        for (size_t i = 0; i < maxFramesInFlight; i++) {
-            // Create descriptor buffer info
-            vk::DescriptorBufferInfo bufferInfo{
-                .buffer = *entityResources[entity].uniformBuffers[i],
-                .offset = 0,
-                .range = sizeof(UniformBufferObject)
-            };
-
-            // Create descriptor image info
-            vk::DescriptorImageInfo imageInfo{
-                // These would be set based on the texture resources
-                // .sampler = textureSampler,
-                // .imageView = textureImageView,
-                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-            };
-
-            // Create descriptor writes
-            std::array<vk::WriteDescriptorSet, 2> descriptorWrites = {
-                vk::WriteDescriptorSet{
-                    .dstSet = descriptorSets[i],
-                    .dstBinding = 0,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eUniformBuffer,
-                    .pImageInfo = nullptr,
-                    .pBufferInfo = &bufferInfo,
-                    .pTexelBufferView = nullptr
-                },
-                vk::WriteDescriptorSet{
-                    .dstSet = descriptorSets[i],
-                    .dstBinding = 1,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                    .pImageInfo = &imageInfo,
-                    .pBufferInfo = nullptr,
-                    .pTexelBufferView = nullptr
-                }
-            };
-
-            // Update descriptor sets
-            device.getDevice().updateDescriptorSets(descriptorWrites, nullptr);
-        }
+        bool value1;
+        if (update_descriptor_sets(entity, maxFramesInFlight, value1)) return value1;
 
         return true;
     } catch (const std::exception& e) {
@@ -192,6 +188,8 @@ void DescriptorManager::updateUniformBuffer(uint32_t currentImage, Entity* entit
     ubo.lightPos = glm::vec4(0.0f, 5.0f, 0.0f, 1.0f);
     ubo.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
+    assert(entityResources.find(entity) != entityResources.end());
+    assert(entityResources[entity].uniformBuffers.size() > currentImage);
     // Copy data to uniform buffer
     memcpy(entityResources[entity].uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }

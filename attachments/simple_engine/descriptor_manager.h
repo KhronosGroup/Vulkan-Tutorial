@@ -34,7 +34,7 @@ public:
         std::vector<vk::raii::Buffer> uniformBuffers;
         std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
         std::vector<void*> uniformBuffersMapped;
-        std::vector<vk::DescriptorSet> descriptorSets;
+        std::vector<vk::raii::DescriptorSet> descriptorSets;
     };
 
     /**
@@ -62,6 +62,7 @@ public:
      * @return True if the uniform buffers were created successfully, false otherwise.
      */
     bool createUniformBuffers(Entity* entity, uint32_t maxFramesInFlight);
+    bool update_descriptor_sets(Entity* entity, uint32_t maxFramesInFlight, bool& value1);
 
     /**
      * @brief Create descriptor sets for an entity.
@@ -91,14 +92,14 @@ public:
      * @brief Get the entity resources.
      * @return The entity resources.
      */
-    std::unordered_map<Entity*, EntityResources>& getEntityResources() { return entityResources; }
+    const std::unordered_map<Entity*, EntityResources>& getEntityResources() { return entityResources; }
 
     /**
      * @brief Get the resources for an entity.
      * @param entity The entity.
      * @return The entity resources.
      */
-    EntityResources& getEntityResources(Entity* entity) { return entityResources[entity]; }
+    const EntityResources& getEntityResources(Entity* entity) { return entityResources[entity]; }
 
 private:
     // Vulkan device

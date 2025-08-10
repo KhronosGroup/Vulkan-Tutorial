@@ -128,59 +128,60 @@ void ImGuiSystem::NewFrame() {
         ImGui::Text("All models rendered with basic Phong shading");
     }
 
-    // BRDF Quality Controls - always available since BRDF is now default
-    ImGui::Separator();
-    ImGui::Text("BRDF Quality Controls:");
+    if (pbrEnabled) {
+        // BRDF Quality Controls
+        ImGui::Separator();
+        ImGui::Text("BRDF Quality Controls:");
 
-    // Gamma correction slider
-    static float gamma = 2.2f;
-    if (ImGui::SliderFloat("Gamma Correction", &gamma, 1.0f, 3.0f, "%.2f")) {
-        // Update gamma in renderer
-        if (renderer) {
-            renderer->SetGamma(gamma);
+        // Gamma correction slider
+        static float gamma = 2.2f;
+        if (ImGui::SliderFloat("Gamma Correction", &gamma, 1.0f, 3.0f, "%.2f")) {
+            // Update gamma in renderer
+            if (renderer) {
+                renderer->SetGamma(gamma);
+            }
+            std::cout << "Gamma set to: " << gamma << std::endl;
         }
-        std::cout << "Gamma set to: " << gamma << std::endl;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reset##Gamma")) {
-        gamma = 2.2f;
-        if (renderer) {
-            renderer->SetGamma(gamma);
+        ImGui::SameLine();
+        if (ImGui::Button("Reset##Gamma")) {
+            gamma = 2.2f;
+            if (renderer) {
+                renderer->SetGamma(gamma);
+            }
+            std::cout << "Gamma reset to: " << gamma << std::endl;
         }
-        std::cout << "Gamma reset to: " << gamma << std::endl;
-    }
 
-    // Exposure slider
-    static float exposure = 3.0f; // Higher default for emissive lighting
-    if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f, "%.2f")) {
-        // Update exposure in renderer
-        if (renderer) {
-            renderer->SetExposure(exposure);
+        // Exposure slider
+        static float exposure = 3.0f; // Higher default for emissive lighting
+        if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f, "%.2f")) {
+            // Update exposure in renderer
+            if (renderer) {
+                renderer->SetExposure(exposure);
+            }
+            std::cout << "Exposure set to: " << exposure << std::endl;
         }
-        std::cout << "Exposure set to: " << exposure << std::endl;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reset##Exposure")) {
-        exposure = 3.0f; // Reset to higher value for emissive lighting
-        if (renderer) {
-            renderer->SetExposure(exposure);
+        ImGui::SameLine();
+        if (ImGui::Button("Reset##Exposure")) {
+            exposure = 3.0f; // Reset to higher value for emissive lighting
+            if (renderer) {
+                renderer->SetExposure(exposure);
+            }
+            std::cout << "Exposure reset to: " << exposure << std::endl;
         }
-        std::cout << "Exposure reset to: " << exposure << std::endl;
-    }
 
-    // Shadow toggle
-    static bool shadowsEnabled = true; // Default shadows on
-    if (ImGui::Checkbox("Enable Shadows", &shadowsEnabled)) {
-        // Update shadows in renderer
-        if (renderer) {
-            renderer->SetShadowsEnabled(shadowsEnabled);
+        // Shadow toggle
+        static bool shadowsEnabled = true; // Default shadows on
+        if (ImGui::Checkbox("Enable Shadows", &shadowsEnabled)) {
+            // Update shadows in renderer
+            if (renderer) {
+                renderer->SetShadowsEnabled(shadowsEnabled);
+            }
+            std::cout << "Shadows " << (shadowsEnabled ? "enabled" : "disabled") << std::endl;
         }
-        std::cout << "Shadows " << (shadowsEnabled ? "enabled" : "disabled") << std::endl;
-    }
 
-    ImGui::Text("Tip: Adjust gamma if scene looks too dark/bright");
-    ImGui::Text("Tip: Adjust exposure if scene looks washed out");
-    if (!pbrEnabled) {
+        ImGui::Text("Tip: Adjust gamma if scene looks too dark/bright");
+        ImGui::Text("Tip: Adjust exposure if scene looks washed out");
+    } else {
         ImGui::Text("Note: Quality controls affect BRDF rendering only");
     }
 
@@ -395,13 +396,12 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer) {
         struct PushConstBlock {
             float scale[2];
             float translate[2];
-        };
-        std::array<PushConstBlock, 1> pushConstBlock;
+        } pushConstBlock{};
 
-        pushConstBlock[0].scale[0] = 2.0f / ImGui::GetIO().DisplaySize.x;
-        pushConstBlock[0].scale[1] = 2.0f / ImGui::GetIO().DisplaySize.y;
-        pushConstBlock[0].translate[0] = -1.0f;
-        pushConstBlock[0].translate[1] = -1.0f;
+        pushConstBlock.scale[0] = 2.0f / ImGui::GetIO().DisplaySize.x;
+        pushConstBlock.scale[1] = 2.0f / ImGui::GetIO().DisplaySize.y;
+        pushConstBlock.translate[0] = -1.0f;
+        pushConstBlock.translate[1] = -1.0f;
 
         commandBuffer.pushConstants<PushConstBlock>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstBlock);
 
@@ -762,18 +762,17 @@ bool ImGuiSystem::createPipelineLayout() {
 bool ImGuiSystem::createPipeline() {
     try {
         // Load shaders
-        vk::raii::ShaderModule vertShaderModule = renderer->CreateShaderModule("shaders/imgui.spv");
-        vk::raii::ShaderModule fragShaderModule = renderer->CreateShaderModule("shaders/imgui.spv");
+        vk::raii::ShaderModule shaderModule = renderer->CreateShaderModule("shaders/imgui.spv");
 
         // Shader stage creation
         vk::PipelineShaderStageCreateInfo vertShaderStageInfo;
         vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
-        vertShaderStageInfo.module = *vertShaderModule;
+        vertShaderStageInfo.module = *shaderModule;
         vertShaderStageInfo.pName = "VSMain";
 
         vk::PipelineShaderStageCreateInfo fragShaderStageInfo;
         fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
-        fragShaderStageInfo.module = *fragShaderModule;
+        fragShaderStageInfo.module = *shaderModule;
         fragShaderStageInfo.pName = "PSMain";
 
         std::array shaderStages = {vertShaderStageInfo, fragShaderStageInfo};

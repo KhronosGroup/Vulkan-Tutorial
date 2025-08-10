@@ -5,183 +5,168 @@ REM This script installs all required dependencies for building the Simple Game 
 echo Installing Simple Game Engine dependencies for Windows...
 
 REM Check if running as administrator
+REM Administrator privileges are not required. Proceeding without elevation.
 net session >nul 2>&1
 if %errorLevel% == 0 (
-    echo Running as administrator - good!
+    echo Running as administrator (optional).
 ) else (
-    echo This script requires administrator privileges.
-    echo Please run as administrator.
-    pause
-    exit /b 1
+    echo Running without administrator privileges.
 )
 
-REM Check if vcpkg is installed
+REM vcpkg detection and optional local install
+set "VCPKG_EXE="
 where vcpkg >nul 2>&1
-if %errorLevel% == 0 (
+if %errorlevel%==0 (
     echo vcpkg found in PATH
+    set "VCPKG_EXE=vcpkg"
 ) else (
-    echo vcpkg not found in PATH. Installing vcpkg...
-
-    REM Install vcpkg
-    if not exist "C:\vcpkg" (
-        echo Cloning vcpkg to C:\vcpkg...
-        git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-        if %errorLevel% neq 0 (
-            echo Failed to clone vcpkg. Please install Git first.
-            pause
-            exit /b 1
+    echo vcpkg not found in PATH.
+    set "VCPKG_HOME=%USERPROFILE%\vcpkg"
+    set /p INSTALL_VCPKG="Install vcpkg locally to %VCPKG_HOME%? (Y/N): "
+    if /I "%INSTALL_VCPKG%"=="Y" (
+        if not exist "%VCPKG_HOME%" (
+            echo Cloning vcpkg into %VCPKG_HOME% ...
+            git clone https://github.com/Microsoft/vcpkg.git "%VCPKG_HOME%"
+            if %errorlevel% neq 0 (
+                echo Failed to clone vcpkg. Ensure Git is installed and try again.
+                goto AFTER_VCPKG
+            )
+        ) else (
+            echo vcpkg directory already exists at %VCPKG_HOME%
         )
-    )
-
-    REM Bootstrap vcpkg
-    echo Bootstrapping vcpkg...
-    cd /d C:\vcpkg
-    call bootstrap-vcpkg.bat
-    if %errorLevel% neq 0 (
-        echo Failed to bootstrap vcpkg.
-        pause
-        exit /b 1
-    )
-
-    REM Add vcpkg to PATH for this session
-    set PATH=%PATH%;C:\vcpkg
-
-    REM Integrate vcpkg with Visual Studio
-    echo Integrating vcpkg with Visual Studio...
-    vcpkg integrate install
-)
-
-REM Check if Chocolatey is installed for additional packages
-where choco >nul 2>&1
-if %errorLevel% neq 0 (
-    echo Installing Chocolatey package manager...
-    powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
-    if %errorLevel% neq 0 (
-        echo Failed to install Chocolatey. Some dependencies may need manual installation.
-    )
-)
-
-set "CHOCO_EXE=choco"
-if exist "%ProgramData%\chocolatey\bin\choco.exe" set "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
-
-REM Install CMake if not present
-where cmake >nul 2>&1
-if %errorLevel% neq 0 (
-    echo Installing CMake...
-    "%CHOCO_EXE%" install cmake -y
-    if %errorLevel% neq 0 (
-        echo Failed to install CMake via Chocolatey. Please install manually from https://cmake.org/download/
-    )
-)
-
-REM Install Git if not present
-where git >nul 2>&1
-if %errorLevel% neq 0 (
-    echo Installing Git...
-    "%CHOCO_EXE%" install git -y
-    if %errorLevel% neq 0 (
-        echo Failed to install Git via Chocolatey. Please install manually from https://git-scm.com/download/win
-    )
-)
-
-REM Install Vulkan SDK
-echo Installing Vulkan SDK...
-if not exist "C:\VulkanSDK" (
-    echo Downloading and installing Vulkan SDK...
-    "%CHOCO_EXE%" install vulkan-sdk -y
-    if %errorLevel% neq 0 (
-        echo Failed to install Vulkan SDK via Chocolatey.
-        echo Please download and install manually from https://vulkan.lunarg.com/sdk/home#windows
-        echo Make sure to set the VULKAN_SDK environment variable.
-    )
-) else (
-    echo Vulkan SDK appears to be already installed.
-)
-
-REM Install vcpkg packages
-echo Installing dependencies via vcpkg...
-
-REM Set vcpkg triplet for x64 Windows
-set VCPKG_DEFAULT_TRIPLET=x64-windows
-
-REM Install GLFW
-echo Installing GLFW...
-vcpkg install glfw3:x64-windows
-if %errorLevel% neq 0 (
-    echo Warning: Failed to install GLFW via vcpkg
-)
-
-REM Install GLM
-echo Installing GLM...
-vcpkg install glm:x64-windows
-if %errorLevel% neq 0 (
-    echo Warning: Failed to install GLM via vcpkg
-)
-
-REM Install OpenAL
-echo Installing OpenAL...
-vcpkg install openal-soft:x64-windows
-if %errorLevel% neq 0 (
-    echo Warning: Failed to install OpenAL via vcpkg
-)
-
-REM Install KTX
-echo Installing KTX...
-vcpkg install ktx:x64-windows
-if %errorLevel% neq 0 (
-    echo Warning: Failed to install KTX via vcpkg
-)
-
-REM Install tinygltf
-echo Installing tinygltf...
-vcpkg install tinygltf:x64-windows
-if %errorLevel% neq 0 (
-    echo Warning: Failed to install tinygltf via vcpkg
-)
-
-REM Install Slang compiler
-echo Installing Slang compiler...
-if not exist "C:\Program Files\Slang" (
-    echo Downloading Slang compiler...
-    set SLANG_VERSION=2024.1.21
-    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/shader-slang/slang/releases/download/v%SLANG_VERSION%/slang-%SLANG_VERSION%-win64.zip' -OutFile 'slang-win64.zip'"
-    if %errorLevel% == 0 (
-        echo Extracting Slang compiler...
-        powershell -Command "Expand-Archive -Path 'slang-win64.zip' -DestinationPath 'C:\Program Files\Slang' -Force"
-        del slang-win64.zip
-
-        REM Add Slang to PATH (requires restart or new command prompt)
-        echo Adding Slang to system PATH...
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if(-not ($p -split ';' | ForEach-Object { $_.ToLower() }) -contains 'c:\\program files\\slang\\bin'){ [Environment]::SetEnvironmentVariable('Path',($p + ';C:\\Program Files\\Slang\\bin'),'Machine'); Write-Host 'Added Slang to machine PATH'; } else { Write-Host 'Slang already in machine PATH'; }"
-        echo Note: You may need to restart your command prompt for Slang to be available in PATH
+        pushd "%VCPKG_HOME%"
+        call bootstrap-vcpkg.bat
+        if %errorlevel% neq 0 (
+            echo Failed to bootstrap vcpkg.
+            popd
+            goto AFTER_VCPKG
+        )
+        popd
+        set "VCPKG_EXE=%VCPKG_HOME%\vcpkg.exe"
+        set /p ADD_VCPKG_PATH="Add vcpkg to PATH for this session? (Y/N): "
+        if /I "%ADD_VCPKG_PATH%"=="Y" set "PATH=%PATH%;%VCPKG_HOME%"
     ) else (
-        echo Failed to download Slang compiler. Please install manually from:
-        echo https://github.com/shader-slang/slang/releases
+        echo Skipping vcpkg installation.
     )
+)
+:AFTER_VCPKG
+
+REM Tool checks (no forced install)
+where cmake >nul 2>&1
+if %errorlevel%==0 (
+    echo CMake found in PATH
 ) else (
-    echo Slang compiler appears to be already installed.
+    echo CMake not found in PATH.
+    set /p OPEN_CMAKE="Open CMake download page in browser? (Y/N): "
+    if /I "%OPEN_CMAKE%"=="Y" start "" "https://cmake.org/download/"
 )
 
-REM Set environment variables for CMake to find vcpkg
-echo Setting up CMake integration...
-setx CMAKE_TOOLCHAIN_FILE "C:\vcpkg\scripts\buildsystems\vcpkg.cmake" /M
-setx VCPKG_TARGET_TRIPLET "x64-windows" /M
+where git >nul 2>&1
+if %errorlevel%==0 (
+    echo Git found in PATH
+) else (
+    echo Git not found in PATH.
+    set /p OPEN_GIT="Open Git for Windows download page? (Y/N): "
+    if /I "%OPEN_GIT%"=="Y" start "" "https://git-scm.com/download/win"
+)
 
+REM Vulkan SDK detection (no forced install)
+set "HAVE_VULKAN_SDK="
+if defined VULKAN_SDK set "HAVE_VULKAN_SDK=1"
+where vulkaninfo >nul 2>&1
+if %errorlevel%==0 set "HAVE_VULKAN_SDK=1"
+if defined HAVE_VULKAN_SDK (
+    echo Vulkan SDK detected.
+) else (
+    echo Vulkan SDK not detected.
+    set /p OPEN_VULKAN="Open Vulkan SDK download page (LunarG) in browser? (Y/N): "
+    if /I "%OPEN_VULKAN%"=="Y" start "" "https://vulkan.lunarg.com/sdk/home#windows"
+)
+
+REM Optional vcpkg package installation
+if defined VCPKG_EXE (
+    set /p INSTALL_VCPKG_PKGS="Install common dependencies via vcpkg (glfw3, glm, openal-soft, ktx, tinygltf)? (Y/N): "
+    if /I "%INSTALL_VCPKG_PKGS%"=="Y" (
+        set "VCPKG_DEFAULT_TRIPLET=x64-windows"
+        echo Installing packages with %VCPKG_EXE% (triplet %VCPKG_DEFAULT_TRIPLET%) ...
+        "%VCPKG_EXE%" install glfw3:%VCPKG_DEFAULT_TRIPLET% glm:%VCPKG_DEFAULT_TRIPLET% openal-soft:%VCPKG_DEFAULT_TRIPLET% ktx:%VCPKG_DEFAULT_TRIPLET% tinygltf:%VCPKG_DEFAULT_TRIPLET%
+        if %errorlevel% neq 0 (
+            echo Warning: Some vcpkg installations may have failed. Please review output.
+        )
+    ) else (
+        echo Skipping vcpkg package installation.
+    )
+) else (
+    echo vcpkg not available; skipping vcpkg package installation.
+)
+
+REM Slang compiler detection and optional install
+set "SLANGC_EXE="
+where slangc >nul 2>&1
+if %errorlevel%==0 (
+    echo Slang compiler found in PATH
+    set "SLANGC_EXE=slangc"
+) else (
+    if defined VULKAN_SDK (
+        if exist "%VULKAN_SDK%\Bin\slangc.exe" set "SLANGC_EXE=%VULKAN_SDK%\Bin\slangc.exe"
+        if not defined SLANGC_EXE if exist "%VULKAN_SDK%\Bin64\slangc.exe" set "SLANGC_EXE=%VULKAN_SDK%\Bin64\slangc.exe"
+    )
+)
+
+if defined SLANGC_EXE (
+    echo Using Slang at %SLANGC_EXE%
+) else (
+    echo Slang compiler (slangc) not found.
+    set /p INSTALL_SLANG="Download and install latest Slang locally (no admin)? (Y/N): "
+    if /I "%INSTALL_SLANG%"=="Y" (
+        set "SLANG_ROOT=%LOCALAPPDATA%\slang"
+        if not exist "%SLANG_ROOT%" mkdir "%SLANG_ROOT%"
+        echo Downloading latest Slang release...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "\
+$ErrorActionPreference='Stop'; \
+$r=Invoke-RestMethod 'https://api.github.com/repos/shader-slang/slang/releases/latest'; \
+$asset=$r.assets | Where-Object { $_.name -match 'win64.*\\.zip$' } | Select-Object -First 1; \
+if(-not $asset){ throw 'No win64 asset found'; } \
+$out=Join-Path $env:TEMP $asset.name; \
+Invoke-WebRequest $asset.browser_download_url -OutFile $out; \
+Expand-Archive -Path $out -DestinationPath $env:LOCALAPPDATA\slang -Force; \
+Write-Host ('Downloaded Slang ' + $r.tag_name) \
+"
+        echo Locating slangc.exe...
+        set "SLANGC_PATH="
+        for /f "delims=" %%F in ('dir /b /s "%LOCALAPPDATA%\slang\slangc.exe" 2^>nul') do (
+            set "SLANGC_PATH=%%F"
+            goto FOUND_SLANG
+        )
+        :FOUND_SLANG
+        if defined SLANGC_PATH (
+            echo Found slangc at "%SLANGC_PATH%"
+            for %%D in ("%SLANGC_PATH%") do set "SLANG_BIN=%%~dpD"
+            set /p ADD_SLANG_PATH="Add Slang to PATH for this session? (Y/N): "
+            if /I "%ADD_SLANG_PATH%"=="Y" set "PATH=%SLANG_BIN%;%PATH%"
+            set "SLANGC_EXE=%SLANGC_PATH%"
+        ) else (
+            echo Failed to locate slangc after extraction. Please install manually if needed: https://github.com/shader-slang/slang/releases
+        )
+    ) else (
+        echo Skipping Slang installation.
+    )
+)
+
+REM Final guidance (no machine-wide env changes)
 echo.
-echo Dependencies installation completed!
+echo Dependencies check completed!
 echo.
-echo To build the Simple Game Engine:
-echo 1. Open a new command prompt (to get updated PATH)
-echo 2. cd to the simple_engine directory
+echo Build instructions:
+echo 1. Open a new command prompt (if you added tools to PATH for this session).
+echo 2. cd to attachments\simple_engine
 echo 3. mkdir build ^&^& cd build
-echo 4. cmake .. -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+echo 4. If using vcpkg toolchain, run:
+echo    cmake .. -DCMAKE_TOOLCHAIN_FILE=%VCPKG_HOME%\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
+echo    (adjust path if you installed vcpkg elsewhere; or omit this flag if not using vcpkg)
 echo 5. cmake --build . --config Release
 echo.
-echo Or use Visual Studio:
-echo 1. Open the CMakeLists.txt file in Visual Studio
-echo 2. Visual Studio should automatically detect vcpkg integration
-echo 3. Build the project using Ctrl+Shift+B
+echo Alternatively open CMakeLists.txt in Visual Studio and configure normally.
 echo.
-echo Note: You may need to restart your command prompt or IDE for environment variables to take effect.
 
 pause

@@ -65,7 +65,7 @@ public:
      * @param name The name of the entity.
      * @return A pointer to the entity, or nullptr if not found.
      */
-    Entity* GetEntity(const std::string& name);
+    Entity* GetEntity(const std::string& name) const;
 
     /**
      * @brief Remove an entity.
@@ -140,6 +140,30 @@ public:
      * @return A pointer to the ImGui system.
      */
     ImGuiSystem* GetImGuiSystem() const;
+
+    /**
+     * @brief Handles mouse input for interaction and camera control.
+     *
+     * This method processes mouse input for various functionalities, including interacting with the scene,
+     * camera rotation, and delegating handling to ImGui or hover systems.
+     *
+     * @param x The x-coordinate of the mouse position.
+     * @param y The y-coordinate of the mouse position.
+     * @param buttons A bitmask representing the state of mouse buttons.
+     *                Bit 0 corresponds to the left button, and Bit 1 corresponds to the right button.
+     */
+    void handleMouseInput(float x, float y, uint32_t buttons);
+
+    /**
+     * @brief Handles keyboard input events for controlling the camera and other subsystems.
+     *
+     * This method processes key press and release events to update the camera's movement state.
+     * It also forwards the input to other subsystems like the ImGui interface if applicable.
+     *
+     * @param key The key code of the keyboard input.
+     * @param pressed Indicates whether the key is pressed (true) or released (false).
+     */
+    void handleKeyInput(uint32_t key, bool pressed);
 
 #if defined(PLATFORM_ANDROID)
     /**

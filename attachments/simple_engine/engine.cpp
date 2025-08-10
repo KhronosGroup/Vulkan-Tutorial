@@ -42,95 +42,12 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
 
     // Set mouse callback
     platform->SetMouseCallback([this](float x, float y, uint32_t buttons) {
-        // Check if ImGui wants to capture mouse input first
-        bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
-
-        if (!imguiWantsMouse) {
-            // Handle mouse click for ball throwing (right mouse button)
-            if (buttons & 2) { // Right mouse button (bit 1)
-                if (!cameraControl.mouseRightPressed) {
-                    cameraControl.mouseRightPressed = true;
-                    // Throw a ball on mouse click
-                    ThrowBall(x, y);
-                }
-            } else {
-                cameraControl.mouseRightPressed = false;
-            }
-
-            // Handle camera rotation when left mouse button is pressed
-            if (buttons & 1) { // Left mouse button (bit 0)
-                if (!cameraControl.mouseLeftPressed) {
-                    cameraControl.mouseLeftPressed = true;
-                    cameraControl.firstMouse = true;
-                }
-
-                if (cameraControl.firstMouse) {
-                    cameraControl.lastMouseX = x;
-                    cameraControl.lastMouseY = y;
-                    cameraControl.firstMouse = false;
-                }
-
-                float xOffset = x - cameraControl.lastMouseX;
-                float yOffset = cameraControl.lastMouseY - y; // Reversed since y-coordinates go from bottom to top
-                cameraControl.lastMouseX = x;
-                cameraControl.lastMouseY = y;
-
-                xOffset *= cameraControl.mouseSensitivity;
-                yOffset *= cameraControl.mouseSensitivity;
-
-                cameraControl.yaw += xOffset;
-                cameraControl.pitch += yOffset;
-
-                // Constrain pitch to avoid gimbal lock
-                if (cameraControl.pitch > 89.0f) cameraControl.pitch = 89.0f;
-                if (cameraControl.pitch < -89.0f) cameraControl.pitch = -89.0f;
-            } else {
-                cameraControl.mouseLeftPressed = false;
-            }
-        }
-
-        if (imguiSystem) {
-            imguiSystem->HandleMouse(x, y, buttons);
-        }
-
-        // Always perform hover detection (even when ImGui is active)
-        HandleMouseHover(x, y);
+        handleMouseInput(x, y, buttons);
     });
 
     // Set keyboard callback
     platform->SetKeyboardCallback([this](uint32_t key, bool pressed) {
-        // Handle camera movement keys (WASD + Arrow keys)
-        switch (key) {
-            case GLFW_KEY_W:
-            case GLFW_KEY_UP:
-                cameraControl.moveForward = pressed;
-                break;
-            case GLFW_KEY_S:
-            case GLFW_KEY_DOWN:
-                cameraControl.moveBackward = pressed;
-                break;
-            case GLFW_KEY_A:
-            case GLFW_KEY_LEFT:
-                cameraControl.moveLeft = pressed;
-                break;
-            case GLFW_KEY_D:
-            case GLFW_KEY_RIGHT:
-                cameraControl.moveRight = pressed;
-                break;
-            case GLFW_KEY_Q:
-            case GLFW_KEY_PAGE_UP:
-                cameraControl.moveUp = pressed;
-                break;
-            case GLFW_KEY_E:
-            case GLFW_KEY_PAGE_DOWN:
-                cameraControl.moveDown = pressed;
-                break;
-            default: break;
-        }
-
-        if (imguiSystem) {
-            imguiSystem->HandleKeyboard(key, pressed);
-        }
+        handleKeyInput(key, pressed);
     });
 
     // Set char callback
@@ -276,7 +193,7 @@ Entity* Engine::CreateEntity(const std::string& name) {
     return entities.back().get();
 }
 
-Entity* Engine::GetEntity(const std::string& name) {
+Entity* Engine::GetEntity(const std::string& name) const {
     auto it = entityMap.find(name);
     if (it != entityMap.end()) {
         return it->second;
@@ -363,6 +280,97 @@ ImGuiSystem* Engine::GetImGuiSystem() const {
     return imguiSystem.get();
 }
 
+
+
+void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
+    // Check if ImGui wants to capture mouse input first
+        bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
+
+        if (!imguiWantsMouse) {
+            // Handle mouse click for ball throwing (right mouse button)
+            if (buttons & 2) { // Right mouse button (bit 1)
+                if (!cameraControl.mouseRightPressed) {
+                    cameraControl.mouseRightPressed = true;
+                    // Throw a ball on mouse click
+                    ThrowBall(x, y);
+                }
+            } else {
+                cameraControl.mouseRightPressed = false;
+            }
+
+            // Handle camera rotation when left mouse button is pressed
+            if (buttons & 1) { // Left mouse button (bit 0)
+                if (!cameraControl.mouseLeftPressed) {
+                    cameraControl.mouseLeftPressed = true;
+                    cameraControl.firstMouse = true;
+                }
+
+                if (cameraControl.firstMouse) {
+                    cameraControl.lastMouseX = x;
+                    cameraControl.lastMouseY = y;
+                    cameraControl.firstMouse = false;
+                }
+
+                float xOffset = x - cameraControl.lastMouseX;
+                float yOffset = cameraControl.lastMouseY - y; // Reversed since y-coordinates go from bottom to top
+                cameraControl.lastMouseX = x;
+                cameraControl.lastMouseY = y;
+
+                xOffset *= cameraControl.mouseSensitivity;
+                yOffset *= cameraControl.mouseSensitivity;
+
+                cameraControl.yaw += xOffset;
+                cameraControl.pitch += yOffset;
+
+                // Constrain pitch to avoid gimbal lock
+                if (cameraControl.pitch > 89.0f) cameraControl.pitch = 89.0f;
+                if (cameraControl.pitch < -89.0f) cameraControl.pitch = -89.0f;
+            } else {
+                cameraControl.mouseLeftPressed = false;
+            }
+        }
+
+        if (imguiSystem) {
+            imguiSystem->HandleMouse(x, y, buttons);
+        }
+
+        // Always perform hover detection (even when ImGui is active)
+        HandleMouseHover(x, y);
+}
+void Engine::handleKeyInput(uint32_t key, bool pressed) {
+    switch (key) {
+        case GLFW_KEY_W:
+        case GLFW_KEY_UP:
+            cameraControl.moveForward = pressed;
+            break;
+        case GLFW_KEY_S:
+        case GLFW_KEY_DOWN:
+            cameraControl.moveBackward = pressed;
+            break;
+        case GLFW_KEY_A:
+        case GLFW_KEY_LEFT:
+            cameraControl.moveLeft = pressed;
+            break;
+        case GLFW_KEY_D:
+        case GLFW_KEY_RIGHT:
+            cameraControl.moveRight = pressed;
+            break;
+        case GLFW_KEY_Q:
+        case GLFW_KEY_PAGE_UP:
+            cameraControl.moveUp = pressed;
+            break;
+        case GLFW_KEY_E:
+        case GLFW_KEY_PAGE_DOWN:
+            cameraControl.moveDown = pressed;
+            break;
+        default: break;
+    }
+
+    if (imguiSystem) {
+        imguiSystem->HandleKeyboard(key, pressed);
+    }
+}
+
 void Engine::Update(float deltaTime) {
     // Debug: Verify Update method is being called
     static int updateCallCount = 0;
@@ -441,6 +449,9 @@ float Engine::CalculateDeltaTime() {
 }
 
 void Engine::HandleResize(int width, int height) const {
+    if (height <= 0 || width <= 0) {
+        return;
+    }
     // Update the active camera's aspect ratio
     if (activeCamera) {
         activeCamera->SetAspectRatio(static_cast<float>(width) / static_cast<float>(height));
@@ -467,13 +478,8 @@ void Engine::UpdateCameraControls(float deltaTime) const {
     // Check if camera tracking is enabled
     if (imguiSystem && imguiSystem->IsCameraTrackingEnabled()) {
         // Find the first active ball entity
-        Entity* ballEntity = nullptr;
-        for (const auto& entity : entities) {
-            if (entity->IsActive() && entity->GetName().find("Ball_") != std::string::npos) {
-                ballEntity = entity.get();
-                break;
-            }
-        }
+        auto ballEntityIt = std::ranges::find_if( entities, []( auto const & entity ){ return entity->IsActive() && ( entity->GetName().find( "Ball_" ) != std::string::npos ); } );
+        Entity* ballEntity = ballEntityIt != entities.end() ? ballEntityIt->get() : nullptr;
 
         if (ballEntity) {
             // Get ball's transform component
@@ -683,10 +689,6 @@ void Engine::ThrowBall(float mouseX, float mouseY) {
 }
 
 void Engine::ProcessPendingBalls() {
-    if (pendingBalls.empty()) {
-        return;
-    }
-
     // Process all pending balls
     for (const auto& pendingBall : pendingBalls) {
         // Create ball entity

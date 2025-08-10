@@ -155,6 +155,6 @@ public:
     template<typename T>
     bool HasComponent() const {
         static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
-        return componentMap.find(std::type_index(typeid(T))) != componentMap.end();
+        return componentMap.contains(std::type_index(typeid(T)));
     }
 };

@@ -385,7 +385,7 @@ private:
             std::vector<int16_t> pcmBuffer(samplesProcessed);
             for (uint32_t i = 0; i < samplesProcessed; i++) {
                 // Clamp and convert to 16-bit PCM
-                float sample = std::max(-1.0f, std::min(1.0f, audioBuffer[i]));
+                float sample = std::clamp( -1.0f, 1.0f, audioBuffer[i] );
                 pcmBuffer[i] = static_cast<int16_t>(sample * 32767.0f);
             }
 

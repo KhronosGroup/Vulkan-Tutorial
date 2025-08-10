@@ -313,6 +313,26 @@ void Renderer::recreateSwapChain() {
     createGraphicsPipeline();
     createPBRPipeline();
     createLightingPipeline();
+
+    // Recreate descriptor sets for all entities after swapchain/pipeline rebuild
+    for (auto& [entity, resources] : entityResources) {
+        if (!entity) continue;
+        auto meshComponent = entity->GetComponent<MeshComponent>();
+        if (!meshComponent) continue;
+
+        std::string texturePath = meshComponent->GetTexturePath();
+        // Fallback for basic pipeline: use baseColor when legacy path is empty
+        if (texturePath.empty()) {
+            const std::string& baseColor = meshComponent->GetBaseColorTexturePath();
+            if (!baseColor.empty()) {
+                texturePath = baseColor;
+            }
+        }
+        // Recreate basic descriptor sets (ignore failures here to avoid breaking resize)
+        createDescriptorSets(entity, texturePath, false);
+        // Recreate PBR descriptor sets
+        createDescriptorSets(entity, texturePath, true);
+    }
 }
 
 // Update uniform buffer
@@ -336,20 +356,52 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
     ubo.proj = camera->GetProjectionMatrix();
     ubo.proj[1][1] *= -1; // Flip Y for Vulkan
 
+    // Continue with the rest of the uniform buffer setup
+    updateUniformBufferInternal(currentImage, entity, camera, ubo);
+}
+
+// Overloaded version that accepts a custom transform matrix
+void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera, const glm::mat4& customTransform) {
+    // Create the uniform buffer object with custom transform
+    UniformBufferObject ubo{};
+    ubo.model = customTransform;
+    ubo.view = camera->GetViewMatrix();
+    ubo.proj = camera->GetProjectionMatrix();
+    ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+
+    // Continue with the rest of the uniform buffer setup
+    updateUniformBufferInternal(currentImage, entity, camera, ubo);
+}
+
+// Internal helper function to complete uniform buffer setup
+void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity, CameraComponent* camera, UniformBufferObject& ubo) {
+    // Get entity resources
+    auto entityIt = entityResources.find(entity);
+    if (entityIt == entityResources.end()) {
+        return;
+    }
+
     // Use static lights loaded during model initialization
     const std::vector<ExtractedLight>& extractedLights = staticLights;
 
     if (!extractedLights.empty()) {
-        // Use all available lights (no hardcoded limit)
-        size_t numLights = extractedLights.size();
+        // Limit the number of active lights for performance
+        size_t numLights = std::min(extractedLights.size(), size_t(MAX_ACTIVE_LIGHTS));
 
-        // Update the light storage buffer with all light data
-        updateLightStorageBuffer(currentImage, extractedLights);
+        // Create a subset of lights to upload this frame
+        std::vector<ExtractedLight> lightsSubset;
+        lightsSubset.reserve(numLights);
+        for (size_t i = 0; i < numLights; ++i) {
+            lightsSubset.push_back(extractedLights[i]);
+        }
+
+        // Update the light storage buffer with the subset of light data
+        updateLightStorageBuffer(currentImage, lightsSubset);
 
         ubo.lightCount = static_cast<int>(numLights);
-        // Set shadow map count based on shadowsEnabled flag
+        // Set shadow map count based on shadowsEnabled flag with a tighter cap
         if (shadowsEnabled) {
-            ubo.shadowMapCount = static_cast<int>(std::min(numLights, size_t(16))); // Limit shadow maps to 16 for performance (indices 0-15)
+            ubo.shadowMapCount = static_cast<int>(std::min(numLights, size_t(MAX_SHADOW_MAPS_USED)));
         } else {
             ubo.shadowMapCount = 0; // Disable shadows when shadowsEnabled is false
         }
@@ -397,9 +449,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
     // Acquire the next image from the swap chain
     uint32_t imageIndex;
-    // Use currentFrame for semaphore indexing to ensure consistency
-    uint32_t semaphoreIndex = currentFrame % imageAvailableSemaphores.size();
-    auto result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[semaphoreIndex]);
+    // Use currentFrame for consistent semaphore indexing throughout acquire/submit/present chain
+    auto result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
     imageIndex = result.second;
 
     // Check if the swap chain needs to be recreated
@@ -489,6 +540,11 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             }
         }
 
+        // Skip camera entities - they should not be rendered
+        if (entity->GetName() == "Camera") {
+            continue;
+        }
+
         // Get the mesh component
         auto meshComponent = entity->GetComponent<MeshComponent>();
         if (!meshComponent) {
@@ -531,13 +587,14 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             currentLayout = selectedLayout;
         }
 
-        // Update the uniform buffer
-        updateUniformBuffer(currentFrame, entity, camera);
+        // Always bind both vertex and instance buffers since shaders expect instance data
+        // The instancing toggle controls the rendering behavior, not the buffer binding
+        std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+        std::array<vk::DeviceSize, 2> offsets = {0, 0};
+        commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
 
-        // Bind the vertex buffer
-        std::array<vk::Buffer, 1> vertexBuffers = {*meshIt->second.vertexBuffer};
-        std::array<vk::DeviceSize, 1> offsets = {0};
-        commandBuffers[currentFrame].bindVertexBuffers(0, vertexBuffers, offsets);
+        // Always set UBO.model from the entity's transform; shaders combine it with instance matrices
+        updateUniformBuffer(currentFrame, entity, camera);
 
         // Bind the index buffer
         commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
@@ -585,50 +642,38 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
                 // Extract material name from entity name for any GLTF model entities
                 std::string entityName = entity->GetName();
-                size_t materialStart = entityName.find("_Material_");
-                if (materialStart != std::string::npos) {
-                    // Try to extract material name from entity name
-                    size_t nameStart = entityName.find_last_of("_");
-                    if (nameStart != std::string::npos && nameStart < entityName.length() - 1) {
-                        std::string materialName = entityName.substr(nameStart + 1);
+                size_t tagPos = entityName.find("_Material_");
+                if (tagPos != std::string::npos) {
+                    size_t afterTag = tagPos + std::string("_Material_").size();
+                    // After the tag, there should be a numeric material index, then an underscore, then the material name
+                    size_t sep = entityName.find('_', afterTag);
+                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
+                        std::string materialName = entityName.substr(sep + 1);
                         Material* material = modelLoader->GetMaterial(materialName);
                         if (material) {
                             // Use actual PBR properties from the GLTF material
-                            pushConstants.baseColorFactor = glm::vec4(material->albedo, 1.0f);
+                            pushConstants.baseColorFactor = glm::vec4(material->albedo, material->alpha);
                             pushConstants.metallicFactor = material->metallic;
                             pushConstants.roughnessFactor = material->roughness;
                             pushConstants.emissiveFactor = material->emissive;  // Set emissive factor for HDR emissive sources
                             pushConstants.emissiveStrength = material->emissiveStrength;  // Set emissive strength from KHR_materials_emissive_strength extension
                         } else {
-                            // Fallback: Use entity-specific variation
-                            size_t hash = std::hash<std::string>{}(entityName);
-                            float variation = (hash % 100) / 100.0f;
-                            pushConstants.baseColorFactor = glm::vec4(0.7f + variation * 0.3f, 0.6f + variation * 0.4f, 0.5f + variation * 0.5f, 1.0f);
-                            pushConstants.metallicFactor = variation * 0.8f;
-                            pushConstants.roughnessFactor = 0.2f + variation * 0.6f;
-                            pushConstants.emissiveFactor = glm::vec3(0.0f);  // No emissive for fallback materials
-                            pushConstants.emissiveStrength = 1.0f;  // Default emissive strength
+                            // Default PBR material properties
+                            pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+                            pushConstants.metallicFactor = 0.1f;
+                            pushConstants.roughnessFactor = 0.7f;
+                            pushConstants.emissiveFactor = glm::vec3(0.0f);
+                            pushConstants.emissiveStrength = 1.0f;
                         }
                     }
                 }
             } else {
-                // Default PBR material properties for non-Bistro entities
+                // Default PBR material properties for non-GLTF entities
                 pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
                 pushConstants.metallicFactor = 0.1f;
                 pushConstants.roughnessFactor = 0.7f;
-                pushConstants.emissiveFactor = glm::vec3(0.0f);  // No emissive for default materials
-                pushConstants.emissiveStrength = 1.0f;  // Default emissive strength
-            }
-
-            // Apply highlighting effect if this entity is highlighted
-            if (highlightedEntity == entity) {
-                // Add a bright yellow tint to highlight the entity
-                pushConstants.baseColorFactor.r = std::min(1.0f, pushConstants.baseColorFactor.r + 0.3f);
-                pushConstants.baseColorFactor.g = std::min(1.0f, pushConstants.baseColorFactor.g + 0.3f);
-                pushConstants.baseColorFactor.b = std::min(1.0f, pushConstants.baseColorFactor.b * 0.7f); // Reduce blue for yellow tint
-                // Also add some emissive glow for extra visibility
-                pushConstants.emissiveFactor = glm::vec3(0.2f, 0.2f, 0.0f);
-                pushConstants.emissiveStrength = 2.0f;
+                pushConstants.emissiveFactor = glm::vec3(0.0f);
+                pushConstants.emissiveStrength = 0.0f;
             }
 
             // Set texture binding indices
@@ -649,8 +694,8 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             );
         }
 
-        // Draw the entity once (no redundant draw calls)
-        commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, 1, 0, 0, 0);
+        uint32_t instanceCount = static_cast<uint32_t>(std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount())));
+        commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
     }
 
     // Render ImGui if provided
@@ -695,12 +740,12 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submitInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*imageAvailableSemaphores[semaphoreIndex],
+        .pWaitSemaphores = &*imageAvailableSemaphores[currentFrame],
         .pWaitDstStageMask = waitStages,
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[currentFrame],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[semaphoreIndex]
+        .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
     };
 
     // Use mutex to ensure thread-safe access to graphics queue
@@ -712,7 +757,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Present the image
     vk::PresentInfoKHR presentInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*renderFinishedSemaphores[semaphoreIndex],
+        .pWaitSemaphores = &*renderFinishedSemaphores[currentFrame],
         .swapchainCount = 1,
         .pSwapchains = &*swapChain,
         .pImageIndices = &imageIndex

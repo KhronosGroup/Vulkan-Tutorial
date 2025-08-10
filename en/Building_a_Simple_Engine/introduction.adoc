@@ -63,3 +63,24 @@ Let's begin our journey into engine development with these chapters:
 8. link:Mobile_Development/01_introduction.adoc[Mobile Development] - Adapting the engine for Android/iOS, focusing on performance considerations and mobile-specific Vulkan extensions.
 
 link:../conclusion.adoc[Previous: Main Tutorial Conclusion] | link:Engine_Architecture/01_introduction.adoc[Next: Engine Architecture]
+
+
+=== Getting Started with Example Assets
+
+To follow along with the attachments-based Simple Engine examples and scenes, fetch the Bistro assets locally.
+
+- Linux/macOS (default target: attachments/simple_engine/Assets/bistro at repository root):
++
+  $ cd attachments/simple_engine
+  $ ./fetch_bistro_assets.sh
+
+- Windows (default target: attachments\simple_engine\Assets\bistro at repository root):
++
+  > cd attachments\simple_engine
+  > fetch_bistro_assets.bat
+
+The scripts use SSH (git@github.com:gpx1000/bistro.git) and fall back to HTTPS if SSH is unavailable. If Git LFS is installed, large files will be pulled automatically.
+
+Next, take advantage of the install_dependencies_* scripts to ensure you have all necessary dependencies.
+
+Once assets are available and dependencies are ready, build and run the Simple Engine examples under attachments/simple_engine. See the later chapters for details on scene loading and subsystems referenced by the example code.

@@ -198,6 +198,14 @@ public:
         return up;
     }
 
+    /**
+     * @brief Force view matrix recalculation without modifying camera orientation.
+     * This is used when the camera's transform position changes externally (e.g., from GLTF loading).
+     */
+    void ForceViewMatrixUpdate() {
+        viewMatrixDirty = true;
+    }
+
 private:
     /**
      * @brief Update the view matrix based on the camera position and target.

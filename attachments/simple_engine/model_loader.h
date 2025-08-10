@@ -32,6 +32,7 @@ class Material {
         float ao = 1.0f;
         glm::vec3 emissive = glm::vec3(0.0f);
         float emissiveStrength = 1.0f;  // KHR_materials_emissive_strength extension
+        float alpha = 1.0f;             // Base color alpha (from MR baseColorFactor or SpecGloss diffuseFactor)
 
         // Texture paths for PBR materials
         std::string albedoTexturePath;
@@ -58,12 +59,12 @@ struct ExtractedLight {
 
     Type type = Type::Point;
     glm::vec3 position = glm::vec3(0.0f);
-    glm::vec3 direction = glm::vec3(0.0f, -1.0f, 0.0f);  // For directional/spot lights
+    glm::vec3 direction = glm::vec3(0.0f, -1.0f, 0.0f);  // For directional/spotlights
     glm::vec3 color = glm::vec3(1.0f);
     float intensity = 1.0f;
-    float range = 100.0f;  // For point/spot lights
-    float innerConeAngle = 0.0f;  // For spot lights
-    float outerConeAngle = 0.785398f;  // For spot lights (45 degrees)
+    float range = 100.0f;  // For point/spotlights
+    float innerConeAngle = 0.0f;  // For spotlights
+    float outerConeAngle = 0.785398f;  // For spotlights (45 degrees)
     std::string sourceMaterial;  // Name of source material (for emissive lights)
 };
 
@@ -106,6 +107,37 @@ struct MaterialMesh {
     std::string metallicRoughnessTexturePath;  // Metallic-roughness texture
     std::string occlusionTexturePath;  // Ambient occlusion texture
     std::string emissiveTexturePath;   // Emissive texture
+
+    // Instancing support
+    std::vector<InstanceData> instances;  // Instance data for instanced rendering
+    bool isInstanced = false;             // Flag to indicate if this mesh uses instancing
+
+    /**
+     * @brief Add an instance with the given transform matrix.
+     * @param transform The transform matrix for this instance.
+     * @param matIndex The material index for this instance (default: use materialIndex).
+     */
+    void AddInstance(const glm::mat4& transform, uint32_t matIndex = 0) {
+        if (matIndex == 0) matIndex = static_cast<uint32_t>(materialIndex);
+        instances.emplace_back(transform, matIndex);
+        isInstanced = instances.size() > 1;
+    }
+
+    /**
+     * @brief Get the number of instances.
+     * @return Number of instances (0 if not instanced, >= 1 if instanced).
+     */
+    [[nodiscard]] size_t GetInstanceCount() const {
+        return instances.size();
+    }
+
+    /**
+     * @brief Check if this mesh uses instancing.
+     * @return True if instanced (more than 1 instance), false otherwise.
+     */
+    [[nodiscard]] bool IsInstanced() const {
+        return isInstanced;
+    }
 };
 
 /**
@@ -157,10 +189,10 @@ public:
 
     /**
      * @brief Initialize the model loader.
-     * @param renderer Pointer to the renderer.
+     * @param _renderer Pointer to the renderer.
      * @return True if initialization was successful, false otherwise.
      */
-    bool Initialize(Renderer* renderer);
+    bool Initialize(Renderer* _renderer);
 
     /**
      * @brief Load a model from a GLTF file.
@@ -169,22 +201,6 @@ public:
      */
     Model* LoadGLTF(const std::string& filename);
 
-    /**
-     * @brief Load a model from a GLTF file with PBR materials.
-     * @param filename The path to the GLTF file.
-     * @param albedoMap The path to the albedo texture.
-     * @param normalMap The path to the normal texture.
-     * @param metallicRoughnessMap The path to the metallic-roughness texture.
-     * @param aoMap The path to the ambient occlusion texture.
-     * @param emissiveMap The path to the emissive texture.
-     * @return Pointer to the loaded model, or nullptr if loading failed.
-     */
-    Model* LoadGLTFWithPBR(const std::string& filename,
-                          const std::string& albedoMap,
-                          const std::string& normalMap,
-                          const std::string& metallicRoughnessMap,
-                          const std::string& aoMap,
-                          const std::string& emissiveMap);
 
     /**
      * @brief Get a model by name.
@@ -193,29 +209,7 @@ public:
      */
     Model* GetModel(const std::string& name);
 
-    /**
-     * @brief Create a new material with PBR properties.
-     * @param name The name of the material.
-     * @param albedo The albedo color.
-     * @param metallic The metallic factor.
-     * @param roughness The roughness factor.
-     * @param ao The ambient occlusion factor.
-     * @param emissive The emissive color.
-     * @return Pointer to the created material, or nullptr if creation failed.
-     */
-    Material* CreatePBRMaterial(const std::string& name,
-                               const glm::vec3& albedo,
-                               float metallic,
-                               float roughness,
-                               float ao,
-                               const glm::vec3& emissive);
 
-    /**
-     * @brief Get the first available material texture path for a model.
-     * @param modelName The name of the model.
-     * @return The texture path of the first material, or empty string if none found.
-     */
-    std::string GetFirstMaterialTexturePath(const std::string& modelName);
 
     /**
      * @brief Get extracted lights from a loaded model.
@@ -238,12 +232,6 @@ public:
      */
     Material* GetMaterial(const std::string& materialName) const;
 
-    /**
-     * @brief Load embedded GLTF textures.
-     * @param filename The path to the GLTF file.
-     * @return True if textures were loaded successfully, false otherwise.
-     */
-    bool LoadEmbeddedGLTFTextures(const std::string& filename) const;
 
 private:
     // Reference to the renderer
@@ -260,6 +248,8 @@ private:
 
     // Material meshes per model
     std::unordered_map<std::string, std::vector<MaterialMesh>> materialMeshes;
+
+    float light_scale = 1.0f;
 
     /**
      * @brief Parse a GLTF file.
@@ -279,12 +269,6 @@ private:
      * @param emissiveMap The path to the emissive texture.
      * @return True if loading was successful, false otherwise.
      */
-    bool LoadPBRTextures(Material* material,
-                        const std::string& albedoMap,
-                        const std::string& normalMap,
-                        const std::string& metallicRoughnessMap,
-                        const std::string& aoMap,
-                        const std::string& emissiveMap) const;
 
     /**
      * @brief Extract lights from GLTF punctual lights extension.

@@ -25,7 +25,7 @@ Engine::~Engine() {
 
 bool Engine::Initialize(const std::string& appName, int width, int height, bool enableValidationLayers) {
     // Create platform
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
     // For Android, the platform is created with the android_app
     // This will be handled in the android_main function
     return false;
@@ -213,14 +213,17 @@ void Engine::Run() {
         frameCount++;
         fpsUpdateTimer += deltaTime;
 
-        // Update window title with FPS and frame count every second
+        // Update window title with FPS and frame time every second
         if (fpsUpdateTimer >= 1.0f) {
             uint64_t framesSinceLastUpdate = frameCount - lastFPSUpdateFrame;
             currentFPS = framesSinceLastUpdate / fpsUpdateTimer;
+            // Average frame time in milliseconds over the last interval
+            double avgMs = (fpsUpdateTimer / static_cast<double>(framesSinceLastUpdate)) * 1000.0;
 
-            // Update window title with frame count and FPS
+            // Update window title with frame count, FPS, and frame time
             std::string title = "Simple Engine - Frame: " + std::to_string(frameCount) +
-                               " | FPS: " + std::to_string(static_cast<int>(currentFPS));
+                               " | FPS: " + std::to_string(static_cast<int>(currentFPS)) +
+                               " | ms: " + std::to_string(static_cast<int>(avgMs));
             platform->SetWindowTitle(title);
 
             // Reset timer and frame counter for next update
@@ -415,29 +418,26 @@ void Engine::Render() {
 }
 
 float Engine::CalculateDeltaTime() {
-    // Get current time
-    auto currentTime = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::high_resolution_clock::now().time_since_epoch()
-    ).count());
+    // Get current time using a steady clock to avoid system time jumps
+    uint64_t currentTime = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()
+        ).count()
+    );
 
     // Initialize lastFrameTime on first call
     if (lastFrameTime == 0) {
         lastFrameTime = currentTime;
-        return 0.016f; // Return ~16ms (60 FPS) for first frame
+        return 0.016f; // ~16ms as a sane initial guess
     }
 
-    // Calculate delta time
+    // Calculate delta time in milliseconds
     uint64_t delta = currentTime - lastFrameTime;
 
     // Update last frame time
     lastFrameTime = currentTime;
 
-    // Clamp delta time to reasonable values (prevent huge jumps)
-    if (delta > 10) { // Cap at 100ms (10 FPS minimum)
-        delta = 16; // Use 16ms instead
-    }
-
-    return delta / 1000.0f; // Convert to seconds
+    return static_cast<float>(delta) / 1000.0f;
 }
 
 void Engine::HandleResize(int width, int height) const {
@@ -754,7 +754,7 @@ void Engine::HandleMouseHover(float mouseX, float mouseY) {
 }
 
 
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
 // Android-specific implementation
 bool Engine::InitializeAndroid(android_app* app, const std::string& appName, bool enableValidationLayers) {
     // Create platform

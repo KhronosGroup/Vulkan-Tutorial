@@ -14,7 +14,6 @@ find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
-find_package (stb REQUIRED)
 find_package (OpenAL REQUIRED)
 
 # set up Vulkan C++ module
@@ -133,7 +132,6 @@ target_link_libraries(SimpleEngine PRIVATE
     glm::glm
     tinygltf::tinygltf
     KTX::ktx
-    stb::stb
     OpenAL::OpenAL
 )
 

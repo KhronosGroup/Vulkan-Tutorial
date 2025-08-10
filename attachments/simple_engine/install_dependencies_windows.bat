@@ -132,13 +132,6 @@ if %errorLevel% neq 0 (
     echo Warning: Failed to install KTX via vcpkg
 )
 
-REM Install STB
-echo Installing STB...
-vcpkg install stb:x64-windows
-if %errorLevel% neq 0 (
-    echo Warning: Failed to install STB via vcpkg
-)
-
 REM Install tinygltf
 echo Installing tinygltf...
 vcpkg install tinygltf:x64-windows

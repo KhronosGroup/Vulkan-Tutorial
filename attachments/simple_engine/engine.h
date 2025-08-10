@@ -141,7 +141,7 @@ public:
      */
     ImGuiSystem* GetImGuiSystem() const;
 
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
     /**
      * @brief Initialize the engine for Android.
      * @param app The Android app.

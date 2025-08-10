@@ -275,3 +275,4 @@ vk::Extent2D Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabi
 void Renderer::WaitIdle() {
     device.waitIdle();
 }
+

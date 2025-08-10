@@ -42,7 +42,7 @@ struct SwapChainSupportDetails {
 };
 
 /**
- * @brief Structure for individual light data in storage buffer.
+ * @brief Structure for individual light data in the storage buffer.
  */
 struct LightData {
     alignas(16) glm::vec4 position;      // Light position (w component unused)
@@ -50,12 +50,12 @@ struct LightData {
     alignas(16) glm::mat4 lightSpaceMatrix; // Light space matrix for shadow mapping
     alignas(4) int lightType;            // 0=Point, 1=Directional, 2=Spot, 3=Emissive
     alignas(4) float range;              // Light range
-    alignas(4) float innerConeAngle;     // For spot lights
-    alignas(4) float outerConeAngle;     // For spot lights
+    alignas(4) float innerConeAngle;     // For spotlights
+    alignas(4) float outerConeAngle;     // For spotlights
 };
 
 /**
- * @brief Structure for uniform buffer object (now without fixed light arrays).
+ * @brief Structure for the uniform buffer object (now without fixed light arrays).
  */
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
@@ -69,8 +69,13 @@ struct UniformBufferObject {
     alignas(4) int lightCount;                 // Number of active lights (dynamic)
     alignas(4) int shadowMapCount;             // Number of active shadow maps (dynamic)
     alignas(4) float shadowBias;               // Shadow bias to prevent shadow acne
-    alignas(4) float padding;                  // Padding for alignment
+    alignas(4) float padding1;                 // Padding for alignment
+
+    // Additional padding to ensure the structure size is aligned to 64 bytes (device nonCoherentAtomSize)
+    // Current size: 3*64 + 16 + 8*4 = 240 bytes, pad to 256 bytes (multiple of 64)
+    alignas(4) float padding2[4];              // Add 16 more bytes to reach 256 bytes total
 };
+
 
 /**
  * @brief Structure for PBR material properties.
@@ -157,6 +162,7 @@ public:
      */
     bool IsInitialized() const { return initialized; }
 
+
     /**
      * @brief Get the Vulkan device.
      * @return The Vulkan device.
@@ -184,7 +190,7 @@ public:
      * @param properties The memory properties.
      * @return The memory type index.
      */
-    uint32_t FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) {
+    uint32_t FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const {
         return findMemoryType(typeFilter, properties);
     }
 
@@ -201,14 +207,13 @@ public:
      * @param commandBuffer The command buffer to submit.
      * @param fence The fence to signal when the operation completes.
      */
-    void SubmitToComputeQueue(vk::CommandBuffer commandBuffer, vk::Fence fence) {
-        vk::SubmitInfo submitInfo{
-            .commandBufferCount = 1,
-            .pCommandBuffers = &commandBuffer
-        };
-
+    void SubmitToComputeQueue(vk::CommandBuffer commandBuffer, vk::Fence fence) const {
         // Use mutex to ensure thread-safe access to compute queue
         {
+            vk::SubmitInfo submitInfo{
+                .commandBufferCount = 1,
+                .pCommandBuffers = &commandBuffer
+            };
             std::lock_guard<std::mutex> lock(queueMutex);
             computeQueue.submit(submitInfo, fence);
         }
@@ -234,7 +239,7 @@ public:
     }
 
     /**
-     * @brief Load a texture from file.
+     * @brief Load a texture from a file.
      * @param texturePath The path to the texture file.
      * @return True if the texture was loaded successfully, false otherwise.
      */
@@ -270,8 +275,8 @@ public:
      * @param width The image width.
      * @param height The image height.
      */
-    void CopyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height) {
-        // Create default single region for backward compatibility
+    void CopyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height) const {
+        // Create a default single region for backward compatibility
         std::vector<vk::BufferImageCopy> regions = {{
             .bufferOffset = 0,
             .bufferRowLength = 0,
@@ -314,10 +319,10 @@ public:
 
     /**
      * @brief Set the model loader reference for accessing extracted lights.
-     * @param modelLoader Pointer to the model loader.
+     * @param _modelLoader Pointer to the model loader.
      */
-    void SetModelLoader(class ModelLoader* modelLoader) {
-        this->modelLoader = modelLoader;
+    void SetModelLoader(ModelLoader* _modelLoader) {
+        modelLoader = _modelLoader;
     }
 
     /**
@@ -328,18 +333,18 @@ public:
 
     /**
      * @brief Set the gamma correction value for PBR rendering.
-     * @param gamma The gamma correction value (typically 2.2).
+     * @param _gamma The gamma correction value (typically 2.2).
      */
-    void SetGamma(float gamma) {
-        this->gamma = gamma;
+    void SetGamma(float _gamma) {
+        gamma = _gamma;
     }
 
     /**
      * @brief Set the exposure value for HDR tone mapping.
-     * @param exposure The exposure value (1.0 = no adjustment).
+     * @param _exposure The exposure value (1.0 = no adjustment).
      */
-    void SetExposure(float exposure) {
-        this->exposure = exposure;
+    void SetExposure(float _exposure) {
+        exposure = _exposure;
     }
 
     /**
@@ -358,14 +363,6 @@ public:
     }
 
     /**
-     * @brief Set the entity to be highlighted during rendering.
-     * @param entity The entity to highlight, or nullptr to clear highlighting.
-     */
-    void SetHighlightedEntity(Entity* entity) {
-        this->highlightedEntity = entity;
-    }
-
-    /**
      * @brief Create or resize light storage buffers to accommodate the given number of lights.
      * @param lightCount The number of lights to accommodate.
      * @return True if successful, false otherwise.
@@ -373,7 +370,7 @@ public:
     bool createOrResizeLightStorageBuffers(size_t lightCount);
 
     /**
-     * @brief Update light storage buffer with current light data.
+     * @brief Update the light storage buffer with current light data.
      * @param frameIndex The current frame index.
      * @param lights The light data to upload.
      * @return True if successful, false otherwise.
@@ -404,7 +401,7 @@ public:
     static const std::string SHARED_BRIGHT_RED_ID;
 
     /**
-     * @brief Determine appropriate texture format based on texture type.
+     * @brief Determine the appropriate texture format based on the texture type.
      * @param textureId The texture identifier to analyze.
      * @return The appropriate Vulkan format (sRGB for baseColor, linear for others).
      */
@@ -421,9 +418,6 @@ private:
     float gamma = 2.2f;     // Gamma correction value
     float exposure = 3.0f;  // HDR exposure value (higher for emissive lighting)
     bool shadowsEnabled = true;  // Shadow rendering enabled by default
-
-    // Entity highlighting
-    Entity* highlightedEntity = nullptr;
 
     // Vulkan RAII context
     vk::raii::Context context;
@@ -538,8 +532,12 @@ private:
     std::vector<ShadowMapResources> shadowMaps; // One shadow map per light
 
     // Shadow mapping constants
-    static constexpr uint32_t MAX_SHADOW_MAPS = 16; // Match actual shadow map count for performance
+    static constexpr uint32_t MAX_SHADOW_MAPS = 16; // Descriptors/array size remains 16
     static constexpr uint32_t DEFAULT_SHADOW_MAP_SIZE = 2048;
+
+    // Performance clamps (to reduce per-frame cost)
+    static constexpr uint32_t MAX_ACTIVE_LIGHTS = 32;      // Limit the number of lights processed per frame
+    static constexpr uint32_t MAX_SHADOW_MAPS_USED = 4;    // Limit the number of shadows sampled per frame
 
     // Static lights loaded during model initialization
     std::vector<ExtractedLight> staticLights;
@@ -561,6 +559,11 @@ private:
         std::vector<void*> uniformBuffersMapped;
         std::vector<vk::raii::DescriptorSet> basicDescriptorSets;  // For basic pipeline
         std::vector<vk::raii::DescriptorSet> pbrDescriptorSets;    // For PBR pipeline
+
+        // Instance buffer for instanced rendering
+        vk::raii::Buffer instanceBuffer = nullptr;
+        std::unique_ptr<MemoryPool::Allocation> instanceBufferAllocation = nullptr;
+        void* instanceBufferMapped = nullptr;
     };
     std::unordered_map<Entity*, EntityResources> entityResources;
 
@@ -616,6 +619,7 @@ private:
     bool createDescriptorSetLayout();
     bool createPBRDescriptorSetLayout();
     bool createGraphicsPipeline();
+
     bool createPBRPipeline();
     bool createLightingPipeline();
     bool createComputePipeline();
@@ -647,6 +651,8 @@ private:
     void recreateSwapChain();
 
     void updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera);
+    void updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera, const glm::mat4& customTransform);
+    void updateUniformBufferInternal(uint32_t currentImage, Entity* entity, CameraComponent* camera, UniformBufferObject& ubo);
 
     vk::raii::ShaderModule createShaderModule(const std::vector<char>& code);
 

@@ -51,8 +51,7 @@ install_ubuntu_debian() {
         libglfw3-dev \
         libglm-dev \
         libopenal-dev \
-        libktx-dev \
-        libstb-dev
+        libktx-dev
 
     # Install Slang compiler (for shader compilation)
     echo "Installing Slang compiler..."
@@ -84,7 +83,7 @@ install_fedora_rhel() {
         openal-soft-devel
 
     # Note: Some packages might need to be built from source on RHEL/CentOS
-    echo "Note: Some dependencies (libktx, libstb, tinygltf) may need to be built from source"
+    echo "Note: Some dependencies (libktx, tinygltf) may need to be built from source"
     echo "Please refer to the project documentation for manual installation instructions"
 }
 
@@ -107,9 +106,9 @@ install_arch() {
 
     # Install AUR packages (requires yay or another AUR helper)
     if command -v yay &> /dev/null; then
-        yay -S --noconfirm libktx stb
+        yay -S --noconfirm libktx
     else
-        echo "Note: Please install yay or another AUR helper to install libktx and stb packages"
+        echo "Note: Please install yay or another AUR helper to install libktx packages"
         echo "Alternatively, build these dependencies from source"
     fi
 }

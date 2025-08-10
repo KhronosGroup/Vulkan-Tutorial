@@ -27,7 +27,7 @@ bool Renderer::createDescriptorSetLayout() {
             .pImmutableSamplers = nullptr
         };
 
-        // Create descriptor set layout
+        // Create a descriptor set layout
         std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
         vk::DescriptorSetLayoutCreateInfo layoutInfo{
             .bindingCount = static_cast<uint32_t>(bindings.size()),
@@ -152,15 +152,30 @@ bool Renderer::createGraphicsPipeline() {
 
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-        // Create vertex input info
-        auto bindingDescription = Vertex::getBindingDescription();
-        auto attributeDescriptions = Vertex::getAttributeDescriptions();
+        // Create vertex input info with instancing support
+        auto vertexBindingDescription = Vertex::getBindingDescription();
+        auto instanceBindingDescription = InstanceData::getBindingDescription();
+        std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = {
+            vertexBindingDescription,
+            instanceBindingDescription
+        };
+
+        auto vertexAttributeDescriptions = Vertex::getAttributeDescriptions();
+        auto instanceAttributeDescriptions = InstanceData::getAttributeDescriptions();
+
+        // Combine all attribute descriptions (no duplicates)
+        std::vector<vk::VertexInputAttributeDescription> allAttributeDescriptions;
+        allAttributeDescriptions.insert(allAttributeDescriptions.end(), vertexAttributeDescriptions.begin(), vertexAttributeDescriptions.end());
+        allAttributeDescriptions.insert(allAttributeDescriptions.end(), instanceAttributeDescriptions.begin(), instanceAttributeDescriptions.end());
+
+        // Note: materialIndex attribute (Location 11) is not used by current shaders
+        // Removed to fix validation layer error - shaders don't expect input at location 11
 
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{
-            .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &bindingDescription,
-            .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
-            .pVertexAttributeDescriptions = attributeDescriptions.data()
+            .vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size()),
+            .pVertexBindingDescriptions = bindingDescriptions.data(),
+            .vertexAttributeDescriptionCount = static_cast<uint32_t>(allAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions = allAttributeDescriptions.data()
         };
 
         // Create input assembly info
@@ -250,7 +265,7 @@ bool Renderer::createGraphicsPipeline() {
             .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
-        // Create graphics pipeline
+        // Create the graphics pipeline
         vk::GraphicsPipelineCreateInfo pipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &mainPipelineRenderingCreateInfo,
@@ -309,50 +324,30 @@ bool Renderer::createPBRPipeline() {
 
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-        // Define vertex binding description
-        vk::VertexInputBindingDescription bindingDescription{
-            .binding = 0,
-            .stride = sizeof(float) * (3 + 3 + 2 + 4),  // Position(3) + Normal(3) + UV(2) + Tangent(4)
-            .inputRate = vk::VertexInputRate::eVertex
+        // Define vertex and instance binding descriptions
+        auto vertexBindingDescription = Vertex::getBindingDescription();
+        auto instanceBindingDescription = InstanceData::getBindingDescription();
+        std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = {
+            vertexBindingDescription,
+            instanceBindingDescription
         };
 
-        // Define vertex attribute descriptions
-        std::array attributeDescriptions = {
-            // Position attribute
-            vk::VertexInputAttributeDescription{
-                .location = 0,
-                .binding = 0,
-                .format = vk::Format::eR32G32B32Sfloat,
-                .offset = 0
-            },
-            // Normal attribute
-            vk::VertexInputAttributeDescription{
-                .location = 1,
-                .binding = 0,
-                .format = vk::Format::eR32G32B32Sfloat,
-                .offset = sizeof(float) * 3
-            },
-            // UV attribute
-            vk::VertexInputAttributeDescription{
-                .location = 2,
-                .binding = 0,
-                .format = vk::Format::eR32G32Sfloat,
-                .offset = sizeof(float) * 6
-            },
-            // Tangent attribute
-            vk::VertexInputAttributeDescription{
-                .location = 3,
-                .binding = 0,
-                .format = vk::Format::eR32G32B32A32Sfloat,
-                .offset = sizeof(float) * 8
-            }
-        };
+        // Define vertex and instance attribute descriptions
+        auto vertexAttributeDescriptions = Vertex::getAttributeDescriptions();
+        auto instanceModelMatrixAttributes = InstanceData::getModelMatrixAttributeDescriptions();
+        auto instanceNormalMatrixAttributes = InstanceData::getNormalMatrixAttributeDescriptions();
+
+        // Combine all attribute descriptions
+        std::vector<vk::VertexInputAttributeDescription> allAttributeDescriptions;
+        allAttributeDescriptions.insert(allAttributeDescriptions.end(), vertexAttributeDescriptions.begin(), vertexAttributeDescriptions.end());
+        allAttributeDescriptions.insert(allAttributeDescriptions.end(), instanceModelMatrixAttributes.begin(), instanceModelMatrixAttributes.end());
+        allAttributeDescriptions.insert(allAttributeDescriptions.end(), instanceNormalMatrixAttributes.begin(), instanceNormalMatrixAttributes.end());
 
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{
-            .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &bindingDescription,
-            .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
-            .pVertexAttributeDescriptions = attributeDescriptions.data()
+            .vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size()),
+            .pVertexBindingDescriptions = bindingDescriptions.data(),
+            .vertexAttributeDescriptionCount = static_cast<uint32_t>(allAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions = allAttributeDescriptions.data()
         };
 
         // Create input assembly info
@@ -434,6 +429,15 @@ bool Renderer::createPBRPipeline() {
         };
 
         pbrPipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+
+        // Enable alpha blending for translucency (glass)
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+        colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+        colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+        colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
 
         // Create pipeline rendering info
         vk::Format depthFormat = findDepthFormat();

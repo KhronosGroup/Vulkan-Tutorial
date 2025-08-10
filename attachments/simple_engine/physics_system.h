@@ -169,10 +169,10 @@ struct PhysicsParams {
 };
 
 /**
- * @brief Structure to store collision prediction data for ray-based collision system.
+ * @brief Structure to store collision prediction data for a ray-based collision system.
  */
 struct CollisionPrediction {
-    float collisionTime = -1.0f;        // Time within deltaTime when collision occurs (-1 = no collision)
+    float collisionTime = -1.0f;        // Time within deltaTime when the collision occurs (-1 = no collision)
     glm::vec3 collisionPoint;           // World position where collision occurs
     glm::vec3 collisionNormal;          // Surface normal at collision point
     glm::vec3 newVelocity;              // Predicted velocity after bounce
@@ -229,9 +229,9 @@ public:
 
     /**
      * @brief Set the gravity of the physics world.
-     * @param gravity The gravity vector.
+     * @param _gravity The gravity vector.
      */
-    void SetGravity(const glm::vec3& gravity);
+    void SetGravity(const glm::vec3& _gravity);
 
     /**
      * @brief Get the gravity of the physics world.
@@ -260,7 +260,7 @@ public:
 
     /**
      * @brief Check if GPU acceleration is enabled.
-     * @return True if GPU acceleration is enabled, false otherwise.
+     * @return True, if GPU acceleration is enabled, false otherwise.
      */
     [[nodiscard]] bool IsGPUAccelerationEnabled() const { return gpuAccelerationEnabled; }
 
@@ -271,16 +271,16 @@ public:
     void SetMaxGPUObjects(uint32_t maxObjects) { maxGPUObjects = maxObjects; }
 
     /**
-     * @brief Set the renderer to use for GPU acceleration.
-     * @param renderer The renderer.
+     * @brief Set the renderer to use during GPU acceleration.
+     * @param _renderer The renderer.
      */
-    void SetRenderer(Renderer* renderer) { this->renderer = renderer; }
+    void SetRenderer(Renderer* _renderer) { renderer = _renderer; }
 
     /**
      * @brief Set the current camera position for geometry-relative ball checking.
-     * @param cameraPosition The current camera position.
+     * @param _cameraPosition The current camera position.
      */
-    void SetCameraPosition(const glm::vec3& cameraPosition) { this->cameraPosition = cameraPosition; }
+    void SetCameraPosition(const glm::vec3& _cameraPosition) { cameraPosition = _cameraPosition; }
 
 private:
     /**
@@ -363,5 +363,5 @@ private:
     void ReadbackGPUPhysicsData() const;
 
     // Perform GPU-accelerated physics simulation
-    void SimulatePhysicsOnGPU(float deltaTime);
+    void SimulatePhysicsOnGPU(float deltaTime) const;
 };

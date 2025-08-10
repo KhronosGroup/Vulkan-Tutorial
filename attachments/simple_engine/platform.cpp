@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
 // Android platform implementation
 
 AndroidPlatform::AndroidPlatform(android_app* androidApp)

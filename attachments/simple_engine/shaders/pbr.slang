@@ -2,10 +2,14 @@
 
 // Input from vertex buffer
 struct VSInput {
-    float3 Position : POSITION;
-    float3 Normal : NORMAL;
-    float2 UV : TEXCOORD0;
-    float4 Tangent : TANGENT;
+    [[vk::location(0)]] float3 Position;
+    [[vk::location(1)]] float3 Normal;
+    [[vk::location(2)]] float2 UV;
+    [[vk::location(3)]] float4 Tangent;
+
+    // Per-instance data as true matrices
+    [[vk::location(4)]] column_major float4x4 InstanceModelMatrix;  // binding 1 (uses 4 locations)
+    [[vk::location(8)]] column_major float4x3 InstanceNormalMatrix; // binding 1 (uses 3 locations)
 };
 
 // Output from vertex shader / Input to fragment shader
@@ -151,15 +155,20 @@ VSOutput VSMain(VSInput input)
 {
     VSOutput output;
 
-    // Transform position to clip space
-    float4 worldPos = mul(ubo.model, float4(input.Position, 1.0));
+    // Use instance matrices directly
+    float4x4 instanceModelMatrix = input.InstanceModelMatrix;
+    float3x3 normalMatrix3x3 = (float3x3)input.InstanceNormalMatrix;
+
+    // Transform position to world space: entity model * instance model
+    float4 worldPos = mul(ubo.model, mul(instanceModelMatrix, float4(input.Position, 1.0)));
     output.Position = mul(ubo.proj, mul(ubo.view, worldPos));
 
     // Pass world position to fragment shader
     output.WorldPos = worldPos.xyz;
 
-    // Transform normal to world space
-    output.Normal = normalize(mul((float3x3)ubo.model, input.Normal));
+    // Transform normal to world space using reconstructed normal matrix and entity model
+    float3x3 model3x3 = (float3x3)ubo.model;
+    output.Normal = normalize(mul(model3x3, mul(normalMatrix3x3, input.Normal)));
 
     // Pass texture coordinates
     output.UV = input.UV;
@@ -174,19 +183,20 @@ VSOutput VSMain(VSInput input)
 [[shader("fragment")]]
 float4 PSMain(VSOutput input) : SV_TARGET
 {
-    // Sample material textures
-    float4 baseColor = baseColorMap.Sample(input.UV) * material.baseColorFactor;
-    float2 metallicRoughness = metallicRoughnessMap.Sample(input.UV).bg;
+    // Sample material textures (flip V to match glTF UV origin)
+    float2 uv = float2(input.UV.x, 1.0 - input.UV.y);
+    float4 baseColor = baseColorMap.Sample(uv) * material.baseColorFactor;
+    float2 metallicRoughness = metallicRoughnessMap.Sample(uv).bg;
     float metallic = metallicRoughness.x * material.metallicFactor;
     float roughness = metallicRoughness.y * material.roughnessFactor;
-    float ao = occlusionMap.Sample(input.UV).r;
-    float3 emissive = emissiveMap.Sample(input.UV).rgb * material.emissiveFactor * material.emissiveStrength;
+    float ao = occlusionMap.Sample(uv).r;
+    float3 emissive = emissiveMap.Sample(uv).rgb * material.emissiveFactor * material.emissiveStrength;
 
     // Calculate normal in tangent space
     float3 N = normalize(input.Normal);
     if (material.normalTextureSet >= 0) {
         // Apply normal mapping
-        float3 tangentNormal = normalMap.Sample(input.UV).xyz * 2.0 - 1.0;
+        float3 tangentNormal = normalMap.Sample(uv).xyz * 2.0 - 1.0;
         float3 T = normalize(input.Tangent.xyz);
         float3 B = normalize(cross(N, T)) * input.Tangent.w;
         float3x3 TBN = float3x3(T, B, N);

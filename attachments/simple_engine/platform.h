@@ -4,7 +4,7 @@
 #include <functional>
 #include <memory>
 
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
 #include <android/native_activity.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
@@ -126,7 +126,7 @@ public:
     virtual void SetWindowTitle(const std::string& title) = 0;
 };
 
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
 /**
  * @brief Android implementation of the Platform interface.
  */
@@ -451,7 +451,7 @@ public:
  */
 template<typename... Args>
 std::unique_ptr<Platform> CreatePlatform(Args&&... args) {
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
     return std::make_unique<AndroidPlatform>(std::forward<Args>(args)...);
 #else
     return std::make_unique<DesktopPlatform>();

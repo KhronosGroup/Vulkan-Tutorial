@@ -151,6 +151,7 @@ bool aabbOverlap(float3 minA, float3 maxA, float3 minB, float3 maxB) {
 
 // Broad phase collision detection - identifies potential collision pairs
 [shader("compute")]
+[numthreads(64, 1, 1)]
 void BroadPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint index = dispatchThreadID.x;
 
@@ -191,6 +192,13 @@ void BroadPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
     // Skip if either body doesn't have a collider
     if (bodyA.colliderData.w < 0 || bodyB.colliderData.w < 0) {
+        return;
+    }
+
+    // Early culling: only consider pairs where at least one body is a sphere (shape 0)
+    int shapeA = int(bodyA.colliderData.w);
+    int shapeB = int(bodyB.colliderData.w);
+    if (!(shapeA == 0 || shapeB == 0)) {
         return;
     }
 

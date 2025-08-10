@@ -37,19 +37,21 @@ bool MemoryPool::initialize() {
         );
 
         // Uniform buffer pool: Small allocations, host-visible
+        // Use 64-byte alignment to match nonCoherentAtomSize and prevent validation errors
         configurePool(
             PoolType::UNIFORM_BUFFER,
             4 * 1024 * 1024,   // 4MB blocks
-            256,                // 256B allocation units
+            64,                 // 64B allocation units (aligned to nonCoherentAtomSize)
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
             4                   // Max 4 blocks (16MB total)
         );
 
         // Staging buffer pool: Variable allocations, host-visible
+        // Use 64-byte alignment to match nonCoherentAtomSize and prevent validation errors
         configurePool(
             PoolType::STAGING_BUFFER,
             16 * 1024 * 1024,  // 16MB blocks
-            1024,               // 1KB allocation units
+            64,                 // 64B allocation units (aligned to nonCoherentAtomSize)
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
             4                   // Max 4 blocks (64MB total)
         );
@@ -311,14 +313,16 @@ std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> MemoryPool:
 
     // Determine a pool type based on usage and properties
     PoolType poolType = PoolType::VERTEX_BUFFER;
-    if (usage & vk::BufferUsageFlagBits::eVertexBuffer) {
+
+    // Check for host-visible requirements first (for instance buffers and staging)
+    if (properties & vk::MemoryPropertyFlagBits::eHostVisible) {
+        poolType = PoolType::STAGING_BUFFER;
+    } else if (usage & vk::BufferUsageFlagBits::eVertexBuffer) {
         poolType = PoolType::VERTEX_BUFFER;
     } else if (usage & vk::BufferUsageFlagBits::eIndexBuffer) {
         poolType = PoolType::INDEX_BUFFER;
     } else if (usage & vk::BufferUsageFlagBits::eUniformBuffer) {
         poolType = PoolType::UNIFORM_BUFFER;
-    } else if (properties & vk::MemoryPropertyFlagBits::eHostVisible) {
-        poolType = PoolType::STAGING_BUFFER;
     }
 
     // Create the buffer

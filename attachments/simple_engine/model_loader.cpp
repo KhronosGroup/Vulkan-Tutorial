@@ -4,13 +4,44 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <set>
 #include <tiny_gltf.h>
 
-// Include stb_image for proper texture loading (implementation is in renderer_resources.cpp)
-#include <stb_image.h>
+// KTX2 decoding for GLTF images
+#include <ktx.h>
+
+// Helper: load KTX2 file from disk into RGBA8 CPU buffer
+static bool LoadKTX2FileToRGBA(const std::string& filePath, std::vector<uint8_t>& outData, int& width, int& height, int& channels) {
+    ktxTexture2* ktxTex = nullptr;
+    KTX_error_code result = ktxTexture2_CreateFromNamedFile(filePath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTex);
+    if (result != KTX_SUCCESS || !ktxTex) {
+        return false;
+    }
+    bool needsTranscode = ktxTexture2_NeedsTranscoding(ktxTex);
+    if (needsTranscode) {
+        result = ktxTexture2_TranscodeBasis(ktxTex, KTX_TTF_RGBA32, 0);
+        if (result != KTX_SUCCESS) {
+            ktxTexture_Destroy((ktxTexture*)ktxTex);
+            return false;
+        }
+    }
+    width = static_cast<int>(ktxTex->baseWidth);
+    height = static_cast<int>(ktxTex->baseHeight);
+    channels = 4;
+    ktx_size_t offset;
+    ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
+    const uint8_t* levelData = ktxTexture_GetData(reinterpret_cast<ktxTexture *>(ktxTex)) + offset;
+    size_t levelSize = needsTranscode ? static_cast<size_t>(width) * static_cast<size_t>(height) * 4
+                                      : ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
+    outData.resize(levelSize);
+    std::memcpy(outData.data(), levelData, levelSize);
+    ktxTexture_Destroy((ktxTexture*)ktxTex);
+    return true;
+}
 
 // Emissive scaling factor to convert from Blender units to engine units
 #define EMISSIVE_SCALE_FACTOR (1.0f / 638.0f)
+#define LIGHT_SCALE_FACTOR (1.0f / 2.0f) // The sun is way too bright
 
 ModelLoader::~ModelLoader() {
     // Destructor implementation
@@ -18,8 +49,8 @@ ModelLoader::~ModelLoader() {
     materials.clear();
 }
 
-bool ModelLoader::Initialize(Renderer* renderer) {
-    this->renderer = renderer;
+bool ModelLoader::Initialize(Renderer* _renderer) {
+    renderer = _renderer;
 
     if (!renderer) {
         std::cerr << "ModelLoader::Initialize: Renderer is null" << std::endl;
@@ -51,43 +82,6 @@ Model* ModelLoader::LoadGLTF(const std::string& filename) {
     return models[filename].get();
 }
 
-Model* ModelLoader::LoadGLTFWithPBR(const std::string& filename,
-                                   const std::string& albedoMap,
-                                   const std::string& normalMap,
-                                   const std::string& metallicRoughnessMap,
-                                   const std::string& aoMap,
-                                   const std::string& emissiveMap) {
-    // Check if the model is already loaded
-    auto it = models.find(filename);
-    if (it != models.end()) {
-        return it->second.get();
-    }
-
-    // Create a new model
-    auto model = std::make_unique<Model>(filename);
-
-    // Parse the GLTF file
-    if (!ParseGLTF(filename, model.get())) {
-        std::cerr << "ModelLoader::LoadGLTFWithPBR: Failed to parse GLTF file: " << filename << std::endl;
-        return nullptr;
-    }
-
-    // Create a PBR material
-    auto material = std::make_unique<Material>(filename + "_material");
-
-    // Load PBR textures
-    if (!LoadPBRTextures(material.get(), albedoMap, normalMap, metallicRoughnessMap, aoMap, emissiveMap)) {
-        std::cerr << "ModelLoader::LoadGLTFWithPBR: Failed to load PBR textures for model: " << filename << std::endl;
-    }
-
-    // Store the material
-    materials[material->GetName()] = std::move(material);
-
-    // Store the model
-    models[filename] = std::move(model);
-
-    return models[filename].get();
-}
 
 Model* ModelLoader::GetModel(const std::string& name) {
     auto it = models.find(name);
@@ -97,41 +91,14 @@ Model* ModelLoader::GetModel(const std::string& name) {
     return nullptr;
 }
 
-Material* ModelLoader::CreatePBRMaterial(const std::string& name,
-                                        const glm::vec3& albedo,
-                                        float metallic,
-                                        float roughness,
-                                        float ao,
-                                        const glm::vec3& emissive) {
-    // Check if the material already exists
-    auto it = materials.find(name);
-    if (it != materials.end()) {
-        return it->second.get();
-    }
-
-    // Create a new material
-    auto material = std::make_unique<Material>(name);
-
-    // Set PBR properties
-    material->albedo = albedo;
-    material->metallic = metallic;
-    material->roughness = roughness;
-    material->ao = ao;
-    material->emissive = emissive * EMISSIVE_SCALE_FACTOR;
-
-    // Store the material
-    materials[name] = std::move(material);
-
-    std::cout << "PBR material created successfully: " << name << std::endl;
-    return materials[name].get();
-}
 
 bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
     std::cout << "Parsing GLTF file: " << filename << std::endl;
 
-    // Extract the directory path from the model file to use as base path for textures
+    // Extract the directory path from the model file to use as a base path for textures
     std::filesystem::path modelPath(filename);
-    std::string baseTexturePath = modelPath.parent_path().string();
+    std::filesystem::path baseDir = std::filesystem::absolute(modelPath).parent_path();
+    std::string baseTexturePath = baseDir.string();
     if (!baseTexturePath.empty() && baseTexturePath.back() != '/') {
         baseTexturePath += "/";
     }
@@ -143,37 +110,45 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
     std::string err;
     std::string warn;
 
-    // Set up a proper image loader callback using stb_image
+    // Set up image loader: prefer KTX2 via libktx; fallback to stb for other formats
     loader.SetImageLoader([](tinygltf::Image* image, const int image_idx, std::string* err,
                             std::string* warn, int req_width, int req_height,
                             const unsigned char* bytes, int size, void* user_data) -> bool {
-        // Use stb_image to decode the image data
-        int width, height, channels;
-        unsigned char* data = stbi_load_from_memory(bytes, size, &width, &height, &channels, 0);
-
-        if (!data) {
-            if (err) {
-                *err = "Failed to load image with stb_image: " + std::string(stbi_failure_reason());
+        // Try KTX2 first using libktx
+        ktxTexture2* ktxTex = nullptr;
+        KTX_error_code result = ktxTexture2_CreateFromMemory(bytes, size, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTex);
+        if (result == KTX_SUCCESS && ktxTex) {
+            bool needsTranscode = ktxTexture2_NeedsTranscoding(ktxTex);
+            if (needsTranscode) {
+                result = ktxTexture2_TranscodeBasis(ktxTex, KTX_TTF_RGBA32, 0);
+                if (result != KTX_SUCCESS) {
+                    if (err) *err = "Failed to transcode KTX2 image: " + std::to_string(result);
+                    ktxTexture_Destroy((ktxTexture*)ktxTex);
+                    return false;
+                }
             }
-            return false;
+            image->width = static_cast<int>(ktxTex->baseWidth);
+            image->height = static_cast<int>(ktxTex->baseHeight);
+            image->component = 4;
+            image->bits = 8;
+            image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+
+            ktx_size_t offset;
+            ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
+            const uint8_t* levelData = ktxTexture_GetData(reinterpret_cast<ktxTexture *>(ktxTex)) + offset;
+            size_t levelSize = needsTranscode ? static_cast<size_t>(image->width) * static_cast<size_t>(image->height) * 4
+                                              : ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
+            image->image.resize(levelSize);
+            std::memcpy(image->image.data(), levelData, levelSize);
+            ktxTexture_Destroy((ktxTexture*)ktxTex);
+            return true;
         }
 
-        // Set image properties
-        image->width = width;
-        image->height = height;
-        image->component = channels;
-        image->bits = 8;
-        image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
-
-        // Copy image data
-        size_t image_size = width * height * channels;
-        image->image.resize(image_size);
-        std::memcpy(image->image.data(), data, image_size);
-
-        // Free stb_image data
-        stbi_image_free(data);
-
-        return true;
+        // Non-KTX images not supported by this loader per project simplification
+        if (err) {
+            *err = "Non-KTX2 images are not supported by the custom image loader (use KTX2).";
+        }
+        return false;
     }, nullptr);
 
     // Load the GLTF file
@@ -204,6 +179,15 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         return false;
     }
 
+    // Test if generator is blender and apply the blender factor see the issue here: https://github.com/KhronosGroup/glTF/issues/2473
+    if (gltfModel.asset.generator.find("blender") != std::string::npos) {
+        std::cout << "Blender generator detected, applying blender factor" << std::endl;
+        light_scale = EMISSIVE_SCALE_FACTOR;
+    }
+
+    // Track loaded textures to prevent loading the same texture multiple times
+    std::set<std::string> loadedTextures;
+
     // Process materials first
     for (size_t i = 0; i < gltfModel.materials.size(); ++i) {
         const auto& gltfMaterial = gltfModel.materials[i];
@@ -218,6 +202,9 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 gltfMaterial.pbrMetallicRoughness.baseColorFactor[1],
                 gltfMaterial.pbrMetallicRoughness.baseColorFactor[2]
             );
+            if (gltfMaterial.pbrMetallicRoughness.baseColorFactor.size() >= 4) {
+                material->alpha = static_cast<float>(gltfMaterial.pbrMetallicRoughness.baseColorFactor[3]);
+            }
         }
         material->metallic = static_cast<float>(gltfMaterial.pbrMetallicRoughness.metallicFactor);
         material->roughness = static_cast<float>(gltfMaterial.pbrMetallicRoughness.roughnessFactor);
@@ -227,7 +214,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 gltfMaterial.emissiveFactor[0],
                 gltfMaterial.emissiveFactor[1],
                 gltfMaterial.emissiveFactor[2]
-            ) * EMISSIVE_SCALE_FACTOR;
+            ) * light_scale;
         }
 
         // Parse KHR_materials_emissive_strength extension
@@ -235,11 +222,11 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         if (extensionIt != gltfMaterial.extensions.end()) {
             const tinygltf::Value& extension = extensionIt->second;
             if (extension.Has("emissiveStrength") && extension.Get("emissiveStrength").IsNumber()) {
-                material->emissiveStrength = static_cast<float>(extension.Get("emissiveStrength").Get<double>()) * EMISSIVE_SCALE_FACTOR;
+                material->emissiveStrength = static_cast<float>(extension.Get("emissiveStrength").Get<double>()) * light_scale;
             }
         } else {
-            // Default emissive strength is 1.0 according to GLTF spec, scaled for engine units
-            material->emissiveStrength = 1.0f * EMISSIVE_SCALE_FACTOR;
+            // Default emissive strength is 1.0, according to GLTF spec, scaled for engine units
+            material->emissiveStrength = 1.0f * light_scale;
         }
 
 
@@ -248,35 +235,51 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             int texIndex = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
             if (texIndex < gltfModel.textures.size()) {
                 const auto& texture = gltfModel.textures[texIndex];
+                int imageIndex = -1;
                 if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
-                    std::string textureId = "gltf_texture_" + std::to_string(texIndex);
+                    imageIndex = texture.source;
+                } else {
+                    auto extIt = texture.extensions.find("KHR_texture_basisu");
+                    if (extIt != texture.extensions.end()) {
+                        const tinygltf::Value& ext = extIt->second;
+                        if (ext.Has("source") && ext.Get("source").IsInt()) {
+                            int src = ext.Get("source").Get<int>();
+                            if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
+                                imageIndex = src;
+                            }
+                        }
+                    }
+                }
+                if (imageIndex >= 0) {
+                    std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
                     material->albedoTexturePath = textureId;
 
                     // Load texture data (embedded or external)
-                    const auto& image = gltfModel.images[texture.source];
+                    const auto& image = gltfModel.images[imageIndex];
                     std::cout << "    Image data size: " << image.image.size() << ", URI: " << image.uri << std::endl;
                     if (!image.image.empty()) {
-                        // Load embedded texture data
-                        std::cout << "    Loading embedded base color texture: " << textureId << std::endl;
+                        // Always use memory-based upload (KTX2 already decoded by SetImageLoader)
                         if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
                                                           image.width, image.height, image.component)) {
-                            std::cout << "    Successfully loaded embedded base color texture: " << textureId << std::endl;
+                            material->albedoTexturePath = textureId;
+                            std::cout << "    Loaded base color texture from memory: " << textureId << std::endl;
                         } else {
-                            std::cerr << "    Failed to load embedded base color texture: " << textureId << std::endl;
+                            std::cerr << "    Failed to load base color texture from memory: " << textureId << std::endl;
                         }
                     } else if (!image.uri.empty()) {
-                        // Load external texture file
-                        std::string texturePath = baseTexturePath + image.uri;
-                        std::cout << "    Loading external base color texture: " << texturePath << std::endl;
-                        if (renderer->LoadTexture(texturePath)) {
-                            // Update the material to use the external texture path instead of gltf_texture_X
-                            material->albedoTexturePath = texturePath;
-                            std::cout << "    Successfully loaded external base color texture: " << texturePath << std::endl;
+                        // Fallback: load a KTX2 file directly and upload from memory
+                        std::vector<uint8_t> data;
+                        int w=0,h=0,c=0;
+                        std::string filePath = baseTexturePath + image.uri;
+                        if (LoadKTX2FileToRGBA(filePath, data, w, h, c) &&
+                            renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                            material->albedoTexturePath = textureId;
+                            std::cout << "    Loaded base color KTX2 file: " << filePath << std::endl;
                         } else {
-                            std::cerr << "    Failed to load external base color texture: " << texturePath << std::endl;
+                            std::cerr << "    Failed to load base color KTX2 file: " << filePath << std::endl;
                         }
                     } else {
-                        std::cout << "    No image data or URI available, skipping texture loading" << std::endl;
+                        std::cerr << "    Warning: No decoded image bytes for base color texture index " << texIndex << std::endl;
                     }
                 }
             }
@@ -301,15 +304,17 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             std::cerr << "    Failed to load embedded metallic-roughness texture: " << textureId << std::endl;
                         }
                     } else if (!image.uri.empty()) {
-                        // Load external texture file
-                        std::string texturePath = baseTexturePath + image.uri;
-                        if (renderer->LoadTexture(texturePath)) {
-                            // Update the material to use the external texture path instead of gltf_texture_X
-                            material->metallicRoughnessTexturePath = texturePath;
-                            std::cout << "    Successfully loaded external metallic-roughness texture: " << texturePath << std::endl;
+                        // Fallback: load KTX2 from a file and upload to memory
+                        std::vector<uint8_t> data; int w=0,h=0,c=0;
+                        std::string filePath = baseTexturePath + image.uri;
+                        if (LoadKTX2FileToRGBA(filePath, data, w, h, c) &&
+                            renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                            std::cout << "    Loaded metallic-roughness KTX2 file: " << filePath << std::endl;
                         } else {
-                            std::cerr << "    Failed to load external metallic-roughness texture: " << texturePath << std::endl;
+                            std::cerr << "    Failed to load metallic-roughness KTX2 file: " << filePath << std::endl;
                         }
+                    } else {
+                        std::cerr << "    Warning: No decoded bytes for metallic-roughness texture index " << texIndex << std::endl;
                     }
                 }
             }
@@ -319,31 +324,49 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             int texIndex = gltfMaterial.normalTexture.index;
             if (texIndex < gltfModel.textures.size()) {
                 const auto& texture = gltfModel.textures[texIndex];
+                int imageIndex = -1;
                 if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+                    imageIndex = texture.source;
+                } else {
+                    auto extIt = texture.extensions.find("KHR_texture_basisu");
+                    if (extIt != texture.extensions.end()) {
+                        const tinygltf::Value& ext = extIt->second;
+                        if (ext.Has("source") && ext.Get("source").IsInt()) {
+                            int src = ext.Get("source").Get<int>();
+                            if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
+                                imageIndex = src;
+                            }
+                        }
+                    }
+                }
+                if (imageIndex >= 0) {
                     std::string textureId = "gltf_texture_" + std::to_string(texIndex);
                     material->normalTexturePath = textureId;
 
                     // Load texture data (embedded or external)
-                    const auto& image = gltfModel.images[texture.source];
+                    const auto& image = gltfModel.images[imageIndex];
                     if (!image.image.empty()) {
-                        // Load embedded texture data
                         if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
                                                           image.width, image.height, image.component)) {
-                            std::cout << "    Successfully loaded embedded normal texture: " << textureId
+                            material->normalTexturePath = textureId;
+                            std::cout << "    Loaded normal texture from memory: " << textureId
                                       << " (" << image.width << "x" << image.height << ")" << std::endl;
                         } else {
-                            std::cerr << "    Failed to load embedded normal texture: " << textureId << std::endl;
+                            std::cerr << "    Failed to load normal texture from memory: " << textureId << std::endl;
                         }
                     } else if (!image.uri.empty()) {
-                        // Load external texture file
-                        std::string texturePath = baseTexturePath + image.uri;
-                        if (renderer->LoadTexture(texturePath)) {
-                            // Update the material to use the external texture path instead of gltf_texture_X
-                            material->normalTexturePath = texturePath;
-                            std::cout << "    Successfully loaded external normal texture: " << texturePath << std::endl;
+                        // Fallback: load KTX2 from a file and upload to memory
+                        std::vector<uint8_t> data; int w=0,h=0,c=0;
+                        std::string filePath = baseTexturePath + image.uri;
+                        if (LoadKTX2FileToRGBA(filePath, data, w, h, c) &&
+                            renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                            material->normalTexturePath = textureId;
+                            std::cout << "    Loaded normal KTX2 file: " << filePath << std::endl;
                         } else {
-                            std::cerr << "    Failed to load external normal texture: " << texturePath << std::endl;
+                            std::cerr << "    Failed to load normal KTX2 file: " << filePath << std::endl;
                         }
+                    } else {
+                        std::cerr << "    Warning: No decoded bytes for normal texture index " << texIndex << std::endl;
                     }
                 }
             }
@@ -369,15 +392,18 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             std::cerr << "    Failed to load embedded occlusion texture: " << textureId << std::endl;
                         }
                     } else if (!image.uri.empty()) {
-                        // Load external texture file
-                        std::string texturePath = baseTexturePath + image.uri;
-                        if (renderer->LoadTexture(texturePath)) {
-                            // Update the material to use the external texture path instead of gltf_texture_X
-                            material->occlusionTexturePath = texturePath;
-                            std::cout << "    Successfully loaded external occlusion texture: " << texturePath << std::endl;
+                        // Fallback: load KTX2 from a file and upload to memory
+                        std::vector<uint8_t> data; int w=0,h=0,c=0;
+                        std::string filePath = baseTexturePath + image.uri;
+                        if (LoadKTX2FileToRGBA(filePath, data, w, h, c) &&
+                            renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                            material->occlusionTexturePath = textureId;
+                            std::cout << "    Loaded occlusion KTX2 file: " << filePath << std::endl;
                         } else {
-                            std::cerr << "    Failed to load external occlusion texture: " << texturePath << std::endl;
+                            std::cerr << "    Failed to load occlusion KTX2 file: " << filePath << std::endl;
                         }
+                    } else {
+                        std::cerr << "    Warning: No decoded bytes for occlusion texture index " << texIndex << std::endl;
                     }
                 }
             }
@@ -403,15 +429,18 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             std::cerr << "    Failed to load embedded emissive texture: " << textureId << std::endl;
                         }
                     } else if (!image.uri.empty()) {
-                        // Load external texture file
-                        std::string texturePath = baseTexturePath + image.uri;
-                        if (renderer->LoadTexture(texturePath)) {
-                            // Update the material to use the external texture path instead of gltf_texture_X
-                            material->emissiveTexturePath = texturePath;
-                            std::cout << "    Successfully loaded external emissive texture: " << texturePath << std::endl;
+                        // Fallback: load KTX2 from a file and upload to memory
+                        std::vector<uint8_t> data; int w=0,h=0,c=0;
+                        std::string filePath = baseTexturePath + image.uri;
+                        if (LoadKTX2FileToRGBA(filePath, data, w, h, c) &&
+                            renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                            material->emissiveTexturePath = textureId;
+                            std::cout << "    Loaded emissive KTX2 file: " << filePath << std::endl;
                         } else {
-                            std::cerr << "    Failed to load external emissive texture: " << texturePath << std::endl;
+                            std::cerr << "    Failed to load emissive KTX2 file: " << filePath << std::endl;
                         }
+                    } else {
+                        std::cerr << "    Warning: No decoded bytes for emissive texture index " << texIndex << std::endl;
                     }
                 }
             }
@@ -421,7 +450,154 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         materials[material->GetName()] = std::move(material);
     }
 
-    // Process cameras from GLTF file
+    // Handle KHR_materials_pbrSpecularGlossiness.diffuseTexture for baseColor when still missing
+    for (size_t i = 0; i < gltfModel.materials.size(); ++i) {
+        const auto &gltfMaterial = gltfModel.materials[i];
+        std::string matName = gltfMaterial.name.empty() ? ("material_" + std::to_string(i)) : gltfMaterial.name;
+        auto matIt = materials.find(matName);
+        if (matIt == materials.end()) continue;
+        Material* mat = matIt->second.get();
+        if (!mat || !mat->albedoTexturePath.empty()) continue;
+        auto extIt = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
+        if (extIt != gltfMaterial.extensions.end()) {
+            const tinygltf::Value &ext = extIt->second;
+            if (ext.Has("diffuseTexture") && ext.Get("diffuseTexture").IsObject()) {
+                const auto &diffObj = ext.Get("diffuseTexture");
+                if (diffObj.Has("index") && diffObj.Get("index").IsInt()) {
+                    int texIndex = diffObj.Get("index").Get<int>();
+                    if (texIndex >= 0 && texIndex < static_cast<int>(gltfModel.textures.size())) {
+                        const auto &texture = gltfModel.textures[texIndex];
+                        int imageIndex = -1;
+                        if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
+                            imageIndex = texture.source;
+                        } else {
+                            auto extBasis = texture.extensions.find("KHR_texture_basisu");
+                            if (extBasis != texture.extensions.end()) {
+                                const tinygltf::Value &e = extBasis->second;
+                                if (e.Has("source") && e.Get("source").IsInt()) {
+                                    int src = e.Get("source").Get<int>();
+                                    if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) imageIndex = src;
+                                }
+                            }
+                        }
+                        if (imageIndex >= 0) {
+                            const auto &image = gltfModel.images[imageIndex];
+                            std::string texIdOrPath;
+                            if (!image.uri.empty()) {
+                                texIdOrPath = baseTexturePath + image.uri;
+                                // Try loading from a KTX2 file on disk first
+                                std::vector<uint8_t> data; int w=0,h=0,c=0;
+                                if (LoadKTX2FileToRGBA(texIdOrPath, data, w, h, c) && renderer->LoadTextureFromMemory(texIdOrPath, data.data(), w, h, c)) {
+                                    mat->albedoTexturePath = texIdOrPath;
+                                    std::cout << "    Loaded base color KTX2 file (KHR_specGloss): " << texIdOrPath << std::endl;
+                                }
+                            }
+                            if (mat->albedoTexturePath.empty() && !image.image.empty()) {
+                                // Upload embedded image data (already decoded via our image loader when KTX2)
+                                texIdOrPath = "gltf_baseColor_" + std::to_string(texIndex);
+                                if (renderer->LoadTextureFromMemory(texIdOrPath, image.image.data(), image.width, image.height, image.component)) {
+                                    mat->albedoTexturePath = texIdOrPath;
+                                    std::cout << "    Loaded base color texture from memory (KHR_specGloss): " << texIdOrPath << std::endl;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Heuristic pass: fill missing baseColor (albedo) by deriving from normal map filenames
+    // Many Bistro materials have no baseColorTexture index. When that happens, try inferring
+    // the base color from the normal map by replacing common suffixes like _ddna -> _d/_c/_diffuse/_basecolor/_albedo.
+    for (auto& material : materials | std::views::values) {
+        Material* mat = material.get();
+        if (!mat) continue;
+        if (!mat->albedoTexturePath.empty()) continue; // already set
+        // Only attempt if we have an external normal texture path to derive from
+        if (mat->normalTexturePath.empty()) continue;
+        const std::string &normalPath = mat->normalTexturePath;
+        // Skip embedded IDs like gltf_* which were already handled by memory uploads
+        if (normalPath.rfind("gltf_", 0) == 0) continue;
+
+        std::string candidateBase = normalPath;
+        std::string normalLower = candidateBase;
+        for (auto &ch : normalLower) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        size_t pos = normalLower.find("_ddna");
+        if (pos == std::string::npos) {
+            // Try a few additional normal suffixes seen in the wild
+            pos = normalLower.find("_n");
+        }
+        if (pos != std::string::npos) {
+            static const char* suffixes[] = {"_d", "_c", "_cm", "_diffuse", "_basecolor", "_albedo"};
+            for (const char* suf : suffixes) {
+                std::string cand = candidateBase;
+                cand.replace(pos, normalLower[pos]=='_' && normalLower.compare(pos, 5, "_ddna")==0 ? 5 : 2, suf);
+                // Ensure the file exists before attempting to load
+                if (std::filesystem::exists(cand)) {
+                    // Load KTX2 (or KTX) file via libktx then upload from memory
+                    std::vector<uint8_t> data; int w=0,h=0,c=0;
+                    if (LoadKTX2FileToRGBA(cand, data, w, h, c)) {
+                        if (renderer->LoadTextureFromMemory(cand, data.data(), w, h, c)) {
+                            mat->albedoTexturePath = cand;
+                            std::cout << "    Derived base color from normal sibling: " << cand << std::endl;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Secondary heuristic: scan glTF images for base color by material-name match when still missing
+    for (auto &entry : materials) {
+        Material* mat = entry.second.get();
+        if (!mat) continue;
+        if (!mat->albedoTexturePath.empty()) continue; // already resolved
+        // Try to find an image URI that looks like the base color for this material
+        std::string materialNameLower = entry.first;
+        std::ranges::transform(materialNameLower, materialNameLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+        for (const auto &image : gltfModel.images) {
+            if (image.uri.empty()) continue;
+            std::string imageUri = image.uri;
+            std::string imageUriLower = imageUri;
+            std::ranges::transform(imageUriLower, imageUriLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+            bool looksBase = imageUriLower.find("basecolor") != std::string::npos ||
+                             imageUriLower.find("albedo") != std::string::npos ||
+                             imageUriLower.find("diffuse") != std::string::npos;
+            if (!looksBase) continue;
+            bool nameMatches = imageUriLower.find(materialNameLower) != std::string::npos;
+            if (!nameMatches) {
+                // Best-effort: try prefix of image name before '_' against material name
+                size_t underscore = imageUriLower.find('_');
+                if (underscore != std::string::npos) {
+                    std::string prefix = imageUriLower.substr(0, underscore);
+                    nameMatches = materialNameLower.find(prefix) != std::string::npos;
+                }
+            }
+            if (!nameMatches) continue;
+
+            std::string textureId = baseTexturePath + imageUri; // use path string as ID for cache
+            if (!image.image.empty()) {
+                if (renderer->LoadTextureFromMemory(textureId, image.image.data(), image.width, image.height, image.component)) {
+                    mat->albedoTexturePath = textureId;
+                    std::cout << "    Loaded base color texture from memory (by name): " << textureId << std::endl;
+                    break;
+                }
+            } else {
+                // Fallback: load KTX2 file from disk
+                std::vector<uint8_t> data; int w=0,h=0,c=0;
+                if (LoadKTX2FileToRGBA(textureId, data, w, h, c) &&
+                    renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                    mat->albedoTexturePath = textureId;
+                    std::cout << "    Loaded base color KTX2 file (by name): " << textureId << std::endl;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Process cameras from the GLTF file
     if (!gltfModel.cameras.empty()) {
         std::cout << "Found " << gltfModel.cameras.size() << " camera(s) in GLTF file" << std::endl;
 
@@ -454,8 +630,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             }
 
             // Find the node that uses this camera to get transform information
-            for (size_t nodeIdx = 0; nodeIdx < gltfModel.nodes.size(); ++nodeIdx) {
-                const auto& node = gltfModel.nodes[nodeIdx];
+            for (const auto & node : gltfModel.nodes) {
                 if (node.camera == static_cast<int>(i)) {
                     // Extract transform from node
                     if (node.translation.size() == 3) {
@@ -485,15 +660,133 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         }
     }
 
-    // Group primitives by material to create separate meshes for each material
-    std::map<int, std::vector<Vertex>> materialVertices;
-    std::map<int, std::vector<uint32_t>> materialIndices;
-    std::map<int, std::string> materialNames;
+    // Process scene hierarchy to get node transforms for meshes
+    std::map<int, std::vector<glm::mat4>> meshInstanceTransforms; // Map from mesh index to all instance transforms
 
-    // Process all meshes and group by material
-    for (const auto& mesh : gltfModel.meshes) {
-        std::cout << "Processing mesh: " << mesh.name << std::endl;
+    // Helper function to calculate transform matrix from the GLTF node
+    auto calculateNodeTransform = [](const tinygltf::Node& node) -> glm::mat4 {
+        glm::mat4 transform;
 
+        // Apply matrix if present
+        if (node.matrix.size() == 16) {
+            // GLTF matrices are column-major, the same as GLM
+            transform = glm::mat4(
+                node.matrix[0], node.matrix[1], node.matrix[2], node.matrix[3],
+                node.matrix[4], node.matrix[5], node.matrix[6], node.matrix[7],
+                node.matrix[8], node.matrix[9], node.matrix[10], node.matrix[11],
+                node.matrix[12], node.matrix[13], node.matrix[14], node.matrix[15]
+            );
+        } else {
+            // Build transform from TRS components
+            glm::mat4 translation = glm::mat4(1.0f);
+            glm::mat4 rotation = glm::mat4(1.0f);
+            glm::mat4 scale = glm::mat4(1.0f);
+
+            // Translation
+            if (node.translation.size() == 3) {
+                translation = glm::translate(glm::mat4(1.0f), glm::vec3(
+                    static_cast<float>(node.translation[0]),
+                    static_cast<float>(node.translation[1]),
+                    static_cast<float>(node.translation[2])
+                ));
+            }
+
+            // Rotation (quaternion)
+            if (node.rotation.size() == 4) {
+                glm::quat quat(
+                    static_cast<float>(node.rotation[3]), // w
+                    static_cast<float>(node.rotation[0]), // x
+                    static_cast<float>(node.rotation[1]), // y
+                    static_cast<float>(node.rotation[2])  // z
+                );
+                rotation = glm::mat4_cast(quat);
+            }
+
+            // Scale
+            if (node.scale.size() == 3) {
+                scale = glm::scale(glm::mat4(1.0f), glm::vec3(
+                    static_cast<float>(node.scale[0]),
+                    static_cast<float>(node.scale[1]),
+                    static_cast<float>(node.scale[2])
+                ));
+            }
+
+            // Combine: T * R * S
+            transform = translation * rotation * scale;
+        }
+
+        return transform;
+    };
+
+    // Recursive function to traverse scene hierarchy
+    std::function<void(int, const glm::mat4&)> traverseNode = [&](int nodeIndex, const glm::mat4& parentTransform) {
+        if (nodeIndex < 0 || nodeIndex >= gltfModel.nodes.size()) {
+            return;
+        }
+
+        const tinygltf::Node& node = gltfModel.nodes[nodeIndex];
+
+        // Calculate this node's transform
+        glm::mat4 nodeTransform = calculateNodeTransform(node);
+        glm::mat4 worldTransform = parentTransform * nodeTransform;
+
+        // If this node has a mesh, add the transform to the instances list
+        if (node.mesh >= 0 && node.mesh < gltfModel.meshes.size()) {
+            meshInstanceTransforms[node.mesh].push_back(worldTransform);
+        }
+
+        // Recursively process children
+        for (int childIndex : node.children) {
+            traverseNode(childIndex, worldTransform);
+        }
+    };
+
+    // Process all scenes (typically there's only one default scene)
+    if (!gltfModel.scenes.empty()) {
+        int defaultScene = gltfModel.defaultScene >= 0 ? gltfModel.defaultScene : 0;
+        if (defaultScene < gltfModel.scenes.size()) {
+            const tinygltf::Scene& scene = gltfModel.scenes[defaultScene];
+
+            // Traverse all root nodes in the scene
+            for (int rootNodeIndex : scene.nodes) {
+                traverseNode(rootNodeIndex, glm::mat4(1.0f));
+            }
+        }
+    }
+
+    std::map<std::string, MaterialMesh> geometryMaterialMeshMap; // Map from geometry+material hash to unique MaterialMesh
+
+    // Helper function to create a geometry hash for deduplication
+    auto createGeometryHash = [](const tinygltf::Primitive& primitive, int materialIndex) -> std::string {
+        std::string hash = "mat_" + std::to_string(materialIndex);
+
+        // Add primitive attribute hashes to ensure unique geometry identification
+        if (primitive.indices >= 0) {
+            hash += "_idx_" + std::to_string(primitive.indices);
+        }
+
+        for (const auto& attr : primitive.attributes) {
+            hash += "_" + attr.first + "_" + std::to_string(attr.second);
+        }
+
+        return hash;
+    };
+
+    // Process all meshes with improved instancing support
+    for (size_t meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex) {
+        const auto& mesh = gltfModel.meshes[meshIndex];
+
+        // Check if this mesh has instances
+        auto instanceIt = meshInstanceTransforms.find(static_cast<int>(meshIndex));
+        std::vector<glm::mat4> instances;
+
+        if (instanceIt == meshInstanceTransforms.end() || instanceIt->second.empty()) {
+            instances.emplace_back(1.0f); // Identity transform at origin
+        } else {
+            instances = instanceIt->second;
+        }
+
+        // Process each primitive (material group) in this mesh
         for (const auto& primitive : mesh.primitives) {
             // Get the material index for this primitive
             int materialIndex = primitive.material;
@@ -501,23 +794,35 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 materialIndex = -1; // Use -1 for primitives without materials
             }
 
-            // Initialize vectors for this material if not already done
-            if (!materialVertices.contains(materialIndex)) {
-                materialVertices[materialIndex] = std::vector<Vertex>();
-                materialIndices[materialIndex] = std::vector<uint32_t>();
+            // Create a unique geometry hash for this primitive and material combination
+            std::string geometryHash = createGeometryHash(primitive, materialIndex);
 
-                // Store material name for debugging
+            // Check if we already have this exact geometry and material combination
+            if (!geometryMaterialMeshMap.contains(geometryHash)) {
+                // Create a new MaterialMesh for this unique geometry and material combination
+                MaterialMesh materialMesh;
+                materialMesh.materialIndex = materialIndex;
+
+                // Set material name
                 if (materialIndex >= 0 && materialIndex < gltfModel.materials.size()) {
                     const auto& gltfMaterial = gltfModel.materials[materialIndex];
-                    materialNames[materialIndex] = gltfMaterial.name.empty() ?
+                    materialMesh.materialName = gltfMaterial.name.empty() ?
                         ("material_" + std::to_string(materialIndex)) : gltfMaterial.name;
                 } else {
-                    materialNames[materialIndex] = "no_material";
+                    materialMesh.materialName = "no_material";
                 }
 
-                std::cout << "  Found material " << materialIndex << ": " << materialNames[materialIndex] << std::endl;
+                geometryMaterialMeshMap[geometryHash] = materialMesh;
             }
-            // Get indices for this material
+
+            MaterialMesh& materialMesh = geometryMaterialMeshMap[geometryHash];
+
+            // Only process geometry if this MaterialMesh is empty (first time processing this geometry)
+            if (materialMesh.vertices.empty()) {
+
+            auto vertexOffsetInMaterialMesh = static_cast<uint32_t>(materialMesh.vertices.size());
+
+            // Get indices for this primitive
             if (primitive.indices >= 0) {
                 const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
                 const tinygltf::BufferView& indexBufferView = gltfModel.bufferViews[indexAccessor.bufferView];
@@ -525,18 +830,18 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
 
                 const void* indexData = &indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset];
 
-                size_t indexOffset = materialVertices[materialIndex].size();
-
-                // Handle different index types
+                // Handle different index types with proper vertex offset adjustment
                 if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                     const auto* buf = static_cast<const uint16_t*>(indexData);
                     for (size_t i = 0; i < indexAccessor.count; ++i) {
-                        materialIndices[materialIndex].push_back(buf[i] + indexOffset);
+                        // FIXED: Add vertex offset to prevent index sharing between primitives
+                        materialMesh.indices.push_back(buf[i] + vertexOffsetInMaterialMesh);
                     }
                 } else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
                     const auto* buf = static_cast<const uint32_t*>(indexData);
                     for (size_t i = 0; i < indexAccessor.count; ++i) {
-                        materialIndices[materialIndex].push_back(buf[i] + indexOffset);
+                        // FIXED: Add vertex offset to prevent index sharing between primitives
+                        materialMesh.indices.push_back(buf[i] + vertexOffsetInMaterialMesh);
                     }
                 }
             }
@@ -577,18 +882,18 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                     &normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset]);
             }
 
-            // Create vertices for this material
+            // Create vertices in their original coordinate system (no transformation applied here)
             for (size_t i = 0; i < posAccessor.count; ++i) {
                 Vertex vertex{};
 
-                // Position
+                // Position (keep in an original coordinate system)
                 vertex.position = glm::vec3(
                     positions[i * 3 + 0],
                     positions[i * 3 + 1],
                     positions[i * 3 + 2]
                 );
 
-                // Normal (use extracted normals if available, otherwise default up)
+                // Normal (keep in an original coordinate system)
                 if (normals) {
                     vertex.normal = glm::vec3(
                         normals[i * 3 + 0],
@@ -612,32 +917,30 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 // Tangent (default right tangent for now, could be extracted from GLTF if available)
                 vertex.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 
-                materialVertices[materialIndex].push_back(vertex);
+                materialMesh.vertices.push_back(vertex);
+            }
+            } // End of isFirstTimeProcessing block
+
+            // Add all instances to this MaterialMesh (both new and existing geometry)
+            for (const glm::mat4& instanceTransform : instances) {
+                materialMesh.AddInstance(instanceTransform, static_cast<uint32_t>(materialIndex));
             }
         }
     }
 
-    // Store material meshes and combine for backward compatibility
+    // Convert geometry-based material mesh map to vector
     std::vector<MaterialMesh> modelMaterialMeshes;
+    for (auto& val : geometryMaterialMeshMap | std::views::values) {
+        modelMaterialMeshes.push_back(val);
+    }
+
+    // Process texture loading for each MaterialMesh
     std::vector<Vertex> combinedVertices;
     std::vector<uint32_t> combinedIndices;
 
-    std::cout << "Processing " << materialVertices.size() << " materials:" << std::endl;
-
-    for (const auto& materialPair : materialVertices) {
-        int materialIndex = materialPair.first;
-        const auto& vertices = materialPair.second;
-        const auto& indices = materialIndices[materialIndex];
-
-        std::cout << "  Material " << materialIndex << " (" << materialNames[materialIndex]
-                  << "): " << vertices.size() << " vertices, " << indices.size() << " indices" << std::endl;
-
-        // Create MaterialMesh for this material
-        MaterialMesh materialMesh;
-        materialMesh.materialIndex = materialIndex;
-        materialMesh.materialName = materialNames[materialIndex];
-        materialMesh.vertices = vertices;
-        materialMesh.indices = indices;
+    // Process texture loading for each MaterialMesh
+    for (auto & materialMesh : modelMaterialMeshes) {
+        int materialIndex = materialMesh.materialIndex;
 
         // Get ALL texture paths for this material (same as ParseGLTFDataOnly)
         if (materialIndex >= 0 && materialIndex < gltfModel.materials.size()) {
@@ -648,58 +951,90 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 int texIndex = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
                 if (texIndex < gltfModel.textures.size()) {
                     const auto& texture = gltfModel.textures[texIndex];
+                    int imageIndex = -1;
                     if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
-                        std::string textureId = "gltf_texture_" + std::to_string(texIndex);
+                        imageIndex = texture.source;
+                    } else {
+                        auto extIt = texture.extensions.find("KHR_texture_basisu");
+                        if (extIt != texture.extensions.end()) {
+                            const tinygltf::Value& ext = extIt->second;
+                            if (ext.Has("source") && ext.Get("source").IsInt()) {
+                                int src = ext.Get("source").Get<int>();
+                                if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
+                                    imageIndex = src;
+                                }
+                            }
+                        }
+                    }
+                    if (imageIndex >= 0) {
+                        std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
                         materialMesh.baseColorTexturePath = textureId;
-                        materialMesh.texturePath = textureId; // Keep for backward compatibility
+                        materialMesh.texturePath = textureId; // Keep for backward compatibility (now baseColor‑tagged)
 
-                        // Load texture data (embedded or external)
-                        const auto& image = gltfModel.images[texture.source];
+                        // Load texture data (embedded or external) with caching
+                        const auto& image = gltfModel.images[imageIndex];
                         if (!image.image.empty()) {
-                            // Load embedded texture data
-                            if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
-                                                              image.width, image.height, image.component)) {
-                                std::cout << "      Loaded embedded baseColor texture: " << textureId
-                                          << " (" << image.width << "x" << image.height << ")" << std::endl;
+                            if (!loadedTextures.contains(textureId)) {
+                                if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
+                                                                  image.width, image.height, image.component)) {
+                                    loadedTextures.insert(textureId);
+                                    std::cout << "      Loaded baseColor texture from memory: " << textureId
+                                              << " (" << image.width << "x" << image.height << ")" << std::endl;
+                                } else {
+                                    std::cerr << "      Failed to load baseColor texture from memory: " << textureId << std::endl;
+                                }
                             } else {
-                                std::cerr << "      Failed to load embedded baseColor texture: " << textureId << std::endl;
+                                std::cout << "      Using cached baseColor texture: " << textureId << std::endl;
                             }
-                        } else if (!image.uri.empty()) {
-                            // Load external texture file
-                            std::string texturePath = baseTexturePath + image.uri;
-                            if (renderer->LoadTexture(texturePath)) {
-                                // Update the MaterialMesh to use the external texture path instead of gltf_texture_X
-                                materialMesh.baseColorTexturePath = texturePath;
-                                materialMesh.texturePath = texturePath; // Keep for backward compatibility
-                                std::cout << "      Loaded external baseColor texture: " << texturePath << std::endl;
-                            } else {
-                                std::cerr << "      Failed to load external baseColor texture: " << texturePath << std::endl;
-                            }
+                        } else {
+                            std::cerr << "      Warning: No decoded bytes for baseColor texture index " << texIndex << std::endl;
                         }
                     }
                 }
             } else {
                 // Since texture indices are -1, try to find external texture files by material name
-                std::string materialName = materialNames[materialIndex];
+                std::string materialName = materialMesh.materialName;
 
-                // Look for external texture files that match this specific material
+                // Look for external texture files that match this specific material (case-insensitive)
                 for (const auto & image : gltfModel.images) {
                     if (!image.uri.empty()) {
                         std::string imageUri = image.uri;
+                        // Lowercase copies for robust matching
+                        std::string imageUriLower = imageUri;
+                        std::ranges::transform(imageUriLower, imageUriLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                        std::string materialNameLower = materialName;
+                        std::ranges::transform(materialNameLower, materialNameLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
 
                         // Check if this image belongs to this specific material based on naming patterns
-                        // Look for BaseColor/Albedo textures that match the material name
-                        if ((imageUri.find("BaseColor") != std::string::npos ||
-                             imageUri.find("Albedo") != std::string::npos ||
-                             imageUri.find("Diffuse") != std::string::npos) &&
-                            (imageUri.find(materialName) != std::string::npos ||
-                             materialName.find(imageUri.substr(0, imageUri.find('_'))) != std::string::npos)) {
+                        // Look for basecolor/albedo/diffuse textures that match the material name
+                        if ((imageUriLower.find("basecolor") != std::string::npos ||
+                             imageUriLower.find("albedo") != std::string::npos ||
+                             imageUriLower.find("diffuse") != std::string::npos) &&
+                            (imageUriLower.find(materialNameLower) != std::string::npos ||
+                             materialNameLower.find(imageUriLower.substr(0, imageUriLower.find('_'))) != std::string::npos)) {
 
                             // Use the relative path from the GLTF directory
-                            std::string texturePath = baseTexturePath + imageUri;
-                            materialMesh.baseColorTexturePath = texturePath;
-                            materialMesh.texturePath = texturePath; // Keep for backward compatibility
-                            std::cout << "      Found external baseColor texture for " << materialName << ": " << texturePath << std::endl;
+                            std::string textureId = baseTexturePath + imageUri;
+                            if (!image.image.empty()) {
+                                if (renderer->LoadTextureFromMemory(textureId, image.image.data(), image.width, image.height, image.component)) {
+                                    materialMesh.baseColorTexturePath = textureId;
+                                    materialMesh.texturePath = textureId;
+                                    std::cout << "      Loaded baseColor texture from memory (heuristic): " << textureId << std::endl;
+                                } else {
+                                    std::cerr << "      Failed to load heuristic baseColor texture from memory: " << textureId << std::endl;
+                                }
+                            } else {
+                                // Fallback: load KTX2 from the file path and upload into memory
+                                std::vector<uint8_t> data; int w=0,h=0,c=0;
+                                if (LoadKTX2FileToRGBA(textureId, data, w, h, c) &&
+                                    renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                                    materialMesh.baseColorTexturePath = textureId;
+                                    materialMesh.texturePath = textureId;
+                                    std::cout << "      Loaded baseColor KTX2 from file (heuristic): " << textureId << std::endl;
+                                } else {
+                                    std::cerr << "      Warning: Heuristic baseColor image has no decoded bytes and KTX2 fallback failed: " << imageUri << std::endl;
+                                }
+                            }
                             break;
                         }
                     }
@@ -726,31 +1061,31 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             } else {
                                 std::cerr << "      Failed to load embedded normal texture: " << textureId << std::endl;
                             }
-                        } else if (!image.uri.empty()) {
-                            // Load external texture file
-                            std::string texturePath = baseTexturePath + image.uri;
-                            if (renderer->LoadTexture(texturePath)) {
-                                // Update the MaterialMesh to use the external texture path instead of gltf_texture_X
-                                materialMesh.normalTexturePath = texturePath;
-                                std::cout << "      Loaded external normal texture: " << texturePath << std::endl;
-                            } else {
-                                std::cerr << "      Failed to load external normal texture: " << texturePath << std::endl;
-                            }
+                        } else {
+                            std::cerr << "      Warning: No decoded bytes for normal texture index " << texIndex << std::endl;
                         }
                     }
                 }
             } else {
-                // Look for external normal texture files that match this specific material
-                std::string materialName = materialNames[materialIndex];
+                // Heuristic: search images for a normal texture for this material and load from memory
+                std::string materialName = materialMesh.materialName;
                 for (const auto & image : gltfModel.images) {
                     if (!image.uri.empty()) {
                         std::string imageUri = image.uri;
                         if (imageUri.find("Normal") != std::string::npos &&
                             (imageUri.find(materialName) != std::string::npos ||
                              materialName.find(imageUri.substr(0, imageUri.find('_'))) != std::string::npos)) {
-                            std::string texturePath = baseTexturePath + imageUri;
-                            materialMesh.normalTexturePath = texturePath;
-                            std::cout << "      Found external normal texture for " << materialName << ": " << texturePath << std::endl;
+                            std::string textureId = baseTexturePath + imageUri;
+                            if (!image.image.empty()) {
+                                if (renderer->LoadTextureFromMemory(textureId, image.image.data(), image.width, image.height, image.component)) {
+                                    materialMesh.normalTexturePath = textureId;
+                                    std::cout << "      Loaded normal texture from memory (heuristic): " << textureId << std::endl;
+                                } else {
+                                    std::cerr << "      Failed to load heuristic normal texture from memory: " << textureId << std::endl;
+                                }
+                            } else {
+                                std::cerr << "      Warning: Heuristic normal image has no decoded bytes: " << imageUri << std::endl;
+                            }
                             break;
                         }
                     }
@@ -769,30 +1104,22 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                         // Load texture data (embedded or external)
                         const auto& image = gltfModel.images[texture.source];
                         if (!image.image.empty()) {
-                            // Load embedded texture data
                             if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
                                                               image.width, image.height, image.component)) {
-                                std::cout << "      Loaded embedded metallic-roughness texture: " << textureId
-                                          << " (" << image.width << "x" << image.height << ")" << std::endl;
+                                materialMesh.metallicRoughnessTexturePath = textureId;
+                                std::cout << "      Loaded metallic-roughness texture from memory: " << textureId
+                                              << " (" << image.width << "x" << image.height << ")" << std::endl;
                             } else {
-                                std::cerr << "      Failed to load embedded metallic-roughness texture: " << textureId << std::endl;
+                                std::cerr << "      Failed to load metallic-roughness texture from memory: " << textureId << std::endl;
                             }
-                        } else if (!image.uri.empty()) {
-                            // Load external texture file
-                            std::string texturePath = baseTexturePath + image.uri;
-                            if (renderer->LoadTexture(texturePath)) {
-                                // Update the MaterialMesh to use the external texture path instead of gltf_texture_X
-                                materialMesh.metallicRoughnessTexturePath = texturePath;
-                                std::cout << "      Loaded external metallic-roughness texture: " << texturePath << std::endl;
-                            } else {
-                                std::cerr << "      Failed to load external metallic-roughness texture: " << texturePath << std::endl;
-                            }
+                        } else {
+                            std::cerr << "      Warning: No decoded bytes for metallic-roughness texture index " << texIndex << std::endl;
                         }
                     }
                 }
             } else {
                 // Look for external metallic-roughness texture files that match this specific material
-                std::string materialName = materialNames[materialIndex];
+                std::string materialName = materialMesh.materialName;
                 for (const auto & image : gltfModel.images) {
                     if (!image.uri.empty()) {
                         std::string imageUri = image.uri;
@@ -822,30 +1149,22 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                         // Load texture data (embedded or external)
                         const auto& image = gltfModel.images[texture.source];
                         if (!image.image.empty()) {
-                            // Load embedded texture data
                             if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
                                                               image.width, image.height, image.component)) {
-                                std::cout << "      Loaded embedded occlusion texture: " << textureId
-                                          << " (" << image.width << "x" << image.height << ")" << std::endl;
+                                materialMesh.occlusionTexturePath = textureId;
+                                std::cout << "      Loaded occlusion texture from memory: " << textureId
+                                              << " (" << image.width << "x" << image.height << ")" << std::endl;
                             } else {
-                                std::cerr << "      Failed to load embedded occlusion texture: " << textureId << std::endl;
+                                std::cerr << "      Failed to load occlusion texture from memory: " << textureId << std::endl;
                             }
-                        } else if (!image.uri.empty()) {
-                            // Load external texture file
-                            std::string texturePath = baseTexturePath + image.uri;
-                            if (renderer->LoadTexture(texturePath)) {
-                                // Update the MaterialMesh to use the external texture path instead of gltf_texture_X
-                                materialMesh.occlusionTexturePath = texturePath;
-                                std::cout << "      Loaded external occlusion texture: " << texturePath << std::endl;
-                            } else {
-                                std::cerr << "      Failed to load external occlusion texture: " << texturePath << std::endl;
-                            }
+                        } else {
+                            std::cerr << "      Warning: No decoded bytes for occlusion texture index " << texIndex << std::endl;
                         }
                     }
                 }
             } else {
-                // Look for external occlusion texture files that match this specific material
-                std::string materialName = materialNames[materialIndex];
+                // Heuristic: search images for an occlusion texture for this material and load from memory
+                std::string materialName = materialMesh.materialName;
                 for (const auto & image : gltfModel.images) {
                     if (!image.uri.empty()) {
                         std::string imageUri = image.uri;
@@ -853,9 +1172,17 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                              imageUri.find("AO") != std::string::npos) &&
                             (imageUri.find(materialName) != std::string::npos ||
                              materialName.find(imageUri.substr(0, imageUri.find('_'))) != std::string::npos)) {
-                            std::string texturePath = baseTexturePath + imageUri;
-                            materialMesh.occlusionTexturePath = texturePath;
-                            std::cout << "      Found external occlusion texture for " << materialName << ": " << texturePath << std::endl;
+                            std::string textureId = baseTexturePath + imageUri;
+                            if (!image.image.empty()) {
+                                if (renderer->LoadTextureFromMemory(textureId, image.image.data(), image.width, image.height, image.component)) {
+                                    materialMesh.occlusionTexturePath = textureId;
+                                    std::cout << "      Loaded occlusion texture from memory (heuristic): " << textureId << std::endl;
+                                } else {
+                                    std::cerr << "      Failed to load heuristic occlusion texture from memory: " << textureId << std::endl;
+                                }
+                            } else {
+                                std::cerr << "      Warning: Heuristic occlusion image has no decoded bytes: " << imageUri << std::endl;
+                            }
                             break;
                         }
                     }
@@ -883,21 +1210,16 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                                 std::cerr << "      Failed to load embedded emissive texture: " << textureId << std::endl;
                             }
                         } else if (!image.uri.empty()) {
-                            // Load external texture file
+                            // Record external texture file path (loaded later by renderer)
                             std::string texturePath = baseTexturePath + image.uri;
-                            if (renderer->LoadTexture(texturePath)) {
-                                // Update the MaterialMesh to use the external texture path instead of gltf_texture_X
-                                materialMesh.emissiveTexturePath = texturePath;
-                                std::cout << "      Loaded external emissive texture: " << texturePath << std::endl;
-                            } else {
-                                std::cerr << "      Failed to load external emissive texture: " << texturePath << std::endl;
-                            }
+                            materialMesh.emissiveTexturePath = texturePath;
+                            std::cout << "      External emissive texture path: " << texturePath << std::endl;
                         }
                     }
                 }
             } else {
                 // Look for external emissive texture files that match this specific material
-                std::string materialName = materialNames[materialIndex];
+                std::string materialName = materialMesh.materialName;
                 for (const auto & image : gltfModel.images) {
                     if (!image.uri.empty()) {
                         std::string imageUri = image.uri;
@@ -915,14 +1237,20 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             }
         }
 
-        modelMaterialMeshes.push_back(materialMesh);
+        // Add to combined mesh for backward compatibility (keep vertices in an original coordinate system)
+        if (!materialMesh.instances.empty()) {
+            size_t vertexOffset = combinedVertices.size();
 
-        // Also add to combined mesh for backward compatibility
-        size_t vertexOffset = combinedVertices.size();
-        combinedVertices.insert(combinedVertices.end(), vertices.begin(), vertices.end());
+            // FIXED: Don't transform vertices - keep them in the original coordinate system
+            // Instance transforms should be handled by the instancing system, not applied to vertex data
+            for (const auto& vertex : materialMesh.vertices) {
+                // Use vertices as-is without any transformation
+                combinedVertices.push_back(vertex);
+            }
 
-        for (uint32_t index : indices) {
-            combinedIndices.push_back(index + vertexOffset);
+            for (uint32_t index : materialMesh.indices) {
+                combinedIndices.push_back(index + vertexOffset);
+            }
         }
     }
 
@@ -943,142 +1271,6 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
 
     std::cout << "GLTF model loaded successfully with " << combinedVertices.size() << " vertices and " << combinedIndices.size() << " indices" << std::endl;
     return true;
-}
-
-bool ModelLoader::LoadPBRTextures(Material* material,
-                                 const std::string& albedoMap,
-                                 const std::string& normalMap,
-                                 const std::string& metallicRoughnessMap,
-                                 const std::string& aoMap,
-                                 const std::string& emissiveMap) const {
-    if (!material) {
-        std::cerr << "ModelLoader::LoadPBRTextures: Material is null" << std::endl;
-        return false;
-    }
-
-    if (!renderer) {
-        std::cerr << "ModelLoader::LoadPBRTextures: Renderer is null" << std::endl;
-        return false;
-    }
-
-    std::cout << "Loading PBR textures for material: " << material->GetName() << std::endl;
-
-    bool success = true;
-
-    // Load albedo map or create default
-    if (!albedoMap.empty()) {
-        std::cout << "  Loading albedo map: " << albedoMap << std::endl;
-        material->albedoTexturePath = albedoMap;
-        if (!renderer->LoadTexture(albedoMap)) {
-            std::cerr << "  Failed to load albedo texture: " << albedoMap << std::endl;
-            success = false;
-        }
-    } else {
-        // Use shared default albedo texture (much more efficient than creating per-material textures)
-        std::cout << "  Using shared default albedo texture" << std::endl;
-        material->albedoTexturePath = Renderer::SHARED_DEFAULT_ALBEDO_ID;
-    }
-
-    // Load normal map or create default
-    if (!normalMap.empty()) {
-        std::cout << "  Loading normal map: " << normalMap << std::endl;
-        material->normalTexturePath = normalMap;
-        if (!renderer->LoadTexture(normalMap)) {
-            std::cerr << "  Failed to load normal texture: " << normalMap << std::endl;
-            success = false;
-        }
-    } else {
-        // Use shared default normal texture (much more efficient than creating per-material textures)
-        std::cout << "  Using shared default normal texture" << std::endl;
-        material->normalTexturePath = Renderer::SHARED_DEFAULT_NORMAL_ID;
-    }
-
-    // Load metallic-roughness map or create default
-    if (!metallicRoughnessMap.empty()) {
-        std::cout << "  Loading metallic-roughness map: " << metallicRoughnessMap << std::endl;
-        material->metallicRoughnessTexturePath = metallicRoughnessMap;
-        if (!renderer->LoadTexture(metallicRoughnessMap)) {
-            std::cerr << "  Failed to load metallic-roughness texture: " << metallicRoughnessMap << std::endl;
-            success = false;
-        }
-    } else {
-        // Use shared default metallic-roughness texture (much more efficient than creating per-material textures)
-        std::cout << "  Using shared default metallic-roughness texture" << std::endl;
-        material->metallicRoughnessTexturePath = Renderer::SHARED_DEFAULT_METALLIC_ROUGHNESS_ID;
-    }
-
-    // Load ambient occlusion map or create default
-    if (!aoMap.empty()) {
-        std::cout << "  Loading ambient occlusion map: " << aoMap << std::endl;
-        material->occlusionTexturePath = aoMap;
-        if (!renderer->LoadTexture(aoMap)) {
-            std::cerr << "  Failed to load occlusion texture: " << aoMap << std::endl;
-            success = false;
-        }
-    } else {
-        // Use shared default occlusion texture (much more efficient than creating per-material textures)
-        std::cout << "  Using shared default occlusion texture" << std::endl;
-        material->occlusionTexturePath = Renderer::SHARED_DEFAULT_OCCLUSION_ID;
-    }
-
-    // Load emissive map or create default
-    if (!emissiveMap.empty()) {
-        std::cout << "  Loading emissive map: " << emissiveMap << std::endl;
-        material->emissiveTexturePath = emissiveMap;
-        if (!renderer->LoadTexture(emissiveMap)) {
-            std::cerr << "  Failed to load emissive texture: " << emissiveMap << std::endl;
-            success = false;
-        }
-    } else {
-        // Use shared default emissive texture (much more efficient than creating per-material textures)
-        std::cout << "  Using shared default emissive texture" << std::endl;
-        material->emissiveTexturePath = Renderer::SHARED_DEFAULT_EMISSIVE_ID;
-    }
-
-    std::cout << "PBR texture paths stored for material: " << material->GetName() << std::endl;
-    return success;
-}
-
-std::string ModelLoader::GetFirstMaterialTexturePath(const std::string& modelName) {
-    // Get material meshes for this specific model
-    auto it = materialMeshes.find(modelName);
-    if (it == materialMeshes.end()) {
-        std::cout << "No material meshes found for model: " << modelName << std::endl;
-        return "";
-    }
-
-    const auto& modelMaterialMeshes = it->second;
-
-    // First, try to find a material mesh with a texture path (prioritizing base color)
-    for (const auto& materialMesh : modelMaterialMeshes) {
-        if (!materialMesh.texturePath.empty()) {
-            std::cout << "Found texture path for model " << modelName << ": " << materialMesh.texturePath << std::endl;
-            return materialMesh.texturePath;
-        }
-    }
-
-    // If no texture path found in MaterialMesh, try to get from the actual materials
-    // Only look for albedo textures to ensure non-PBR rendering doesn't use normal/metallic maps
-    for (const auto& materialMesh : modelMaterialMeshes) {
-        const std::string& materialName = materialMesh.materialName;
-        if (materialName.empty()) continue;
-
-        auto materialIt = materials.find(materialName);
-        if (materialIt != materials.end()) {
-            const auto& material = materialIt->second;
-
-            // Only return albedo texture for non-PBR rendering compatibility
-            if (!material->albedoTexturePath.empty()) {
-                std::cout << "Found albedo texture path for model " << modelName << ": " << material->albedoTexturePath << std::endl;
-                return material->albedoTexturePath;
-            }
-            // Don't fall back to normal or metallic-roughness textures to avoid
-            // using them in non-PBR rendering where they would be incorrect
-        }
-    }
-
-    std::cout << "No texture path found for model: " << modelName << std::endl;
-    return "";
 }
 
 std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& modelName) const {
@@ -1102,7 +1294,7 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
 
                 // Check if this material has emissive properties (no threshold filtering)
                 float emissiveIntensity = glm::length(material->emissive) * material->emissiveStrength;
-                if (emissiveIntensity >= 0.0f) { // Accept all emissive materials, including zero intensity
+                if (emissiveIntensity >= 0.0f) { // Accept all emissive materials, including zero intensities
                     // Calculate the center position of the emissive surface
                     glm::vec3 center(0.0f);
                     if (!materialMesh.vertices.empty()) {
@@ -1131,7 +1323,7 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
                     // Create an emissive light source
                     ExtractedLight emissiveLight;
                     emissiveLight.type = ExtractedLight::Type::Emissive;
-                    emissiveLight.position = lightPosition; // Use offset position
+                    emissiveLight.position = lightPosition; // Use the offset position
                     emissiveLight.color = material->emissive;
                     emissiveLight.intensity = material->emissiveStrength;
                     emissiveLight.range = 10.0f; // Default range for emissive lights
@@ -1219,15 +1411,15 @@ bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const 
 
                 // Parse light intensity
                 if (lightValue.Has("intensity") && lightValue.Get("intensity").IsNumber()) {
-                    light.intensity = static_cast<float>(lightValue.Get("intensity").Get<double>());
+                    light.intensity = static_cast<float>(lightValue.Get("intensity").Get<double>()) * LIGHT_SCALE_FACTOR;
                 }
 
-                // Parse light range (for point and spot lights)
+                // Parse light range (for point and spotlights)
                 if (lightValue.Has("range") && lightValue.Get("range").IsNumber()) {
                     light.range = static_cast<float>(lightValue.Get("range").Get<double>());
                 }
 
-                // Parse spot light specific parameters
+                // Parse spotlights specific parameters
                 if (light.type == ExtractedLight::Type::Spot && lightValue.Has("spot")) {
                     const tinygltf::Value& spotValue = lightValue.Get("spot");
                     if (spotValue.Has("innerConeAngle") && spotValue.Get("innerConeAngle").IsNumber()) {
@@ -1263,11 +1455,11 @@ bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const 
                         );
                     }
 
-                    // Extract direction from node rotation (for directional and spot lights)
+                    // Extract direction from node rotation (for directional and spotlights)
                     if (node.rotation.size() >= 4 &&
                         (lights[lightIndex].type == ExtractedLight::Type::Directional ||
                          lights[lightIndex].type == ExtractedLight::Type::Spot)) {
-                        // Convert quaternion to direction vector
+                        // Convert quaternion to a direction vector
                         glm::quat rotation(
                             static_cast<float>(node.rotation[3]), // w
                             static_cast<float>(node.rotation[0]), // x
@@ -1294,101 +1486,3 @@ bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const 
     return lights.empty();
 }
 
-bool ModelLoader::LoadEmbeddedGLTFTextures(const std::string& filename) const {
-    std::cout << "Loading embedded GLTF textures from: " << filename << std::endl;
-
-    if (!renderer) {
-        std::cerr << "LoadEmbeddedGLTFTextures: Renderer is null" << std::endl;
-        return false;
-    }
-
-    // Create a tinygltf loader with proper image loading
-    tinygltf::Model gltfModel;
-    tinygltf::TinyGLTF loader;
-    std::string err;
-    std::string warn;
-
-    // Set up a proper image loader callback using stb_image (same as ParseGLTF)
-    loader.SetImageLoader([](tinygltf::Image* image, const int image_idx, std::string* err,
-                            std::string* warn, int req_width, int req_height,
-                            const unsigned char* bytes, int size, void* user_data) -> bool {
-        // Use stb_image to decode the image data
-        int width, height, channels;
-        unsigned char* data = stbi_load_from_memory(bytes, size, &width, &height, &channels, 0);
-
-        if (!data) {
-            if (err) {
-                *err = "Failed to load image with stb_image: " + std::string(stbi_failure_reason());
-            }
-            return false;
-        }
-
-        // Set image properties
-        image->width = width;
-        image->height = height;
-        image->component = channels;
-        image->bits = 8;
-        image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
-
-        // Copy image data
-        size_t image_size = width * height * channels;
-        image->image.resize(image_size);
-        std::memcpy(image->image.data(), data, image_size);
-
-        // Free stb_image data
-        stbi_image_free(data);
-
-        std::cout << "  Loaded embedded texture: " << width << "x" << height << " with " << channels << " channels" << std::endl;
-        return true;
-    }, nullptr);
-
-    // Load the GLTF file
-    bool ret = false;
-    if (filename.find(".glb") != std::string::npos) {
-        ret = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, filename);
-    } else {
-        ret = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, filename);
-    }
-
-    if (!warn.empty()) {
-        std::cout << "GLTF Warning: " << warn << std::endl;
-    }
-
-    if (!err.empty()) {
-        std::cerr << "GLTF Error: " << err << std::endl;
-        return false;
-    }
-
-    if (!ret) {
-        std::cerr << "Failed to parse GLTF file for texture loading: " << filename << std::endl;
-        return false;
-    }
-
-    std::cout << "Successfully loaded GLTF file for texture extraction" << std::endl;
-
-    // Load all embedded textures using LoadTextureFromMemory
-    int texturesLoaded = 0;
-    for (size_t texIndex = 0; texIndex < gltfModel.textures.size(); ++texIndex) {
-        const auto& texture = gltfModel.textures[texIndex];
-        if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
-            std::string textureId = "gltf_texture_" + std::to_string(texIndex);
-            const auto& image = gltfModel.images[texture.source];
-
-            if (!image.image.empty()) {
-                if (renderer->LoadTextureFromMemory(textureId, image.image.data(),
-                                                  image.width, image.height, image.component)) {
-                    std::cout << "  Loaded embedded texture: " << textureId
-                              << " (" << image.width << "x" << image.height << ")" << std::endl;
-                    texturesLoaded++;
-                } else {
-                    std::cerr << "  Failed to load embedded texture: " << textureId << std::endl;
-                }
-            } else {
-                std::cerr << "  Empty image data for texture: " << textureId << std::endl;
-            }
-        }
-    }
-
-    std::cout << "Successfully loaded " << texturesLoaded << " embedded GLTF textures" << std::endl;
-    return texturesLoaded > 0;
-}

@@ -1,15 +1,15 @@
 #include "renderer.h"
 #include "model_loader.h"
 #include "mesh_component.h"
+#include "transform_component.h"
 #include <fstream>
 #include <stdexcept>
 #include <array>
 #include <iostream>
+#include <filesystem>
 #include <cstring>
 
-// Define STB_IMAGE_IMPLEMENTATION before including stb_image.h to provide the implementation
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+// stb_image dependency removed; all GLTF textures are uploaded via memory path from ModelLoader.
 
 // KTX2 support
 #include <ktx.h>
@@ -63,22 +63,61 @@ bool Renderer::createDepthResources() {
 }
 
 // Create texture image
-bool Renderer::createTextureImage(const std::string& texturePath, TextureResources& resources) {
+bool Renderer::createTextureImage(const std::string& texturePath_, TextureResources& resources) {
     try {
+        auto texturePath = const_cast<std::string&>(texturePath_);
         // Check if texture already exists
         auto it = textureResources.find(texturePath);
         if (it != textureResources.end()) {
-            resources = std::move(it->second);
+            // Texture already loaded and cached; leave cache intact and return success
             return true;
         }
 
         // Check if this is a KTX2 file
         bool isKtx2 = texturePath.find(".ktx2") != std::string::npos;
 
+        // If it's a KTX2 texture but the path doesn't exist, try common fallback filename variants
+        if (isKtx2) {
+            std::filesystem::path origPath(texturePath);
+            if (!std::filesystem::exists(origPath)) {
+                std::string fname = origPath.filename().string();
+                std::string dir = origPath.parent_path().string();
+                auto tryCandidate = [&](const std::string& candidateName) -> bool {
+                    std::filesystem::path cand = std::filesystem::path(dir) / candidateName;
+                    if (std::filesystem::exists(cand)) {
+                        std::cout << "Resolved missing texture '" << texturePath << "' to existing file '" << cand.string() << "'" << std::endl;
+                        texturePath = cand.string();
+                        return true;
+                    }
+                    return false;
+                };
+                // Known suffix variants near the end of filename before extension
+                // Examples: *_c.ktx2, *_d.ktx2, *_cm.ktx2, *_diffuse.ktx2, *_basecolor.ktx2, *_albedo.ktx2
+                std::vector<std::string> suffixes = {"_c", "_d", "_cm", "_diffuse", "_basecolor", "_albedo"};
+                // If filename matches one known suffix, try others
+                for (const auto& s : suffixes) {
+                    std::string key = s + ".ktx2";
+                    if (fname.size() > key.size() && fname.rfind(key) == fname.size() - key.size()) {
+                        std::string prefix = fname.substr(0, fname.size() - key.size());
+                        for (const auto& alt : suffixes) {
+                            if (alt == s) continue;
+                            std::string candName = prefix + alt + ".ktx2";
+                            if (tryCandidate(candName)) { isKtx2 = true; break; }
+                        }
+                        break; // Only replace last suffix occurrence
+                    }
+                }
+            }
+        }
+
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = nullptr;
+        unsigned char* pixels = nullptr;
         ktxTexture2* ktxTex = nullptr;
         vk::DeviceSize imageSize;
+
+        // Track KTX2 transcoding state and original format across the function scope
+        bool wasTranscoded = false;
+        VkFormat ktxHeaderVkFormat = VK_FORMAT_UNDEFINED;
 
         uint32_t mipLevels = 1;
         std::vector<vk::BufferImageCopy> copyRegions;
@@ -89,12 +128,61 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
                                                                    KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
                                                                    &ktxTex);
             if (result != KTX_SUCCESS) {
-                std::cerr << "Failed to load KTX2 texture: " << texturePath << " (error: " << result << ")" << std::endl;
-                return false;
+                // Retry with sibling suffix variants if file exists but cannot be parsed/opened
+                std::filesystem::path origPath(texturePath);
+                std::string fname = origPath.filename().string();
+                std::string dir = origPath.parent_path().string();
+                auto tryLoad = [&](const std::string& candidateName) -> bool {
+                    std::filesystem::path cand = std::filesystem::path(dir) / candidateName;
+                    if (std::filesystem::exists(cand)) {
+                        std::string candStr = cand.string();
+                        std::cout << "Retrying KTX2 load with sibling candidate '" << candStr << "' for original '" << texturePath << "'" << std::endl;
+                        result = ktxTexture2_CreateFromNamedFile(candStr.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTex);
+                        if (result == KTX_SUCCESS) {
+                            texturePath = candStr; // Use the successfully opened candidate
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                // Known suffix variants near the end of filename before extension
+                std::vector<std::string> suffixes = {"_c", "_d", "_cm", "_diffuse", "_basecolor", "_albedo"};
+                for (const auto& s : suffixes) {
+                    std::string key = s + ".ktx2";
+                    if (fname.size() > key.size() && fname.rfind(key) == fname.size() - key.size()) {
+                        std::string prefix = fname.substr(0, fname.size() - key.size());
+                        bool loaded = false;
+                        for (const auto& alt : suffixes) {
+                            if (alt == s) continue;
+                            std::string candName = prefix + alt + ".ktx2";
+                            if (tryLoad(candName)) { loaded = true; break; }
+                        }
+                        if (loaded) break;
+                    }
+                }
+                if (result != KTX_SUCCESS) {
+                    // Last-ditch fallback: try alternate image formats (.png/.jpg/.jpeg) with same basename
+                    std::filesystem::path orig = std::filesystem::path(texturePath);
+                    std::vector<std::string> altExts = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG", ".dds", ".DDS", ".ktx", ".KTX"};
+                    for (const auto& ext : altExts) {
+                        std::filesystem::path cand = orig;
+                        cand.replace_extension(ext);
+                        if (std::filesystem::exists(cand)) {
+                            // Alternate non-KTX fallback removed per simplification policy
+                            (void)ext; (void)orig; (void)cand; // suppress unused warnings
+                        }
+                    }
+                    std::cerr << "Failed to load KTX2 texture: " << texturePath << " (error: " << result << ")" << std::endl;
+                    return false;
+                }
             }
+            ktx2_or_alt_loaded:;
+
+            // Cache header-provided VkFormat
+            ktxHeaderVkFormat = static_cast<VkFormat>(ktxTex->vkFormat);
 
             // Check if texture needs transcoding (Basis Universal compressed)
-            bool wasTranscoded = ktxTexture2_NeedsTranscoding(ktxTex);
+            wasTranscoded = ktxTexture2_NeedsTranscoding(ktxTex);
             if (wasTranscoded) {
                 // Transcode to RGBA8 uncompressed format for Vulkan compatibility
                 ktx_transcode_fmt_e transcodeFormat = KTX_TTF_RGBA32;
@@ -110,7 +198,8 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
             texWidth = ktxTex->baseWidth;
             texHeight = ktxTex->baseHeight;
             texChannels = 4; // KTX2 textures are typically RGBA
-            // Disable mipmapping - only use base level (level 0)
+            // Disable mipmapping for now - memory pool only supports single mip level
+            // TODO: Implement proper mipmap support in memory pool
             mipLevels = 1;
 
             // Calculate size for base level only
@@ -134,32 +223,10 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
                 .imageOffset = {0, 0, 0},
                 .imageExtent = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1}
             });
-
-            std::cout << "Loaded KTX2 texture: " << texturePath
-                      << " (" << texWidth << "x" << texHeight << ", base level only, size: " << imageSize << " bytes)" << std::endl;
         } else {
-            // Load standard image formats using stb_image
-            pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-            if (!pixels) {
-                std::cerr << "Failed to load texture image: " << texturePath << std::endl;
-                return false;
-            }
-            imageSize = texWidth * texHeight * 4;
-
-            // Create single copy region for non-KTX2 textures
-            copyRegions.push_back({
-                .bufferOffset = 0,
-                .bufferRowLength = 0,
-                .bufferImageHeight = 0,
-                .imageSubresource = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .mipLevel = 0,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                },
-                .imageOffset = {0, 0, 0},
-                .imageExtent = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1}
-            });
+            // Non-KTX texture loading via file path is disabled to simplify pipeline.
+            std::cerr << "Unsupported non-KTX2 texture path: " << texturePath << std::endl;
+            return false;
         }
 
         // Create staging buffer
@@ -203,13 +270,27 @@ bool Renderer::createTextureImage(const std::string& texturePath, TextureResourc
         if (isKtx2) {
             ktxTexture_Destroy((ktxTexture*)ktxTex);
         } else {
-            stbi_image_free(pixels);
+            // no-op: non-KTX path disabled
         }
 
-        // Determine appropriate texture format based on texture type
-        vk::Format textureFormat = Renderer::determineTextureFormat(texturePath);
-        std::cout << "Loading external texture " << texturePath << " with format: "
-                  << (textureFormat == vk::Format::eR8G8B8A8Srgb ? "sRGB" : "Linear") << std::endl;
+        // Determine appropriate texture format based on texture type and KTX2 metadata
+        vk::Format textureFormat;
+        if (isKtx2) {
+            if (wasTranscoded) {
+                // For transcoded Basis to RGBA32, choose by heuristic (sRGB for baseColor/albedo/diffuse)
+                textureFormat = Renderer::determineTextureFormat(texturePath);
+            } else {
+                // Use the VkFormat provided by the KTX2 container if available (from header)
+                VkFormat vkfmt = ktxHeaderVkFormat;
+                if (vkfmt == VK_FORMAT_UNDEFINED) {
+                    textureFormat = Renderer::determineTextureFormat(texturePath);
+                } else {
+                    textureFormat = static_cast<vk::Format>(vkfmt);
+                }
+            }
+        } else {
+            textureFormat = Renderer::determineTextureFormat(texturePath);
+        }
 
         // Create texture image using memory pool
         auto [textureImg, textureImgAllocation] = createImagePooled(
@@ -294,8 +375,8 @@ bool Renderer::createTextureImageView(TextureResources& resources) {
 // Create shared default PBR textures (to avoid creating hundreds of identical textures)
 bool Renderer::createSharedDefaultPBRTextures() {
     try {
-        unsigned char whitePixel[4] = {128, 128, 128, 255}; // 50% gray instead of pure white
-        if (!LoadTextureFromMemory(SHARED_DEFAULT_ALBEDO_ID, whitePixel, 1, 1, 4)) {
+        unsigned char translucentPixel[4] = {128, 128, 128, 125}; // 50% alpha
+        if (!LoadTextureFromMemory(SHARED_DEFAULT_ALBEDO_ID, translucentPixel, 1, 1, 4)) {
             std::cerr << "Failed to create shared default albedo texture" << std::endl;
             return false;
         }
@@ -335,7 +416,6 @@ bool Renderer::createSharedDefaultPBRTextures() {
             return false;
         }
 
-        std::cout << "Successfully created all shared default PBR textures" << std::endl;
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to create shared default PBR textures: " << e.what() << std::endl;
@@ -447,7 +527,7 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
             .addressModeW = vk::SamplerAddressMode::eRepeat,
             .mipLodBias = 0.0f,
             .anisotropyEnable = VK_TRUE,
-            .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+            .maxAnisotropy = std::min(properties.limits.maxSamplerAnisotropy, 8.0f),
             .compareEnable = VK_FALSE,
             .compareOp = vk::CompareOp::eAlways,
             .minLod = 0.0f,
@@ -478,15 +558,13 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
         return true;
     }
 
-    // Create temporary texture resources
+    // Create temporary texture resources (unused output; cache will be populated internally)
     TextureResources tempResources;
 
-    // Use existing createTextureImage method
+    // Use existing createTextureImage method (it inserts into textureResources on success)
     bool success = createTextureImage(texturePath, tempResources);
 
-    if (success) {
-        std::cout << "Successfully loaded texture: " << texturePath << std::endl;
-    } else {
+    if (!success) {
         std::cerr << "Failed to load texture: " << texturePath << std::endl;
     }
 
@@ -495,10 +573,15 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
 
 // Determine appropriate texture format based on texture type
 vk::Format Renderer::determineTextureFormat(const std::string& textureId) {
-    // BaseColor/Albedo textures should be in sRGB space for proper gamma correction
-    if (textureId.find("BaseColor") != std::string::npos ||
-        textureId.find("Albedo") != std::string::npos ||
-        textureId.find("Diffuse") != std::string::npos ||
+    // Determine sRGB vs Linear in a case-insensitive way
+    std::string idLower = textureId;
+    std::transform(idLower.begin(), idLower.end(), idLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+
+    // BaseColor/Albedo/Diffuse textures should be in sRGB space for proper gamma correction
+    if (idLower.find("basecolor") != std::string::npos ||
+        idLower.find("base_color") != std::string::npos ||
+        idLower.find("albedo") != std::string::npos ||
+        idLower.find("diffuse") != std::string::npos ||
         textureId == Renderer::SHARED_DEFAULT_ALBEDO_ID) {
         return vk::Format::eR8G8B8A8Srgb;
     }
@@ -771,6 +854,43 @@ bool Renderer::createUniformBuffers(Entity* entity) {
             resources.uniformBuffersMapped.emplace_back(mappedMemory);
         }
 
+        // Create instance buffer for all entities (shaders always expect instance data)
+        auto* meshComponent = entity->GetComponent<MeshComponent>();
+        if (meshComponent) {
+            std::vector<InstanceData> instanceData;
+
+            // CRITICAL FIX: Check if entity has any instance data first
+            if (meshComponent->GetInstanceCount() > 0) {
+                // Use existing instance data from GLTF loading (whether 1 or many instances)
+                instanceData = meshComponent->GetInstances();
+            } else {
+                // Create single instance data using IDENTITY matrix to avoid double-transform with UBO.model
+                InstanceData singleInstance;
+                singleInstance.setModelMatrix(glm::mat4(1.0f));
+                instanceData = {singleInstance};
+            }
+
+            vk::DeviceSize instanceBufferSize = sizeof(InstanceData) * instanceData.size();
+
+            auto [instanceBuffer, instanceBufferAllocation] = createBufferPooled(
+                instanceBufferSize,
+                vk::BufferUsageFlagBits::eVertexBuffer,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+            );
+
+            // Copy instance data to buffer
+            void* instanceMappedMemory = instanceBufferAllocation->mappedPtr;
+            if (instanceMappedMemory) {
+                std::memcpy(instanceMappedMemory, instanceData.data(), instanceBufferSize);
+            } else {
+                std::cerr << "Warning: Instance buffer allocation is not mapped" << std::endl;
+            }
+
+            resources.instanceBuffer = std::move(instanceBuffer);
+            resources.instanceBufferAllocation = std::move(instanceBufferAllocation);
+            resources.instanceBufferMapped = instanceMappedMemory;
+        }
+
         // Add to entity resources map
         entityResources[entity] = std::move(resources);
 
@@ -789,7 +909,7 @@ bool Renderer::createDescriptorPool() {
         // Each entity needs descriptor sets for both basic and PBR pipelines
         // PBR pipeline needs 7 descriptors per set (1 UBO + 5 PBR textures + 1 shadow map array with 16 shadow maps)
         // Basic pipeline needs 2 descriptors per set (1 UBO + 1 texture)
-        const uint32_t maxEntities = 2500; // Increased to 2500 entities to handle large models like bistro with extra safety margin
+        const uint32_t maxEntities = 20000; // Increased to 20k entities to handle large scenes like Bistro reliably
         const uint32_t maxDescriptorSets = MAX_FRAMES_IN_FLIGHT * maxEntities * 2; // 2 pipeline types per entity
 
         // Calculate descriptor counts
@@ -848,26 +968,39 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
         if (!texturePath.empty()) {
             auto textureIt = textureResources.find(texturePath);
             if (textureIt == textureResources.end()) {
-                // Try to create texture resources
-                TextureResources tempRes;
-                if (!createTextureImage(texturePath, tempRes)) {
-                    // Texture loading failed - use default texture instead of failing descriptor set creation
-                    std::cerr << "Warning: Failed to load texture " << texturePath
-                              << " for entity " << entity->GetName()
-                              << ", using default texture instead" << std::endl;
-
-                    // Use default texture resources instead
-                    textureRes = &defaultTextureResources;
-                } else {
-                    // Texture loaded successfully, find it in the map
-                    textureIt = textureResources.find(texturePath);
-                    if (textureIt == textureResources.end()) {
-                        std::cerr << "Warning: Failed to find texture after creation: " << texturePath
-                                  << ", using default texture instead" << std::endl;
-                        textureRes = &defaultTextureResources;
+                // If this is a GLTF embedded texture ID, don't try to load from disk
+                if (texturePath.rfind("gltf_", 0) == 0) {
+                    // Handle both gltf_baseColor_{i} and gltf_basecolor_{i}
+                    const std::string prefixUpper = "gltf_baseColor_";
+                    const std::string prefixLower = "gltf_basecolor_";
+                    if (texturePath.rfind(prefixUpper, 0) == 0 || texturePath.rfind(prefixLower, 0) == 0) {
+                        const bool isUpper = texturePath.rfind(prefixUpper, 0) == 0;
+                        std::string index = texturePath.substr((isUpper ? prefixUpper.size() : prefixLower.size()));
+                        // Try direct baseColor id first
+                        std::string baseColorId = "gltf_baseColor_" + index;
+                        auto bcIt = textureResources.find(baseColorId);
+                        if (bcIt != textureResources.end()) {
+                            textureRes = &bcIt->second;
+                        } else {
+                            // Try alias to generic gltf_texture_{index}
+                            std::string alias = "gltf_texture_" + index;
+                            auto aliasIt = textureResources.find(alias);
+                            if (aliasIt != textureResources.end()) {
+                                textureRes = &aliasIt->second;
+                            } else {
+                                std::cerr << "Warning: Embedded texture not found: " << texturePath
+                                          << " (also missing alias: " << alias << ") using default." << std::endl;
+                                textureRes = &defaultTextureResources;
+                            }
+                        }
                     } else {
-                        textureRes = &textureIt->second;
+                        std::cerr << "Warning: Embedded texture not found: " << texturePath << ", using default." << std::endl;
+                        textureRes = &defaultTextureResources;
                     }
+                } else {
+                    std::cerr << "Warning: On-demand texture loading disabled for " << texturePath
+                              << "; using default texture instead" << std::endl;
+                    textureRes = &defaultTextureResources;
                 }
             } else {
                 textureRes = &textureIt->second;
@@ -891,19 +1024,53 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
 
         // Only create descriptor sets if they don't already exist for this pipeline type
         if (targetDescriptorSets.empty()) {
-            // Allocate descriptor sets using RAII wrapper
-            vk::raii::DescriptorSets raiiDescriptorSets(device, allocInfo);
+            try {
+                // Allocate descriptor sets using RAII wrapper
+                vk::raii::DescriptorSets raiiDescriptorSets(device, allocInfo);
 
-            // Convert to vector of individual RAII descriptor sets
-            targetDescriptorSets.clear();
-            targetDescriptorSets.reserve(MAX_FRAMES_IN_FLIGHT);
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-                targetDescriptorSets.emplace_back(std::move(raiiDescriptorSets[i]));
+                // Convert to vector of individual RAII descriptor sets
+                targetDescriptorSets.clear();
+                targetDescriptorSets.reserve(MAX_FRAMES_IN_FLIGHT);
+                for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                    targetDescriptorSets.emplace_back(std::move(raiiDescriptorSets[i]));
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to allocate descriptor sets for entity " << entity->GetName()
+                          << " (pipeline: " << (usePBR ? "PBR" : "basic") << "): " << e.what() << std::endl;
+                return false;
             }
+        }
+
+        // Validate descriptor sets before using them
+        if (targetDescriptorSets.size() != MAX_FRAMES_IN_FLIGHT) {
+            std::cerr << "Invalid descriptor set count for entity " << entity->GetName()
+                      << " (expected: " << MAX_FRAMES_IN_FLIGHT << ", got: " << targetDescriptorSets.size() << ")" << std::endl;
+            return false;
+        }
+
+        // Validate default texture resources before using them
+        if (!*defaultTextureResources.textureSampler || !*defaultTextureResources.textureImageView) {
+            std::cerr << "Invalid default texture resources for entity " << entity->GetName() << std::endl;
+            return false;
         }
 
         // Update descriptor sets
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            // Validate descriptor set handle before using it
+            if (!*targetDescriptorSets[i]) {
+                std::cerr << "Invalid descriptor set handle for entity " << entity->GetName()
+                          << " at frame " << i << " (pipeline: " << (usePBR ? "PBR" : "basic") << ")" << std::endl;
+                return false;
+            }
+
+            // Validate uniform buffer before creating descriptor
+            if (i >= entityIt->second.uniformBuffers.size() ||
+                !*entityIt->second.uniformBuffers[i]) {
+                std::cerr << "Invalid uniform buffer for entity " << entity->GetName()
+                          << " at frame " << i << std::endl;
+                return false;
+            }
+
             // Uniform buffer descriptor
             vk::DescriptorBufferInfo bufferInfo{
                 .buffer = *entityIt->second.uniformBuffers[i],
@@ -929,10 +1096,64 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
 
                 // Get all PBR texture paths from the entity's MeshComponent
                 auto meshComponent = entity->GetComponent<MeshComponent>();
+                // Resolve baseColor path with multiple fallbacks: GLTF baseColor -> legacy texturePath -> material DB -> shared default
+                std::string resolvedBaseColor;
+                if (meshComponent && !meshComponent->GetBaseColorTexturePath().empty()) {
+                    resolvedBaseColor = meshComponent->GetBaseColorTexturePath();
+                } else if (meshComponent && !meshComponent->GetTexturePath().empty()) {
+                    resolvedBaseColor = meshComponent->GetTexturePath();
+                } else {
+                    // Try to use material name from entity name to query ModelLoader
+                    std::string entityName = entity->GetName();
+                    size_t tagPos = entityName.find("_Material_");
+                    if (tagPos != std::string::npos) {
+                        size_t afterTag = tagPos + std::string("_Material_").size();
+                        // Expect format: <model>_Material_<index>_<materialName>
+                        size_t sep = entityName.find('_', afterTag);
+                        if (sep != std::string::npos && sep + 1 < entityName.length()) {
+                            std::string materialName = entityName.substr(sep + 1);
+                            if (modelLoader) {
+                                Material* mat = modelLoader->GetMaterial(materialName);
+                                if (mat && !mat->albedoTexturePath.empty()) {
+                                    resolvedBaseColor = mat->albedoTexturePath;
+                                }
+                            }
+                        }
+                    }
+                    if (resolvedBaseColor.empty()) {
+                        resolvedBaseColor = SHARED_DEFAULT_ALBEDO_ID;
+                    }
+                }
+
+                // Heuristic: if still default and we have an external normal map like *_ddna.ktx2, try to guess base color sibling
+                if (resolvedBaseColor == SHARED_DEFAULT_ALBEDO_ID && meshComponent) {
+                    std::string normalPath = meshComponent->GetNormalTexturePath();
+                    if (!normalPath.empty() && normalPath.rfind("gltf_", 0) != 0) {
+                        // Make a lowercase copy for pattern checks
+                        std::string normalLower = normalPath;
+                        std::transform(normalLower.begin(), normalLower.end(), normalLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                        if (normalLower.find("_ddna") != std::string::npos) {
+                            // Try replacing _ddna with common diffuse/basecolor suffixes
+                            std::vector<std::string> suffixes = {"_d", "_c", "_cm", "_diffuse", "_basecolor"};
+                            for (const auto& suf : suffixes) {
+                                std::string candidate = normalPath;
+                                // Replace only the first occurrence of _ddna
+                                size_t pos = normalLower.find("_ddna");
+                                if (pos != std::string::npos) {
+                                    candidate.replace(pos, 5, suf);
+                                    // Attempt to load; if successful, use this as resolved base color
+                                    // On-demand loading disabled; skip attempting to load candidate
+                                    (void)candidate; // suppress unused
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 std::vector pbrTexturePaths = {
-                    // Binding 1: baseColor - use GLTF texture or fallback to shared default
-                    (meshComponent && !meshComponent->GetBaseColorTexturePath().empty()) ?
-                        meshComponent->GetBaseColorTexturePath() : SHARED_DEFAULT_ALBEDO_ID,
+                    // Binding 1: baseColor
+                    resolvedBaseColor,
                     // Binding 2: metallicRoughness - use GLTF texture or fallback to shared default
                     (meshComponent && !meshComponent->GetMetallicRoughnessTexturePath().empty()) ?
                         meshComponent->GetMetallicRoughnessTexturePath() : SHARED_DEFAULT_METALLIC_ROUGHNESS_ID,
@@ -956,21 +1177,69 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                     if (textureIt != textureResources.end()) {
                         // Use the specific texture for this binding
                         const auto& texRes = textureIt->second;
-                        imageInfos[j] = vk::DescriptorImageInfo{
-                            .sampler = *texRes.textureSampler,
-                            .imageView = *texRes.textureImageView,
-                            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-                        };
+
+                        // Validate texture resources before using them (check if RAII objects are valid)
+                        if (*texRes.textureSampler == VK_NULL_HANDLE || *texRes.textureImageView == VK_NULL_HANDLE) {
+                            std::cerr << "Invalid texture resources for " << currentTexturePath
+                                      << " in entity " << entity->GetName() << ", using default texture" << std::endl;
+                            // Fall back to default texture
+                            imageInfos[j] = vk::DescriptorImageInfo{
+                                .sampler = *defaultTextureResources.textureSampler,
+                                .imageView = *defaultTextureResources.textureImageView,
+                                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                            };
+                        } else {
+                            imageInfos[j] = vk::DescriptorImageInfo{
+                                .sampler = *texRes.textureSampler,
+                                .imageView = *texRes.textureImageView,
+                                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                            };
+                        }
                     } else {
-                        // Fall back to default white texture if the specific texture is not found
-                        imageInfos[j] = vk::DescriptorImageInfo{
-                            .sampler = *defaultTextureResources.textureSampler,
-                            .imageView = *defaultTextureResources.textureImageView,
-                            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-                        };
+                        // On-demand texture loading disabled; use alias or defaults below
+                        // Try alias for embedded baseColor textures: gltf_baseColor_{i} -> gltf_texture_{i}
+                        if (currentTexturePath.rfind("gltf_baseColor_", 0) == 0 ||
+                            currentTexturePath.rfind("gltf_basecolor_", 0) == 0) {
+                            std::string prefix = (currentTexturePath.rfind("gltf_baseColor_", 0) == 0)
+                                ? std::string("gltf_baseColor_")
+                                : std::string("gltf_basecolor_");
+                            std::string index = currentTexturePath.substr(prefix.size());
+                            std::string alias = "gltf_texture_" + index;
+                            auto aliasIt = textureResources.find(alias);
+                            if (aliasIt != textureResources.end()) {
+                                const auto& texRes = aliasIt->second;
+                                imageInfos[j] = vk::DescriptorImageInfo{
+                                    .sampler = *texRes.textureSampler,
+                                    .imageView = *texRes.textureImageView,
+                                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                                };
+                            } else {
+                                // Fall back to default white texture if the specific texture is not found
+                                imageInfos[j] = vk::DescriptorImageInfo{
+                                    .sampler = *defaultTextureResources.textureSampler,
+                                    .imageView = *defaultTextureResources.textureImageView,
+                                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                                };
+                            }
+                        } else {
+                            // Fall back to default white texture if the specific texture is not found
+                            imageInfos[j] = vk::DescriptorImageInfo{
+                                .sampler = *defaultTextureResources.textureSampler,
+                                .imageView = *defaultTextureResources.textureImageView,
+                                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+                            };
+                        }
                     }
+                    descriptor_path_resolved: ;
                 }
 
+                // Debug: report resolved baseColor texture binding for this entity
+                if (meshComponent) {
+                    const std::string& bc = pbrTexturePaths[0];
+                    bool present = textureResources.find(bc) != textureResources.end();
+                    std::cout << "PBR baseColor for entity '" << entity->GetName() << "': '" << bc
+                              << "' (" << (present ? "loaded" : "not in cache") << ")" << std::endl;
+                }
                 // Create descriptor writes for all 5 texture bindings
                 for (int binding = 1; binding <= 5; binding++) {
                     descriptorWrites[binding] = vk::WriteDescriptorSet{
@@ -1118,8 +1387,6 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
 // Pre-allocate all Vulkan resources for an entity during scene loading
 bool Renderer::preAllocateEntityResources(Entity* entity) {
     try {
-        std::cout << "Pre-allocating resources for entity: " << entity->GetName() << std::endl;
-
         // Get the mesh component
         auto meshComponent = entity->GetComponent<MeshComponent>();
         if (!meshComponent) {
@@ -1141,6 +1408,13 @@ bool Renderer::preAllocateEntityResources(Entity* entity) {
 
         // 3. Pre-allocate BOTH basic and PBR descriptor sets
         std::string texturePath = meshComponent->GetTexturePath();
+        // Fallback: if legacy texturePath is empty, use PBR baseColor texture
+        if (texturePath.empty()) {
+            const std::string& baseColor = meshComponent->GetBaseColorTexturePath();
+            if (!baseColor.empty()) {
+                texturePath = baseColor;
+            }
+        }
 
         // Create basic descriptor sets
         if (!createDescriptorSets(entity, texturePath, false)) {
@@ -1153,8 +1427,6 @@ bool Renderer::preAllocateEntityResources(Entity* entity) {
             std::cerr << "Failed to create PBR descriptor sets for entity: " << entity->GetName() << std::endl;
             return false;
         }
-
-        std::cout << "Successfully pre-allocated all resources for entity: " << entity->GetName() << std::endl;
         return true;
 
     } catch (const std::exception& e) {
@@ -1175,7 +1447,6 @@ std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> Renderer::c
 
         // Use memory pool for allocation
         auto [buffer, allocation] = memoryPool->createBuffer(size, usage, properties);
-        std::cout << "Created buffer using memory pool: " << size << " bytes" << std::endl;
 
         return {std::move(buffer), std::move(allocation)};
 
@@ -1212,8 +1483,6 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
     }
 
     try {
-        std::cout << "Creating staging buffer with direct allocation: " << size << " bytes" << std::endl;
-
         vk::BufferCreateInfo bufferInfo{
             .size = size,
             .usage = usage,
@@ -1224,8 +1493,14 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
 
         // Allocate memory directly for staging buffers only
         vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements();
+
+        // Align allocation size to nonCoherentAtomSize (64 bytes) to prevent validation errors
+        // VUID-VkMappedMemoryRange-size-01390 requires memory flush sizes to be multiples of nonCoherentAtomSize
+        const vk::DeviceSize nonCoherentAtomSize = 64; // Typical value, should query from device properties
+        vk::DeviceSize alignedSize = ((memRequirements.size + nonCoherentAtomSize - 1) / nonCoherentAtomSize) * nonCoherentAtomSize;
+
         vk::MemoryAllocateInfo allocInfo{
-            .allocationSize = memRequirements.size,
+            .allocationSize = alignedSize,
             .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)
         };
 
@@ -1666,16 +1941,19 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
         for (size_t i = 0; i < lights.size(); ++i) {
             const auto& light = lights[i];
 
-            // Set the light position
-            lightData[i].position = glm::vec4(light.position, 1.0f);
+            // For directional lights, store direction in position field (they don't need position)
+            // For other lights, store position
+            if (light.type == ExtractedLight::Type::Directional) {
+                lightData[i].position = glm::vec4(light.direction, 0.0f); // w=0 indicates direction
+            } else {
+                lightData[i].position = glm::vec4(light.position, 1.0f); // w=1 indicates position
+            }
 
-            // Set light color with proper intensity conversion
+            // Set light color with proper intensity (remove the division by 683 that was making lights too dim)
             float intensity = light.intensity;
-            if (intensity < 1.0f) intensity = 1.0f; // Clamp weak intensities
+            if (intensity < 5.0f) intensity = 5.0f; // Minimum intensity to prevent completely dark lights
 
-            float lummenFromBlender = intensity * 1.0f / 683.0f;
-
-            lightData[i].color = glm::vec4(light.color * lummenFromBlender, 1.0f);
+            lightData[i].color = glm::vec4(light.color * intensity, 1.0f);
 
             // Calculate light space matrix for shadow mapping
             glm::mat4 lightProjection, lightView;

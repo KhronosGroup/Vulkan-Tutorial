@@ -5,8 +5,10 @@
 #include "camera_component.h"
 #include <iostream>
 #include <set>
+#include <map>
 #include <filesystem>
 #include <algorithm>
+#include <glm/gtx/matrix_decompose.hpp>
 
 /**
  * @brief Calculate bounding box dimensions for a MaterialMesh.
@@ -30,17 +32,6 @@ glm::vec3 CalculateBoundingBoxSize(const MaterialMesh& materialMesh) {
 }
 
 /**
- * @brief Determine if an object is considered "small" based on its bounding box.
- * @param boundingBoxSize The size of the bounding box.
- * @return True if the object is small, false otherwise.
- */
-bool IsSmallObject(const glm::vec3& boundingBoxSize) {
-    // Consider an object "small" if its largest dimension is less than 8.0 units
-    float maxDimension = std::max({boundingBoxSize.x, boundingBoxSize.y, boundingBoxSize.z});
-    return maxDimension < 0.1f;
-}
-
-/**
  * @brief Load a GLTF model synchronously on the main thread.
  * @param engine The engine to create entities in.
  * @param modelPath The path to the GLTF model file.
@@ -50,8 +41,6 @@ bool IsSmallObject(const glm::vec3& boundingBoxSize) {
  */
 void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                    const glm::vec3& position, const glm::vec3& rotation, const glm::vec3& scale) {
-    std::cout << "Loading GLTF model synchronously on main thread: " << modelPath << std::endl;
-
     // Get the model loader and renderer
     ModelLoader* modelLoader = engine->GetModelLoader();
     Renderer* renderer = engine->GetRenderer();
@@ -78,7 +67,7 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         // Extract lights from the model and transform them to world space
         std::vector<ExtractedLight> extractedLights = modelLoader->GetExtractedLights(modelPath);
 
-        // Create transformation matrix from position, rotation, and scale
+        // Create a transformation matrix from position, rotation, and scale
         glm::mat4 transformMatrix = glm::mat4(1.0f);
         transformMatrix = glm::translate(transformMatrix, position);
         transformMatrix = glm::rotate(transformMatrix, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -101,8 +90,6 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         // Extract and apply cameras from the GLTF model
         const std::vector<CameraData>& cameras = loadedModel->GetCameras();
         if (!cameras.empty()) {
-            std::cout << "Found " << cameras.size() << " camera(s) in GLTF model, using the first one to replace default camera" << std::endl;
-
             const CameraData& gltfCamera = cameras[0]; // Use the first camera
 
             // Find or create a camera entity to replace the default one
@@ -127,38 +114,29 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                     // Apply rotation from GLTF camera
                     glm::vec3 eulerAngles = glm::eulerAngles(gltfCamera.rotation);
                     cameraTransform->SetRotation(glm::degrees(eulerAngles));
-
-                    std::cout << "  Applied GLTF camera position: (" << worldPos.x << ", " << worldPos.y << ", " << worldPos.z << ")" << std::endl;
-                    std::cout << "  Applied GLTF camera rotation: (" << glm::degrees(eulerAngles.x) << ", " << glm::degrees(eulerAngles.y) << ", " << glm::degrees(eulerAngles.z) << ")" << std::endl;
                 }
 
                 // Update the camera component with GLTF properties
                 auto* camera = cameraEntity->GetComponent<CameraComponent>();
                 if (camera) {
+                    camera->ForceViewMatrixUpdate(); // Only sets viewMatrixDirty flag, doesn't change camera orientation
                     if (gltfCamera.isPerspective) {
                         camera->SetFieldOfView(glm::degrees(gltfCamera.fov)); // Convert radians to degrees
                         camera->SetClipPlanes(gltfCamera.nearPlane, gltfCamera.farPlane);
                         if (gltfCamera.aspectRatio > 0.0f) {
                             camera->SetAspectRatio(gltfCamera.aspectRatio);
                         }
-                        std::cout << "  Applied GLTF perspective camera: FOV=" << glm::degrees(gltfCamera.fov)
-                                  << ", Near=" << gltfCamera.nearPlane << ", Far=" << gltfCamera.farPlane << std::endl;
                     } else {
                         // Handle orthographic camera if needed
                         camera->SetProjectionType(CameraComponent::ProjectionType::Orthographic);
                         camera->SetOrthographicSize(gltfCamera.orthographicSize, gltfCamera.orthographicSize);
                         camera->SetClipPlanes(gltfCamera.nearPlane, gltfCamera.farPlane);
-                        std::cout << "  Applied GLTF orthographic camera: Size=" << gltfCamera.orthographicSize
-                                  << ", Near=" << gltfCamera.nearPlane << ", Far=" << gltfCamera.farPlane << std::endl;
                     }
 
                     // Set this as the active camera
                     engine->SetActiveCamera(camera);
-                    std::cout << "  Set GLTF camera as active camera" << std::endl;
                 }
             }
-        } else {
-            std::cout << "No cameras found in GLTF model, keeping default camera" << std::endl;
         }
 
         // Get the material meshes from the loaded model
@@ -166,53 +144,6 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         if (materialMeshes.empty()) {
             std::cerr << "No material meshes found in loaded model: " << modelPath << std::endl;
             return;
-        }
-
-        std::cout << "Creating " << materialMeshes.size() << " entities from loaded materials..." << std::endl;
-
-        // First, collect and load all unique external texture files
-        std::set<std::string> uniqueTextures;
-        for (const auto& materialMesh : materialMeshes) {
-            // Collect all texture types from this material
-            if (!materialMesh.baseColorTexturePath.empty()) {
-                uniqueTextures.insert(materialMesh.baseColorTexturePath);
-            }
-            if (!materialMesh.normalTexturePath.empty()) {
-                uniqueTextures.insert(materialMesh.normalTexturePath);
-            }
-            if (!materialMesh.metallicRoughnessTexturePath.empty()) {
-                uniqueTextures.insert(materialMesh.metallicRoughnessTexturePath);
-            }
-            if (!materialMesh.occlusionTexturePath.empty()) {
-                uniqueTextures.insert(materialMesh.occlusionTexturePath);
-            }
-            if (!materialMesh.emissiveTexturePath.empty()) {
-                uniqueTextures.insert(materialMesh.emissiveTexturePath);
-            }
-            // Also include legacy texturePath for backward compatibility
-            if (!materialMesh.texturePath.empty()) {
-                uniqueTextures.insert(materialMesh.texturePath);
-            }
-        }
-
-        // Filter out embedded GLTF textures (already loaded in memory) and load only actual external files
-        std::set<std::string> externalTextures;
-        for (const std::string& texturePath : uniqueTextures) {
-            // Skip embedded GLTF textures (they start with "gltf_texture_" and are already loaded in memory)
-            if (texturePath.find("gltf_texture_") != 0) {
-                externalTextures.insert(texturePath);
-            }
-        }
-
-        if (!externalTextures.empty()) {
-            std::cout << "Loading " << externalTextures.size() << " unique external texture files..." << std::endl;
-            for (const std::string& texturePath : externalTextures) {
-                if (!renderer->LoadTexture(texturePath)) {
-                    std::cerr << "Warning: Failed to load external texture: " << texturePath << std::endl;
-                }
-            }
-        } else {
-            std::cout << "No external texture files to load (all textures are embedded in GLTF)" << std::endl;
         }
 
         int entitiesCreated = 0;
@@ -232,6 +163,15 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                 auto* mesh = materialEntity->AddComponent<MeshComponent>();
                 mesh->SetVertices(materialMesh.vertices);
                 mesh->SetIndices(materialMesh.indices);
+
+                if (materialMesh.GetInstanceCount() > 0) {
+                    const std::vector<InstanceData>& instances = materialMesh.instances;
+                    for (const auto& instanceData : instances) {
+                        // Reconstruct the transformation matrix from InstanceData column vectors
+                        glm::mat4 instanceMatrix = instanceData.getModelMatrix();
+                        mesh->AddInstance(instanceMatrix, static_cast<uint32_t>(materialMesh.materialIndex));
+                    }
+                }
 
                 // Set ALL PBR texture paths for this material
                 // Set primary texture path for backward compatibility
@@ -254,6 +194,28 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                 }
                 if (!materialMesh.emissiveTexturePath.empty()) {
                     mesh->SetEmissiveTexturePath(materialMesh.emissiveTexturePath);
+                }
+
+                // Fallback: Use material DB (from ModelLoader) if any PBR texture is still missing
+                if (modelLoader) {
+                    Material* mat = modelLoader->GetMaterial(materialMesh.materialName);
+                    if (mat) {
+                        if (mesh->GetBaseColorTexturePath().empty() && !mat->albedoTexturePath.empty()) {
+                            mesh->SetBaseColorTexturePath(mat->albedoTexturePath);
+                        }
+                        if (mesh->GetNormalTexturePath().empty() && !mat->normalTexturePath.empty()) {
+                            mesh->SetNormalTexturePath(mat->normalTexturePath);
+                        }
+                        if (mesh->GetMetallicRoughnessTexturePath().empty() && !mat->metallicRoughnessTexturePath.empty()) {
+                            mesh->SetMetallicRoughnessTexturePath(mat->metallicRoughnessTexturePath);
+                        }
+                        if (mesh->GetOcclusionTexturePath().empty() && !mat->occlusionTexturePath.empty()) {
+                            mesh->SetOcclusionTexturePath(mat->occlusionTexturePath);
+                        }
+                        if (mesh->GetEmissiveTexturePath().empty() && !mat->emissiveTexturePath.empty()) {
+                            mesh->SetEmissiveTexturePath(mat->emissiveTexturePath);
+                        }
+                    }
                 }
 
                 // Pre-allocate all Vulkan resources for this entity
@@ -282,9 +244,6 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                 std::cerr << "Failed to create entity for material " << materialMesh.materialName << std::endl;
             }
         }
-
-        std::cout << "Successfully created " << entitiesCreated << " entities from loaded materials" << std::endl;
-
     } catch (const std::exception& e) {
         std::cerr << "Error loading GLTF model: " << e.what() << std::endl;
     }

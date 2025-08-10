@@ -38,7 +38,7 @@ void SetupScene(Engine* engine) {
     LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
 }
 
-#if PLATFORM_ANDROID
+#if defined(PLATFORM_ANDROID)
 /**
  * @brief Android entry point.
  * @param app The Android app.

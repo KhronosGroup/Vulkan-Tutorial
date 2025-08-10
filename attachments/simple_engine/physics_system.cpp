@@ -2,6 +2,7 @@
 #include "entity.h"
 #include "renderer.h"
 #include "transform_component.h"
+#include "mesh_component.h"
 #include <iostream>
 
 #include <glm/gtc/quaternion.hpp>
@@ -17,11 +18,10 @@ class ConcreteRigidBody : public RigidBody {
 public:
     ConcreteRigidBody(Entity* entity, CollisionShape shape, float mass)
         : entity(entity), shape(shape), mass(mass) {
-        // Initialize with entity's transform if available
+        // Initialize with the entity's transform if available
         if (entity) {
             // Get the position, rotation, and scale from the entity's transform component
-            auto* transform = entity->GetComponent<TransformComponent>();
-            if (transform) {
+            if (auto* transform = entity->GetComponent<TransformComponent>()) {
                 position = transform->GetPosition();
                 rotation = glm::quat(transform->GetRotation()); // Convert from Euler angles to quaternion
                 scale = transform->GetScale();
@@ -36,46 +36,44 @@ public:
 
     ~ConcreteRigidBody() override = default;
 
-    void SetPosition(const glm::vec3& position) override {
-        this->position = position;
+    void SetPosition(const glm::vec3& _position) override {
+        position = _position;
 
         // Update entity transform component for visual representation
         if (entity) {
-            auto* transform = entity->GetComponent<TransformComponent>();
-            if (transform) {
-                transform->SetPosition(position);
+            if (auto* transform = entity->GetComponent<TransformComponent>()) {
+                transform->SetPosition(_position);
             }
         }
     }
 
-    void SetRotation(const glm::quat& rotation) override {
-        this->rotation = rotation;
+    void SetRotation(const glm::quat& _rotation) override {
+        rotation = _rotation;
 
         // Update entity transform component for visual representation
         if (entity) {
-            auto* transform = entity->GetComponent<TransformComponent>();
-            if (transform) {
+            if (auto* transform = entity->GetComponent<TransformComponent>()) {
                 // Convert quaternion to Euler angles for the transform component
-                glm::vec3 eulerAngles = glm::eulerAngles(rotation);
+                glm::vec3 eulerAngles = glm::eulerAngles(_rotation);
                 transform->SetRotation(eulerAngles);
             }
         }
     }
 
-    void SetScale(const glm::vec3& scale) override {
-        this->scale = scale;
+    void SetScale(const glm::vec3& _scale) override {
+        scale = _scale;
     }
 
-    void SetMass(float mass) override {
-        this->mass = mass;
+    void SetMass(float _mass) override {
+        mass = _mass;
     }
 
-    void SetRestitution(float restitution) override {
-        this->restitution = restitution;
+    void SetRestitution(float _restitution) override {
+        restitution = _restitution;
     }
 
-    void SetFriction(float friction) override {
-        this->friction = friction;
+    void SetFriction(float _friction) override {
+        friction = _friction;
     }
 
     void ApplyForce(const glm::vec3& force, const glm::vec3& localPosition) override {
@@ -112,13 +110,13 @@ public:
         return angularVelocity;
     }
 
-    void SetKinematic(bool kinematic) override {
+    void SetKinematic(bool _kinematic) override {
         // Prevent balls from being set as kinematic - they should always be dynamic
-        if (entity && entity->GetName().find("Ball_") == 0 && kinematic) {
+        if (entity && entity->GetName().find("Ball_") == 0 && _kinematic) {
             return;
         }
 
-        this->kinematic = kinematic;
+        kinematic = _kinematic;
     }
 
     [[nodiscard]] bool IsKinematic() const override {
@@ -209,7 +207,7 @@ void PhysicsSystem::Update(float deltaTime) {
         }
         SimulatePhysicsOnGPU(deltaTime);
     } else {
-        // NO CPU FALLBACK - GPU physics must work or physics is disabled
+        // NO CPU FALLBACK - GPU physics must work, or physics is disabled
         static bool noFallbackLogged = false;
         if (!noFallbackLogged) {
             noFallbackLogged = true;
@@ -250,8 +248,8 @@ bool PhysicsSystem::RemoveRigidBody(RigidBody* rigidBody) {
     return false;
 }
 
-void PhysicsSystem::SetGravity(const glm::vec3& gravity) {
-    this->gravity = gravity;
+void PhysicsSystem::SetGravity(const glm::vec3& _gravity) {
+    gravity = _gravity;
 }
 
 glm::vec3 PhysicsSystem::GetGravity() const {
@@ -330,7 +328,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
 
                 for (int i = 0; i < 3; i++) {
                     if (std::abs(normalizedDirection[i]) < 0.0001f) {
-                        // Ray is parallel to slab, check if origin is within slab
+                        // Ray is parallel to the slab, check if origin is within slab
                         if (origin[i] < boxMin[i] || origin[i] > boxMax[i]) {
                             // No intersection
                             hit = false;
@@ -421,8 +419,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
             }
             case CollisionShape::Mesh: {
                 // Proper mesh intersection test using triangle data
-                auto* meshComponent = entity->GetComponent<MeshComponent>();
-                if (meshComponent) {
+                if (auto* meshComponent = entity->GetComponent<MeshComponent>()) {
                     const auto& vertices = meshComponent->GetVertices();
                     const auto& indices = meshComponent->GetIndices();
 
@@ -436,8 +433,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                         glm::vec3 v2 = vertices[indices[i + 2]].position;
 
                         // Transform vertices to world space
-                        auto* transform = entity->GetComponent<TransformComponent>();
-                        if (transform) {
+                        if (auto* transform = entity->GetComponent<TransformComponent>()) {
                             glm::mat4 transformMatrix = transform->GetModelMatrix();
                             v0 = glm::vec3(transformMatrix * glm::vec4(v0, 1.0f));
                             v1 = glm::vec3(transformMatrix * glm::vec4(v1, 1.0f));
@@ -531,11 +527,7 @@ static vk::raii::ShaderModule createShaderModule(const vk::raii::Device& device,
     createInfo.codeSize = code.size();
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
-    try {
-        return {device, createInfo};
-    } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to create shader module: " + std::string(e.what()));
-    }
+    return {device, createInfo};
 }
 
 bool PhysicsSystem::InitializeVulkanResources() {
@@ -664,7 +656,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         vk::DeviceSize collisionBufferSize = sizeof(GPUCollisionData) * maxGPUCollisions;
         vk::DeviceSize pairBufferSize = sizeof(uint32_t) * 2 * maxGPUCollisions;
         vk::DeviceSize counterBufferSize = sizeof(uint32_t) * 2;
-        vk::DeviceSize paramsBufferSize = sizeof(PhysicsParams);
+        vk::DeviceSize paramsBufferSize = ((sizeof(PhysicsParams) + 63) / 64) * 64;
 
         // Create a physics buffer
         vk::BufferCreateInfo bufferInfo;
@@ -730,7 +722,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
             throw std::runtime_error("Failed to create pair buffer: " + std::string(e.what()));
         }
 
-        // Create counter-buffer
+        // Create the counter-buffer
         bufferInfo.size = counterBufferSize;
         try {
             vulkanResources.counterBuffer = vk::raii::Buffer(raiiDevice, bufferInfo);
@@ -839,7 +831,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
         vk::DescriptorBufferInfo paramsBufferInfo;
         paramsBufferInfo.buffer = *vulkanResources.paramsBuffer;
         paramsBufferInfo.offset = 0;
-        paramsBufferInfo.range = VK_WHOLE_SIZE; // Use VK_WHOLE_SIZE to ensure entire buffer is accessible
+        paramsBufferInfo.range = VK_WHOLE_SIZE; // Use VK_WHOLE_SIZE to ensure the entire buffer is accessible
 
         std::array<vk::WriteDescriptorSet, 5> descriptorWrites;
 
@@ -944,10 +936,10 @@ void PhysicsSystem::CleanupVulkanResources() {
     vulkanResources.broadPhaseShaderModule = nullptr;
     vulkanResources.integrateShaderModule = nullptr;
 
-    // 5. Destroy descriptor pool after descriptor sets are cleared
+    // 5. Destroy the descriptor pool after descriptor sets are cleared
     vulkanResources.descriptorPool = nullptr;
 
-    // 6. Destroy command buffer before command pool
+    // 6. Destroy the command buffer before the command pool
     vulkanResources.commandBuffer = nullptr;
     vulkanResources.commandPool = nullptr;
 
@@ -1015,7 +1007,7 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
             auto initialForce = glm::vec3(0.0f);
             auto initialTorque = glm::vec3(0.0f);
 
-            // For dynamic bodies (balls), allow forces to be applied by the shader
+            // For dynamic bodies (balls), allow forces to be applied by
             // The shader will add gravity and other forces each frame
             gpuData[i].force = glm::vec4(initialForce, concreteRigidBody->IsKinematic() ? 1.0f : 0.0f);
             gpuData[i].torque = glm::vec4(initialTorque, 1.0f); // Always use gravity
@@ -1032,10 +1024,42 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
                     gpuData[i].colliderData2 = glm::vec4(0.0f);
                     break;
                 case CollisionShape::Mesh:
-                    // Represent mesh as a large bounding box for GPU collision detection
-                    // This provides basic collision detection while maintaining GPU performance
-                    gpuData[i].colliderData = glm::vec4(5.0f, 5.0f, 5.0f, static_cast<float>(2)); // 2 = Mesh (as Box)
-                    gpuData[i].colliderData2 = glm::vec4(0.0f);
+                    {
+                        // Compute an axis-aligned bounding box from the entity's mesh in WORLD space
+                        // and pass half-extents and local offset to the GPU. This enables sphere-geometry
+                        // collisions against actual imported GLTF geometry rather than a constant box.
+                        glm::vec3 halfExtents(5.0f);
+                        glm::vec3 localOffset(0.0f);
+
+                        if (auto* entity = concreteRigidBody->GetEntity()) {
+                            auto* meshComp = entity->GetComponent<MeshComponent>();
+                            auto* xform = entity->GetComponent<TransformComponent>();
+                            if (meshComp && xform && meshComp->HasLocalAABB()) {
+                                glm::vec3 localMin = meshComp->GetLocalAABBMin();
+                                glm::vec3 localMax = meshComp->GetLocalAABBMax();
+                                glm::vec3 localCenter = 0.5f * (localMin + localMax);
+                                glm::vec3 localHalfExtents = 0.5f * (localMax - localMin);
+
+                                glm::mat4 model = xform->GetModelMatrix();
+                                glm::vec3 centerWS = glm::vec3(model * glm::vec4(localCenter, 1.0f));
+
+                                glm::mat3 RS = glm::mat3(model);
+                                glm::mat3 absRS;
+                                absRS[0] = glm::abs(RS[0]);
+                                absRS[1] = glm::abs(RS[1]);
+                                absRS[2] = glm::abs(RS[2]);
+
+                                glm::vec3 worldHalfExtents = absRS * localHalfExtents;
+                                halfExtents = glm::max(worldHalfExtents, glm::vec3(0.01f));
+
+                                // Offset relative to rigid body position
+                                localOffset = centerWS - concreteRigidBody->GetPosition();
+                            }
+                        }
+
+                        gpuData[i].colliderData = glm::vec4(halfExtents, static_cast<float>(2)); // 2 = Mesh (as Box)
+                        gpuData[i].colliderData2 = glm::vec4(localOffset, 0.0f);
+                    }
                     break;
                 default:
                     gpuData[i].colliderData = glm::vec4(0.0f, 0.0f, 0.0f, -1.0f); // Invalid
@@ -1062,13 +1086,13 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
 
     // CRITICAL FIX: Explicit memory flush to ensure HOST_COHERENT memory is fully visible to GPU
     // Even with HOST_COHERENT flag, some systems may have cache coherency issues with partial writes
-    // This ensures the entire PhysicsParams struct is flushed before GPU operations begin
+    // Use VK_WHOLE_SIZE to avoid nonCoherentAtomSize alignment validation errors
     try {
         const vk::raii::Device& device = renderer->GetRaiiDevice();
         vk::MappedMemoryRange flushRange;
         flushRange.memory = *vulkanResources.paramsBufferMemory;
         flushRange.offset = 0;
-        flushRange.size = sizeof(PhysicsParams);
+        flushRange.size = VK_WHOLE_SIZE;
 
         device.flushMappedMemoryRanges(flushRange);
     } catch (const std::exception& e) {
@@ -1118,7 +1142,7 @@ void PhysicsSystem::ReadbackGPUPhysicsData() const {
     }
 }
 
-void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
+void PhysicsSystem::SimulatePhysicsOnGPU(const float deltaTime) const {
     if (!renderer) {
         fprintf(stderr, "SimulatePhysicsOnGPU: No renderer available");
         return;
@@ -1188,8 +1212,10 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
     // Step 2: Broad-phase collision detection
     vulkanResources.commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *vulkanResources.broadPhasePipeline);
     uint32_t numPairs = (rigidBodies.size() * (rigidBodies.size() - 1)) / 2;
+    // Dispatch number of workgroups matching [numthreads(64,1,1)] in BroadPhaseCS
+    // One workgroup has 64 threads, each processes one pair by index
     uint32_t broadPhaseThreads = (numPairs + 63) / 64;
-    vulkanResources.commandBuffer.dispatch(broadPhaseThreads, 1, 1);
+    vulkanResources.commandBuffer.dispatch(std::max(1u, broadPhaseThreads), 1, 1);
 
     // Memory barrier to ensure the broad phase is complete before the narrow phase
     vulkanResources.commandBuffer.pipelineBarrier(
@@ -1230,7 +1256,7 @@ void PhysicsSystem::SimulatePhysicsOnGPU(float deltaTime) {
     const vk::raii::Device& device = renderer->GetRaiiDevice();
     device.resetFences(*vulkanResources.computeFence);
 
-    // Submit command buffer with dedicated fence for synchronization
+    // Submit the command buffer with the dedicated fence for synchronization
     vk::CommandBuffer cmdBuffer = *vulkanResources.commandBuffer;
     renderer->SubmitToComputeQueue(cmdBuffer, *vulkanResources.computeFence);
 

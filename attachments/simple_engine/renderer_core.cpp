@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <set>
+#include <map>
 #include <cstring>
 #include <ranges>
 
@@ -64,7 +65,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // Pick physical device
+    // Pick the physical device
     if (!pickPhysicalDevice()) {
         return false;
     }
@@ -107,12 +108,12 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // Create descriptor set layout
+    // Create the descriptor set layout
     if (!createDescriptorSetLayout()) {
         return false;
     }
 
-    // Create graphics pipeline
+    // Create the graphics pipeline
     if (!createGraphicsPipeline()) {
         return false;
     }
@@ -122,7 +123,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // Create lighting pipeline
+    // Create the lighting pipeline
     if (!createLightingPipeline()) {
         std::cerr << "Failed to create lighting pipeline" << std::endl;
         return false;
@@ -134,7 +135,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // Create command pool
+    // Create the command pool
     if (!createCommandPool()) {
         return false;
     }
@@ -144,7 +145,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // Create descriptor pool
+    // Create the descriptor pool
     if (!createDescriptorPool()) {
         return false;
     }
@@ -235,7 +236,7 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
         std::vector<const char*> extensions;
 
         // Add required extensions for GLFW
-#if PLATFORM_DESKTOP
+#if defined(PLATFORM_DESKTOP)
         uint32_t glfwExtensionCount = 0;
         const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
@@ -341,57 +342,89 @@ bool Renderer::pickPhysicalDevice() {
             return false;
         }
 
-        // Find a suitable device using modern C++ ranges
-        const auto devIter = std::ranges::find_if(
-            devices,
-            [&](auto& device) {
-                // Print device properties for debugging
-                vk::PhysicalDeviceProperties deviceProperties = device.getProperties();
-                std::cout << "Checking device: " << deviceProperties.deviceName << std::endl;
+        // Prioritize discrete GPUs (like NVIDIA RTX 2080) over integrated GPUs (like Intel UHD Graphics)
+        // First, collect all suitable devices with their suitability scores
+        std::multimap<int, vk::raii::PhysicalDevice> suitableDevices;
 
-                // Check if device supports Vulkan 1.3
-                bool supportsVulkan1_3 = deviceProperties.apiVersion >= VK_API_VERSION_1_3;
-                if (!supportsVulkan1_3) {
-                    std::cout << "  - Does not support Vulkan 1.3" << std::endl;
+        for (auto& _device : devices) {
+            // Print device properties for debugging
+            vk::PhysicalDeviceProperties deviceProperties = _device.getProperties();
+            std::cout << "Checking device: " << deviceProperties.deviceName
+                      << " (Type: " << vk::to_string(deviceProperties.deviceType) << ")" << std::endl;
+
+            // Check if the device supports Vulkan 1.3
+            bool supportsVulkan1_3 = deviceProperties.apiVersion >= VK_API_VERSION_1_3;
+            if (!supportsVulkan1_3) {
+                std::cout << "  - Does not support Vulkan 1.3" << std::endl;
+                continue;
+            }
+
+            // Check queue families
+            QueueFamilyIndices indices = findQueueFamilies(_device);
+            bool supportsGraphics = indices.isComplete();
+            if (!supportsGraphics) {
+                std::cout << "  - Missing required queue families" << std::endl;
+                continue;
+            }
+
+            // Check device extensions
+            bool supportsAllRequiredExtensions = checkDeviceExtensionSupport(_device);
+            if (!supportsAllRequiredExtensions) {
+                std::cout << "  - Missing required extensions" << std::endl;
+                continue;
+            }
+
+            // Check swap chain support
+            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(_device);
+            bool swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+            if (!swapChainAdequate) {
+                std::cout << "  - Inadequate swap chain support" << std::endl;
+                continue;
+            }
+
+            // Check for required features
+            auto features = _device.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features>();
+            bool supportsRequiredFeatures = features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
+            if (!supportsRequiredFeatures) {
+                std::cout << "  - Does not support required features (dynamicRendering)" << std::endl;
+                continue;
+            }
+
+            // Calculate suitability score - prioritize discrete GPUs
+            int score = 0;
+
+            // Discrete GPUs get the highest priority (NVIDIA RTX 2080, AMD, etc.)
+            if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
+                score += 1000;
+                std::cout << "  - Discrete GPU: +1000 points" << std::endl;
+            }
+            // Integrated GPUs get lower priority (Intel UHD Graphics, etc.)
+            else if (deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) {
+                score += 100;
+                std::cout << "  - Integrated GPU: +100 points" << std::endl;
+            }
+
+            // Add points for memory size (more VRAM is better)
+            vk::PhysicalDeviceMemoryProperties memProperties = _device.getMemoryProperties();
+            for (uint32_t i = 0; i < memProperties.memoryHeapCount; i++) {
+                if (memProperties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
+                    // Add 1 point per GB of VRAM
+                    score += static_cast<int>(memProperties.memoryHeaps[i].size / (1024 * 1024 * 1024));
+                    break;
                 }
+            }
 
-                // Check queue families
-                QueueFamilyIndices indices = findQueueFamilies(device);
-                bool supportsGraphics = indices.isComplete();
-                if (!supportsGraphics) {
-                    std::cout << "  - Missing required queue families" << std::endl;
-                }
+            std::cout << "  - Device is suitable with score: " << score << std::endl;
+            suitableDevices.emplace(score, _device);
+        }
 
-                // Check device extensions
-                bool supportsAllRequiredExtensions = checkDeviceExtensionSupport(device);
-                if (!supportsAllRequiredExtensions) {
-                    std::cout << "  - Missing required extensions" << std::endl;
-                }
-
-                // Check swap chain support
-                bool swapChainAdequate = false;
-                if (supportsAllRequiredExtensions) {
-                    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-                    swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-                    if (!swapChainAdequate) {
-                        std::cout << "  - Inadequate swap chain support" << std::endl;
-                    }
-                }
-
-                // Check for required features
-                auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features>();
-                bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
-                if (!supportsRequiredFeatures) {
-                    std::cout << "  - Does not support required features (dynamicRendering)" << std::endl;
-                }
-
-                return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && swapChainAdequate && supportsRequiredFeatures;
-            });
-
-        if (devIter != devices.end()) {
-            physicalDevice = *devIter;
+        if (!suitableDevices.empty()) {
+            // Select the device with the highest score (discrete GPU with most VRAM)
+            physicalDevice = suitableDevices.rbegin()->second;
             vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-            std::cout << "Selected device: " << deviceProperties.deviceName << std::endl;
+            std::cout << "Selected device: " << deviceProperties.deviceName
+                      << " (Type: " << vk::to_string(deviceProperties.deviceType)
+                      << ", Score: " << suitableDevices.rbegin()->first << ")" << std::endl;
 
             // Store queue family indices for the selected device
             queueFamilyIndices = findQueueFamilies(physicalDevice);

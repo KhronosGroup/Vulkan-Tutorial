@@ -4,7 +4,7 @@
 
 == Introduction
 
-Welcome! In this lab, we will enhance a Vulkan renderer with ray tracing features to implement real-time pixel-perfect shadows (with and without transparency) and a bonus reflection effect. You will work with provided scaffolded code (based on the Vulkan Tutorial) and fill in key functions following step-by-step instructions. 
+Welcome! In this lab, we will enhance a Vulkan renderer with ray tracing features to implement real-time pixel-perfect shadows (with and without transparency) and a bonus reflection effect. You will work with provided scaffolded code (based on the Vulkan Tutorial) and fill in key shader functions following step-by-step instructions.
 
 == Overview
 
@@ -12,21 +12,21 @@ By the end, you'll learn how to:
 
 - Use Vulkan *dynamic rendering* (no pre-defined render passes) and verify it with *RenderDoc*.
 - Create bottom-level and top-level *Acceleration Structures* (BLAS and TLAS) for ray tracing.
-- Debug/inspect the acceleration structures in *Nsight Graphics*.
 - Implement ray query based *shadow rays* (first with all-opaque geometry, then with alpha-test *transparency*).
+- Debug/inspect the acceleration structures in *Nsight Graphics*.
 - (Bonus) Implement ray query based *reflections*.
 
 *Prerequisites*:
-This lab targets intermediate Vulkan programmers. We assume you have completed the basic Vulkan Tutorial (graphics pipeline, descriptor sets, etc.). If not, you can still follow along conceptually. A Windows machine with up-to-date Vulkan SDK, a GPU supporting ray tracing (Vulkan Ray Query), plus RenderDoc and Nsight Graphics is provided.
+This lab targets intermediate Vulkan programmers. We assume you have completed the basic Vulkan Tutorial (graphics pipeline, descriptor sets, etc.). If not, you can still follow along conceptually. A Windows machine with up-to-date Vulkan SDK (1.4.311), a GPU supporting ray tracing (Vulkan Ray Query), plus RenderDoc and Nsight Graphics is provided.
 
 *Mobile Best-Practice Notes*:
 We focus on desktop for the lab, but we'll highlight mobile-oriented tips:
 
 - We use `VK_KHR_dynamic_rendering` (core in Vulkan 1.3) instead of traditional render passes. This not only simplifies the API but also, with the `VK_KHR_dynamic_rendering_local_read` extension, enables tile-local storage reads similar to subpasses, a big deal for mobile tile-based GPUs to save bandwidth.
-- We use Ray Queries (from `VK_KHR_ray_query`) within fragment shaders instead of a separate ray tracing pipeline. On mobile, ray queries are far more widely supported and often more efficient than the full ray tracing pipeline. Ray queries integrate nicely into fragment shading, benefiting from on-chip compression and avoiding context switches.
+- We use Ray Queries (from `VK_KHR_ray_query`) within fragment shaders instead of a separate ray tracing pipeline. On mobile, ray queries are far more widely supported and often (depending on the use case) more efficient than the full ray tracing pipeline. Ray queries integrate nicely into fragment shading, benefiting from on-chip compression and avoiding context switches.
 
 *Provided Code*:
-The provided code is a Vulkan renderer that already implements a basic graphics pipeline with dynamic rendering. It is based on the Vulkan Tutorial (we will soon integrate this lab as new chapters) and it is self-contained in a single C++ source file and a Slang shader file:
+The provided code is a Vulkan renderer that already implements a basic graphics pipeline with dynamic rendering. It is based on the Vulkan Tutorial (we will soon integrate this lab there as new chapters) and it is self-contained in a single C++ source file and a Slang shader file:
 
 - link:../attachments/38_ray_tracing.cpp[38_ray_tracing.cpp]
 - link:../attachments/38_ray_tracing.slang[38_ray_tracing.slang]
@@ -40,11 +40,22 @@ At the top of the C++ file, note the following variable:
 #define LAB_TASK_LEVEL 1
 ----
 
-At certain intervals, you will be instructed to update this variable and re-build to verify the effect of key changes, no need to write new code. You may use the following commands:
+At certain intervals, you will be instructed to update this variable and re-build to verify the effect of key changes, no need to write new code. Look out for instructions like these:
+
+.Re-build and Run!
+****
+Use
+[,c{pp}]
+----
+#define LAB_TASK_LEVEL 1
+----
+****
+
+To build, you may use Visual Studio (set `38_ray_tracing` as start-up project) or the following commands:
 
 [,shell]
 ----
- cmake --build build --target 38_ray_tracing && start .\build\38_ray_tracing\Debug\38_ray_tracing.exe -wo .\build\38_ray_tracing\
+ cmake --build build --target 38_ray_tracing --parallel && start .\build\38_ray_tracing\Debug\38_ray_tracing.exe -wo .\build\38_ray_tracing\
 ----
 
 The Slang shader does require you to fill in the gaps, but if you get stuck, you can refer to the provided reference solution:
@@ -138,8 +149,8 @@ commandBuffers[currentFrame].beginRendering(renderingInfo);
 
 Use RenderDoc to launch the application and capture a frame:
 
-. Specify executable path.
-. Specify working directory.
+. Specify executable path: `C:\Users\nvidia\S2025_LABS\gensubcur_105\Vulkan-Tutorial\attachments\build\38_ray_tracing\Debug\38_ray_tracing.exe`.
+. Specify working directory: `C:\Users\nvidia\S2025_LABS\gensubcur_105\Vulkan-Tutorial\attachments\build\38_ray_tracing`.
 . Launch the application.
 
 image::../images/38_TASK01_renderdoc_launch.png[]
@@ -166,6 +177,8 @@ After this step, you should be comfortable that dynamic rendering is set up corr
 
 When casting a ray in a scene, we need an optimized structure that quickly identifies which triangle the ray hits. GPUs use acceleration structures that group geometry into bounding boxes, allowing large parts of the scene to be skipped. The ray traversal proceeds down a tree, efficiently narrowing down to the intersected triangle. The exact implementation is GPU-dependent and opaque to the user.
 
+image::../images/38_bounding_boxes.png[]
+
 Our scene is a simple 3D model (a plant on a table) loaded from an OBJ file. The provided code already loads the model's vertices, indices, normals, and textures into buffers. It separates the model into submeshes, each with its own material (e.g. table, pot, leaves each with their own texture). We need to build acceleration structures from this geometry.
 
 A BLAS holds the geometry (triangles) for one mesh or object. A TLAS holds instances of BLASes (with transforms) to form the full scene. We'll create one BLAS per distinct mesh/material and one TLAS that references them. The ray query will use the TLAS. In Vulkan, building an AS involves a few steps: describe geometry, query build sizes, allocate buffers, create the AS handle, then issue a build command.
@@ -178,14 +191,14 @@ First, we need to describe the geometry of the BLAS. The `vk::AccelerationStruct
 
 [,c{pp}]
 ----
-// TASK02: Prepare the geometry data
+// Prepare the geometry data
 auto trianglesData = vk::AccelerationStructureGeometryTrianglesDataKHR{
-    .vertexFormat = vertexFormat,
-    .vertexData = vertexData,
-    .vertexStride = vertexStride,
-    .maxVertex = maxVertex,
-    .indexType = indexType,
-    .indexData = indexData
+    .vertexFormat = vk::Format::eR32G32B32Sfloat,
+    .vertexData = vertexAddr,
+    .vertexStride = sizeof(Vertex),
+    .maxVertex = submesh.maxVertex,
+    .indexType = vk::IndexType::eUint32,
+    .indexData = indexAddr + submesh.indexOffset * sizeof(uint32_t)
 };
 
 vk::AccelerationStructureGeometryDataKHR geometryData(trianglesData);
@@ -305,7 +318,7 @@ Note how we needed to get the device address of the BLAS using `vkGetAcceleratio
 
 Now that all instances are stored in a vector, we need to prepare the instance data for the TLAS. This involves creating a buffer that holds the instance data.
 
-Using a very similar approach as for the BLAS, we need to prepare the data for the TLAS build, query buffer sizes, allocate buffers, create the TLAS handle, and issue a build command. The diagram below highlihghts the main changes needed for the TLAS:
+Using a very similar approach as for the BLAS, we need to prepare the data for the TLAS build, query buffer sizes, allocate buffers, create the TLAS handle, and issue a build command. The diagram below highlights the main changes needed for the TLAS:
 
 image::../images/38_TASK03_tlas_structures.png[]
 
@@ -514,7 +527,7 @@ bool in_shadow(float3 P)
 Next, we will initialize a `RayQuery` object which will be used to perform the ray traversal. Note the choice of flags that we use to make it faster:
 
 - `RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES` since this is a simple scene with triangles only.
-- `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` to end the traversal as soon as the first interesection is found, which is sufficient for shadow testing since we only need to know if anything blocks the light.
+- `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` to end the traversal as soon as the first opaque interesection is found, which is sufficient for shadow testing since we only need to know if anything blocks the light.
 
 [,slang]
 ----
@@ -852,15 +865,8 @@ vk::AccelerationStructureGeometryKHR blasGeometry{
     .geometry = geometryData
 };
 
-if (!submesh.alphaCut)
-{
-    blasGeometry.flags = vk::GeometryFlagBitsKHR::eOpaque;
-}
+blasGeometry.flags = (submesh.alphaCut) ? vk::GeometryFlagsKHR(0) : vk::GeometryFlagBitsKHR::eOpaque;
 ----
-
-If you run the application now, you will see that the shadows for the leaves are now completely missing! This is because out of all the intersection candidates, only opaque geometry triangles are automatically committed. We need to implement a way to handle transparency in the ray query shadows and conditionally commit the candidate intersection.
-
-Before we do that, let's first inspect the acceleration structures we have built so far, to understand how they are structured and what information is available for each triangle.
 
 .Re-build and Run!
 ****
@@ -871,14 +877,18 @@ Use
 ----
 ****
 
+Running the application now, you will see that the shadows for the leaves are now completely missing! This is because out of all the intersection candidates, only opaque geometry triangles are automatically committed. We need to implement a way to handle transparency in the ray query shadows and conditionally commit the candidate intersection.
+
+Before we do that, let's first inspect the acceleration structures we have built so far, to understand how they are structured and what information is available for each triangle.
+
 === Task 8: Inspect the acceleration structures with NVIDIA Nsight Graphics
 
 RenderDoc does not yet support inspecting Vulkan acceleration structures, but we can use *Nsight Graphics* to verify that our BLAS/TLAS are built correctly. This helps catch mistakes (e.g. wrong geometry counts, offsets) before we rely on them in shaders.
 
 To use Nsight:
 
-. Specify executable path.
-. Specify working directory.
+. Specify executable path: `C:\Users\nvidia\S2025_LABS\gensubcur_105\Vulkan-Tutorial\attachments\build\38_ray_tracing\Debug\38_ray_tracing.exe`.
+. Specify working directory: `C:\Users\nvidia\S2025_LABS\gensubcur_105\Vulkan-Tutorial\attachments\build\38_ray_tracing`.
 . Launch the application.
 
 image::../images/38_TASK04_nsight_launch.png[]
@@ -889,17 +899,24 @@ image::../images/38_TASK04_nsight_capture.png[]
 
 Similar to RenderDoc, you can inspect the events and find the acceleration structure build commands, which will then take us to the acceleration structure visualization tool:
 
-. Select the first call to `vkQueueSubmit()` in the Event browser.
-. Select the last acceleration structure (this will be our TLAS) in the Object browser.
-. Click on "Open in Ray Tracing Inspector".
+. Use the search function in the Event browser to filter and find the `draw` calls.
+. Select any of the draw calls.
+. Use the API Inspector to find the resources bound to our fragment shader (`FS`).
+. Select the acceleration structure (this will be our TLAS), which opens the Object Browser tab.
+. In the Object Browser, click on "Open in Ray Tracing Inspector".
 
 image::../images/38_TASK04_nsight_main.png[]
+
+image::../images/38_TASK05_nsight_object.png[]
 
 In the new window, you can see the TLAS and its instances:
 
 . You can expand each instance to see the BLAS it references, and inspect the geometry data.
+. You may find the 'Orbit Camera' more comfortable for navigating the scene.
 . You may need to set the "Up Direction" to "Z Axis" to match the coordinate system used in the model.
-. And play with different visualization options like "Color by" and "Show Mesh Wireframes".
+. Use filters for 'Opaque' gemoetry (as expected, the leave models will be greyed out).
+. Play with different visualization options like "Color by".
+. Try "Show Mesh Wireframes" and "Show AABB Wireframes".
 
 image::../images/38_TASK04_nsight_inspector.png[]
 
@@ -913,13 +930,15 @@ Note how the renderer does not bind separate material textures for each submesh.
 
 [,c{pp}]
 ----
-for (auto& sub : submeshes) {
-    uint32_t idx = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID);
-    commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0,
-        PushConstant{ .materialIndex = idx });
+        for (auto& sub : submeshes) {
+            // TASK09: Bindless resources
+            PushConstant pushConstant = {
+                .materialIndex = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID),
+            };
+            commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
 
-    commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
-}
+            commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
+        }
 ----
 
 Then, in the shader, we use the material index to sample the texture array. They all share the same sampler:
@@ -954,11 +973,14 @@ In `createAccelerationStructures()`, as we iterate over the model submeshes, we 
 [,c{pp}]
 ----
 vk::AccelerationStructureInstanceKHR instance{
-    .transform = tm,
-    .instanceCustomIndex = static_cast<uint32_t>(i),    // <---- TASK09
+    .transform = identity,
     .mask = 0xFF,
     .accelerationStructureReference = blasDeviceAddr
 };
+
+instances.push_back(instance);
+
+instances[i].instanceCustomIndex = static_cast<uint32_t>(i);
 ----
 
 If you run the application now and capture it with Nsight Graphics, you will be able to color by "Instance Custom Index" to see the indices assigned to each instance, whereas before they were all the same:
@@ -969,7 +991,6 @@ Then, populate a vector of LUT entries. Using the same submesh index, we need to
 
 [,c{pp}]
 ----
-instances.push_back(instance);
 // TASK09: store the instance look-up table entry
 instanceLUTs.push_back({ static_cast<uint32_t>(submesh.materialID), submesh.indexOffset });
 ----
@@ -1106,7 +1127,9 @@ With everything set in place to support transparency in shadows, implementing ot
 
 === Task 11: Implement ray query reflections
 
-First, we will use push constants to pass the reflective material flag to the fragment shader. This will allow us to determine if the current material is reflective or not. Update the `PushConstant` struct to include a `reflective` flag, both in the renderer:
+First, we will use push constants to pass the reflective material flag to the fragment shader. This will allow us to determine if the current material is reflective or not.
+
+We need to update the `PushConstant` struct to include a `reflective` flag, both in the renderer:
 
 [,c{pp}]
 ----
@@ -1132,8 +1155,11 @@ And update the values that we assign to it before issuing the draw call:
 
 [,c{pp}]
 ----
-commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0,
-    PushConstant{ .materialIndex = idx, .reflective = sub.reflective });
+PushConstant pushConstant = {
+    .materialIndex = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID),
+    .reflective = sub.reflective
+};
+commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
 
 commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
 ----
@@ -1152,7 +1178,7 @@ We will then retrieve this in the fragment shader, before we apply the shadow ef
    bool inShadow = in_shadow(P);
 ----
 
-The implementation of the `apply_reflection()` function will be similar to the `in_shadow()` function. The `Proceed()` loops is no longer optional, as we do not only need the alpha component, we need the full color of the hit triangle to apply the reflection effect.
+The implementation of the `apply_reflection()` function will be similar to the `in_shadow()` function. The `Proceed()` loops is no longer optional, as we do not only need to check for any intersection, we need the full color of the closest hit triangle to apply the reflection effect.
 
 Note how it requires the normal direction (`N`). This is because reflections are a function of the surface normal and the view direction `V`. The reflection direction `R` is calculated easily with the built-in `reflect()` function:
 
@@ -1166,7 +1192,7 @@ void apply_reflection(float3 P, float3 N, inout float4 baseColor) {
     float3 R = reflect(-V, N);
 ----
 
-We then define the ray description and initialize the `RayQuery` object, similar to how we did for shadows. In this case however, we cannot use the `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` flag, because we need to retrieve the full color of the closest triangle, not just any triangle:
+We then define the ray description, similar to how we did for shadows:
 
 [,slang]
 ----
@@ -1175,11 +1201,21 @@ We then define the ray description and initialize the `RayQuery` object, similar
     reflectionRayDesc.Direction = R;
     reflectionRayDesc.TMin = EPSILON;
     reflectionRayDesc.TMax = 1e4;
+----
 
+And initialize the `RayQuery` object. In this case however, we cannot use the `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` flag, because we need to retrieve the full color of the closest triangle, not just any triangle:
+
+[,slang]
+----
     // Initialize a ray query for reflections
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> rq;
     let rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES;
+----
 
+We can now launch our reflection ray:
+
+[,slang]
+----
     rq.TraceRayInline(accelerationStructure, rayFlags, 0xFF, reflectionRayDesc);
 ----
 
@@ -1205,14 +1241,14 @@ The `Proceed()` loop is exactly the same:
             rq.CommitNonOpaqueTriangleHit();
         }
     }
+
+    bool hit = (rq.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
 ----
 
 The only additional logic we need is to retrieve the color of the hit triangle and apply it to the base color of the fragment. Note how the logic is almost the same as in the loop, but this time we use the `Committed` version of the functions, rather than `Candidate`:
 
 [,slang]
 ----
-    bool hit = (rq.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
-
     if (hit)
     {
         uint instanceID = rq.CommittedRayInstanceCustomIndex();
@@ -1252,7 +1288,7 @@ In this lab, you've implemented ray traced effects into a Vulkan rasterization p
 
 - *Ray queries for shadows*: We cast shadow rays in the fragment shader. Initially considering only opaque geometry, then we refined it to handle alpha-tested transparency by manually checking texture alpha for intersections.
 
-- *Ray queries for reflections*: As a bonus, we shot reflection rays and used the hit result to modulate the fragment color for reflective materials. This again leveraged the same acceleration structure and similar loop logic. You can imagine extending this to refractions, ambient occlusion rays, etc.
+- *Ray queries for reflections*: As a bonus, we shot reflection rays and used the hit result to modulate the fragment color for reflective materials. This leveraged the same acceleration structure and used similar `Proceed()` loop logic. You can imagine extending this to refractions, ambient occlusion rays, etc.
 
 We hope this lab gave you a hands-on taste of hybrid rendering with Vulkan's latest features. Happy rendering with Vulkan, and enjoy creating more advanced ray traced effects in your applications!
 
@@ -1264,8 +1300,6 @@ We hope this lab gave you a hands-on taste of hybrid rendering with Vulkan's lat
 - Download RenderDoc at https://github.com/baldurk/renderdoc
 - Download NVIDIA Nsight Graphics at https://developer.nvidia.com/nsight-graphics
 - Learn more about the Slang shading language at https://shader-slang.org
-
-== Acknowledgements
 
 The 3D assets were provided by Poly Haven and combined using Blender:
 

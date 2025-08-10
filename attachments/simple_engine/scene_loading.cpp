@@ -113,7 +113,7 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
 
                     // Apply rotation from GLTF camera
                     glm::vec3 eulerAngles = glm::eulerAngles(gltfCamera.rotation);
-                    cameraTransform->SetRotation(glm::degrees(eulerAngles));
+                    cameraTransform->SetRotation(eulerAngles);
                 }
 
                 // Update the camera component with GLTF properties
@@ -156,7 +156,7 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                 // Add a transform component with provided parameters
                 auto* transform = materialEntity->AddComponent<TransformComponent>();
                 transform->SetPosition(position);
-                transform->SetRotation(rotation);
+                transform->SetRotation(glm::radians(rotation));
                 transform->SetScale(scale);
 
                 // Add a mesh component with material-specific data

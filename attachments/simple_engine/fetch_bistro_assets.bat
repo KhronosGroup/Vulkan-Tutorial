@@ -5,15 +5,14 @@ REM Fetch the Bistro example assets into the desired assets directory.
 REM Default target: assets\bistro at the repository root.
 REM Usage:
 REM   fetch_bistro_assets.bat [target-dir]
-REM Examples:
+REM Example:
 REM   fetch_bistro_assets.bat
-REM   fetch_bistro_assets.bat attachments\simple_engine\Assets\bistro
 
 set REPO_SSH=git@github.com:gpx1000/bistro.git
 set REPO_HTTPS=https://github.com/gpx1000/bistro.git
 
 if "%~1"=="" (
-    set TARGET_DIR=assets\bistro
+    set TARGET_DIR=Assets\bistro
 ) else (
     set TARGET_DIR=%~1
 )

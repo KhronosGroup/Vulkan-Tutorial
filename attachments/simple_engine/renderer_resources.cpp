@@ -160,23 +160,8 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
                         if (loaded) break;
                     }
                 }
-                if (result != KTX_SUCCESS) {
-                    // Last-ditch fallback: try alternate image formats (.png/.jpg/.jpeg) with same basename
-                    std::filesystem::path orig = std::filesystem::path(texturePath);
-                    std::vector<std::string> altExts = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG", ".dds", ".DDS", ".ktx", ".KTX"};
-                    for (const auto& ext : altExts) {
-                        std::filesystem::path cand = orig;
-                        cand.replace_extension(ext);
-                        if (std::filesystem::exists(cand)) {
-                            // Alternate non-KTX fallback removed per simplification policy
-                            (void)ext; (void)orig; (void)cand; // suppress unused warnings
-                        }
-                    }
-                    std::cerr << "Failed to load KTX2 texture: " << texturePath << " (error: " << result << ")" << std::endl;
-                    return false;
-                }
+                assert (result != KTX_SUCCESS);
             }
-            ktx2_or_alt_loaded:;
 
             // Cache header-provided VkFormat
             ktxHeaderVkFormat = static_cast<VkFormat>(ktxTex->vkFormat);

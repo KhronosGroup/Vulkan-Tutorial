@@ -180,15 +180,21 @@ PhysicsSystem::~PhysicsSystem() {
 }
 
 bool PhysicsSystem::Initialize() {
-    // This is a placeholder implementation
-    // In a real implementation, this would initialize the physics engine
+    // Enforce GPU-only physics. If GPU resources cannot be initialized, initialization fails.
 
-    // Initialize Vulkan resources if GPU acceleration is enabled and the renderer is set
-    if (gpuAccelerationEnabled && renderer) {
-        if (!InitializeVulkanResources()) {
-            std::cerr << "Failed to initialize Vulkan resources for physics system" << std::endl;
-            gpuAccelerationEnabled = false;
-        }
+    // Renderer must be set for GPU compute physics
+    if (!renderer) {
+        std::cerr << "PhysicsSystem::Initialize: Renderer is not set. GPU-only physics cannot proceed." << std::endl;
+        return false;
+    }
+
+    // Always keep GPU acceleration enabled (CPU fallback is not allowed)
+    gpuAccelerationEnabled = true;
+
+    // Initialize Vulkan resources; fail hard if not available
+    if (!InitializeVulkanResources()) {
+        std::cerr << "PhysicsSystem::Initialize: Failed to initialize Vulkan resources for physics (GPU-only)." << std::endl;
+        return false;
     }
 
     initialized = true;
@@ -292,7 +298,7 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
         switch (shape) {
             case CollisionShape::Sphere: {
                 // Sphere intersection test
-                float radius = 0.5f; // Default radius
+                float radius = 0.0335f; // Tennis ball radius to match actual ball
 
                 // Calculate coefficients for quadratic equation
                 glm::vec3 oc = origin - position;
@@ -765,14 +771,10 @@ bool PhysicsSystem::InitializeVulkanResources() {
 
         // Create persistent mapped memory pointers for improved performance
         try {
-            // Map physics buffer memory persistently
-            vulkanResources.persistentPhysicsMemory = vulkanResources.physicsBufferMemory.mapMemory(0, physicsBufferSize);
-
-            // Map counter buffer memory persistently
-            vulkanResources.persistentCounterMemory = vulkanResources.counterBufferMemory.mapMemory(0, counterBufferSize);
-
-            // Map params buffer memory persistently
-            vulkanResources.persistentParamsMemory = vulkanResources.paramsBufferMemory.mapMemory(0, paramsBufferSize);
+            // Map entire memory objects persistently to satisfy VK_WHOLE_SIZE flush alignment requirements
+            vulkanResources.persistentPhysicsMemory = vulkanResources.physicsBufferMemory.mapMemory(0, VK_WHOLE_SIZE);
+            vulkanResources.persistentCounterMemory = vulkanResources.counterBufferMemory.mapMemory(0, VK_WHOLE_SIZE);
+            vulkanResources.persistentParamsMemory = vulkanResources.paramsBufferMemory.mapMemory(0, VK_WHOLE_SIZE);
         } catch (const std::exception& e) {
             throw std::runtime_error("Failed to create persistent mapped memory: " + std::string(e.what()));
         }
@@ -877,10 +879,10 @@ bool PhysicsSystem::InitializeVulkanResources() {
 
         raiiDevice.updateDescriptorSets(descriptorWrites, nullptr);
 
-        // Create a command pool
+        // Create a command pool bound to the compute queue family used by the renderer
         vk::CommandPoolCreateInfo commandPoolInfo;
         commandPoolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        commandPoolInfo.queueFamilyIndex = 0; // Assuming the compute queue family index is 0
+        commandPoolInfo.queueFamilyIndex = renderer->GetComputeQueueFamilyIndex();
         vulkanResources.commandPool = vk::raii::CommandPool(raiiDevice, commandPoolInfo);
 
         // Allocate command buffer
@@ -1009,8 +1011,10 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
 
             // For dynamic bodies (balls), allow forces to be applied by
             // The shader will add gravity and other forces each frame
-            gpuData[i].force = glm::vec4(initialForce, concreteRigidBody->IsKinematic() ? 1.0f : 0.0f);
-            gpuData[i].torque = glm::vec4(initialTorque, 1.0f); // Always use gravity
+            bool isKinematic = concreteRigidBody->IsKinematic();
+            gpuData[i].force = glm::vec4(initialForce, isKinematic ? 1.0f : 0.0f);
+            // Use gravity only for dynamic bodies
+            gpuData[i].torque = glm::vec4(initialTorque, isKinematic ? 0.0f : 1.0f);
 
             // Set collider data based on a collider type
             switch (concreteRigidBody->GetShape()) {
@@ -1040,7 +1044,9 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
                                 glm::vec3 localCenter = 0.5f * (localMin + localMax);
                                 glm::vec3 localHalfExtents = 0.5f * (localMax - localMin);
 
-                                glm::mat4 model = xform->GetModelMatrix();
+                                glm::mat4 model = (meshComp->GetInstanceCount() > 0)
+                                                        ? meshComp->GetInstance(0).getModelMatrix()
+                                                        : xform->GetModelMatrix();
                                 glm::vec3 centerWS = glm::vec3(model * glm::vec4(localCenter, 1.0f));
 
                                 glm::mat3 RS = glm::mat3(model);
@@ -1057,7 +1063,8 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
                             }
                         }
 
-                        gpuData[i].colliderData = glm::vec4(halfExtents, static_cast<float>(2)); // 2 = Mesh (as Box)
+                        // Encode Mesh collider as Mesh (type=2) for GPU narrowphase handling (sphere vs mesh)
+                        gpuData[i].colliderData = glm::vec4(halfExtents, static_cast<float>(2)); // 2 = Mesh (represented as world AABB)
                         gpuData[i].colliderData2 = glm::vec4(localOffset, 0.0f);
                     }
                     break;
@@ -1089,14 +1096,26 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
     // Use VK_WHOLE_SIZE to avoid nonCoherentAtomSize alignment validation errors
     try {
         const vk::raii::Device& device = renderer->GetRaiiDevice();
-        vk::MappedMemoryRange flushRange;
-        flushRange.memory = *vulkanResources.paramsBufferMemory;
-        flushRange.offset = 0;
-        flushRange.size = VK_WHOLE_SIZE;
-
-        device.flushMappedMemoryRanges(flushRange);
+        // Flush params buffer
+        vk::MappedMemoryRange flushRangeParams;
+        flushRangeParams.memory = *vulkanResources.paramsBufferMemory;
+        flushRangeParams.offset = 0;
+        flushRangeParams.size = VK_WHOLE_SIZE;
+        device.flushMappedMemoryRanges(flushRangeParams);
+        // Flush physics buffer (object data)
+        vk::MappedMemoryRange flushRangePhysics;
+        flushRangePhysics.memory = *vulkanResources.physicsBufferMemory;
+        flushRangePhysics.offset = 0;
+        flushRangePhysics.size = VK_WHOLE_SIZE;
+        device.flushMappedMemoryRanges(flushRangePhysics);
+        // Flush counter buffer (pair and collision counters)
+        vk::MappedMemoryRange flushRangeCounter;
+        flushRangeCounter.memory = *vulkanResources.counterBufferMemory;
+        flushRangeCounter.offset = 0;
+        flushRangeCounter.size = VK_WHOLE_SIZE;
+        device.flushMappedMemoryRanges(flushRangeCounter);
     } catch (const std::exception& e) {
-        fprintf(stderr, "WARNING: Failed to flush params buffer memory: %s", e.what());
+        fprintf(stderr, "WARNING: Failed to flush mapped physics memory: %s", e.what());
     }
 }
 
@@ -1116,6 +1135,39 @@ void PhysicsSystem::ReadbackGPUPhysicsData() const {
     vk::Result result = device.waitForFences(*vulkanResources.computeFence, VK_TRUE, UINT64_MAX);
     if (result != vk::Result::eSuccess) {
         return;
+    }
+
+    // Ensure GPU writes to HOST_VISIBLE memory are visible to the host before reading
+    try {
+        vk::MappedMemoryRange invalidateRangePhysics;
+        invalidateRangePhysics.memory = *vulkanResources.physicsBufferMemory;
+        invalidateRangePhysics.offset = 0;
+        invalidateRangePhysics.size = VK_WHOLE_SIZE;
+
+        vk::MappedMemoryRange invalidateRangeCounter;
+        invalidateRangeCounter.memory = *vulkanResources.counterBufferMemory;
+        invalidateRangeCounter.offset = 0;
+        invalidateRangeCounter.size = VK_WHOLE_SIZE;
+
+        device.invalidateMappedMemoryRanges({invalidateRangePhysics, invalidateRangeCounter});
+    } catch (const std::exception&) {
+        // On HOST_COHERENT heaps this may not be required; ignore errors
+    }
+
+    // Optional debug: read and log pair/collision counters for a few frames
+    if (vulkanResources.persistentCounterMemory) {
+        static uint32_t lastPairCount = UINT32_MAX;
+        static uint32_t lastCollisionCount = UINT32_MAX;
+        static int debugFrames = 0;
+        const uint32_t* counters = static_cast<const uint32_t*>(vulkanResources.persistentCounterMemory);
+        uint32_t pairCount = counters[0];
+        uint32_t collisionCount = counters[1];
+        if (debugFrames < 120 && (pairCount != lastPairCount || collisionCount != lastCollisionCount)) {
+            std::cout << "Physics GPU counters - pairs: " << pairCount << ", collisions: " << collisionCount << std::endl;
+            lastPairCount = pairCount;
+            lastCollisionCount = collisionCount;
+            debugFrames++;
+        }
     }
 
     // Skip physics buffer operations if no rigid bodies exist
@@ -1176,11 +1228,11 @@ void PhysicsSystem::SimulatePhysicsOnGPU(const float deltaTime) const {
         nullptr
     );
 
-    // Add a memory barrier to ensure host-written uniform buffer data is visible to shader
-    // This ensures the PhysicsParams data uploaded from CPU is properly synchronized before shader execution
+    // Add a memory barrier to ensure all host-written buffer data (uniform + storage) is visible to compute shaders
+    // We use ShaderRead | ShaderWrite since compute will read and write storage buffers
     vk::MemoryBarrier hostToDeviceBarrier;
     hostToDeviceBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite;
-    hostToDeviceBarrier.dstAccessMask = vk::AccessFlagBits::eUniformRead;
+    hostToDeviceBarrier.dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
 
     vulkanResources.commandBuffer.pipelineBarrier(
         vk::PipelineStageFlagBits::eHost,

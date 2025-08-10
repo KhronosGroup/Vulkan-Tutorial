@@ -260,17 +260,6 @@ private:
     bool ParseGLTF(const std::string& filename, Model* model);
 
     /**
-     * @brief Load textures for a PBR material.
-     * @param material The material to populate.
-     * @param albedoMap The path to the albedo texture.
-     * @param normalMap The path to the normal texture.
-     * @param metallicRoughnessMap The path to the metallic-roughness texture.
-     * @param aoMap The path to the ambient occlusion texture.
-     * @param emissiveMap The path to the emissive texture.
-     * @return True if loading was successful, false otherwise.
-     */
-
-    /**
      * @brief Extract lights from GLTF punctual lights extension.
      * @param gltfModel The loaded GLTF model.
      * @param modelName The name of the model.

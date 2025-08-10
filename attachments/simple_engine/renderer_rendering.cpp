@@ -745,7 +745,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[currentFrame],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
+        .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]
     };
 
     // Use mutex to ensure thread-safe access to graphics queue
@@ -757,7 +757,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     // Present the image
     vk::PresentInfoKHR presentInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*renderFinishedSemaphores[currentFrame],
+        .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex],
         .swapchainCount = 1,
         .pSwapchains = &*swapChain,
         .pImageIndices = &imageIndex

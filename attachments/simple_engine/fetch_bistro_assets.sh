@@ -10,7 +10,7 @@ set -euo pipefail
 
 REPO_SSH="git@github.com:gpx1000/bistro.git"
 REPO_HTTPS="https://github.com/gpx1000/bistro.git"
-TARGET_DIR="${1:-assets/bistro}"
+TARGET_DIR="${1:-Assets/bistro}"
 
 mkdir -p "$(dirname "${TARGET_DIR}")"
 

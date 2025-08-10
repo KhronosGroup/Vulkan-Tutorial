@@ -562,8 +562,8 @@ void Engine::GenerateBallMaterial() {
     // Random emissive color (usually subtle)
     ballMaterial.emissive = glm::vec3(dis(gen) * 0.3f, dis(gen) * 0.3f, dis(gen) * 0.3f);
 
-    // Very low bounciness (0.05 to 0.15 for 85-95% momentum loss per bounce)
-    ballMaterial.bounciness = 0.05f + dis(gen) * 0.1f;
+    // Decent bounciness (0.6 to 0.9) so bounces are clearly visible
+    ballMaterial.bounciness = 0.6f + dis(gen) * 0.3f;
 }
 
 void Engine::InitializePhysicsScaling() {

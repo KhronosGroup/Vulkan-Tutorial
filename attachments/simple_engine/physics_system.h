@@ -256,7 +256,11 @@ public:
      * @brief Enable or disable GPU acceleration.
      * @param enabled Whether GPU acceleration is enabled.
      */
-    void SetGPUAccelerationEnabled(bool enabled) { gpuAccelerationEnabled = enabled; }
+    void SetGPUAccelerationEnabled(bool enabled) {
+        // Enforce GPU-only policy: disabling GPU acceleration is not allowed in this project.
+        // Ignore attempts to disable and keep GPU acceleration enabled.
+        gpuAccelerationEnabled = true;
+    }
 
     /**
      * @brief Check if GPU acceleration is enabled.

@@ -207,6 +207,16 @@ void BroadPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
     computeAABB(bodyA, minA, maxA);
     computeAABB(bodyB, minB, maxB);
 
+    // Expand sphere AABBs by motion over the timestep to catch fast-moving spheres
+    if (shapeA == 0) {
+        float3 expandA = abs(bodyA.linearVelocity.xyz) * params.deltaTime;
+        minA -= expandA; maxA += expandA;
+    }
+    if (shapeB == 0) {
+        float3 expandB = abs(bodyB.linearVelocity.xyz) * params.deltaTime;
+        minB -= expandB; maxB += expandB;
+    }
+
     // Check for AABB overlap
     if (aabbOverlap(minA, maxA, minB, maxB)) {
         // Add to potential collision pairs
@@ -295,13 +305,13 @@ void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
         float distance = length(direction);
 
         if (distance < sphereRadius) {
-            // Collision detected
+            // Collision detected (overlap)
             uint collisionIndex;
             InterlockedAdd(counterBuffer[1], 1, collisionIndex);
 
             if (collisionIndex < params.maxCollisions) {
-                // Calculate normal (from geometry to sphere)
-                float3 normal = (distance > 0.0001) ? direction / distance : float3(0, 1, 0);
+                // Calculate normal so that it points from sphere(A) to geometry(B)
+                float3 normal = (distance > 0.0001) ? (-direction / distance) : float3(0, -1, 0);
                 float penetration = sphereRadius - distance;
 
                 // Create collision data
@@ -313,6 +323,49 @@ void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
                 // Store collision data
                 collisionBuffer[collisionIndex] = collision;
+            }
+        } else {
+            // Swept test (CCD-lite): segment from previous position to current against box expanded by sphere radius
+            float3 prevPos = spherePos - sphere.linearVelocity.xyz * params.deltaTime;
+            float3 dir = spherePos - prevPos;
+            float dirLen = length(dir);
+            if (dirLen > 1e-6) {
+                float3 bbMin = geometryPos - (geometryHalfExtents + sphereRadius);
+                float3 bbMax = geometryPos + (geometryHalfExtents + sphereRadius);
+
+                float3 invDir = 1.0 / max(abs(dir), float3(1e-6, 1e-6, 1e-6));
+                float3 t0 = (bbMin - prevPos) / dir;
+                float3 t1 = (bbMax - prevPos) / dir;
+                float3 tmin3 = min(t0, t1);
+                float3 tmax3 = max(t0, t1);
+                float tEnter = max(tmin3.x, max(tmin3.y, tmin3.z));
+                float tExit  = min(tmax3.x,  min(tmax3.y,  tmax3.z));
+
+                if (tEnter >= 0.0 && tEnter <= 1.0 && tEnter <= tExit) {
+                    // Determine contact normal based on entry axis and direction of motion
+                    float3 normal = float3(0,0,0);
+                    if (tEnter >= tmin3.x && tEnter >= tmin3.y && tEnter >= tmin3.z) {
+                        normal = float3((dir.x > 0.0) ? 1.0 : -1.0, 0.0, 0.0);
+                    } else if (tEnter >= tmin3.y && tEnter >= tmin3.z) {
+                        normal = float3(0.0, (dir.y > 0.0) ? 1.0 : -1.0, 0.0);
+                    } else {
+                        normal = float3(0.0, 0.0, (dir.z > 0.0) ? 1.0 : -1.0);
+                    }
+
+                    float3 hitPoint = prevPos + dir * tEnter;
+
+                    uint collisionIndex;
+                    InterlockedAdd(counterBuffer[1], 1, collisionIndex);
+                    if (collisionIndex < params.maxCollisions) {
+                        CollisionData collision;
+                        collision.bodyA = sphereIndex;
+                        collision.bodyB = geometryIndex;
+                        // Tiny penetration to trigger resolution without large positional correction
+                        collision.contactNormal = float4(normalize(normal), 0.0);
+                        collision.contactPoint = float4(hitPoint, 0.0);
+                        collisionBuffer[collisionIndex] = collision;
+                    }
+                }
             }
         }
     }

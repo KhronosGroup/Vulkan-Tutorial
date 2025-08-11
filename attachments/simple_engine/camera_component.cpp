@@ -41,7 +41,7 @@ void CameraComponent::UpdateViewMatrix() {
         glm::vec3 position = transformComponent->GetPosition();
         viewMatrix = glm::lookAt(position, target, up);
     } else {
-        viewMatrix = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), target, up);
+        viewMatrix = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), target, up);
     }
     viewMatrixDirty = false;
 }

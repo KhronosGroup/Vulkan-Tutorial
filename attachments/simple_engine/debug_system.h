@@ -8,6 +8,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <functional>
+#include <ctime>
 
 /**
  * @brief Enum for different log levels.
@@ -135,8 +136,8 @@ public:
         }
 
         // Call registered callbacks
-        for (const auto& callback : logCallbacks) {
-            callback(level, tag, message);
+        for (const auto& kv : logCallbacks) {
+            kv.second(level, tag, message);
         }
 
         // If fatal, trigger crash handler
@@ -202,49 +203,15 @@ public:
             Log(LogLevel::Debug, "Performance", name + ": " + std::to_string(duration) + " us");
             measurements.erase(it);
         } else {
-            Log(LogLevel::Warning, "Performance", "No measurement started with name: " + name);
+            Log(LogLevel::Error, "Performance", "No measurement started with name: " + name);
         }
     }
 
-    /**
-     * @brief Enable or disable RenderDoc integration.
-     * @param enable Whether to enable RenderDoc integration.
-     */
-    void EnableRenderDoc(bool enable) {
-        std::lock_guard<std::mutex> lock(mutex);
 
-        renderDocEnabled = enable;
-        Log(LogLevel::Info, "DebugSystem", std::string("RenderDoc integration ") + (enable ? "enabled" : "disabled"));
-
-        // In a real implementation, this would initialize RenderDoc API
-    }
-
-    /**
-     * @brief Check if RenderDoc integration is enabled.
-     * @return True if RenderDoc integration is enabled, false otherwise.
-     */
-    bool IsRenderDocEnabled() const {
-        return renderDocEnabled;
-    }
-
-    /**
-     * @brief Trigger a RenderDoc frame capture.
-     */
-    void CaptureRenderDocFrame() {
-        std::lock_guard<std::mutex> lock(mutex);
-
-        if (renderDocEnabled) {
-            Log(LogLevel::Info, "DebugSystem", "Capturing RenderDoc frame");
-
-            // In a real implementation, this would trigger a RenderDoc frame capture
-        } else {
-            Log(LogLevel::Warning, "DebugSystem", "RenderDoc integration is not enabled");
-        }
-    }
-
-private:
-    // Private constructor for singleton
+protected:
+    // Protected constructor for inheritance
     DebugSystem() = default;
+    virtual ~DebugSystem() = default;
 
     // Delete copy constructor and assignment operator
     DebugSystem(const DebugSystem&) = delete;
@@ -269,8 +236,6 @@ private:
     // Performance measurements
     std::unordered_map<std::string, std::chrono::high_resolution_clock::time_point> measurements;
 
-    // RenderDoc integration
-    bool renderDocEnabled = false;
 };
 
 // Convenience macros for logging
@@ -282,4 +247,4 @@ private:
 
 // Convenience macros for performance measurement
 #define MEASURE_START(name) DebugSystem::GetInstance().StartMeasurement(name)
-#define MEASURE_END(name) DebugSystem::GetInstance().EndMeasurement(name)
+#define MEASURE_END(name) DebugSystem::GetInstance().StopMeasurement(name)

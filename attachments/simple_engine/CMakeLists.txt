@@ -119,6 +119,7 @@ set(SOURCES
     vulkan_device.cpp
     pipeline.cpp
     descriptor_manager.cpp
+    renderdoc_debug_system.cpp
 )
 
 # Create executable

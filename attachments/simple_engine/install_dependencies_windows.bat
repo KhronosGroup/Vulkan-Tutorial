@@ -122,16 +122,7 @@ if defined SLANGC_EXE (
         set "SLANG_ROOT=%LOCALAPPDATA%\slang"
         if not exist "%SLANG_ROOT%" mkdir "%SLANG_ROOT%"
         echo Downloading latest Slang release...
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "\
-$ErrorActionPreference='Stop'; \
-$r=Invoke-RestMethod 'https://api.github.com/repos/shader-slang/slang/releases/latest'; \
-$asset=$r.assets | Where-Object { $_.name -match 'win64.*\\.zip$' } | Select-Object -First 1; \
-if(-not $asset){ throw 'No win64 asset found'; } \
-$out=Join-Path $env:TEMP $asset.name; \
-Invoke-WebRequest $asset.browser_download_url -OutFile $out; \
-Expand-Archive -Path $out -DestinationPath $env:LOCALAPPDATA\slang -Force; \
-Write-Host ('Downloaded Slang ' + $r.tag_name) \
-"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $r=Invoke-RestMethod 'https://api.github.com/repos/shader-slang/slang/releases/latest'; $asset=$r.assets | Where-Object { $_.name -match 'win64.*\.zip$' } | Select-Object -First 1; if(-not $asset){ throw 'No win64 asset found'; } $out=Join-Path $env:TEMP $asset.name; Invoke-WebRequest $asset.browser_download_url -OutFile $out; Expand-Archive -Path $out -DestinationPath $env:LOCALAPPDATA\slang -Force; Write-Host ('Downloaded Slang ' + $r.tag_name)"
         echo Locating slangc.exe...
         set "SLANGC_PATH="
         for /f "delims=" %%F in ('dir /b /s "%LOCALAPPDATA%\slang\slangc.exe" 2^>nul') do (

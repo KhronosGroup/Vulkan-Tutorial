@@ -1218,13 +1218,6 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                     descriptor_path_resolved: ;
                 }
 
-                // Debug: report resolved baseColor texture binding for this entity
-                if (meshComponent) {
-                    const std::string& bc = pbrTexturePaths[0];
-                    bool present = textureResources.find(bc) != textureResources.end();
-                    std::cout << "PBR baseColor for entity '" << entity->GetName() << "': '" << bc
-                              << "' (" << (present ? "loaded" : "not in cache") << ")" << std::endl;
-                }
                 // Create descriptor writes for all 5 texture bindings
                 for (int binding = 1; binding <= 5; binding++) {
                     descriptorWrites[binding] = vk::WriteDescriptorSet{
@@ -1934,11 +1927,7 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
                 lightData[i].position = glm::vec4(light.position, 1.0f); // w=1 indicates position
             }
 
-            // Set light color with proper intensity (remove the division by 683 that was making lights too dim)
-            float intensity = light.intensity;
-            if (intensity < 5.0f) intensity = 5.0f; // Minimum intensity to prevent completely dark lights
-
-            lightData[i].color = glm::vec4(light.color * intensity, 1.0f);
+            lightData[i].color = glm::vec4(light.color * light.intensity, 1.0f);
 
             // Calculate light space matrix for shadow mapping
             glm::mat4 lightProjection, lightView;

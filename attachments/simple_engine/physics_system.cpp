@@ -1158,15 +1158,13 @@ void PhysicsSystem::ReadbackGPUPhysicsData() const {
     if (vulkanResources.persistentCounterMemory) {
         static uint32_t lastPairCount = UINT32_MAX;
         static uint32_t lastCollisionCount = UINT32_MAX;
-        static int debugFrames = 0;
         const uint32_t* counters = static_cast<const uint32_t*>(vulkanResources.persistentCounterMemory);
         uint32_t pairCount = counters[0];
         uint32_t collisionCount = counters[1];
-        if (debugFrames < 120 && (pairCount != lastPairCount || collisionCount != lastCollisionCount)) {
-            std::cout << "Physics GPU counters - pairs: " << pairCount << ", collisions: " << collisionCount << std::endl;
+        if (pairCount != lastPairCount || collisionCount != lastCollisionCount) {
+            // std::cout << "Physics GPU counters - pairs: " << pairCount << ", collisions: " << collisionCount << std::endl;
             lastPairCount = pairCount;
             lastCollisionCount = collisionCount;
-            debugFrames++;
         }
     }
 

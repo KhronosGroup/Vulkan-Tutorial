@@ -45,7 +45,7 @@ struct SwapChainSupportDetails {
  * @brief Structure for individual light data in the storage buffer.
  */
 struct LightData {
-    alignas(16) glm::vec4 position;      // Light position (w component unused)
+    alignas(16) glm::vec4 position;      // Light position (w component used for direction vs position)
     alignas(16) glm::vec4 color;         // Light color and intensity
     alignas(16) glm::mat4 lightSpaceMatrix; // Light space matrix for shadow mapping
     alignas(4) int lightType;            // 0=Point, 1=Directional, 2=Spot, 3=Emissive

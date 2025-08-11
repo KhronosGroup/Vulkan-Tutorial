@@ -52,14 +52,12 @@ bool DescriptorManager::createUniformBuffers(Entity* entity, uint32_t maxFramesI
         vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
         // Create entity resources if they don't exist
-        if (entityResources.find(entity) == entityResources.end()) {
-            entityResources[entity] = EntityResources();
-        }
+        auto entityResourcesIt = entityResources.try_emplace( entity ).first;
 
         // Clear existing uniform buffers
-        entityResources[entity].uniformBuffers.clear();
-        entityResources[entity].uniformBuffersMemory.clear();
-        entityResources[entity].uniformBuffersMapped.clear();
+        entityResourcesIt->second.uniformBuffers.clear();
+        entityResourcesIt->second.uniformBuffersMemory.clear();
+        entityResourcesIt->second.uniformBuffersMapped.clear();
 
         // Create uniform buffers
         for (size_t i = 0; i < maxFramesInFlight; i++) {
@@ -74,9 +72,9 @@ bool DescriptorManager::createUniformBuffers(Entity* entity, uint32_t maxFramesI
             void* data = bufferMemory.mapMemory(0, bufferSize);
 
             // Store resources
-            entityResources[entity].uniformBuffers.push_back(std::move(buffer));
-            entityResources[entity].uniformBuffersMemory.push_back(std::move(bufferMemory));
-            entityResources[entity].uniformBuffersMapped.push_back(data);
+            entityResourcesIt->second.uniformBuffers.push_back(std::move(buffer));
+            entityResourcesIt->second.uniformBuffersMemory.push_back(std::move(bufferMemory));
+            entityResourcesIt->second.uniformBuffersMapped.push_back(data);
         }
 
         return true;

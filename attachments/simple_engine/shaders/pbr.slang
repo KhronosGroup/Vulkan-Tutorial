@@ -23,7 +23,7 @@ struct VSOutput {
 
 // Light data structure for storage buffer
 struct LightData {
-    float4 position;      // Light position (w component unused)
+    float4 position;      // Light position (w component 1 for directional)
     float4 color;         // Light color and intensity
     float4x4 lightSpaceMatrix; // Light space matrix for shadow mapping
     int lightType;        // 0=Point, 1=Directional, 2=Spot, 3=Emissive
@@ -217,82 +217,31 @@ float4 PSMain(VSOutput input) : SV_TARGET
     // Calculate lighting for each light (dynamic count - no limit)
     for (int i = 0; i < ubo.lightCount; i++) {
         LightData light = lightBuffer[i];
-        float3 lightPos = light.position.xyz;
+        float3 lightPos = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0)).xyz;
+        float3 lightVec = light.position.xyz;
         float3 lightColor = light.color.rgb;
 
         // Handle emissive lights differently
         if (light.lightType == 3) { // Emissive light
-            // For emissive lights, treat them as area lights with enhanced contribution
-            // Calculate light direction and distance
-            float3 L = normalize(lightPos - input.WorldPos);
-            float distance = length(lightPos - input.WorldPos);
-
-            // Enhanced attenuation for emissive lights to make them more effective
-            float attenuation = 1.0 / (1.0 + 0.1 * distance + 0.01 * distance * distance);
-
-            // Boost emissive light intensity to make them more visible
-            float3 radiance = lightColor * attenuation * 2.0; // 2x multiplier for emissive lights
-
-            // Calculate half vector
-            float3 H = normalize(V + L);
-
-            // Calculate BRDF terms
-            float NdotL = max(dot(N, L), 0.0);
-            float NdotV = max(dot(N, V), 0.0);
-            float NdotH = max(dot(N, H), 0.0);
-            float HdotV = max(dot(H, V), 0.0);
-
-            // Calculate shadow factor for emissive lights
-            float shadow = 0.0;
-            if (i < ubo.shadowMapCount) {
-                // Transform fragment position to light space
-                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
-                shadow = calculateShadow(fragPosLightSpace, i, N, L);
-            }
-
-            // Specular BRDF
-            float D = DistributionGGX(NdotH, roughness);
-            float G = GeometrySmith(NdotV, NdotL, roughness);
-            float3 F = FresnelSchlick(HdotV, F0);
-
-            float3 numerator = D * G * F;
-            float denominator = 4.0 * NdotV * NdotL + 0.0001;
-            float3 specular = numerator / denominator;
-
-            // Energy conservation
-            float3 kS = F;
-            float3 kD = float3(1.0, 1.0, 1.0) - kS;
-            kD *= 1.0 - metallic;
-
-            // Apply shadow factor to lighting
-            float shadowFactor = 1.0 - shadow;
-            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
-
-        } else { // Regular lights (Point, Directional, Spot)
-            // Calculate light direction and distance
+            // Treat emissive like a positional contributor from its stored position
             float3 L = normalize(lightPos - input.WorldPos);
             float distance = length(lightPos - input.WorldPos);
             float attenuation = 1.0 / (distance * distance);
             float3 radiance = lightColor * attenuation;
 
-            // Calculate half vector
             float3 H = normalize(V + L);
 
-            // Calculate BRDF terms
             float NdotL = max(dot(N, L), 0.0);
             float NdotV = max(dot(N, V), 0.0);
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
 
-            // Calculate shadow factor
             float shadow = 0.0;
             if (i < ubo.shadowMapCount) {
-                // Transform fragment position to light space
                 float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
                 shadow = calculateShadow(fragPosLightSpace, i, N, L);
             }
 
-            // Specular BRDF
             float D = DistributionGGX(NdotH, roughness);
             float G = GeometrySmith(NdotV, NdotL, roughness);
             float3 F = FresnelSchlick(HdotV, F0);
@@ -301,12 +250,77 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float denominator = 4.0 * NdotV * NdotL + 0.0001;
             float3 specular = numerator / denominator;
 
-            // Energy conservation
             float3 kS = F;
             float3 kD = float3(1.0, 1.0, 1.0) - kS;
             kD *= 1.0 - metallic;
 
-            // Apply shadow factor to lighting (1.0 - shadow means 0 shadow = full light, 1 shadow = no light)
+            float shadowFactor = 1.0 - shadow;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+
+        } else if (light.lightType == 1) { // Directional light
+            // For directional lights, position field stores direction; use no distance attenuation
+            float3 L = normalize(-lightVec); // light direction towards the surface
+            float3 radiance = lightColor;    // No attenuation with distance
+
+            float3 H = normalize(V + L);
+
+            float NdotL = max(dot(N, L), 0.0);
+            float NdotV = max(dot(N, V), 0.0);
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0);
+
+            float shadow = 0.0;
+            if (i < ubo.shadowMapCount) {
+                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
+                shadow = calculateShadow(fragPosLightSpace, i, N, L);
+            }
+
+            float D = DistributionGGX(NdotH, roughness);
+            float G = GeometrySmith(NdotV, NdotL, roughness);
+            float3 F = FresnelSchlick(HdotV, F0);
+
+            float3 numerator = D * G * F;
+            float denominator = 4.0 * NdotV * NdotL + 0.0001;
+            float3 specular = numerator / denominator;
+
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= 1.0 - metallic;
+
+            float shadowFactor = 1.0 - shadow;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+
+        } else { // Point/Spot lights
+            float3 L = normalize(lightPos - input.WorldPos);
+            float distance = length(lightPos - input.WorldPos);
+            float attenuation = 1.0 / (distance * distance);
+            float3 radiance = lightColor * attenuation;
+
+            float3 H = normalize(V + L);
+
+            float NdotL = max(dot(N, L), 0.0);
+            float NdotV = max(dot(N, V), 0.0);
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0);
+
+            float shadow = 0.0;
+            if (i < ubo.shadowMapCount) {
+                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
+                shadow = calculateShadow(fragPosLightSpace, i, N, L);
+            }
+
+            float D = DistributionGGX(NdotH, roughness);
+            float G = GeometrySmith(NdotV, NdotL, roughness);
+            float3 F = FresnelSchlick(HdotV, F0);
+
+            float3 numerator = D * G * F;
+            float denominator = 4.0 * NdotV * NdotL + 0.0001;
+            float3 specular = numerator / denominator;
+
+            float3 kS = F;
+            float3 kD = float3(1.0, 1.0, 1.0) - kS;
+            kD *= 1.0 - metallic;
+
             float shadowFactor = 1.0 - shadow;
             Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
         }

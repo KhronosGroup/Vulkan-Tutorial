@@ -41,7 +41,7 @@ static bool LoadKTX2FileToRGBA(const std::string& filePath, std::vector<uint8_t>
 
 // Emissive scaling factor to convert from Blender units to engine units
 #define EMISSIVE_SCALE_FACTOR (1.0f / 638.0f)
-#define LIGHT_SCALE_FACTOR (1.0f / 2.0f) // The sun is way too bright
+#define LIGHT_SCALE_FACTOR (1.0f / 638.0f)
 
 ModelLoader::~ModelLoader() {
     // Destructor implementation
@@ -184,6 +184,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         std::cout << "Blender generator detected, applying blender factor" << std::endl;
         light_scale = EMISSIVE_SCALE_FACTOR;
     }
+    light_scale = EMISSIVE_SCALE_FACTOR;
 
     // Track loaded textures to prevent loading the same texture multiple times
     std::set<std::string> loadedTextures;
@@ -1061,8 +1062,19 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             } else {
                                 std::cerr << "      Failed to load embedded normal texture: " << textureId << std::endl;
                             }
+                        } else if (!image.uri.empty()) {
+                            // Fallback: load KTX2 from a file and upload to memory
+                            std::vector<uint8_t> data; int w=0,h=0,c=0;
+                            std::string filePath = baseTexturePath + image.uri;
+                            if (LoadKTX2FileToRGBA(filePath, data, w, h, c) &&
+                                renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                                materialMesh.normalTexturePath = textureId;
+                                std::cout << "    Loaded normal KTX2 file: " << filePath << std::endl;
+                                } else {
+                                    std::cerr << "    Failed to load normal KTX2 file: " << filePath << std::endl;
+                                }
                         } else {
-                            std::cerr << "      Warning: No decoded bytes for normal texture index " << texIndex << std::endl;
+                            std::cerr << "    Warning: No decoded bytes for normal texture index " << texIndex << std::endl;
                         }
                     }
                 }
@@ -1265,7 +1277,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
     std::cout << "Extracting lights from GLTF model..." << std::endl;
 
     // Extract punctual lights (KHR_lights_punctual extension)
-    if (!ExtractPunctualLights(gltfModel, filename)) {
+    if (ExtractPunctualLights(gltfModel, filename)) {
         std::cerr << "Warning: Failed to extract punctual lights from " << filename << std::endl;
     }
 
@@ -1294,7 +1306,7 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
 
                 // Check if this material has emissive properties (no threshold filtering)
                 float emissiveIntensity = glm::length(material->emissive) * material->emissiveStrength;
-                if (emissiveIntensity >= 0.0f) { // Accept all emissive materials, including zero intensities
+                if (emissiveIntensity >= 0.1f) {
                     // Calculate the center position of the emissive surface
                     glm::vec3 center(0.0f);
                     if (!materialMesh.vertices.empty()) {
@@ -1315,18 +1327,13 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
                         avgNormal = glm::vec3(0.0f, -1.0f, 0.0f); // Default downward direction
                     }
 
-                    // CRITICAL FIX: Offset the light position away from the surface
-                    // This allows the emissive light to properly illuminate the surface from outside
-                    float offsetDistance = 0.5f; // Offset distance from surface
-                    glm::vec3 lightPosition = center + avgNormal * offsetDistance;
-
                     // Create an emissive light source
                     ExtractedLight emissiveLight;
                     emissiveLight.type = ExtractedLight::Type::Emissive;
-                    emissiveLight.position = lightPosition; // Use the offset position
+                    emissiveLight.position = center;
                     emissiveLight.color = material->emissive;
                     emissiveLight.intensity = material->emissiveStrength;
-                    emissiveLight.range = 10.0f; // Default range for emissive lights
+                    emissiveLight.range = 1.0f; // Default range for emissive lights
                     emissiveLight.sourceMaterial = material->GetName();
                     emissiveLight.direction = avgNormal;
 
@@ -1485,4 +1492,3 @@ bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const 
     std::cout << "  Extracted " << lights.size() << " total lights from model" << std::endl;
     return lights.empty();
 }
-

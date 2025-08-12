@@ -55,7 +55,7 @@ To build, you may use Visual Studio (set `38_ray_tracing` as start-up project) o
 
 [,shell]
 ----
- cmake --build build --target 38_ray_tracing --parallel && start .\build\38_ray_tracing\Debug\38_ray_tracing.exe -wo .\build\38_ray_tracing\
+ cmake --build build --target 38_ray_tracing --parallel; start .\build\38_ray_tracing\Debug\38_ray_tracing.exe -wo .\build\38_ray_tracing\
 ----
 
 The Slang shader does require you to fill in the gaps, but if you get stuck, you can refer to the provided reference solution:
@@ -900,14 +900,11 @@ image::../images/38_TASK04_nsight_capture.png[]
 Similar to RenderDoc, you can inspect the events and find the acceleration structure build commands, which will then take us to the acceleration structure visualization tool:
 
 . Use the search function in the Event browser to filter and find the `draw` calls.
-. Select any of the draw calls.
-. Use the API Inspector to find the resources bound to our fragment shader (`FS`).
-. Select the acceleration structure (this will be our TLAS), which opens the Object Browser tab.
-. In the Object Browser, click on "Open in Ray Tracing Inspector".
+. Select any of the draw calls, which opens the API Inspector.
+. Select `FS` to find the resources bound to our fragment shader.
+. Click on the acceleration structure binding (this will be our TLAS), which opens the "Ray Tracing Inspector".
 
 image::../images/38_TASK04_nsight_main.png[]
-
-image::../images/38_TASK05_nsight_object.png[]
 
 In the new window, you can see the TLAS and its instances:
 

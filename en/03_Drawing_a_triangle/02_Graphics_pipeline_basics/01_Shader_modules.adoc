@@ -326,7 +326,7 @@ CMake function:
 [,cmake]
 ----
 function (add_slang_shader_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "SOURCES" "" ${ARGN})
+  cmake_parse_arguments ("SHADER" "" "" "SOURCES" ${ARGN})
   set (SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shaders)
   set (ENTRY_POINTS -entry vertMain -entry fragMain)
   add_custom_command (

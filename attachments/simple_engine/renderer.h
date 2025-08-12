@@ -8,6 +8,7 @@
 #include <optional>
 #include <unordered_map>
 #include <mutex>
+#include <algorithm>
 
 #include "platform.h"
 #include "entity.h"
@@ -67,13 +68,13 @@ struct UniformBufferObject {
     alignas(4) float prefilteredCubeMipLevels;
     alignas(4) float scaleIBLAmbient;
     alignas(4) int lightCount;                 // Number of active lights (dynamic)
-    alignas(4) int shadowMapCount;             // Number of active shadow maps (dynamic)
-    alignas(4) float shadowBias;               // Shadow bias to prevent shadow acne
+    alignas(4) int padding0;                   // Padding for alignment (shadows removed)
     alignas(4) float padding1;                 // Padding for alignment
+    alignas(4) float padding2;                 // Padding for alignment
 
     // Additional padding to ensure the structure size is aligned to 64 bytes (device nonCoherentAtomSize)
-    // Current size: 3*64 + 16 + 8*4 = 240 bytes, pad to 256 bytes (multiple of 64)
-    alignas(4) float padding2[4];              // Add 16 more bytes to reach 256 bytes total
+    // Adjusted padding to maintain 256 bytes total size
+    alignas(4) float padding3[2];              // Add remaining bytes to reach 256 bytes total
 };
 
 
@@ -161,6 +162,16 @@ public:
      * @return True if the renderer is initialized, false otherwise.
      */
     bool IsInitialized() const { return initialized; }
+
+    /**
+     * @brief Set sun position slider value in [0,1]. 0 and 1 = night, 0.5 = noon.
+     */
+    void SetSunPosition(float s) { sunPosition = std::clamp(s, 0.0f, 1.0f); }
+
+    /**
+     * @brief Get sun position slider value.
+     */
+    float GetSunPosition() const { return sunPosition; }
 
 
     /**
@@ -348,21 +359,6 @@ public:
     }
 
     /**
-     * @brief Enable or disable shadow rendering.
-     * @param enabled True to enable shadows, false to disable.
-     * @note Shadows should be pre-computed and cached during model loading for optimal performance.
-     *       Toggling this flag should only affect shader uniform values, not trigger recomputation.
-     */
-    void SetShadowsEnabled(bool enabled) {
-        // Only update if the value actually changed to avoid unnecessary uniform buffer updates
-        if (this->shadowsEnabled != enabled) {
-            this->shadowsEnabled = enabled;
-            // TODO: Update uniform buffer with shadow enable/disable flag
-            // Shadow maps should remain cached and not be recomputed
-        }
-    }
-
-    /**
      * @brief Create or resize light storage buffers to accommodate the given number of lights.
      * @param lightCount The number of lights to accommodate.
      * @return True if successful, false otherwise.
@@ -417,7 +413,9 @@ private:
     // PBR rendering parameters
     float gamma = 2.2f;     // Gamma correction value
     float exposure = 3.0f;  // HDR exposure value (higher for emissive lighting)
-    bool shadowsEnabled = true;  // Shadow rendering enabled by default
+
+    // Sun control (UI-driven)
+    float sunPosition = 0.5f;    // 0..1, extremes are night, 0.5 is noon
 
     // Vulkan RAII context
     vk::raii::Context context;
@@ -519,25 +517,8 @@ private:
     // Default texture resources (used when no texture is provided)
     TextureResources defaultTextureResources;
 
-    // Shadow mapping resources
-    struct ShadowMapResources {
-        vk::raii::Image shadowMapImage = nullptr;
-        std::unique_ptr<MemoryPool::Allocation> shadowMapImageAllocation = nullptr;
-        vk::raii::ImageView shadowMapImageView = nullptr;
-        vk::raii::Sampler shadowMapSampler = nullptr;
-        vk::raii::Framebuffer shadowMapFramebuffer = nullptr;
-        vk::raii::RenderPass shadowMapRenderPass = nullptr;
-        uint32_t shadowMapSize = 2048; // Default shadow map resolution
-    };
-    std::vector<ShadowMapResources> shadowMaps; // One shadow map per light
-
-    // Shadow mapping constants
-    static constexpr uint32_t MAX_SHADOW_MAPS = 16; // Descriptors/array size remains 16
-    static constexpr uint32_t DEFAULT_SHADOW_MAP_SIZE = 2048;
-
     // Performance clamps (to reduce per-frame cost)
-    static constexpr uint32_t MAX_ACTIVE_LIGHTS = 32;      // Limit the number of lights processed per frame
-    static constexpr uint32_t MAX_SHADOW_MAPS_USED = 4;    // Limit the number of shadows sampled per frame
+    static constexpr uint32_t MAX_ACTIVE_LIGHTS = 1024;      // Limit the number of lights processed per frame
 
     // Static lights loaded during model initialization
     std::vector<ExtractedLight> staticLights;
@@ -627,12 +608,6 @@ private:
     bool createCommandPool();
 
     // Shadow mapping methods
-    bool createShadowMaps();
-    bool createShadowMapRenderPass();
-    bool createShadowMapFramebuffers();
-    bool createShadowMapDescriptorSetLayout();
-    void renderShadowMaps(const std::vector<Entity*>& entities, const std::vector<ExtractedLight>& lights);
-    void updateShadowMapUniforms(uint32_t lightIndex, const ExtractedLight& light);
     bool createComputeCommandPool();
     bool createDepthResources();
     bool createTextureImage(const std::string& texturePath, TextureResources& resources);

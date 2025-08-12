@@ -169,20 +169,26 @@ void ImGuiSystem::NewFrame() {
             std::cout << "Exposure reset to: " << exposure << std::endl;
         }
 
-        // Shadow toggle
-        static bool shadowsEnabled = true; // Default shadows on
-        if (ImGui::Checkbox("Enable Shadows", &shadowsEnabled)) {
-            // Update shadows in renderer
-            if (renderer) {
-                renderer->SetShadowsEnabled(shadowsEnabled);
-            }
-            std::cout << "Shadows " << (shadowsEnabled ? "enabled" : "disabled") << std::endl;
-        }
-
         ImGui::Text("Tip: Adjust gamma if scene looks too dark/bright");
         ImGui::Text("Tip: Adjust exposure if scene looks washed out");
     } else {
         ImGui::Text("Note: Quality controls affect BRDF rendering only");
+    }
+
+    ImGui::Separator();
+
+    // Sun position control (punctual light in GLTF)
+    ImGui::Text("Sun Position in Sky:");
+    if (renderer) {
+        float sun = renderer->GetSunPosition();
+        if (ImGui::SliderFloat("Sun Position", &sun, 0.0f, 1.0f, "%.2f")) {
+            renderer->SetSunPosition(sun);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Noon")) { sun = 0.5f; renderer->SetSunPosition(sun); }
+        ImGui::SameLine();
+        if (ImGui::Button("Night")) { sun = 0.0f; renderer->SetSunPosition(sun); }
+        ImGui::Text("Tip: 0/1 = Night, 0.5 = Noon. Warmer tint near horizon simulates evening.");
     }
 
     ImGui::Separator();

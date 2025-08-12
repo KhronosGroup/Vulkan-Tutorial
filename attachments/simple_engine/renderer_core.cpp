@@ -162,29 +162,6 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
-    // Create shadow maps for shadow mapping
-    if (!createShadowMaps()) {
-        std::cerr << "Failed to create shadow maps" << std::endl;
-        return false;
-    }
-
-    // Create a shadow map render pass
-    if (!createShadowMapRenderPass()) {
-        std::cerr << "Failed to create shadow map render pass" << std::endl;
-        return false;
-    }
-
-    // Create shadow map framebuffers
-    if (!createShadowMapFramebuffers()) {
-        std::cerr << "Failed to create shadow map framebuffers" << std::endl;
-        return false;
-    }
-
-    // Create a shadow map descriptor set layout
-    if (!createShadowMapDescriptorSetLayout()) {
-        std::cerr << "Failed to create shadow map descriptor set layout" << std::endl;
-        return false;
-    }
 
     // Create command buffers
     if (!createCommandBuffers()) {

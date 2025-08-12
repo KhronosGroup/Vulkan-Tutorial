@@ -1064,10 +1064,9 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             };
 
             if (usePBR) {
-                // PBR pipeline: Create 8 descriptor writes (UBO + 5 textures + shadow map array + light storage buffer)
-                std::array<vk::WriteDescriptorSet, 8> descriptorWrites;
+                // PBR pipeline: Create 7 descriptor writes (UBO + 5 textures + light storage buffer)
+                std::array<vk::WriteDescriptorSet, 7> descriptorWrites;
                 std::array<vk::DescriptorImageInfo, 5> imageInfos;
-                std::array<vk::DescriptorImageInfo, 16> shadowMapInfos;
 
                 // Uniform buffer descriptor writes (binding 0)
                 descriptorWrites[0] = vk::WriteDescriptorSet{
@@ -1230,36 +1229,9 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                     };
                 }
 
-                // Create shadow map image infos for binding 6
-                for (int j = 0; j < 16; j++) {
-                    if (j < static_cast<int>(shadowMaps.size()) && *shadowMaps[j].shadowMapImageView) {
-                        // Use actual shadow map
-                        shadowMapInfos[j] = vk::DescriptorImageInfo{
-                            .sampler = *shadowMaps[j].shadowMapSampler,
-                            .imageView = *shadowMaps[j].shadowMapImageView,
-                            .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal
-                        };
-                    } else {
-                        // Use default texture as placeholder for unused shadow map slots
-                        shadowMapInfos[j] = vk::DescriptorImageInfo{
-                            .sampler = *defaultTextureResources.textureSampler,
-                            .imageView = *defaultTextureResources.textureImageView,
-                            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-                        };
-                    }
-                }
+                // No shadow maps: binding 6 is now the light storage buffer
 
-                // Create descriptor write for shadow map array (binding 6)
-                descriptorWrites[6] = vk::WriteDescriptorSet{
-                    .dstSet = targetDescriptorSets[i],
-                    .dstBinding = 6,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 16, // Array of 16 shadow maps
-                    .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                    .pImageInfo = shadowMapInfos.data()
-                };
-
-                // Create descriptor write for light storage buffer (binding 7)
+                // Create descriptor write for light storage buffer (binding 6)
                 // Check if light storage buffers are initialized
                 if (i < lightStorageBuffers.size() && *lightStorageBuffers[i].buffer) {
                     vk::DescriptorBufferInfo lightBufferInfo{
@@ -1268,9 +1240,9 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                         .range = VK_WHOLE_SIZE
                     };
 
-                    descriptorWrites[7] = vk::WriteDescriptorSet{
+                    descriptorWrites[6] = vk::WriteDescriptorSet{
                         .dstSet = targetDescriptorSets[i],
-                        .dstBinding = 7,
+                        .dstBinding = 6,
                         .dstArrayElement = 0,
                         .descriptorCount = 1,
                         .descriptorType = vk::DescriptorType::eStorageBuffer,
@@ -1291,9 +1263,9 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                         .range = VK_WHOLE_SIZE
                     };
 
-                    descriptorWrites[7] = vk::WriteDescriptorSet{
+                    descriptorWrites[6] = vk::WriteDescriptorSet{
                         .dstSet = targetDescriptorSets[i],
-                        .dstBinding = 7,
+                        .dstBinding = 6,
                         .dstArrayElement = 0,
                         .descriptorCount = 1,
                         .descriptorType = vk::DescriptorType::eStorageBuffer,
@@ -1301,7 +1273,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                     };
                 }
 
-                // Update descriptor sets with all 8 descriptors
+                // Update descriptor sets with all 7 descriptors
                 device.updateDescriptorSets(descriptorWrites, {});
             } else {
                 // Basic pipeline: Create 2 descriptor writes (UBO + 1 texture)
@@ -1875,7 +1847,7 @@ void Renderer::updateAllDescriptorSetsWithNewLightBuffers() {
 
                         vk::WriteDescriptorSet descriptorWrite{
                             .dstSet = *resources.pbrDescriptorSets[i],
-                            .dstBinding = 7,
+                            .dstBinding = 6,
                             .dstArrayElement = 0,
                             .descriptorCount = 1,
                             .descriptorType = vk::DescriptorType::eStorageBuffer,

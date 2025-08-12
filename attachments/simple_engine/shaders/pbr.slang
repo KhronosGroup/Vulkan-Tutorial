@@ -22,14 +22,16 @@ struct VSOutput {
 };
 
 // Light data structure for storage buffer
+// Explicit offsets ensure exact match with CPU-side layout
 struct LightData {
-    float4 position;      // Light position (w component 1 for directional)
-    float4 color;         // Light color and intensity
-    float4x4 lightSpaceMatrix; // Light space matrix for shadow mapping
-    int lightType;        // 0=Point, 1=Directional, 2=Spot, 3=Emissive
-    float range;          // Light range
-    float innerConeAngle; // For spot lights
-    float outerConeAngle; // For spot lights
+    [[vk::offset(0)]]   float4 position;      // Directional: direction (w=0); Point/Spot/Emissive: world position (w=1)
+    [[vk::offset(16)]]  float4 color;         // Light color and intensity
+    // Match GLM column-major matrices in CPU
+    [[vk::offset(32)]]  column_major float4x4 lightSpaceMatrix; // Light space matrix for shadow mapping
+    [[vk::offset(96)]]  int   lightType;     // 0=Point, 1=Directional, 2=Spot, 3=Emissive
+    [[vk::offset(100)]] float range;         // Light range
+    [[vk::offset(104)]] float innerConeAngle;// For spot lights
+    [[vk::offset(108)]] float outerConeAngle;// For spot lights
 };
 
 // Uniform buffer (now without fixed light arrays)
@@ -43,9 +45,9 @@ struct UniformBufferObject {
     float prefilteredCubeMipLevels;
     float scaleIBLAmbient;
     int lightCount;             // Number of active lights (dynamic)
-    int shadowMapCount;         // Number of active shadow maps (dynamic)
-    float shadowBias;           // Shadow bias to prevent shadow acne
-    float padding;              // Padding for alignment
+    int padding0;               // Padding for alignment
+    float padding1;             // Padding for alignment
+    float padding2;             // Padding for alignment
 };
 
 // Push constants for material properties
@@ -74,8 +76,7 @@ static const float PI = 3.14159265359;
 [[vk::binding(3, 0)]] Sampler2D normalMap;
 [[vk::binding(4, 0)]] Sampler2D occlusionMap;
 [[vk::binding(5, 0)]] Sampler2D emissiveMap;
-[[vk::binding(6, 0)]] Sampler2D shadowMaps[16]; // Array of individual shadow maps for lights
-[[vk::binding(7, 0)]] StructuredBuffer<LightData> lightBuffer; // Dynamic light storage buffer
+[[vk::binding(6, 0)]] StructuredBuffer<LightData> lightBuffer; // Dynamic light storage buffer
 
 [[vk::push_constant]] PushConstants material;
 
@@ -104,49 +105,6 @@ float GeometrySmith(float NdotV, float NdotL, float roughness) {
 
 float3 FresnelSchlick(float cosTheta, float3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
-}
-
-// Shadow mapping functions
-float calculateShadow(float4 fragPosLightSpace, int shadowMapIndex, float3 normal, float3 lightDir) {
-    // Add bounds checking to prevent accessing invalid shadow map indices
-    if (shadowMapIndex < 0 || shadowMapIndex >= 16) {
-        return 0.0; // No shadow for invalid indices
-    }
-
-    // Perform perspective divide
-    float3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-
-    // Transform to [0,1] range
-    projCoords = projCoords * 0.5 + 0.5;
-
-    // Check if fragment is outside light's frustum
-    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 ||
-        projCoords.y < 0.0 || projCoords.y > 1.0) {
-        return 0.0; // No shadow outside frustum
-    }
-
-    // Calculate bias to prevent shadow acne
-    float bias = max(ubo.shadowBias * (1.0 - dot(normal, lightDir)), ubo.shadowBias * 0.1);
-
-    // Get closest depth value from light's perspective
-    float closestDepth = shadowMaps[shadowMapIndex].Sample(projCoords.xy).r;
-
-    // Get depth of current fragment from light's perspective
-    float currentDepth = projCoords.z;
-
-    // PCF (Percentage Closer Filtering) for smooth shadows
-    float shadow = 0.0;
-    float2 texelSize = 1.0 / float2(2048.0, 2048.0); // Shadow map resolution
-
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
-            float pcfDepth = shadowMaps[shadowMapIndex].Sample(projCoords.xy + float2(x, y) * texelSize).r;
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
-        }
-    }
-    shadow /= 9.0; // Average the 9 samples
-
-    return shadow;
 }
 
 // Vertex shader entry point
@@ -217,15 +175,14 @@ float4 PSMain(VSOutput input) : SV_TARGET
     // Calculate lighting for each light (dynamic count - no limit)
     for (int i = 0; i < ubo.lightCount; i++) {
         LightData light = lightBuffer[i];
-        float3 lightPos = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0)).xyz;
-        float3 lightVec = light.position.xyz;
+        float3 lightVec = light.position.xyz; // w=0 indicates direction (directional), w=1 indicates position (point/spot/emissive)
         float3 lightColor = light.color.rgb;
 
         // Handle emissive lights differently
         if (light.lightType == 3) { // Emissive light
             // Treat emissive like a positional contributor from its stored position
-            float3 L = normalize(lightPos - input.WorldPos);
-            float distance = length(lightPos - input.WorldPos);
+          float3 L = normalize(lightVec - input.WorldPos);
+            float distance = length(lightVec - input.WorldPos);
             float attenuation = 1.0 / (distance * distance);
             float3 radiance = lightColor * attenuation;
 
@@ -235,12 +192,6 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float NdotV = max(dot(N, V), 0.0);
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
-
-            float shadow = 0.0;
-            if (i < ubo.shadowMapCount) {
-                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
-                shadow = calculateShadow(fragPosLightSpace, i, N, L);
-            }
 
             float D = DistributionGGX(NdotH, roughness);
             float G = GeometrySmith(NdotV, NdotL, roughness);
@@ -254,8 +205,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float3 kD = float3(1.0, 1.0, 1.0) - kS;
             kD *= 1.0 - metallic;
 
-            float shadowFactor = 1.0 - shadow;
-            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
 
         } else if (light.lightType == 1) { // Directional light
             // For directional lights, position field stores direction; use no distance attenuation
@@ -269,12 +219,6 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
 
-            float shadow = 0.0;
-            if (i < ubo.shadowMapCount) {
-                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
-                shadow = calculateShadow(fragPosLightSpace, i, N, L);
-            }
-
             float D = DistributionGGX(NdotH, roughness);
             float G = GeometrySmith(NdotV, NdotL, roughness);
             float3 F = FresnelSchlick(HdotV, F0);
@@ -287,12 +231,11 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float3 kD = float3(1.0, 1.0, 1.0) - kS;
             kD *= 1.0 - metallic;
 
-            float shadowFactor = 1.0 - shadow;
-            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
 
         } else { // Point/Spot lights
-            float3 L = normalize(lightPos - input.WorldPos);
-            float distance = length(lightPos - input.WorldPos);
+            float3 L = normalize(lightVec - input.WorldPos);
+            float distance = length(lightVec - input.WorldPos);
             float attenuation = 1.0 / (distance * distance);
             float3 radiance = lightColor * attenuation;
 
@@ -303,12 +246,6 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
 
-            float shadow = 0.0;
-            if (i < ubo.shadowMapCount) {
-                float4 fragPosLightSpace = mul(light.lightSpaceMatrix, float4(input.WorldPos, 1.0));
-                shadow = calculateShadow(fragPosLightSpace, i, N, L);
-            }
-
             float D = DistributionGGX(NdotH, roughness);
             float G = GeometrySmith(NdotV, NdotL, roughness);
             float3 F = FresnelSchlick(HdotV, F0);
@@ -321,8 +258,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float3 kD = float3(1.0, 1.0, 1.0) - kS;
             kD *= 1.0 - metallic;
 
-            float shadowFactor = 1.0 - shadow;
-            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL * shadowFactor;
+            Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
         }
     }
 

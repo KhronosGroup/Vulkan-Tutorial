@@ -215,7 +215,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 gltfMaterial.emissiveFactor[0],
                 gltfMaterial.emissiveFactor[1],
                 gltfMaterial.emissiveFactor[2]
-            ) * light_scale;
+            );
         }
 
         // Parse KHR_materials_emissive_strength extension
@@ -1327,21 +1327,46 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
                         avgNormal = glm::vec3(0.0f, -1.0f, 0.0f); // Default downward direction
                     }
 
-                    // Create an emissive light source
-                    ExtractedLight emissiveLight;
-                    emissiveLight.type = ExtractedLight::Type::Emissive;
-                    emissiveLight.position = center;
-                    emissiveLight.color = material->emissive;
-                    emissiveLight.intensity = material->emissiveStrength;
-                    emissiveLight.range = 1.0f; // Default range for emissive lights
-                    emissiveLight.sourceMaterial = material->GetName();
-                    emissiveLight.direction = avgNormal;
+                    // Create emissive light(s) transformed by each instance's model matrix
+                    if (!materialMesh.instances.empty()) {
+                        for (const auto& inst : materialMesh.instances) {
+                            glm::mat4 M = inst.getModelMatrix();
+                            glm::vec3 worldCenter = glm::vec3(M * glm::vec4(center, 1.0f));
+                            glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(M)));
+                            glm::vec3 worldNormal = glm::normalize(normalMat * avgNormal);
 
-                    lights.push_back(emissiveLight);
+                            ExtractedLight emissiveLight;
+                            emissiveLight.type = ExtractedLight::Type::Emissive;
+                            emissiveLight.position = worldCenter;
+                            emissiveLight.color = material->emissive;
+                            emissiveLight.intensity = material->emissiveStrength;
+                            emissiveLight.range = 1.0f; // Default range for emissive lights
+                            emissiveLight.sourceMaterial = material->GetName();
+                            emissiveLight.direction = worldNormal;
 
-                    std::cout << "Created emissive light from material '" << material->GetName()
-                              << "' at position (" << center.x << ", " << center.y << ", " << center.z
-                              << ") with intensity " << emissiveIntensity << std::endl;
+                            lights.push_back(emissiveLight);
+
+                            std::cout << "Created emissive light from material '" << material->GetName()
+                                      << "' at world position (" << worldCenter.x << ", " << worldCenter.y << ", " << worldCenter.z
+                                      << ") with intensity " << emissiveIntensity << std::endl;
+                        }
+                    } else {
+                        // No explicit instances; use identity transform
+                        ExtractedLight emissiveLight;
+                        emissiveLight.type = ExtractedLight::Type::Emissive;
+                        emissiveLight.position = center;
+                        emissiveLight.color = material->emissive;
+                        emissiveLight.intensity = material->emissiveStrength;
+                        emissiveLight.range = 1.0f; // Default range for emissive lights
+                        emissiveLight.sourceMaterial = material->GetName();
+                        emissiveLight.direction = avgNormal;
+
+                        lights.push_back(emissiveLight);
+
+                        std::cout << "Created emissive light from material '" << material->GetName()
+                                  << "' at position (" << center.x << ", " << center.y << ", " << center.z
+                                  << ") with intensity " << emissiveIntensity << std::endl;
+                    }
                 }
             }
         }
@@ -1446,35 +1471,90 @@ bool ModelLoader::ExtractPunctualLights(const tinygltf::Model& gltfModel, const 
         std::cout << "  No KHR_lights_punctual extension found" << std::endl;
     }
 
-    // Now find light nodes in the scene to get positions and directions
-    for (const auto& node : gltfModel.nodes) {
+    // Compute world transforms for all nodes in the default scene
+    std::vector<glm::mat4> nodeWorldTransforms(gltfModel.nodes.size(), glm::mat4(1.0f));
+
+    auto calcLocal = [](const tinygltf::Node& n) -> glm::mat4 {
+        // If matrix is provided, use it
+        if (n.matrix.size() == 16) {
+            glm::mat4 m(1.0f);
+            for (int r = 0; r < 4; ++r) {
+                for (int c = 0; c < 4; ++c) {
+                    m[c][r] = static_cast<float>(n.matrix[r * 4 + c]);
+                }
+            }
+            return m;
+        }
+        // Otherwise compose TRS
+        glm::mat4 T(1.0f), R(1.0f), S(1.0f);
+        if (n.translation.size() == 3) {
+            T = glm::translate(glm::mat4(1.0f), glm::vec3(
+                static_cast<float>(n.translation[0]),
+                static_cast<float>(n.translation[1]),
+                static_cast<float>(n.translation[2])));
+        }
+        if (n.rotation.size() == 4) {
+            glm::quat q(
+                static_cast<float>(n.rotation[3]),
+                static_cast<float>(n.rotation[0]),
+                static_cast<float>(n.rotation[1]),
+                static_cast<float>(n.rotation[2]));
+            R = glm::mat4_cast(q);
+        }
+        if (n.scale.size() == 3) {
+            S = glm::scale(glm::mat4(1.0f), glm::vec3(
+                static_cast<float>(n.scale[0]),
+                static_cast<float>(n.scale[1]),
+                static_cast<float>(n.scale[2])));
+        }
+        return T * R * S;
+    };
+
+    std::function<void(int, const glm::mat4&)> traverseNode = [&](int nodeIndex, const glm::mat4& parent) {
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(gltfModel.nodes.size())) return;
+        const tinygltf::Node& n = gltfModel.nodes[nodeIndex];
+        glm::mat4 local = calcLocal(n);
+        glm::mat4 world = parent * local;
+        nodeWorldTransforms[nodeIndex] = world;
+        for (int child : n.children) {
+            traverseNode(child, world);
+        }
+    };
+
+    if (!gltfModel.scenes.empty()) {
+        int sceneIndex = gltfModel.defaultScene >= 0 ? gltfModel.defaultScene : 0;
+        if (sceneIndex < static_cast<int>(gltfModel.scenes.size())) {
+            const tinygltf::Scene& scene = gltfModel.scenes[sceneIndex];
+            for (int root : scene.nodes) {
+                traverseNode(root, glm::mat4(1.0f));
+            }
+        }
+    } else {
+        // Fallback: traverse all nodes as roots
+        for (int i = 0; i < static_cast<int>(gltfModel.nodes.size()); ++i) {
+            traverseNode(i, glm::mat4(1.0f));
+        }
+    }
+
+    // Now assign positions and directions using world transforms
+    for (size_t nodeIndex = 0; nodeIndex < gltfModel.nodes.size(); ++nodeIndex) {
+        const auto& node = gltfModel.nodes[nodeIndex];
         if (node.extensions.contains("KHR_lights_punctual")) {
             const tinygltf::Value& nodeExtension = node.extensions.at("KHR_lights_punctual");
             if (nodeExtension.Has("light") && nodeExtension.Get("light").IsInt()) {
                 int lightIndex = nodeExtension.Get("light").Get<int>();
                 if (lightIndex >= 0 && lightIndex < static_cast<int>(lights.size())) {
-                    // Extract position from node transform
-                    if (node.translation.size() >= 3) {
-                        lights[lightIndex].position = glm::vec3(
-                            static_cast<float>(node.translation[0]),
-                            static_cast<float>(node.translation[1]),
-                            static_cast<float>(node.translation[2])
-                        );
-                    }
+                    const glm::mat4& W = nodeWorldTransforms[nodeIndex];
+                    // Position from world transform origin
+                    glm::vec3 pos = glm::vec3(W * glm::vec4(0, 0, 0, 1));
+                    lights[lightIndex].position = pos;
 
-                    // Extract direction from node rotation (for directional and spotlights)
-                    if (node.rotation.size() >= 4 &&
-                        (lights[lightIndex].type == ExtractedLight::Type::Directional ||
-                         lights[lightIndex].type == ExtractedLight::Type::Spot)) {
-                        // Convert quaternion to a direction vector
-                        glm::quat rotation(
-                            static_cast<float>(node.rotation[3]), // w
-                            static_cast<float>(node.rotation[0]), // x
-                            static_cast<float>(node.rotation[1]), // y
-                            static_cast<float>(node.rotation[2])  // z
-                        );
-                        // Default forward direction in glTF is -Z
-                        lights[lightIndex].direction = rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+                    // Direction for directional/spot: transform -Z
+                    if (lights[lightIndex].type == ExtractedLight::Type::Directional ||
+                        lights[lightIndex].type == ExtractedLight::Type::Spot) {
+                        glm::mat3 rot = glm::mat3(W);
+                        glm::vec3 dir = glm::normalize(rot * glm::vec3(0.0f, 0.0f, -1.0f));
+                        lights[lightIndex].direction = dir;
                     }
 
                     std::cout << "    Light " << lightIndex << " positioned at ("

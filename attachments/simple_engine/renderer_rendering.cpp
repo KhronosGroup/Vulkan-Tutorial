@@ -8,6 +8,8 @@
 #include <cstring>
 #include <iostream>
 #include <ranges>
+#include <cmath>
+#include <ctime>
 
 // This file contains rendering-related methods from the Renderer class
 
@@ -395,23 +397,98 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity
             lightsSubset.push_back(extractedLights[i]);
         }
 
+        // Apply UI-driven sun control to the first directional light with a Paris-based solar path
+        {
+            // Find first directional light to treat as the Sun
+            size_t sunIdx = SIZE_MAX;
+            for (size_t i = 0; i < lightsSubset.size(); ++i) {
+                if (lightsSubset[i].type == ExtractedLight::Type::Directional) { sunIdx = i; break; }
+            }
+            if (sunIdx != SIZE_MAX) {
+                auto &sun = lightsSubset[sunIdx];
+                float s = std::clamp(sunPosition, 0.0f, 1.0f);
+
+                // Paris latitude (degrees)
+                const float latDeg = 48.8566f;
+                const float lat = latDeg * 0.01745329251994329577f; // radians
+
+                // Get current day-of-year (0..365) for declination
+                int yday = 172; // Default to around June solstice if time is unavailable
+                std::time_t now = std::time(nullptr);
+                if (now != (std::time_t)(-1)) {
+                    std::tm localTm{};
+                    #ifdef _WIN32
+                        localtime_s(&localTm, &now);
+                    #else
+                        std::tm* ptm = std::localtime(&now);
+                        if (ptm) localTm = *ptm;
+                    #endif
+                    if (localTm.tm_yday >= 0) yday = localTm.tm_yday; // 0-based
+                }
+
+                // Solar declination (degrees) using Cooper's approximation
+                // δ = 23.45° * sin(360° * (284 + n) / 365)
+                float declDeg = 23.45f * std::sin((6.283185307179586f) * (284.0f + (float)(yday + 1)) / 365.0f);
+                float decl = declDeg * 0.01745329251994329577f; // radians
+
+                // Map slider to local solar time (0..24h), hour angle H in radians (0 at noon)
+                float hours = s * 24.0f;
+                float Hdeg = (hours - 12.0f) * 15.0f; // degrees per hour
+                float H = Hdeg * 0.01745329251994329577f; // radians
+
+                // Solar altitude (elevation) from spherical astronomy
+                // sin(alt) = sin φ sin δ + cos φ cos δ cos H
+                float sinAlt = std::sin(lat) * std::sin(decl) + std::cos(lat) * std::cos(decl) * std::cos(H);
+                sinAlt = std::clamp(sinAlt, -1.0f, 1.0f);
+                float alt = std::asin(sinAlt); // radians
+
+                // Build horizontal azimuth basis from original sun direction (treat original as local solar noon azimuth)
+                glm::vec3 origDir = sun.direction;
+                glm::vec2 baseHoriz2 = glm::normalize(glm::vec2(origDir.x, origDir.z));
+                if (!std::isfinite(baseHoriz2.x)) { baseHoriz2 = glm::vec2(0.0f, -1.0f); }
+
+                // Rotate base horizontal around Y by hour angle H (east-west movement). Positive H -> afternoon (west)
+                float cosH = std::cos(H);
+                float sinH = std::sin(H);
+                glm::vec2 horizRot2 = glm::normalize(glm::vec2(
+                    baseHoriz2.x * cosH - baseHoriz2.y * sinH,
+                    baseHoriz2.x * sinH + baseHoriz2.y * cosH));
+
+                // Compose final direction from altitude and rotated horizontal
+                float cosAlt = std::cos(alt);
+                float sinAltClamped = std::sin(alt);
+                glm::vec3 newDir = glm::normalize(glm::vec3(horizRot2.x * cosAlt, -sinAltClamped, horizRot2.y * cosAlt));
+                sun.direction = newDir;
+
+                // Intensity scales with daylight (altitude); zero when below horizon
+                float dayFactor = std::max(0.0f, sinAltClamped); // 0..1 roughly
+
+                // Warm tint increases near horizon when sun is above horizon
+                float horizonFactor = 0.0f;
+                if (sinAltClamped > 0.0f) {
+                    // More warmth for low altitude, fade to zero near high noon
+                    float normAlt = std::clamp(alt / (1.57079632679f), 0.0f, 1.0f); // 0 at horizon, 1 at zenith
+                    horizonFactor = 1.0f - normAlt; // 1 near horizon, 0 at zenith
+                }
+                glm::vec3 warm(1.0f, 0.75f, 0.55f);
+                float tintAmount = 0.7f * horizonFactor;
+                sun.color = glm::mix(sun.color, warm, tintAmount);
+
+                // Apply intensity scaling (preserve original magnitude shape)
+                sun.intensity *= dayFactor;
+            }
+        }
+
         // Update the light storage buffer with the subset of light data
         updateLightStorageBuffer(currentImage, lightsSubset);
 
         ubo.lightCount = static_cast<int>(numLights);
-        // Set shadow map count based on shadowsEnabled flag with a tighter cap
-        if (shadowsEnabled) {
-            ubo.shadowMapCount = static_cast<int>(std::min(numLights, size_t(MAX_SHADOW_MAPS_USED)));
-        } else {
-            ubo.shadowMapCount = 0; // Disable shadows when shadowsEnabled is false
-        }
+        // Shadows removed: no shadow maps
     } else {
         ubo.lightCount = 0;
-        ubo.shadowMapCount = 0;
     }
 
-    // Set shadow mapping parameters
-    ubo.shadowBias = 0.005f; // Adjust to prevent shadow acne
+    // Shadows removed: no shadow bias
 
     // Set camera position for PBR calculations
     ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);

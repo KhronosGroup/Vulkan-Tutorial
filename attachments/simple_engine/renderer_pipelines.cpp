@@ -95,17 +95,9 @@ bool Renderer::createPBRDescriptorSetLayout() {
                 .stageFlags = vk::ShaderStageFlagBits::eFragment,
                 .pImmutableSamplers = nullptr
             },
-            // Binding 6: Shadow map array
+            // Binding 6: Light storage buffer (shadows removed)
             vk::DescriptorSetLayoutBinding{
                 .binding = 6,
-                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                .descriptorCount = MAX_SHADOW_MAPS, // Array of shadow maps (dynamic count)
-                .stageFlags = vk::ShaderStageFlagBits::eFragment,
-                .pImmutableSamplers = nullptr
-            },
-            // Binding 7: Light storage buffer
-            vk::DescriptorSetLayoutBinding{
-                .binding = 7,
                 .descriptorType = vk::DescriptorType::eStorageBuffer,
                 .descriptorCount = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eFragment,

@@ -148,7 +148,8 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float metallic = metallicRoughness.x * material.metallicFactor;
     float roughness = metallicRoughness.y * material.roughnessFactor;
     float ao = occlusionMap.Sample(uv).r;
-    float3 emissive = emissiveMap.Sample(uv).rgb * material.emissiveFactor * material.emissiveStrength;
+    float3 emissiveTex = (material.emissiveTextureSet < 0) ? float3(1.0, 1.0, 1.0) : emissiveMap.Sample(uv).rgb;
+    float3 emissive = emissiveTex * material.emissiveFactor * material.emissiveStrength;
 
     // Calculate normal in tangent space
     float3 N = normalize(input.Normal);

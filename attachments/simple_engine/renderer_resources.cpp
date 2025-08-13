@@ -1356,6 +1356,7 @@ bool Renderer::preAllocateEntityResources(Entity* entity) {
             return false;
         }
 
+
         // 3. Pre-allocate BOTH basic and PBR descriptor sets
         std::string texturePath = meshComponent->GetTexturePath();
         // Fallback: if legacy texturePath is empty, use PBR baseColor texture

@@ -695,25 +695,10 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
         commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, **currentLayout, 0, {*selectedDescriptorSets[currentFrame]}, {});
 
-        // Define PBR push constants structure matching the shader
-        struct PushConstants {
-            glm::vec4 baseColorFactor;
-            float metallicFactor;
-            float roughnessFactor;
-            int baseColorTextureSet;
-            int physicalDescriptorTextureSet;
-            int normalTextureSet;
-            int occlusionTextureSet;
-            int emissiveTextureSet;
-            float alphaMask;
-            float alphaMaskCutoff;
-            glm::vec3 emissiveFactor;  // Add emissive factor for HDR emissive sources
-            float emissiveStrength;    // KHR_materials_emissive_strength extension
-        };
 
         // Set PBR material properties using push constants
         if (usePBR) {
-            PushConstants pushConstants{};
+            MaterialProperties pushConstants{};
 
             // Try to get material properties for this specific entity
             if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
@@ -758,7 +743,12 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
             pushConstants.physicalDescriptorTextureSet = 0;
             pushConstants.normalTextureSet = 0;
             pushConstants.occlusionTextureSet = 0;
-            pushConstants.emissiveTextureSet = 0;
+            // For emissive: indicate absence with -1 so shader uses factor-only emissive
+            int emissiveSet = -1;
+            if (meshComponent && !meshComponent->GetEmissiveTexturePath().empty()) {
+                emissiveSet = 0;
+            }
+            pushConstants.emissiveTextureSet = emissiveSet;
             pushConstants.alphaMask = 0.0f;
             pushConstants.alphaMaskCutoff = 0.5f;
 
@@ -767,7 +757,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
                 **currentLayout,
                 vk::ShaderStageFlagBits::eFragment,
                 0,
-                vk::ArrayProxy<const uint8_t>(sizeof(PushConstants), reinterpret_cast<const uint8_t*>(&pushConstants))
+                vk::ArrayProxy<const uint8_t>(sizeof(MaterialProperties), reinterpret_cast<const uint8_t*>(&pushConstants))
             );
         }
 

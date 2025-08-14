@@ -411,7 +411,7 @@ To make the acceleration structure available in the shader, we need to add a des
 
 [,c{pp}]
 ----
-// TASK05: The acceleration structure uses binding 1
+// TASK04: The acceleration structure uses binding 1
 std::array global_bindings = {
     vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
     vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eFragment, nullptr),

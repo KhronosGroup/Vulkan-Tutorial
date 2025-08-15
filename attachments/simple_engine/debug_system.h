@@ -195,6 +195,8 @@ public:
      * @param name The name of the measurement.
      */
     void StopMeasurement(const std::string& name) {
+        std::lock_guard<std::mutex> lock(mutex);
+
         auto now = std::chrono::high_resolution_clock::now();
         auto it = measurements.find(name);
 

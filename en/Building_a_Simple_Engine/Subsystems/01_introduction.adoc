@@ -34,6 +34,26 @@ for more than just Graphics in your application.  Our goal with this tutorial
  with the tools necessary to tackle any Vulkan application development and to
   think critically about how your applications can benefit from the GPU.
 
+=== Practical considerations: Don't offload everything to the GPU
+
+While Vulkan compute can deliver impressive speedups, it's not always advisable to offload every subsystem to the GPU—especially on mobile:
+
+* Mobile power and thermals: Many phones and tablets use big.LITTLE CPU clusters and mobile GPUs that are power/thermal constrained. Sustained heavy GPU compute can quickly lead to thermal throttling, causing frame rate drops and inconsistent latency.
+* Scheduling and latency: GPUs excel at throughput, but certain tasks (tight control loops, small pointer-heavy updates) can prefer CPU execution due to launch overheads and scheduling latency.
+* Determinism and debugging: For gameplay-critical physics, determinism and step-by-step debugging on the CPU can be advantageous. Consider keeping broad-phase or whole-physics on the CPU on mobile, or use a hybrid approach (e.g., CPU broad-phase + GPU narrow-phase).
+* Memory bandwidth: On integrated architectures, GPU/CPU share memory bandwidth. Aggressively moving everything to GPU can contend with graphics and hurt frame time and battery life.
+
+Audio-specific guidance:
+
+* Prefer platform audio APIs and any available dedicated audio hardware/DSP when feasible (for mixing, resampling, effects). This path often provides lower latency, better power characteristics, and more predictable behavior across devices.
+* HRTF support in dedicated hardware is not widespread in the wild. Many consumer devices rely on software HRTF in the OS or application. Evaluate your needs: a software HRTF pipeline may be perfectly adequate; reserving GPU compute strictly for spatial audio is rarely necessary unless you have many sources or complex effects.
+
+Practical recommendations:
+
+* Profile first: Establish CPU and GPU baselines before moving work.
+* Favor hybrid designs: Offload the clearly parallel, heavy kernels (e.g., batched constraint solves, FFT/IR convolution) while keeping control/coordination on CPU.
+* Plan for mobility: Provide runtime toggles to switch between CPU/GPU paths based on device class, thermal state, and power mode.
+
 === Prerequisites
 
 This chapter builds extensively on the engine architecture and Vulkan foundations established in previous chapters. The modular design patterns we've implemented become crucial when adding subsystems that need to integrate cleanly with existing rendering, camera, and resource management systems.

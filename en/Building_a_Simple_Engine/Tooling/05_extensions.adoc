@@ -139,7 +139,7 @@ While VK_EXT_robustness2 is the focus of this section, there are other extension
 
 ==== VK_KHR_buffer_device_address
 
-This extension allows you to use physical device addresses for buffers, which can be useful for advanced techniques. It includes robustness features for handling invalid addresses:
+This extension allows you to use physical device addresses for buffers, which can be useful for advanced techniques. It includes robustness features for handling invalid addresses (when combined with robust access features like VK_EXT_robustness2 or core robustBufferAccess):
 
 [source,cpp]
 ----
@@ -148,19 +148,28 @@ void enable_buffer_device_address(vk::DeviceCreateInfo& device_create_info,
     enabled_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
     device_create_info.setPEnabledExtensionNames(enabled_extensions);
 
+    // Enable Buffer Device Address features
     vk::PhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features{};
     buffer_device_address_features.setBufferDeviceAddress(VK_TRUE);
     buffer_device_address_features.setBufferDeviceAddressCaptureReplay(VK_TRUE);
 
-    // Add to the pNext chain
+    // Optionally chain robustness features to ensure invalid addresses read as zero and writes are discarded
+    // (If you've already enabled VK_EXT_robustness2 elsewhere, this is not required here.)
+    vk::PhysicalDeviceRobustness2FeaturesEXT robustness2_features{};
+    robustness2_features.setRobustBufferAccess2(VK_TRUE);
+    robustness2_features.setRobustImageAccess2(VK_TRUE);
+    robustness2_features.setNullDescriptor(VK_TRUE);
+
+    // Chain features: robustness2 -> BDA -> existing pNext
+    robustness2_features.pNext = &buffer_device_address_features;
     buffer_device_address_features.pNext = device_create_info.pNext;
-    device_create_info.pNext = &buffer_device_address_features;
+    device_create_info.pNext = &robustness2_features;
 }
 ----
 
 ==== VK_EXT_descriptor_indexing
 
-This extension allows for more flexible descriptor indexing, including robustness features for handling out-of-bounds descriptor array accesses:
+This extension allows for more flexible descriptor indexing, including robustness-related capabilities such as tolerating out-of-bounds indices (reads become zero when robust access is enabled), partially bound descriptor sets, and update-after-bind. To actually make use of these behaviors you need to enable both device features and descriptor set layout binding flags:
 
 [source,cpp]
 ----
@@ -170,16 +179,77 @@ void enable_descriptor_indexing(vk::DeviceCreateInfo& device_create_info,
     device_create_info.setPEnabledExtensionNames(enabled_extensions);
 
     vk::PhysicalDeviceDescriptorIndexingFeatures indexing_features{};
+    // Shader indexing capabilities (commonly needed alongside robustness)
+    indexing_features.setShaderSampledImageArrayNonUniformIndexing(VK_TRUE);
+    indexing_features.setShaderStorageBufferArrayNonUniformIndexing(VK_TRUE);
+
+    // Robustness-enabling behaviors
     indexing_features.setRuntimeDescriptorArray(VK_TRUE);
     indexing_features.setDescriptorBindingPartiallyBound(VK_TRUE);
     indexing_features.setDescriptorBindingSampledImageUpdateAfterBind(VK_TRUE);
     indexing_features.setDescriptorBindingStorageBufferUpdateAfterBind(VK_TRUE);
+    indexing_features.setDescriptorBindingUpdateUnusedWhilePending(VK_TRUE);
 
-    // Add to the pNext chain
+    // Add to the pNext chain (can be chained together with VK_EXT_robustness2)
     indexing_features.pNext = device_create_info.pNext;
     device_create_info.pNext = &indexing_features;
 }
 ----
+
+For descriptor arrays, you must also specify binding flags at layout creation time:
+
+[source,cpp]
+----
+// Example: descriptor set layout with a runtime-sized array that can be partially bound
+vk::DescriptorSetLayoutBinding binding{};
+binding.binding = 0;
+binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+binding.descriptorCount = 128; // example array size; for true runtime arrays also enable variable descriptor counts
+binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+vk::DescriptorBindingFlags binding_flags =
+    vk::DescriptorBindingFlagBits::ePartiallyBound |
+    vk::DescriptorBindingFlagBits::eUpdateAfterBind;
+
+vk::DescriptorSetLayoutBindingFlagsCreateInfo flags_ci{};
+flags_ci.setBindingCount(1);
+flags_ci.setPBindingFlags(&binding_flags);
+
+vk::DescriptorSetLayoutCreateInfo dsl_ci{};
+dsl_ci.setPBindings(&binding);
+dsl_ci.setBindingCount(1);
+// Required when using update-after-bind flags
+// (some descriptor types require pool and layout flags to match update-after-bind usage)
+dsl_ci.flags |= vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
+
+dsl_ci.pNext = &flags_ci;
+
+vk::raii::DescriptorSetLayout set_layout{device, dsl_ci};
+----
+
+If you need truly variable-length descriptor arrays at runtime, also enable variable descriptor counts and use the corresponding allocate info:
+
+[source,cpp]
+----
+// Enable the device feature
+// indexing_features.setDescriptorBindingVariableDescriptorCount(VK_TRUE); // do this where features are enabled
+
+uint32_t max_descriptors_for_set0 = 1024; // requested at allocation time
+
+vk::DescriptorSetVariableDescriptorCountAllocateInfo variable_counts_info{};
+variable_counts_info.setDescriptorSetCount(1);
+variable_counts_info.setPDescriptorCounts(&max_descriptors_for_set0);
+
+vk::DescriptorSetAllocateInfo alloc_info{};
+alloc_info.setDescriptorPool(descriptor_pool);
+alloc_info.setDescriptorSetCount(1);
+alloc_info.setPSetLayouts(&*set_layout);
+alloc_info.pNext = &variable_counts_info;
+
+auto descriptor_sets = vk::raii::DescriptorSets{device, alloc_info};
+----
+
+Note: With VK_EXT_robustness2's nullDescriptor = VK_TRUE and descriptor indexing's partially-bound behavior, unbound array elements will read as zero rather than invoking undefined behavior.
 
 === Combining Robustness Extensions with Debugging Tools
 

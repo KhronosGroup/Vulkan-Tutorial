@@ -90,18 +90,6 @@ While we've focused on https://github.com/ocornut/imgui[Dear ImGui] in this chap
 
 * https://www.noesisengine.com/[*Noesis GUI*]: A commercial UI middleware that supports XAML and can render through Vulkan. It's used in games like Dauntless and provides a designer-friendly workflow.
 
-Popular game engines have different approaches to GUI integration with Vulkan:
-
-* https://www.unrealengine.com/[*Unreal Engine*]: Uses its own proprietary Slate UI framework internally, which has been adapted to work with Vulkan when the engine uses this rendering backend. For in-game UIs, it uses https://docs.unrealengine.com/5.0/en-US/umg-ui-designer-for-unreal-engine/[Unreal Motion Graphics (UMG)], which is built on top of Slate.
-
-* https://unity.com/[*Unity*]: When using the Vulkan renderer, Unity's built-in UI system (https://docs.unity3d.com/Manual/UIToolkit.html[UI Toolkit] and legacy https://docs.unity3d.com/Manual/com.unity.ugui.html[UGUI]) works transparently with Vulkan. Unity abstracts the rendering details away from the UI system.
-
-* https://godotengine.org/[*Godot*]: Uses its own built-in UI system that works across all its rendering backends, including Vulkan. The UI nodes are integrated directly into the scene tree.
-
-* https://www.cryengine.com/[*CryEngine*]: Employs https://www.autodesk.com/products/scaleform/overview[Scaleform] for UI rendering, which has been adapted to work with the engine's Vulkan implementation.
-
-* *Custom engines*: Many AAA studios with proprietary engines either develop custom UI solutions or integrate middleware like https://coherent-labs.com/[Coherent UI] or https://www.autodesk.com/products/scaleform/overview[Scaleform], adapting them to work with their Vulkan renderers.
-
 When choosing a GUI library for your Vulkan application, consider factors like:
 
 * Development paradigm (immediate-mode vs. retained-mode)

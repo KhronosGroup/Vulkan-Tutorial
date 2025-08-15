@@ -111,6 +111,69 @@ When integrating ImGui with Vulkan, consider these performance aspects:
 4. *Pipeline State*: Use a dedicated pipeline for ImGui to minimize state changes
 5. *Render Pass Integration*: Consider whether to use a separate render pass or subpass for the GUI
 
+==== Frames-in-Flight: Duplicate Dynamic Buffers Per Frame
+
+If your renderer uses multiple frames in flight (e.g., double/triple buffering) without a device wait-idle between frames, ImGui's dynamic vertex and index buffers must not be shared across frames. Otherwise, the CPU can overwrite data that the GPU from a previous frame is still reading.
+
+- Allocate one vertex buffer and one index buffer per frame-in-flight.
+- Update/bind the buffers for the current frame index only.
+- Size each buffer to the frame's ImDrawData TotalVtxCount/TotalIdxCount, growing as needed.
+
+Example sketch:
+
+[source,cpp]
+----
+class ImGuiSystem {
+  // ...
+  std::vector<vk::raii::Buffer> vertexBuffers;
+  std::vector<vk::raii::DeviceMemory> vertexMemories;
+  std::vector<vk::raii::Buffer> indexBuffers;
+  std::vector<vk::raii::DeviceMemory> indexMemories;
+  std::vector<uint32_t> vertexCounts;
+  std::vector<uint32_t> indexCounts;
+
+  bool Initialize(Renderer* renderer, uint32_t w, uint32_t h) {
+    // ... create pipelines, font, descriptors ...
+    const uint32_t frames = renderer->GetMaxFramesInFlight();
+    vertexBuffers.resize(frames);
+    vertexMemories.resize(frames);
+    indexBuffers.resize(frames);
+    indexMemories.resize(frames);
+    vertexCounts.assign(frames, 0);
+    indexCounts.assign(frames, 0);
+    return true;
+  }
+
+  void Render(vk::raii::CommandBuffer& cmd, uint32_t frameIndex) {
+    ImGui::Render();
+    updateBuffers(frameIndex);
+    // bind per-frame buffers
+    std::array vb = {*vertexBuffers[frameIndex]};
+    std::array<vk::DeviceSize,1> offs{};
+    cmd.bindVertexBuffers(0, vb, offs);
+    cmd.bindIndexBuffer(*indexBuffers[frameIndex], 0, vk::IndexType::eUint16);
+    // draw lists...
+  }
+
+  void updateBuffers(uint32_t frameIndex) {
+    ImDrawData* dd = ImGui::GetDrawData();
+    if (!dd || dd->CmdListsCount == 0) return;
+    vk::DeviceSize vbytes = dd->TotalVtxCount * sizeof(ImDrawVert);
+    vk::DeviceSize ibytes = dd->TotalIdxCount * sizeof(ImDrawIdx);
+    // grow-per-frame if needed, then map/copy for this frame only
+    // ...
+  }
+};
+----
+
+When integrating with your main renderer, pass the current frame index to the ImGui render call:
+
+[source,cpp]
+----
+// inside your frame loop after scene rendering
+imguiSystem->Render(commandBuffers[currentFrame], currentFrame);
+----
+
 === Organizing Your GUI Code
 
 For maintainable GUI code, consider these organizational patterns:

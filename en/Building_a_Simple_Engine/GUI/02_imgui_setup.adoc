@@ -111,6 +111,11 @@ Next, we set up the Vulkan pipeline objects that define how UI geometry is proce
 
 The pipeline infrastructure creates a specialized graphics pipeline optimized for UI rendering, which differs significantly from typical 3D rendering pipelines. UI rendering typically requires alpha blending for transparency effects, operates in 2D screen space rather than 3D world space, and uses simpler shading models focused on texture sampling rather than complex lighting calculations.
 
+[NOTE]
+====
+Frames-in-flight safety: If your renderer uses more than one frame in flight and you do not stall the GPU between frames, you must duplicate the dynamic ImGui buffers (vertex/index) per frame-in-flight. Using a single shared vertex/index buffer risks the CPU overwriting data still in use by the GPU from a previous frame. The simple single-buffer members shown above are for conceptual clarity; in production, store vectors of buffers/memories sized to the max frames in flight and update/bind the buffers for the current frame index.
+====
+
 The descriptor system manages the connection between our CPU-side resources and the GPU shaders. For UI rendering, this primarily involves binding the font atlas texture to the fragment shader, though more complex UI systems might include additional textures for icons, backgrounds, or other visual elements.
 
 === ImGuiVulkanUtil Architecture: Device Context and System Integration
@@ -773,7 +778,7 @@ void drawFrame() {
     // Render scene using dynamic rendering
     // ...
 
-    // Render ImGui
+    // Render ImGui (in multi-frame renderers, pass the current frame index to bind per-frame buffers)
     imGui.drawFrame(commandBuffer);
 
     // ... submit command buffer ...

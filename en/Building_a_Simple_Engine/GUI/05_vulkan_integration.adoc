@@ -263,6 +263,26 @@ The UI rendering phase begins with its own command buffer recording, configured 
     // This is the key difference from scene rendering - we load existing content
     colorAttachment.loadOp = vk::AttachmentLoadOp::eLoad;                // Preserve scene rendering
 
+    // Ensure proper ordering/visibility between scene and UI when using multiple command buffers.
+    // If you submit scene and UI command buffers separately, synchronize them either by:
+    // - Submitting both on the same queue with a semaphore (scene signals, UI waits with stage = COLOR_ATTACHMENT_OUTPUT), or
+    // - Recording a pipeline barrier in the UI command buffer before beginRendering() to make scene color writes visible.
+    // Example barrier inserted in the UI command buffer:
+    {
+        vk::ImageMemoryBarrier2 barrier{
+            .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentRead | vk::AccessFlagBits2::eColorAttachmentWrite,
+            .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+            .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+            .image = *swapChainImages[imageIndex],
+            .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
+        };
+        vk::DependencyInfo depInfo{ .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier };
+        imguiCommandBuffer.pipelineBarrier2(depInfo);
+    }
+
     // UI rendering typically doesn't need depth testing
     // Remove depth attachment to optimize UI rendering performance
     renderingInfo.pDepthAttachment = nullptr;
@@ -372,24 +392,31 @@ public:
     }
 
     void createImGuiDescriptorPool() {
+        // ImGui typically needs a handful of descriptors (font texture + user UI textures).
+        // Adjust these values to your app's needs (e.g., expected number of UI textures, buffers).
+        // As a starting point:
         vk::DescriptorPoolSize poolSizes[] =
         {
-            { vk::DescriptorType::eSampler, 1000 },
-            { vk::DescriptorType::eCombinedImageSampler, 1000 },
-            { vk::DescriptorType::eSampledImage, 1000 },
-            { vk::DescriptorType::eStorageImage, 1000 },
-            { vk::DescriptorType::eUniformTexelBuffer, 1000 },
-            { vk::DescriptorType::eStorageTexelBuffer, 1000 },
-            { vk::DescriptorType::eUniformBuffer, 1000 },
-            { vk::DescriptorType::eStorageBuffer, 1000 },
-            { vk::DescriptorType::eUniformBufferDynamic, 1000 },
-            { vk::DescriptorType::eStorageBufferDynamic, 1000 },
-            { vk::DescriptorType::eInputAttachment, 1000 }
+            { vk::DescriptorType::eSampler, 8 },
+            { vk::DescriptorType::eCombinedImageSampler, 128 },   // font + user-provided textures
+            { vk::DescriptorType::eSampledImage, 128 },
+            { vk::DescriptorType::eStorageImage, 8 },
+            { vk::DescriptorType::eUniformTexelBuffer, 8 },
+            { vk::DescriptorType::eStorageTexelBuffer, 8 },
+            { vk::DescriptorType::eUniformBuffer, 32 },
+            { vk::DescriptorType::eStorageBuffer, 32 },
+            { vk::DescriptorType::eUniformBufferDynamic, 16 },
+            { vk::DescriptorType::eStorageBufferDynamic, 16 },
+            { vk::DescriptorType::eInputAttachment, 8 }
         };
+
+        // A conservative maxSets equals the sum of descriptor counts.
+        uint32_t maxSets = 0;
+        for (const auto& ps : poolSizes) maxSets += ps.descriptorCount;
 
         vk::DescriptorPoolCreateInfo poolInfo{
             .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-            .maxSets = 1000,
+            .maxSets = maxSets,
             .poolSizeCount = static_cast<uint32_t>(std::size(poolSizes)),
             .pPoolSizes = poolSizes
         };
@@ -890,24 +917,28 @@ void ImGuiUtil::SetInputCallback(std::function<void(ImGuiIO&)> callback) {
 }
 
 void ImGuiUtil::createDescriptorPool() {
+    // Tune these to match your expected number of UI textures and buffers.
     vk::DescriptorPoolSize poolSizes[] =
     {
-        { vk::DescriptorType::eSampler, 1000 },
-        { vk::DescriptorType::eCombinedImageSampler, 1000 },
-        { vk::DescriptorType::eSampledImage, 1000 },
-        { vk::DescriptorType::eStorageImage, 1000 },
-        { vk::DescriptorType::eUniformTexelBuffer, 1000 },
-        { vk::DescriptorType::eStorageTexelBuffer, 1000 },
-        { vk::DescriptorType::eUniformBuffer, 1000 },
-        { vk::DescriptorType::eStorageBuffer, 1000 },
-        { vk::DescriptorType::eUniformBufferDynamic, 1000 },
-        { vk::DescriptorType::eStorageBufferDynamic, 1000 },
-        { vk::DescriptorType::eInputAttachment, 1000 }
+        { vk::DescriptorType::eSampler, 8 },
+        { vk::DescriptorType::eCombinedImageSampler, 128 },
+        { vk::DescriptorType::eSampledImage, 128 },
+        { vk::DescriptorType::eStorageImage, 8 },
+        { vk::DescriptorType::eUniformTexelBuffer, 8 },
+        { vk::DescriptorType::eStorageTexelBuffer, 8 },
+        { vk::DescriptorType::eUniformBuffer, 32 },
+        { vk::DescriptorType::eStorageBuffer, 32 },
+        { vk::DescriptorType::eUniformBufferDynamic, 16 },
+        { vk::DescriptorType::eStorageBufferDynamic, 16 },
+        { vk::DescriptorType::eInputAttachment, 8 }
     };
+
+    uint32_t maxSets = 0;
+    for (const auto& ps : poolSizes) maxSets += ps.descriptorCount;
 
     vk::DescriptorPoolCreateInfo poolInfo{
         .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-        .maxSets = 1000,
+        .maxSets = maxSets,
         .poolSizeCount = static_cast<uint32_t>(std::size(poolSizes)),
         .pPoolSizes = poolSizes
     };

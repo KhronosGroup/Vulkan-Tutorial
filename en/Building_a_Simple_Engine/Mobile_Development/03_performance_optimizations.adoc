@@ -1,19 +1,23 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Mobile Development: Performance Optimizations
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Performance Optimizations for Mobile
 
 Mobile devices have significantly different hardware constraints compared to desktop systems. In this section, we'll explore key performance optimizations that are essential for achieving good performance on mobile platforms.
 
 === Texture Optimizations
+
+To keep the workflow concrete and digestible, think of texture optimization in three steps:
+
+1) Step 1: Ensure power‑of‑two (POT) dimensions (resize if needed)
+2) Step 2: Pick a hardware‑compressed format supported by the device (ASTC → ETC2 → BC → fallback)
+3) Step 3: Upload/update the Vulkan image and clean up staging resources
+
+[NOTE]
+====
+We focus on mobile‑specific decisions here. For general Vulkan image creation, staging uploads, and descriptor setup, refer back to earlier chapters in the engine series—link:../Engine_Architecture/04_resource_management.adoc[Resource Management], link:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]—or the Vulkan Guide (https://docs.vulkan.org/guide/latest/).
+====
 
 Textures are often the largest consumers of memory in a graphics application. Optimizing them is crucial for mobile performance.
 

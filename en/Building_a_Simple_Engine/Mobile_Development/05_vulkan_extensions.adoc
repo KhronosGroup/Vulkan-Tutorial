@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Mobile Development: Vulkan Extensions
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Vulkan Extensions for Mobile
 
@@ -25,9 +18,13 @@ The `VK_KHR_dynamic_rendering` extension (now part of Vulkan 1.3 core) allows yo
 2. *Enables More Flexible Rendering*: Makes it easier to implement techniques that don't fit well into the traditional render pass model.
 3. *Reduces API Overhead*: Fewer objects to create and manage means less CPU overhead.
 
-==== Implementation
+==== Implementation (Step-by-step)
 
-Here's how to use dynamic rendering:
+Let's break the setup into a few small, focused steps.
+
+===== Enable the extension and load entry points
+
+We first enable the device extension and, if you're not on Vulkan 1.3 core, load the function pointers.
 
 [source,cpp]
 ----
@@ -44,8 +41,16 @@ PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR =
 PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR =
     reinterpret_cast<PFN_vkCmdEndRenderingKHR>(
         vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"));
+----
 
-// Begin rendering
+This prepares your device to use dynamic rendering and gives access to the commands needed to begin/end a rendering scope without a traditional render pass.
+
+===== Describe attachments for this rendering scope
+
+We define the color and depth attachments and package them into a VkRenderingInfoKHR. Think of this as an inline, one-off description of what would normally be baked into render pass/framebuffer objects.
+
+[source,cpp]
+----
 VkRenderingAttachmentInfoKHR color_attachment{};
 color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
 color_attachment.imageView = color_image_view;
@@ -69,7 +74,16 @@ rendering_info.layerCount = 1;
 rendering_info.colorAttachmentCount = 1;
 rendering_info.pColorAttachments = &color_attachment;
 rendering_info.pDepthAttachment = &depth_attachment;
+----
 
+Each frame (or subpass-equivalent), you can tweak these descriptors directly (e.g., swapchain views after resize), avoiding pipeline-wide re-creation.
+
+===== Begin rendering, draw, end rendering
+
+With the attachments described, we open the rendering scope, record draws, then close the scope.
+
+[source,cpp]
+----
 vkCmdBeginRenderingKHR(command_buffer, &rendering_info);
 
 // Record drawing commands
@@ -80,7 +94,11 @@ vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
 vkCmdEndRenderingKHR(command_buffer);
 ----
 
-When using C++ bindings:
+The begin/end pair replaces vkCmdBeginRenderPass/vkCmdEndRenderPass while providing more flexibility for modern rendering flows.
+
+===== C++ bindings (vulkan.hpp) variant
+
+If you're using vulkan.hpp (vk::), the structure population is more ergonomic but follows the same steps.
 
 [source,cpp]
 ----
@@ -104,7 +122,12 @@ rendering_info.setRenderArea(render_area);
 rendering_info.setLayerCount(1);
 rendering_info.setColorAttachments(color_attachment);
 rendering_info.setPDepthAttachment(&depth_attachment);
+----
 
+Once the description is assembled, begin the rendering scope, submit draws, and end the scope.
+
+[source,cpp]
+----
 command_buffer.beginRenderingKHR(rendering_info);
 
 // Record drawing commands

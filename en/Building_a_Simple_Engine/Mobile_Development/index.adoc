@@ -1,13 +1,7 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Mobile Development
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
+
 
 This chapter covers the essential aspects of adapting your Vulkan engine for mobile platforms, focusing on Android and iOS development, performance optimizations, rendering approaches, and mobile-specific Vulkan extensions.
 

@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Mobile Development: Introduction
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Introduction to Mobile Development
 
@@ -17,23 +10,21 @@ Mobile development presents unique challenges and opportunities for Vulkan appli
 
 === What We'll Cover
 
-In this chapter, we'll explore:
+This chapter will guide you through the complex landscape of mobile Vulkan development, where desktop assumptions often don't apply. We'll start by examining the platform-specific requirements of Android and iOS, which present unique challenges in setup, lifecycle management, and input handling. Mobile applications face constraints that desktop applications rarely encounter—sudden interruptions, battery concerns, and varying hardware capabilities all require careful consideration in your engine design.
 
-* *Platform Considerations for Android and iOS*: We'll discuss the specific requirements and constraints of developing Vulkan applications for Android and iOS, including platform-specific setup, lifecycle management, and input handling.
+Performance optimization takes on critical importance in mobile environments where every watt of power consumption and every millisecond of frame time affects user experience. We'll explore essential techniques like power-of-two texture usage and efficient texture formats, along with mobile-specific optimizations that can mean the difference between smooth performance and user frustration.
 
-* *Performance Optimizations for Mobile*: We'll explore techniques for optimizing your engine for mobile hardware, focusing on power-of-two textures, efficient texture formats, and other mobile-specific optimizations.
+Understanding the fundamental architectural differences between mobile and desktop GPUs becomes essential for effective optimization. We'll compare Tile-Based Rendering (TBR) and Immediate Mode Rendering (IMR) approaches, helping you understand why techniques that work well on desktop might perform poorly on mobile, and how to design rendering strategies that leverage mobile GPU strengths.
 
-* *Rendering Approaches*: We'll compare Tile-Based Rendering (TBR) and Immediate Mode Rendering (IMR), understanding their implications for mobile GPU architectures.
-
-* *Vulkan Extensions for Mobile*: We'll explore extensions like VK_KHR_dynamic_rendering_local_read, VK_KHR_dynamic_rendering, and VK_EXT_shader_tile_image that can significantly improve performance on mobile devices.
+Finally, we'll explore the Vulkan extensions specifically designed for mobile platforms. Extensions like VK_KHR_dynamic_rendering_local_read, VK_KHR_dynamic_rendering, and VK_EXT_shader_tile_image unlock performance opportunities that can dramatically improve your application's efficiency on mobile hardware, transforming acceptable performance into exceptional user experiences.
 
 === Prerequisites
 
-Before diving into this chapter, you should be familiar with:
+This chapter represents the culmination of everything we've built throughout the previous chapters, as mobile development requires deep integration with all engine systems. You'll need solid mastery of Vulkan fundamentals and the engine architecture we've developed, since mobile optimization often requires fine-tuning at every level—from resource management and rendering pipelines to memory allocation and synchronization.
 
-* The basics of Vulkan and our engine architecture from previous chapters
-* Modern C++ concepts, particularly those introduced in C++17 and C++20
-* Basic understanding of mobile development concepts
+Modern C++ expertise becomes particularly valuable in mobile development, where performance constraints demand efficient code and careful resource management. C++17 and C++20 features like constexpr, structured bindings, and concepts help create mobile-optimized code that performs well under strict power and thermal limitations.
+
+Understanding basic mobile development concepts will provide crucial context for the platform-specific decisions we'll make. Mobile applications operate under constraints that desktop applications rarely face—app lifecycle events, varying screen densities, touch input paradigms, and the need to preserve battery life all influence how we design and implement our Vulkan engine for mobile platforms.
 
 Let's begin by exploring the platform considerations for Android and iOS.
 

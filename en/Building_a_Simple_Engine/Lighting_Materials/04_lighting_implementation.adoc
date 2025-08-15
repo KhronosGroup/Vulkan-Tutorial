@@ -691,7 +691,7 @@ This function creates a new pipeline for our PBR shader, including support for p
 [source,cpp]
 ----
 // Update uniform buffer
-void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera) {
+void Renderer::updateUniformBuffer(uint32_t currentFrame, Entity* entity, CameraComponent* camera) {
     // Get the transform component from the entity
     auto transform = entity->GetComponent<TransformComponent>();
     if (!transform) {
@@ -744,7 +744,7 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
 
     // Copy the uniform buffer object to the device memory using vk::raii
     // With vk::raii, we can use the mapped memory directly
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
 }
 ----
 

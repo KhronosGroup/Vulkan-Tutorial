@@ -408,7 +408,7 @@ void setupLights() {
     };
 
     // Update uniform buffer with light data
-    for (size_t i = 0; i < swapChainImages.size(); i++) {
+    for (size_t i = 0; i < maxConcurrentFrames; i++) {
         UniformBufferObject ubo{};
         // ... (set up transformation matrices)
 
@@ -425,8 +425,8 @@ void setupLights() {
         ubo.exposure = 4.5f;
         ubo.gamma = 2.2f;
 
-        // Copy to uniform buffer
-        memcpy(uniformBuffersMapped[i], &ubo, sizeof(ubo));
+        // Copy to uniform buffer (per frame-in-flight)
+        memcpy(uniformBuffers[i].mapped, &ubo, sizeof(ubo));
     }
 }
 ----
@@ -437,7 +437,7 @@ PBR relies on view-dependent effects like the Fresnel effect, so we need to inte
 
 [source,cpp]
 ----
-void updateUniformBuffer(uint32_t currentImage) {
+void updateUniformBuffer(uint32_t currentFrame) {
     UniformBufferObject ubo{};
 
     // Update transformation matrices
@@ -453,8 +453,8 @@ void updateUniformBuffer(uint32_t currentImage) {
 
     // ... (update other PBR parameters)
 
-    // Copy to uniform buffer
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
 }
 ----
 

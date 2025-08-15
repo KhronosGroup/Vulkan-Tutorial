@@ -234,8 +234,8 @@ void drawFrame() {
     ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
     ubo.proj[1][1] *= -1;  // Vulkan's Y coordinate is inverted
 
-    // Copy to uniform buffer
-    memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
 
     // Render each object instance
     for (size_t i = 0; i < objectInstances.size(); i++) {
@@ -535,8 +535,8 @@ void drawFrame() {
     ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
     ubo.proj[1][1] *= -1;  // Vulkan's Y coordinate is inverted
 
-    // Copy to uniform buffer
-    memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
 
     // Bind descriptor set
     commandBuffer.bindDescriptorSets(

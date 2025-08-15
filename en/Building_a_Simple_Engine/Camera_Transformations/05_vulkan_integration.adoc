@@ -42,15 +42,35 @@ struct UniformBufferObject {
 
 Next, we'll create the uniform buffer and its descriptor set:
 
+[NOTE]
+====
+Uniform buffers should be allocated per frame-in-flight (maxConcurrentFrames), not per swapchain image. This matches how you submit work and synchronize frames, avoids unnecessary allocations, and simplifies your logic.
+====
+
 [source,cpp]
 ----
+// Use a fixed number of frames-in-flight, not the number of swapchain images
+constexpr uint32_t maxConcurrentFrames = 2; // Adjust to your renderer
+
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+
+// Keep the mapped pointer alongside the buffer for clarity and safety
+struct UboBuffer {
+    vk::raii::Buffer buffer{nullptr};
+    vk::raii::DeviceMemory memory{nullptr};
+    void* mapped = nullptr;
+};
+
+std::array<UboBuffer, maxConcurrentFrames> uniformBuffers;
+
 void createUniformBuffers() {
     vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
-    uniformBuffers.resize(swapChainImages.size());
-    uniformBuffersMapped.resize(swapChainImages.size());
-
-    for (size_t i = 0; i < swapChainImages.size(); i++) {
+    for (size_t i = 0; i < maxConcurrentFrames; i++) {
         // Create the buffer
         vk::BufferCreateInfo bufferInfo{
             .size = bufferSize,
@@ -58,10 +78,10 @@ void createUniformBuffers() {
             .sharingMode = vk::SharingMode::eExclusive
         };
 
-        uniformBuffers[i] = vk::raii::Buffer(device, bufferInfo);
+        uniformBuffers[i].buffer = vk::raii::Buffer(device, bufferInfo);
 
         // Allocate and bind memory
-        vk::MemoryRequirements memRequirements = uniformBuffers[i].getMemoryRequirements();
+        vk::MemoryRequirements memRequirements = uniformBuffers[i].buffer.getMemoryRequirements();
 
         vk::MemoryAllocateInfo allocInfo{
             .allocationSize = memRequirements.size,
@@ -71,11 +91,11 @@ void createUniformBuffers() {
             )
         };
 
-        uniformBuffersMemory[i] = vk::raii::DeviceMemory(device, allocInfo);
-        uniformBuffers[i].bindMemory(*uniformBuffersMemory[i], 0);
+        uniformBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
+        uniformBuffers[i].buffer.bindMemory(*uniformBuffers[i].memory, 0);
 
         // Persistently map the buffer memory
-        uniformBuffersMapped[i] = uniformBuffersMemory[i].mapMemory(0, bufferSize);
+        uniformBuffers[i].mapped = uniformBuffers[i].memory.mapMemory(0, bufferSize);
     }
 }
 ----
@@ -111,19 +131,20 @@ Now we'll create descriptor sets that point to our uniform buffers:
 [source,cpp]
 ----
 void createDescriptorSets() {
-    std::vector<vk::DescriptorSetLayout> layouts(swapChainImages.size(), *descriptorSetLayout);
+    std::array<vk::DescriptorSetLayout, maxConcurrentFrames> layouts{};
+    layouts.fill(*descriptorSetLayout);
 
     vk::DescriptorSetAllocateInfo allocInfo{
         .descriptorPool = *descriptorPool,
-        .descriptorSetCount = static_cast<uint32_t>(swapChainImages.size()),
+        .descriptorSetCount = maxConcurrentFrames,
         .pSetLayouts = layouts.data()
     };
 
     descriptorSets = device.allocateDescriptorSets(allocInfo);
 
-    for (size_t i = 0; i < swapChainImages.size(); i++) {
+    for (size_t i = 0; i < maxConcurrentFrames; i++) {
         vk::DescriptorBufferInfo bufferInfo{
-            .buffer = *uniformBuffers[i],
+            .buffer = *uniformBuffers[i].buffer,
             .offset = 0,
             .range = sizeof(UniformBufferObject)
         };
@@ -148,7 +169,7 @@ In our main loop, we'll update the uniform buffer with the latest camera data:
 
 [source,cpp]
 ----
-void updateUniformBuffer(uint32_t currentImage) {
+void updateUniformBuffer(uint32_t currentFrame) {
     static auto startTime = std::chrono::high_resolution_clock::now();
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
@@ -167,8 +188,8 @@ void updateUniformBuffer(uint32_t currentImage) {
     // Vulkan's Y coordinate is inverted compared to OpenGL
     ubo.proj[1][1] *= -1;
 
-    // Copy the data to the uniform buffer
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    // Copy the data to the uniform buffer for the current frame-in-flight
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
 }
 ----
 

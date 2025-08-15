@@ -357,8 +357,8 @@ void drawFrame() {
     ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
     ubo.proj[1][1] *= -1;  // Vulkan's Y coordinate is inverted
 
-    // Copy to uniform buffer
-    memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
 
     // Render the scene
     renderScene(commandBuffer, model, ubo.view, ubo.proj);

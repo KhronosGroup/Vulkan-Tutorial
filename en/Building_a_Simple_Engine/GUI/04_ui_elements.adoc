@@ -88,13 +88,13 @@ ImGui requires descriptors for its font texture. Ensure your descriptor pool has
 ----
 // Create descriptor pool with enough capacity for ImGui
 vk::DescriptorPoolSize poolSizes[] = {
-    { vk::DescriptorType::eCombinedImageSampler, 1000 },
+    { vk::DescriptorType::eCombinedImageSampler, 50 },
     // Other descriptor types...
 };
 
 vk::DescriptorPoolCreateInfo poolInfo{};
 poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-poolInfo.maxSets = 1000;
+poolInfo.maxSets = 50;
 poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
 poolInfo.pPoolSizes = poolSizes;
 

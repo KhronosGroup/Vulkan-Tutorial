@@ -60,7 +60,7 @@ One of the most widely used traditional lighting models, developed by Bui Tuong 
 * *Disadvantages*: Not physically accurate, can look artificial under certain lighting conditions
 * *When to use*: For simple real-time applications where PBR is too expensive
 
-For more information on the Phong lighting model, see the link:https://en.wikipedia.org/wiki/Phong_reflection_model[Wikipedia article] or this link:https://www.cs.utah.edu/~shirley/books/fcg2/rt.pdf[computer graphics textbook].
+For more information on the Phong lighting model, see the link:https://en.wikipedia.org/wiki/Phong_reflection_model[Wikipedia article].
 
 ==== Blinn-Phong Model
 
@@ -149,7 +149,7 @@ Global Illumination (GI) simulates how light bounces between surfaces, creating 
 * *Path Tracing*: Traces light paths through the scene
 * *Photon Mapping*: Stores light information in a spatial data structure
 
-For more information, see this link:https://developer.nvidia.com/gpugems/gpugems2/part-ii-shading-lighting-and-shadows/chapter-12-tricks-real-time-radiosity[GPU Gems chapter on radiosity].
+For more information, see this link:https://developer.download.nvidia.com/books/HTML/gpugems2/chapters/gpugems2_chapter12.html[GPU Gems chapter on radiosity].
 
 === Subsurface Scattering
 
@@ -161,7 +161,7 @@ For more information, see this link:https://developer.nvidia.com/gpugems/gpugems
 
 Ambient Occlusion (AO) approximates how much ambient light a surface point would receive, darkening corners and crevices.
 
-For more information, see this link:https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-17-ambient-occlusion[GPU Gems chapter on ambient occlusion].
+For more information, see this link:https://developer.download.nvidia.com/books/HTML/gpugems/gpugems_ch17.html[GPU Gems chapter on ambient occlusion].
 
 == Choosing the Right Lighting Model
 

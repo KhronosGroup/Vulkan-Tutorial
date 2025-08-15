@@ -20,6 +20,7 @@ The challenge with HRTF processing is that it's computationally expensive:
 
 This is where Vulkan compute shaders can help by offloading these calculations to the GPU.
 
+[[audio-vulkan-why]]
 === Why Use Vulkan for Audio Processing?
 
 Traditional audio processing is done on the CPU, but there are several advantages to using Vulkan compute shaders for certain audio tasks:
@@ -404,12 +405,10 @@ void AudioSystem::Shutdown() {
 
 === Advantages of Vulkan-Based HRTF
 
-By implementing HRTF processing with Vulkan compute shaders, we gain several advantages:
+See the core benefits listed in <<audio-vulkan-why,Why Use Vulkan for Audio Processing?>> for a summary of why compute shaders are a good fit. In the context of HRTF specifically, two practical advantages are worth highlighting:
 
-1. *Scalability*: The GPU can process hundreds or thousands of sound sources in parallel.
-2. *Quality*: We can use higher-order HRTF filters without significant performance impact.
-3. *CPU Offloading*: Audio processing no longer competes with game logic for CPU resources.
-4. *Advanced Effects*: The GPU's computational power enables more complex audio effects like room acoustics simulation.
+1. *Quality*: You can afford higher-order HRTF filters without significant performance impact, improving spatial realism.
+2. *Advanced Effects*: The GPU's compute power enables more sophisticated effects (e.g., room acoustics simulation) alongside HRTF.
 
 === Limitations and Considerations
 

@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Camera & Transformations: Transformation Matrices
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Transformation Matrices
 
@@ -92,6 +85,7 @@ glm::mat4 createPerspectiveMatrix(
 ----
 
 Parameters:
+
 * `fovY`: Field of view angle in degrees (vertical)
 * `aspectRatio`: Width divided by height of the viewport
 * `nearPlane`: Distance to the near clipping plane

@@ -1,14 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Camera & Transformations: Introduction
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
-
 == Introduction
 
 Welcome to the "Camera & Transformations" chapter of our "Building a Simple Engine" series! In this chapter, we'll dive into the essential mathematics and techniques needed to implement a 3D camera system in Vulkan.

@@ -1,13 +1,6 @@
 :pp: {plus}{plus}
 
 = Appendix:
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Detailed Architectural Patterns
 
@@ -18,7 +11,7 @@ This appendix provides in-depth information about common architectural patterns 
 
 One of the most fundamental architectural patterns is the layered architecture, where the system is divided into distinct layers, each with a specific responsibility.
 
-image::../../../images/layered_architecture_diagram.svg[Layered Architecture Diagram, width=600]
+image::../../../images/layered_architecture_diagram.png[Layered Architecture Diagram, width=600]
 
 ==== Typical Layers in a Rendering Engine
 

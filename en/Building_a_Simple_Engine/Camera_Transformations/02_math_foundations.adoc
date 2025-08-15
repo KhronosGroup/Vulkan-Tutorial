@@ -1,12 +1,6 @@
 :pp: {plus}{plus}
 
 = Camera & Transformations: Mathematical Foundations
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Mathematical Foundations for 3D Graphics
 
@@ -22,6 +16,7 @@ Vectors are fundamental to 3D graphics as they represent positions, directions, 
 ==== Why Vectors Matter in Graphics
 
 In our camera system, vectors serve several critical purposes:
+
 * The camera's position is represented as a 3D vector
 * The camera's viewing direction is a 3D vector
 * The "up" direction that orients the camera is also a vector
@@ -39,13 +34,13 @@ In our camera system, vectors serve several critical purposes:
 
 ==== The Right-Hand Rule
 
-The right-hand rule is a convention used in 3D graphics and mathematics to determine the orientation of coordinate systems and the direction of cross products.
+The right-hand rule is a convention used in 3D graphics and mathematics to determine the orientation of coordinate systems and the direction of cross-products.
 
 * *For Cross Products*: When calculating A × B:
 
   1. Point your right hand's index finger in the direction of vector A
   2. Point your middle finger in the direction of vector B (perpendicular to A)
-  3. Your thumb now points in the direction of the resulting cross product
+  3. Your thumb now points in the direction of the resulting cross-product
 
 * *For Coordinate Systems*: In a right-handed coordinate system:
 
@@ -72,7 +67,7 @@ glm::vec3 negativeZ = glm::cross(yAxis, xAxis);  // Points backward (negative Z)
   - Applications: Generating the camera's "right" vector from "forward" and "up" vectors
   - The direction follows the right-hand rule (explained above)
 
-* *Normalization*: Preserves direction while setting length to 1
+* *Normalization*: Preserves the direction while setting length to 1
   - Applications: Ensuring consistent movement speed regardless of direction
 
 [source,cpp]
@@ -104,6 +99,7 @@ Matrices are used to represent transformations in 3D space. In Vulkan and other 
 ==== Why We Use 4×4 Matrices
 
 Even though we work in 3D space, we use 4×4 matrices because:
+
 1. They allow us to represent translation (movement) along with rotation and scaling
 2. They can be combined (multiplied) to create complex transformations
 3. They work with homogeneous coordinates (x, y, z, w) which are required for perspective projection
@@ -120,7 +116,7 @@ Even though we work in 3D space, we use 4×4 matrices because:
   - Less commonly used for cameras, but important for objects in the scene
 
 * *Model Matrix*: Combines transformations to position an object in world space
-  - Positions objects relative to the world origin
+  - Positions the objects relative to the world origin
 
 * *View Matrix*: Transforms world space to camera space
   - Essentially positions the world relative to the camera
@@ -174,7 +170,7 @@ The following diagram illustrates the difference between correct and incorrect m
 .Matrix Transformation Order Comparison
 image::../../../images/matrix-order-comparison.svg[Matrix Order Comparison showing correct T×R×S vs incorrect R×T×S transformation sequences]
 
-==== Row-Major vs Column-Major Representation
+==== Row-Major vs. Column-Major Representation
 
 When working with matrices in graphics programming, it's important to understand the difference between row-major and column-major representations:
 

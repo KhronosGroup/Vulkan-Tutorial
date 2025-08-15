@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Camera & Transformations: Vulkan Integration
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Integrating Camera with Vulkan
 
@@ -22,6 +15,19 @@ Before we dive into the integration, let's briefly introduce the key libraries w
 * *Vulkan*: The low-level graphics API we're using for rendering. [https://www.vulkan.org/]
 
 Now that we have a camera system and understand transformation matrices, let's integrate them with our Vulkan application. We'll focus on how to set up uniform buffers for our matrices and update them each frame based on camera movement.
+
+To keep the integration digestible, think of it in five small steps:
+
+* Define the UBO layout (model/view/proj) and create per-frame buffers
+* Create a descriptor set layout and allocate descriptor sets for the UBO
+* Write descriptor sets and persistently map the buffers for fast updates
+* Update the UBO each frame from the camera (view/proj) and model transform
+* Bind the descriptor set and draw using the updated matrices
+
+[NOTE]
+====
+See link:04_transformation_matrices.adoc[Camera transformation matricies] and link:04_camera_implementation.adoc[Camera implementation] for a refresher on Matrix math.
+====
 
 === Uniform Buffer Setup
 

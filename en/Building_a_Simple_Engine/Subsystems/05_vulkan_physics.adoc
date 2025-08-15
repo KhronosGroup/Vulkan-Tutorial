@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Subsystems: Vulkan for Physics Simulation
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Enhancing Physics with Vulkan
 
@@ -43,7 +36,17 @@ To implement GPU-accelerated physics, we'll need to:
 2. Create compute shaders to perform physics calculations
 3. Integrate the GPU physics with our existing CPU-based system
 
-Let's extend our physics system to include Vulkan-accelerated components:
+Let's extend our physics system to include Vulkan-accelerated components. We’ll approach it in four steps:
+
+1) Step 1: Data layout (GPUPhysicsData/GPUCollisionData structures)
+2) Step 2: GPU resource setup (descriptor set layout, pipelines, storage buffers, descriptor sets)
+3) Step 3: Simulation dispatch (integrate → broad‑phase → narrow‑phase → resolve with pipeline barriers)
+4) Step 4: Synchronization and readback (update GPU buffers, submit, read back state, integrate in Update)
+
+[NOTE]
+====
+We avoid repeating Vulkan compute fundamentals here; focus stays on physics‑specific wiring. Use earlier chapters (link:../Engine_Architecture/04_resource_management.adoc[Resource Management], link:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]) or the Vulkan Guide (https://docs.vulkan.org/guide/latest/) if you need a refresher on descriptors, buffers, or pipeline creation.
+====
 
 [source,cpp]
 ----

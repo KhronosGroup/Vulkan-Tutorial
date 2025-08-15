@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Subsystems
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 This chapter covers the implementation of critical engine subsystems - Audio and Physics - with a focus on leveraging Vulkan's compute capabilities for enhanced performance.
 

@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Subsystems: Physics Basics
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Physics System Fundamentals
 
@@ -273,6 +266,15 @@ void Engine::Shutdown() {
 ----
 
 === Basic Implementation of Physics Simulation
+
+To keep the update loop easy to follow, think of a fixed‑timestep frame as six steps:
+
+1) Accumulate forces (e.g., gravity, user forces)
+2) Integrate forces (update velocities with damping)
+3) Detect collisions (broad/narrow checks per pair)
+4) Resolve collisions (impulses + positional correction)
+5) Integrate velocities (update positions and orientations)
+6) Clear forces (prepare for next step)
 
 Let's implement the core physics simulation functions:
 

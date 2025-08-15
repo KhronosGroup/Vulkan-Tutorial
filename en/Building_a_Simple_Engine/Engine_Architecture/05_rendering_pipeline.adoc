@@ -529,10 +529,10 @@ Proper synchronization is crucial in Vulkan because:
 
 The vulkan tutorial includes a more detailed discussion of synchronization, the proper uses of the primitives described above.
 
-* link:../../03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[Synchronization]
-* link:../../03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[Frames In Flight]
-* link:../../11_Compute_Shader.adoc[Compute Shader]
-* link:../../17_Multithreading.adoc[Multithreading]
+* xref:../../03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[Synchronization]
+* xref:../../03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[Frames In Flight]
+* xref:../../11_Compute_Shader.adoc[Compute Shader]
+* xref:../../17_Multithreading.adoc[Multithreading]
 
 
 ===== Pipeline Barriers

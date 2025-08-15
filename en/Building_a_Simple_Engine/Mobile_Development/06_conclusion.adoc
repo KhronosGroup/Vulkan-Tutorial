@@ -266,4 +266,4 @@ link:../../attachments/simple_engine/37_mobile_optimizations.cpp[Mobile Optimiza
 link:../../attachments/simple_engine/38_tbr_optimizations.cpp[TBR Optimizations C{pp} code]
 link:../../attachments/simple_engine/39_mobile_extensions.cpp[Mobile Extensions C{pp} code]
 
-link:05_vulkan_extensions.adoc[Previous: Vulkan Extensions for Mobile] | link:../index.html[Back to Building a Simple Engine]
+xref:05_vulkan_extensions.adoc[Previous: Vulkan Extensions for Mobile] | link:../index.html[Back to Building a Simple Engine]

@@ -1,10 +1,10 @@
 :pp: {plus}{plus}
 
-= Tooling: Crash Handling and Minidumps
+= Tooling: Crash Handling and GPU Crash Dumps
 
 == Crash Handling in Vulkan Applications
 
-Even with thorough testing and debugging, crashes can still occur in production environments. When they do, having robust crash handling mechanisms can help you diagnose and fix issues quickly. In this section, we'll explore how to implement crash handling and generate minidumps in Vulkan applications.
+Even with thorough testing and debugging, crashes can still occur in production environments. When they do, having robust crash handling mechanisms can help you diagnose and fix issues quickly. This chapter focuses on practical GPU crash diagnostics (e.g., NVIDIA Nsight Aftermath, AMD Radeon GPU Detective) and clarifies the role and limitations of OS process minidumps, which usually lack GPU state and are rarely sufficient to root-cause graphics/device-lost issues on their own.
 
 === Understanding Crashes in Vulkan Applications
 
@@ -178,11 +178,49 @@ int main() {
 }
 ----
 
+=== GPU Crash Diagnostics (Vulkan)
+
+While OS process minidumps capture CPU-side state, GPU crashes (device lost, TDRs, hangs) require GPU-specific crash dumps to be actionable. In practice, you’ll want to integrate vendor tooling that can record GPU execution state around the fault.
+
+==== NVIDIA: Nsight Aftermath (Vulkan)
+
+Overview:
+
+- Collects GPU crash dumps with information about the last executed draw/dispatch, bound pipeline/shaders, markers, and resource identifiers.
+- Works alongside your Vulkan app; you analyze dumps with NVIDIA tools to pinpoint the failing work and shader.
+
+Practical steps:
+
+1. Enable object names and labels
+   - Use VK_EXT_debug_utils to name pipelines, shaders, images, buffers, and to insert command buffer labels for major passes and draw/dispatch groups. These names surface in crash reports and greatly aid triage.
+2. Add frame/work markers
+   - Insert meaningful labels before/after critical rendering phases. If available on your target, also use vendor checkpoint/marker extensions (e.g., VK_NV_device_diagnostic_checkpoints) to provide fine-grained breadcrumbs.
+3. Build shaders with unique IDs and optional debug info
+   - Ensure each pipeline/shader can be correlated (e.g., include a stable hash/UUID in your pipeline cache and application logs). Keep the mapping from IDs to source for analysis.
+4. Initialize and enable GPU crash dumps
+   - Integrate the Nsight Aftermath Vulkan SDK per NVIDIA’s documentation. Register a callback to receive crash dump data, write it to disk, and include your marker string table for symbolication.
+5. Handle device loss
+   - On VK_ERROR_DEVICE_LOST (or Windows TDR), flush any in-memory marker logs, persist the crash dump, and then terminate cleanly. Attempting to continue rendering is undefined.
+
+References: NVIDIA Nsight Aftermath SDK and documentation.
+
+==== AMD: Radeon GPU Detective (RGD)
+
+- AMD provides tools to capture and analyze GPU crash information on RDNA hardware. Similar principles apply: enable object names, label command buffers, and preserve pipeline/shader identifiers so RGD can point back to your content.
+- See AMD Radeon GPU Detective and related documentation for Vulkan integration and analysis workflows.
+
+==== Vendor-agnostic groundwork that helps all tools
+
+- Name everything via VK_EXT_debug_utils.
+- Insert command buffer labels at meaningful boundaries (frame, pass, material batch, etc.).
+- Persist build/version, driver, Vulkan API/UUID, and pipeline cache UUID in your logs and crash artifacts.
+- Implement robust device lost handling: stop submitting, free/teardown safely, write artifacts, exit.
+
 === Generating Minidumps
 
-While basic crash logs are helpful, minidumps provide much more detailed information for diagnosing crashes. A minidump is a file containing a snapshot of the process memory and state at the time of the crash.
+Use OS process minidumps to capture CPU-side call stacks, threads, and memory snapshots at the time of a crash. For graphics issues and device loss, they rarely contain the GPU execution state you need—treat minidumps as a complement to GPU crash dumps, not a replacement.
 
-Let's implement minidump generation using platform-specific APIs:
+Below is a brief outline for generating minidumps with platform APIs (useful for correlating CPU context with a GPU crash):
 
 [source,cpp]
 ----
@@ -303,7 +341,7 @@ namespace crash_handler {
 
 === Analyzing Minidumps
 
-Once you have a minidump, you need to analyze it to determine the cause of the crash. Here's how to do this on different platforms:
+Minidumps are best used to understand CPU-side state around a crash (e.g., which thread faulted, call stacks leading to vkQueueSubmit/vkQueuePresent, allocator misuse) and to correlate with a GPU crash dump from vendor tools. Here’s a brief workflow on different platforms:
 
 ==== Windows
 
@@ -467,26 +505,29 @@ namespace crash_handler {
 }
 ----
 
-=== Best Practices for Crash Handling
+=== Best Practices for Crash Handling (Vulkan/GPU-focused)
 
-To make the most of your crash handling system:
+To make crash data actionable for graphics issues, prefer these concrete steps:
 
-1. *Always Include Version Information*: Make sure your crash reports include the application version, Vulkan version, and driver version.
-
-2. *Collect Relevant State*: Include information about what the application was doing when it crashed (e.g., loading a model, rendering a specific scene).
-
-3. *Respect User Privacy*: Be transparent about what data you collect and get user consent before uploading crash reports.
-
-4. *Test Your Crash Handling*: Deliberately trigger crashes in different scenarios to ensure your crash handling system works correctly.
-
-5. *Implement Graceful Recovery*: When possible, try to recover from non-fatal errors rather than crashing.
-
-6. *Use Crash Reports to Improve*: Regularly analyze crash reports to identify and fix common issues.
+1. Name and label aggressively
+   - Use VK_EXT_debug_utils to name all objects and insert command buffer labels at pass/material boundaries and before large draw/dispatch batches. Persist a small in-memory ring buffer of recent labels for inclusion in crash artifacts.
+2. Prepare for device loss
+   - Implement a central handler for VK_ERROR_DEVICE_LOST. Stop submitting work, flush logs/markers, request vendor GPU crash dump data, and exit. Avoid attempting recovery in the same process unless you have a robust reinitialization path.
+3. Capture GPU crash dumps on supported hardware
+   - Integrate NVIDIA Nsight Aftermath and/or AMD RGD depending on your target audience. Ship with crash dumps enabled in development/beta builds; provide a toggle for users.
+4. Make builds symbol-friendly
+   - Keep a mapping from pipeline/shader hashes to source/IR/SPIR-V and build IDs. Enable shader debug info where feasible for diagnosis builds.
+5. Record environment info
+   - Log driver version, Vulkan version, GPU name/PCI ID, pipeline cache UUID, app build/version, and relevant feature toggles. Include this alongside minidumps and GPU crash dumps.
+6. Reproduce deterministically
+   - Provide a way to disable background variability (e.g., async streaming) and to replay a captured sequence of commands/scenes to reproduce the crash locally.
+7. Respect privacy and distribution concerns
+   - Clearly document what crash data is collected (minidumps, GPU crash dumps, logs) and require opt‑in for uploads. Strip user-identifiable data.
 
 === Conclusion
 
-Robust crash handling is essential for maintaining a high-quality Vulkan application. By implementing proper crash handling and minidump generation, you can quickly diagnose and fix issues that occur in production environments, leading to a more stable and reliable application.
+Robust crash handling is essential for maintaining a high-quality Vulkan application. Combine vendor GPU crash dumps (Aftermath, RGD, etc.) with CPU-side minidumps and thorough logging to quickly diagnose and fix issues in production. Treat minidumps as complementary context; the actionable details for graphics faults typically come from GPU crash dump tooling.
 
-In the next section, we'll explore Vulkan extensions for robustness, which can help prevent crashes in the first place by making your application more resilient to undefined behavior.
+In the next section, we'll explore Vulkan extensions for robustness, which can reduce undefined behavior and help prevent crashes in the first place.
 
 link:03_debugging_and_renderdoc.adoc[Previous: Debugging with VK_KHR_debug_utils and RenderDoc] | link:05_extensions.adoc[Next: Vulkan Extensions for Robustness]

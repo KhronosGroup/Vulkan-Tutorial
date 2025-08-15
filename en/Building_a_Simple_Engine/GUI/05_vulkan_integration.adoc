@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = GUI: Vulkan Integration
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Vulkan Integration
 
@@ -64,49 +57,110 @@ Let's look at both approaches:
 
 This is the simplest approach and works well for most applications. With dynamic rendering, the code becomes even cleaner:
 
+=== Command Buffer Initialization
+
+The frame rendering process begins with command buffer preparation, where we set up the recording state and prepare for GPU command submission.
+
 [source,cpp]
 ----
 void drawFrame() {
     // ... existing frame preparation code ...
 
-    // Start recording command buffer
+    // Initialize command buffer recording
+    // This tells Vulkan we're about to record a sequence of GPU commands
     vk::CommandBufferBeginInfo beginInfo{};
     commandBuffer.begin(beginInfo);
+----
 
-    // Begin dynamic rendering for scene
+Command buffer recording represents the heart of Vulkan's explicit GPU control model. Unlike older APIs where rendering commands are immediately submitted to the GPU, Vulkan allows us to build up a complete sequence of operations before submission. This approach enables powerful optimizations like command reordering, parallel command buffer construction, and efficient GPU scheduling.
+
+The 'begin' operation transitions the command buffer from an initial state into a recording state, where subsequent API calls will be captured as GPU instructions rather than executed immediately. This explicit state management gives us precise control over when and how GPU work is submitted, enabling the fine-grained performance control that makes Vulkan so powerful for demanding applications.
+
+=== Dynamic Rendering Attachment Setup
+
+Dynamic rendering requires us to explicitly describe our render targets and their properties, replacing the traditional render pass system with a more flexible approach.
+
+[source,cpp]
+----
+    // Configure color attachment for the main render target
+    // This describes how the GPU should handle the color output
     vk::RenderingAttachmentInfo colorAttachment{};
-    colorAttachment.imageView = *swapChainImageViews[imageIndex];
-    colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
-    colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
+    colorAttachment.imageView = *swapChainImageViews[imageIndex];       // Target swapchain image
+    colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;  // Optimal layout for color output
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;              // Clear the image before rendering
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;            // Preserve results after rendering
+    colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};  // Clear to black
 
+    // Configure depth attachment for 3D depth testing
+    // This enables proper occlusion and depth sorting for 3D objects
     vk::RenderingAttachmentInfo depthAttachment{};
-    depthAttachment.imageView = *depthImageView;
-    depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-    depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-    depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
-    depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+    depthAttachment.imageView = *depthImageView;                        // Depth buffer image
+    depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;  // Optimal for depth operations
+    depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;              // Clear depth buffer to far plane
+    depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;         // Don't preserve depth after rendering
+    depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};  // Clear to maximum depth
+----
 
+The attachment configuration system provides explicit control over how the GPU handles our render targets throughout the rendering process. By specifying load and store operations, we can optimize memory bandwidth by only preserving data that needs to carry forward to subsequent passes. The clear operations ensure we start with a known state, preventing visual artifacts from previous frame data.
+
+Image layout transitions happen automatically based on our specifications, with the GPU driver handling the necessary memory barriers and cache flushes to ensure data coherency. The optimal layouts we specify here tell the driver to arrange the image data in whatever format provides the best performance for the intended usage, rather than forcing a specific memory organization.
+
+=== Dynamic Rendering Pass Setup
+
+With our attachments configured, we now assemble them into a complete rendering pass that describes the full rendering operation to the GPU.
+
+[source,cpp]
+----
+    // Assemble the complete rendering operation description
+    // This ties together all our attachments and rendering parameters
     vk::RenderingInfo renderingInfo{};
-    renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &colorAttachment;
-    renderingInfo.pDepthAttachment = &depthAttachment;
+    renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};     // Render to entire swapchain area
+    renderingInfo.layerCount = 1;                                       // Single layer (not array rendering)
+    renderingInfo.colorAttachmentCount = 1;                             // One color output
+    renderingInfo.pColorAttachments = &colorAttachment;                 // Our configured color attachment
+    renderingInfo.pDepthAttachment = &depthAttachment;                  // Our configured depth attachment
 
+    // Begin the dynamic rendering pass
+    // This establishes the rendering context for subsequent draw commands
     commandBuffer.beginRendering(renderingInfo);
+----
 
-    // Render 3D scene
+Dynamic rendering represents a significant evolution from traditional Vulkan render passes, providing greater flexibility while maintaining the performance benefits of explicit GPU control. Instead of pre-defining render pass objects at initialization time, we can specify render targets and their properties at command recording time, enabling more dynamic and flexible rendering architectures.
+
+The render area specification allows for partial-screen rendering, which can provide significant performance benefits when only portions of the screen need updating. For full-screen rendering like our case, we specify the entire swapchain extent to ensure complete coverage.
+
+=== 3D Scene Rendering
+
+The main scene rendering phase handles all 3D geometry, lighting, and material rendering within the established rendering context.
+
+[source,cpp]
+----
+    // Execute 3D scene rendering
+    // All your existing 3D geometry, lighting, and material rendering happens here
     // ... your existing scene rendering code ...
 
+    // Complete the 3D rendering pass
+    // This finalizes all 3D rendering operations and prepares for UI overlay
     commandBuffer.endRendering();
+----
 
-    // Render ImGui using our custom renderer
-    // ImGui will handle its own dynamic rendering internally
+The scene rendering phase operates within the rendering context we established, with the GPU automatically handling depth testing, color blending, and other rasterization operations according to our pipeline configurations. All draw commands issued between beginRendering and endRendering will target our configured attachments with the specified clear and store behaviors.
+
+The explicit endRendering call ensures that all scene rendering operations are properly completed and that render targets are transitioned to appropriate states for subsequent operations. This explicit control allows the GPU driver to perform optimal scheduling and memory management for the rendering workload.
+
+=== UI Overlay Integration
+
+The final rendering phase integrates ImGui UI elements as an overlay on top of the 3D scene, requiring careful coordination between the two rendering systems.
+
+[source,cpp]
+----
+    // Render ImGui UI overlay on top of the 3D scene
+    // The custom renderer handles ImGui's own dynamic rendering setup internally
+    // This includes vertex buffer uploads, pipeline binding, and draw command generation
     renderer.render(ImGui::GetDrawData(), commandBuffer);
 
-    // End command buffer
+    // Finalize command buffer recording
+    // This transitions the command buffer to executable state for GPU submission
     commandBuffer.end();
 
     // Submit command buffer
@@ -118,70 +172,132 @@ void drawFrame() {
 
 This approach gives you more flexibility and can be useful for more complex rendering pipelines. With dynamic rendering, it becomes even more straightforward:
 
+=== Multi-Buffer: Scene Command Buffer Recording
+
+The multiple command buffer approach begins by isolating 3D scene rendering into its own dedicated command buffer, providing greater flexibility for complex rendering pipelines.
+
 [source,cpp]
 ----
 void drawFrame() {
     // ... existing frame preparation code ...
 
-    // Record scene command buffer
+    // Initialize scene-specific command buffer recording
+    // This dedicated buffer will contain only 3D geometry and lighting operations
     vk::CommandBufferBeginInfo beginInfo{};
     sceneCommandBuffer.begin(beginInfo);
+----
 
-    // Begin dynamic rendering for scene
+Separating scene rendering into its own command buffer provides several architectural advantages. First, it enables parallel command buffer recording where different threads can simultaneously build scene and UI command sequences, improving CPU utilization on multi-core systems. Second, it allows for independent optimization of each rendering phase, where scene rendering can use different GPU queues or submission timing than UI rendering.
+
+This separation also facilitates advanced rendering techniques like multi-frame latency optimization, where scene rendering can be decoupled from UI updates to maintain consistent frame timing even when one system experiences performance variations.
+
+=== Multi-Buffer: Scene Attachment Configuration
+
+The scene rendering setup mirrors the single-buffer approach but with explicit ownership of the attachment configuration within the scene command buffer.
+
+[source,cpp]
+----
+    // Configure scene rendering attachments with explicit ownership
+    // These configurations belong specifically to the scene rendering pass
     vk::RenderingAttachmentInfo colorAttachment{};
-    colorAttachment.imageView = *swapChainImageViews[imageIndex];
-    colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
-    colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
+    colorAttachment.imageView = *swapChainImageViews[imageIndex];        // Target swapchain image
+    colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;  // Optimal for color rendering
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;               // Clear for fresh scene start
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;             // Preserve for UI overlay
+    colorAttachment.clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};  // Clear to black
 
+    // Configure depth attachment for 3D scene depth testing
+    // UI rendering won't need depth testing, so this is scene-specific
     vk::RenderingAttachmentInfo depthAttachment{};
-    depthAttachment.imageView = *depthImageView;
-    depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-    depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-    depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
-    depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+    depthAttachment.imageView = *depthImageView;                         // Scene depth buffer
+    depthAttachment.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;  // Optimal for depth ops
+    depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;               // Clear depth for new frame
+    depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;          // UI doesn't need depth data
+    depthAttachment.clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};  // Clear to far plane
+----
 
+The attachment configuration for scene rendering emphasizes the separation of concerns between 3D and UI rendering. The store operation for the color attachment ensures that scene rendering results are preserved for the subsequent UI overlay, while the depth attachment uses "don't care" storage since UI elements typically render without depth testing.
+
+This explicit configuration makes the rendering dependencies clear and helps optimize memory bandwidth by only preserving the data that subsequent passes actually need.
+
+=== Multi-Buffer: Scene Rendering Execution
+
+The scene rendering execution occurs within its dedicated command buffer, providing isolated control over 3D rendering operations.
+
+[source,cpp]
+----
+    // Assemble scene rendering configuration
+    // This defines the complete 3D rendering context
     vk::RenderingInfo renderingInfo{};
-    renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &colorAttachment;
-    renderingInfo.pDepthAttachment = &depthAttachment;
+    renderingInfo.renderArea = vk::Rect2D{{0, 0}, swapChainExtent};      // Full screen rendering
+    renderingInfo.layerCount = 1;                                        // Single rendering layer
+    renderingInfo.colorAttachmentCount = 1;                              // One color output
+    renderingInfo.pColorAttachments = &colorAttachment;                  // Scene color configuration
+    renderingInfo.pDepthAttachment = &depthAttachment;                   // Scene depth configuration
 
+    // Execute complete 3D scene rendering pass
     sceneCommandBuffer.beginRendering(renderingInfo);
-
-    // Render 3D scene
+    // All 3D geometry, lighting, materials, and effects render here
     // ... your existing scene rendering code ...
-
     sceneCommandBuffer.endRendering();
-    sceneCommandBuffer.end();
 
-    // Record ImGui command buffer
+    // Finalize scene command buffer for submission
+    sceneCommandBuffer.end();
+----
+
+The scene rendering execution benefits from having its own isolated command buffer context, where all GPU state changes and draw calls are contained within a clearly defined scope. This isolation makes debugging easier, as scene-specific rendering issues can be analyzed independently of UI rendering complexity.
+
+Command buffer finalization with `end()` transitions the buffer to an executable state, ready for GPU submission, while maintaining clear boundaries between different rendering responsibilities.
+
+=== Multi-Buffer: UI Command Buffer Setup
+
+The UI rendering phase begins with its own command buffer recording, configured specifically for overlay rendering requirements.
+
+[source,cpp]
+----
+    // Initialize UI-specific command buffer recording
+    // This dedicated buffer handles only UI overlay operations
     imguiCommandBuffer.begin(beginInfo);
 
-    // For ImGui, we want to preserve the contents of the previous rendering
-    colorAttachment.loadOp = vk::AttachmentLoadOp::eLoad;
+    // Configure UI attachment to preserve scene rendering results
+    // This is the key difference from scene rendering - we load existing content
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eLoad;                // Preserve scene rendering
 
-    // No need for depth attachment for UI
+    // UI rendering typically doesn't need depth testing
+    // Remove depth attachment to optimize UI rendering performance
     renderingInfo.pDepthAttachment = nullptr;
+----
 
-    // Render ImGui using our custom renderer
-    // ImGui will handle its own dynamic rendering internally
+The UI command buffer setup demonstrates the power of the multi-buffer approach through its different attachment configuration. By changing the load operation to `eLoad`, we preserve the scene rendering results as the foundation for UI overlay rendering. This approach is more explicit and controllable than relying on automatic render pass dependencies.
+
+Removing the depth attachment for UI rendering eliminates unnecessary depth testing overhead, since UI elements typically render in screen space without complex occlusion relationships. This optimization can provide measurable performance improvements, especially on mobile GPUs where bandwidth is at a premium.
+
+=== Multi-Buffer: UI Rendering and Submission Coordination
+
+The final phase handles UI rendering execution and coordinates the submission of both command buffers in the correct order.
+
+[source,cpp]
+----
+    // Execute UI overlay rendering
+    // The custom renderer handles ImGui's dynamic rendering internally
     renderer.render(ImGui::GetDrawData(), imguiCommandBuffer);
 
+    // Finalize UI command buffer
     imguiCommandBuffer.end();
 
-    // Submit command buffers in order
+    // Coordinate submission of both command buffers in dependency order
+    // Scene must complete before UI to ensure proper overlay rendering
     std::array<vk::CommandBuffer, 2> submitCommandBuffers = {
-        *sceneCommandBuffer,
-        *imguiCommandBuffer
+        *sceneCommandBuffer,     // Execute scene rendering first
+        *imguiCommandBuffer      // Then execute UI overlay
     };
 
+    // Configure batch submission for optimal GPU utilization
     vk::SubmitInfo submitInfo{};
     submitInfo.commandBufferCount = static_cast<uint32_t>(submitCommandBuffers.size());
     submitInfo.pCommandBuffers = submitCommandBuffers.data();
 
+    // Submit both command buffers as a cohesive frame
     // ... rest of your submission code ...
 }
 ----

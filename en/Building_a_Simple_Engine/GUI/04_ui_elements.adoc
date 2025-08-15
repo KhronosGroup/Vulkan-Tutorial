@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = GUI: UI Elements and Integration Concepts
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == UI Elements and Integration Concepts
 
@@ -184,7 +177,8 @@ To display a Vulkan texture in ImGui, you need to:
 3. Update the descriptor set with your texture's image view and sampler
 4. Pass the descriptor set handle to ImGui
 
-Here's how to set up the necessary resources:
+===== Create the descriptor set layout
+This layout declares a single combined image sampler the shader can sample from when ImGui draws the quad.
 
 [source,cpp]
 ----
@@ -200,7 +194,13 @@ layoutInfo.bindingCount = 1;
 layoutInfo.pBindings = &binding;
 
 vk::raii::DescriptorSetLayout textureSetLayout = device.createDescriptorSetLayout(layoutInfo);
+----
 
+===== Allocate a descriptor set
+Allocate one set per texture you want to show in ImGui.
+
+[source,cpp]
+----
 // Allocate a descriptor set for each texture
 vk::DescriptorSetAllocateInfo allocInfo{};
 allocInfo.descriptorPool = *descriptorPool;
@@ -209,7 +209,13 @@ vk::DescriptorSetLayout layouts[] = {*textureSetLayout};
 allocInfo.pSetLayouts = layouts;
 
 vk::raii::DescriptorSet textureDescriptorSet = std::move(device.allocateDescriptorSets(allocInfo).front());
+----
 
+===== Update the descriptor set
+Point the descriptor at your image view and sampler in shader‑read layout.
+
+[source,cpp]
+----
 // Update the descriptor set with your texture
 vk::DescriptorImageInfo imageInfo{};
 imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
@@ -226,7 +232,7 @@ writeSet.dstBinding = 0;
 device.updateDescriptorSets(1, &writeSet, 0, nullptr);
 ----
 
-==== Using Textures in ImGui
+==== Use it in ImGui
 
 Once you have set up the descriptor set, you can use it with ImGui's image functions:
 

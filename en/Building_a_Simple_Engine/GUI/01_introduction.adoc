@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = GUI: Introduction
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Introduction
 
@@ -15,28 +8,29 @@ Welcome to the "GUI" chapter of our "Building a Simple Engine" series! After imp
 
 In this chapter, we'll integrate a popular immediate-mode GUI library called Dear ImGui with our Vulkan engine. Dear ImGui is widely used in the game and graphics industry due to its simplicity, performance, and flexibility. It allows developers to quickly create debug interfaces, tools, and in-game menus without the complexity of traditional retained-mode GUI systems.
 
-In this chapter, we'll focus on:
+This chapter will guide you through integrating a professional GUI system into your Vulkan engine. We'll start by setting up Dear ImGui with Vulkan, establishing the foundation for all GUI functionality. The integration requires careful management of Vulkan resources—we'll create dedicated buffers, textures, and pipelines that work alongside your existing rendering systems without interference.
 
-* Setting up Dear ImGui with Vulkan
-* Creating and managing Vulkan resources for GUI rendering (buffers, textures, pipeline)
-* Handling user input for both 3D navigation and GUI interaction
-* Understanding key GUI integration concepts rather than exhaustive widget examples
-* Integrating the GUI rendering with our Vulkan rendering pipeline
-* Implementing object picking for 3D scene interaction
+User input handling becomes more complex when you need to support both 3D scene navigation and GUI interaction. We'll implement a system that can distinguish between input intended for the 3D world and input meant for interface elements, ensuring smooth interaction with both.
+
+Rather than overwhelming you with exhaustive widget examples, we'll focus on the key integration concepts that enable GUI functionality. Understanding these principles will let you implement any interface elements your project needs.
+
+The rendering integration presents interesting challenges—your GUI needs to render on top of your 3D scene without disrupting the existing pipeline. We'll solve this by carefully managing render passes and ensuring proper depth testing and blending.
+
+Finally, we'll implement object picking, which bridges the gap between your GUI and 3D scene. This feature allows users to click on 3D objects and see their properties in the interface, creating a cohesive development environment.
 
 By the end of this chapter, you'll have a functional GUI system that you can use to control your camera, adjust rendering settings, and interact with your 3D scene. This will serve as a foundation for more advanced features in later chapters, such as material editors, scene hierarchies, and debugging tools.
 
 == Prerequisites
 
-Before starting this chapter, you should have completed:
+This chapter builds directly on the Camera & Transformations chapter, as we'll extend the camera system we developed there to work seamlessly with GUI interaction. The camera controls need to be aware of when the user is interacting with interface elements versus navigating the 3D scene.
 
-* The Camera & Transformations chapter, as we'll build upon the camera system we developed there
-* Solid understanding of Vulkan concepts, particularly:
-  ** Rendering pipeline and command buffers
-  ** Buffer and image creation
-  ** Descriptor sets and layouts
-  ** Pipeline creation
-* Basic understanding of input handling concepts
+You'll also need a solid understanding of several core Vulkan concepts. The rendering pipeline and command buffer knowledge is crucial because GUI rendering requires careful coordination with your existing 3D rendering—we'll be recording GUI draw calls into the same command buffers while managing different pipeline states.
+
+Buffer and image creation skills are essential since Dear ImGui requires dedicated vertex and index buffers for its geometry, plus texture resources for fonts and any custom UI textures. Understanding descriptor sets and layouts becomes important as we'll need to create descriptors specifically for GUI rendering that don't interfere with your 3D scene descriptors.
+
+Pipeline creation knowledge ties everything together, as we'll build a specialized graphics pipeline for GUI rendering with different vertex input, shaders, and render state than your 3D pipeline.
+
+A basic understanding of input handling concepts will help you follow along as we implement the dual-mode input system that can distinguish between 3D navigation and GUI interaction.
 
 Let's begin by exploring how to implement a professional GUI system with Dear ImGui and Vulkan.
 

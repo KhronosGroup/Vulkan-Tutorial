@@ -12,11 +12,11 @@ Dynamic rendering is a game-changing extension that simplifies the Vulkan render
 
 ==== Overview
 
-The `VK_KHR_dynamic_rendering` extension (now part of Vulkan 1.3 core) allows you to begin and end rendering operations directly within a command buffer, without creating render pass and framebuffer objects. This is particularly beneficial for mobile development as it:
+The `VK_KHR_dynamic_rendering` extension (now part of Vulkan 1.3 core) allows you to begin and end rendering operations directly within a command buffer, without creating render pass and framebuffer objects. This benefits a wide range of platforms (desktop and mobile) because it:
 
 1. *Simplifies Code*: Reduces the complexity of managing render passes and framebuffers.
 2. *Enables More Flexible Rendering*: Makes it easier to implement techniques that don't fit well into the traditional render pass model.
-3. *Reduces API Overhead*: Fewer objects to create and manage means less CPU overhead.
+3. *Potentially Lowers API Overhead*: Fewer objects to create and manage can simplify setup; any CPU savings are usually small and workload-dependent.
 
 ==== Implementation (Step-by-step)
 
@@ -158,11 +158,11 @@ The `VK_KHR_dynamic_rendering_local_read` extension is particularly effective at
 
 1. *Eliminates Tile Flush Operations*: Without this extension, when a shader needs to read from a previously written attachment, the GPU must flush the entire tile to main memory and then read it back. This extension allows the shader to read directly from the tile memory, eliminating these costly flush operations.
 
-2. *Optimizes Post-Processing Effects*: Effects like bloom, tone mapping, and depth-of-field that require reading from rendered images can be performed without leaving the tile memory.
+2. *Supports Per-Pixel Local Reads*: It enables fragment shaders to read the value written at the same pixel from attachments within the current rendering scope/tile. This suits per-pixel operations (e.g., tone mapping or reading depth/previous color).
 
-3. *Bandwidth Reduction Measurements*: In real-world applications, this extension has been shown to reduce memory bandwidth by up to 30% for post-processing heavy workloads. This is particularly significant on mobile devices where memory bandwidth is often a bottleneck and directly impacts battery life.
+3. *Bandwidth Reduction Measurements*: In real-world applications, this extension has been shown to reduce memory bandwidth for workloads that benefit from per-pixel local reads. The benefit is workload- and GPU-dependent.
 
-4. *Practical Example*: Consider a deferred rendering pipeline that needs to read G-buffer data. Without this extension, the G-buffer would need to be written to main memory and then read back for the lighting pass. With this extension, the lighting pass can read directly from the G-buffer in tile memory, saving significant bandwidth.
+4. *Practical Example*: Consider a deferred rendering pipeline that needs to read G-buffer data at the same pixel for lighting. Without this extension, the G-buffer would need to be written to main memory and then read back for the lighting pass. With this extension, the lighting pass can read directly from the G-buffer in tile memory, saving bandwidth.
 
 ==== Implementation
 

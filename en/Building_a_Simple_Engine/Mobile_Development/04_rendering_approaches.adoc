@@ -99,11 +99,11 @@ vk::RenderPass render_pass = device.createRenderPass(render_pass_info);
 
 ==== Best Practices for TBR
 
-* *Avoid Framebuffer Reads*: Reading from the framebuffer can force the tile to be written to main memory and then read back, which is expensive.
+* *Avoid External Framebuffer Reads*: Avoid reading from images that require the tile to be flushed to external memory and reloaded; this is expensive on TBR.
+  - Local, same-pixel reads from on-chip/tile memory are fine and encouraged on tile-based GPUs.
+  - In Vulkan, use input attachments within subpasses or the `VK_KHR_dynamic_rendering_local_read` capability to perform tile-local reads without leaving tile memory. This is often referred to as pixel-local storage (PLS) on tile-based architectures.
 
-* *Optimize for Tile Size*: Consider the tile size when designing your
-rendering algorithm. For example, if you know the tile size is 16x16, you
-might organize your data or algorithms to work efficiently with that size.
+* *Optimize for Tile Size*: Consider the tile size when designing your rendering algorithm. For example, if you know the tile size is 16x16, you might organize your data or algorithms to work efficiently with that size.
 
 ===== Memory Management
 

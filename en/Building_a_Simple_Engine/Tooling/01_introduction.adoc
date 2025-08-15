@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Tooling: Introduction
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Introduction to Engine Tooling
 
@@ -17,23 +10,21 @@ Effective tooling is critical for maintaining productivity, ensuring quality, an
 
 === What We'll Cover
 
-In this chapter, we'll explore:
+This chapter will equip you with the professional tooling ecosystem that transforms a working Vulkan application into a maintainable, debuggable, and deployable product. We'll begin by implementing a continuous integration and continuous deployment pipeline specifically designed for Vulkan's unique requirements. This foundation ensures that your application builds consistently across platforms while catching integration issues before they reach users.
 
-* *CI/CD for Vulkan Projects*: We'll implement a continuous integration and continuous deployment pipeline specifically tailored for Vulkan applications, ensuring consistent builds and automated testing across different platforms.
+Debugging Vulkan applications presents unique challenges that traditional debugging approaches can't address effectively. We'll master both Vulkan's built-in debugging extensions like VK_KHR_debug_utils and external tools like RenderDoc, creating a comprehensive debugging workflow that can diagnose everything from validation layer warnings to complex rendering pipeline issues.
 
-* *Debugging with VK_KHR_debug_utils and RenderDoc*: We'll explore how to use Vulkan's debugging extensions and external tools like RenderDoc to identify and fix issues in your rendering pipeline.
+Robust crash handling becomes crucial as your application moves toward production deployment. We'll implement systems that can gracefully handle unexpected failures, generate detailed minidumps for post-mortem analysis, and provide users with meaningful recovery options rather than abrupt terminations.
 
-* *Crash Handling and Minidumps*: We'll implement robust crash handling mechanisms and learn how to generate and analyze minidumps to diagnose issues in production environments.
-
-* *Vulkan Extensions for Robustness*: We'll explore extensions like VK_EXT_robustness2 that can help make your application more resilient to undefined behavior.
+Finally, we'll explore Vulkan extensions designed specifically for application robustness, such as VK_EXT_robustness2, which help your application handle edge cases and undefined behavior gracefully. These extensions transform potential crashes into recoverable situations, improving the overall user experience.
 
 === Prerequisites
 
-Before diving into this chapter, you should be familiar with:
+This chapter assumes solid understanding of the Vulkan fundamentals and engine architecture we've built throughout the previous chapters. The tooling we'll implement needs to integrate with your existing systems—CI/CD pipelines must understand your project structure, debugging tools must work with your rendering pipeline, and crash handling must respect your engine's resource management patterns.
 
-* The basics of Vulkan and our engine architecture from previous chapters
-* Modern C++ concepts, particularly those introduced in C++17 and C++20
-* Basic understanding of software development workflows and tools
+Experience with modern C++ concepts becomes particularly important here, as professional tooling often leverages advanced language features for reliability and maintainability. C++17 and C++20 features like structured bindings, concepts, and coroutines appear frequently in production tooling code, and understanding these patterns will help you implement robust solutions.
+
+A basic familiarity with software development workflows and tools will provide context for the systems we'll build. While we'll explain the specific implementations, understanding why continuous integration matters, how debugging fits into development cycles, and why crash reporting improves user experience will help you appreciate the architectural decisions we make throughout this chapter.
 
 Let's begin by exploring how to set up a CI/CD pipeline for Vulkan projects.
 

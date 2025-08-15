@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Tooling: Packaging and Distribution
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Packaging and Distributing Vulkan Applications
 

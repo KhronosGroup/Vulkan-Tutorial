@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Tooling: CI/CD for Vulkan Projects
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Continuous Integration and Deployment for Vulkan
 

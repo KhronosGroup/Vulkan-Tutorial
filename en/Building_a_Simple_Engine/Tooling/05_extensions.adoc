@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Tooling: Vulkan Extensions for Robustness
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Vulkan Extensions for Robustness
 

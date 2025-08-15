@@ -1,13 +1,6 @@
 :pp: {plus}{plus}
 
 = Building a Simple Engine: Introduction
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c{pp}
 
 == Introduction
 
@@ -17,14 +10,7 @@ Welcome to the "Building a Simple Engine" tutorial series! This series marks a t
 
 While the previous tutorial series focused on introducing individual Vulkan concepts step by step, this series takes a different approach:
 
-* *Intermediate to Advanced Level* - This tutorial assumes you have completed
- the original link:../00_Introduction.adoc[Vulkan Tutorial] series and are
- comfortable with the
- fundamental concepts. If this feels too advanced, start with the link:../00_Introduction.adoc[Vulkan Tutorial] and come back when you're ready.
-
-* *Concept-Focused Learning* - Rather than providing exhaustive details on every possible implementation approach, we focus on key architectural concepts and design patterns for building a rendering engine.
-
-* *More Independent Work* - This series will require more time and independent problem-solving from you. We'll provide the framework and guidance, but you'll need to fill in some details on your own. Remember that you have access to many resources: the https://docs.vulkan.org/guide/latest/[Vulkan Guide] provides in-depth information on topics this tutorial only introduces, the https://docs.vulkan.org/samples/latest/[Samples] offer hands-on demonstrations of specific implementations, and the https://docs.vulkan.org/spec/latest/[Specification] contains the precise rules of the API. If you need assistance, don't hesitate to reach out—Vulkan has a vibrant community with experts across a wide range of topics.
+This series targets readers who have completed the link:../00_Introduction.adoc[Vulkan Tutorial] and feel comfortable with the fundamentals. We’ll emphasize architectural concepts and design patterns over exhaustive API permutations, so you develop an engine mindset rather than a collection of snippets. Expect to do more independent work: fill in smaller gaps, experiment, and lean on the https://docs.vulkan.org/guide/latest/[Vulkan Guide], https://docs.vulkan.org/samples/latest/[Samples], and https://docs.vulkan.org/spec/latest/[Specification] as primary references. If a topic feels too advanced, revisit the original tutorial and return when ready.
 
 === What to Expect
 
@@ -42,14 +28,11 @@ The "Building a Simple Engine" series is designed as a starting point for your j
 
 Throughout this series, we encourage you to experiment, extend the provided examples, and even challenge some of our design decisions. The best way to learn engine development is by doing, and sometimes by making (and learning from) mistakes.
 
+Throughout our engine implementation, we're using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
+
 === How to Use This Tutorial
 
-Each chapter in this series builds upon the previous ones, gradually constructing a simple but functional rendering engine. We recommend:
-
-1. Read through each chapter completely before implementing the code.
-2. Take time to understand the concepts before moving on.
-3. Don't hesitate to revisit the original Vulkan tutorial if you need to refresh your understanding of specific Vulkan concepts.
-4. Experiment with the code and try to extend it with your own features.
+Each chapter builds on the last to assemble a small but capable engine. Read a chapter end‑to‑end first, then implement; pause to internalize the concepts; and don’t hesitate to revisit the original Vulkan tutorial when you need a refresher. Treat the code as a starting point—experiment and extend it with your own features.
 
 Let's begin our journey into engine development with these chapters:
 

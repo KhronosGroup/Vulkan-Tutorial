@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Tooling
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 This chapter covers essential tooling and techniques for developing, debugging, and distributing Vulkan applications, with a focus on using modern C++20 modules and the vk::raii namespace.
 

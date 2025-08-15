@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Managing Multiple Objects
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Managing Multiple Objects in a 3D Scene
 
@@ -470,6 +463,14 @@ vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 ----
 
 With hardware instancing set up, we can modify our rendering loop to draw all instances in a single call:
+
+The same five steps apply here; the difference is in step 4 where we bind the instance buffer and draw N instances:
+
+* Begin and describe attachments
+* Begin rendering, bind pipeline, set viewport/scissor
+* Update camera UBO (view/projection)
+* Bind per‑mesh vertex + index buffers and a per‑mesh instance buffer, then draw instanced
+* End rendering and present
 
 [source,cpp]
 ----

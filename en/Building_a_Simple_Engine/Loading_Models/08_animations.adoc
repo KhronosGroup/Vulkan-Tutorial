@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Updating Animations
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Understanding and Implementing Animations
 
@@ -66,43 +59,88 @@ These structures work together to define how animations are stored and processed
 
 === How Animation Playback Works
 
-The core of our animation system is the `updateAnimation` method in the Model class:
+The animation update process is the heart of our animation system, responsible for translating time-based animation data into actual transformations applied to scene graph nodes.
+
+=== Animation Update: Validation and Time Management
+
+Before we start anything, we should validate that we have valid animation data and manage the progression of animation time, including looping behavior for cyclical animations.
 
 [source,cpp]
 ----
 void Model::updateAnimation(uint32_t index, float deltaTime) {
+    // Validate animation data and index bounds
     if (animations.empty() || index >= animations.size()) {
         return;
     }
 
+    // Update animation timing with automatic looping
     Animation& animation = animations[index];
     animation.currentTime += deltaTime;
     if (animation.currentTime > animation.end) {
         animation.currentTime = animation.start;
     }
+----
 
+Animation validation is critical for robust systems because not all models contain animations, and external code might request non-existent animation indices. By performing this check early, we avoid crashes and undefined behavior when working with static models or invalid animation requests. This defensive programming approach is essential in production game engines where content from various sources might have inconsistent animation data.
+
+Time management forms the foundation of animation playback, where the deltaTime parameter represents the elapsed time since the last update. This frame-rate independent approach ensures animations play at consistent speeds regardless of rendering performance. The automatic looping mechanism seamlessly restarts animations when they reach their end time, creating continuous motion that's essential for idle animations, walking cycles, and other repetitive movements.
+
+=== Animation Update: Channel Iteration and Sampler Access
+
+New we iterate through all animation channels, establishing the connection between abstract animation data and the specific nodes in our scene graph that will receive transformation updates.
+
+[source,cpp]
+----
+    // Process each animation channel to update corresponding scene nodes
     for (auto& channel : animation.channels) {
         AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
+----
 
-        // Find the current key frame
+The channel iteration represents the heart of our animation-to-scene-graph mapping system. Each channel defines a specific transformation type (position, rotation, or scale) for a particular node in the scene hierarchy. This one-to-many relationship allows complex animations where multiple properties of multiple nodes can be animated simultaneously, enabling sophisticated character animations with dozens of moving parts.
+
+The sampler access pattern demonstrates the separation of concerns in our animation architecture. Samplers contain the actual keyframe data and interpolation logic, while channels define what gets animated. This design allows multiple channels to share the same sampler data, reducing memory usage when the same animation curve applies to different nodes or when different transformation components follow identical patterns.
+
+=== Animation Update: Keyframe Location and Interpolation Factor Calculation
+
+Next, locate the appropriate keyframes that surround the current animation time and calculate the precise interpolation factor needed for smooth transitions between discrete animation samples.
+
+[source,cpp]
+----
+        // Find the current keyframe pair that brackets the animation time
         for (size_t i = 0; i < sampler.inputs.size() - 1; i++) {
             if (animation.currentTime >= sampler.inputs[i] && animation.currentTime <= sampler.inputs[i + 1]) {
+                // Calculate normalized interpolation factor between keyframes
                 float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+----
 
+The keyframe search algorithm performs a linear scan to find the pair of keyframes that bracket the current animation time. While this approach has O(n) complexity, it's practical for typical animation data where keyframes are relatively sparse. Production systems often optimize this with binary search or by caching the last keyframe index, but the linear approach provides clarity for educational purposes and adequate performance for most real-world animation sequences.
+
+The interpolation factor calculation creates a normalized value between 0.0 and 1.0 that represents exactly where the current time falls between two keyframes. When t=0.0, we're at the first keyframe; when t=1.0, we're at the second keyframe; values in between create smooth transitions. This mathematical foundation enables all the interpolation techniques that follow, whether for linear position changes or complex quaternion rotations.
+
+=== Animation Update: Property-Specific Interpolation and Node Updates
+
+Finally, apply the appropriate mathematical interpolation technique based on the transformation type, updating the actual scene graph nodes with the computed animation values.
+
+[source,cpp]
+----
+                // Apply transformation based on the specific animation channel type
                 switch (channel.path) {
                     case AnimationChannel::TRANSLATION: {
+                        // Linear interpolation for position changes
                         glm::vec3 start = sampler.outputsVec3[i];
                         glm::vec3 end = sampler.outputsVec3[i + 1];
                         channel.node->translation = glm::mix(start, end, t);
                         break;
                     }
                     case AnimationChannel::ROTATION: {
+                        // Spherical linear interpolation for smooth rotation transitions
                         glm::quat start = glm::quat(sampler.outputsVec4[i].w, sampler.outputsVec4[i].x, sampler.outputsVec4[i].y, sampler.outputsVec4[i].z);
                         glm::quat end = glm::quat(sampler.outputsVec4[i + 1].w, sampler.outputsVec4[i + 1].x, sampler.outputsVec4[i + 1].y, sampler.outputsVec4[i + 1].z);
                         channel.node->rotation = glm::slerp(start, end, t);
                         break;
                     }
                     case AnimationChannel::SCALE: {
+                        // Linear interpolation for scaling transformations
                         glm::vec3 start = sampler.outputsVec3[i];
                         glm::vec3 end = sampler.outputsVec3[i + 1];
                         channel.node->scale = glm::mix(start, end, t);

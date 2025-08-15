@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Rendering the Scene
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Rendering the Scene
 
@@ -41,54 +34,117 @@ void renderScene(const vk::raii::CommandBuffer& commandBuffer, Model& model, con
 
 The `renderNode` function is the heart of our scene rendering system. It recursively traverses the scene graph, calculating the global transformation matrix for each node and rendering any meshes it contains:
 
+=== Node traversal and transform calculation
+
+The rendering process begins with systematic traversal of the scene graph, where each node's transformation is calculated by combining its local transformation with its parent's accumulated transformation matrix.
+
 [source,cpp]
 ----
 void renderNode(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix) {
     for (const auto node : nodes) {
-        // Calculate global matrix for this node
+        // Calculate the cumulative transformation from root to current node
+        // This combines the parent's world transformation with this node's local transformation
         glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+----
 
-        // If this node has a mesh, render it
+The transformation calculation represents the core of hierarchical scene graph rendering. Each node's `getLocalMatrix()` returns its transformation relative to its parent, which we then combine with the accumulated parent transformation using matrix multiplication. This mathematical operation effectively "chains" transformations down the hierarchy, ensuring that moving a parent node automatically moves all its children in world space.
+
+The order of multiplication is critical here: `parentMatrix * nodeLocalMatrix` ensures that the node's local transformation occurs first (in the node's local coordinate space), followed by the parent's transformation that places it in world space. This ordering preserves the hierarchical relationship where children are positioned relative to their parents.
+
+=== Mesh validation and rendering preparation
+
+Before rendering, we must validate that the node contains valid mesh data and has been properly uploaded to GPU buffers, ensuring robust rendering that handles incomplete or invalid scene graph nodes.
+
+[source,cpp]
+----
+        // Validate that this node has complete, renderable mesh data
+        // All conditions must be met for safe GPU rendering
         if (!node->mesh.vertices.empty() && !node->mesh.indices.empty() &&
             node->vertexBufferIndex >= 0 && node->indexBufferIndex >= 0) {
+----
 
-            // Set up push constants for material properties
+This validation step prevents rendering errors that could occur from incomplete scene graph nodes. Not every node in a scene graph necessarily contains renderable geometry - some nodes exist purely for organization or as transformation anchors for child objects. By checking for non-empty vertex and index arrays plus valid buffer indices, we ensure that we only attempt to render nodes that have been properly prepared with GPU resources.
+
+The buffer index checks (>= 0) are particularly important because they confirm that the mesh data has been successfully uploaded to GPU buffers and assigned valid indices in our buffer management system. Negative indices typically indicate uninitialized or failed buffer allocations.
+
+=== Material property configuration
+
+This material setup step translates high-level material descriptions into GPU-ready push constants that control the appearance and lighting properties of the rendered geometry.
+
+[source,cpp]
+----
+            // Initialize push constants structure for material data transfer
             PushConstantBlock pushConstants{};
 
+            // Configure material properties if a valid material is assigned
             if (node->mesh.materialIndex >= 0 && node->mesh.materialIndex < static_cast<int>(model.materials.size())) {
                 const auto& material = model.materials[node->mesh.materialIndex];
-                pushConstants.baseColorFactor = material.baseColorFactor;
-                pushConstants.metallicFactor = material.metallicFactor;
-                pushConstants.roughnessFactor = material.roughnessFactor;
+
+                // Set PBR material factors that control surface appearance
+                pushConstants.baseColorFactor = material.baseColorFactor;      // Surface color tint
+                pushConstants.metallicFactor = material.metallicFactor;        // Metallic vs. dielectric
+                pushConstants.roughnessFactor = material.roughnessFactor;      // Surface roughness
+
+                // Configure texture binding indices (-1 indicates no texture)
                 pushConstants.baseColorTextureSet = material.baseColorTextureIndex >= 0 ? 1 : -1;
                 pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex >= 0 ? 2 : -1;
                 pushConstants.normalTextureSet = material.normalTextureIndex >= 0 ? 3 : -1;
                 pushConstants.occlusionTextureSet = material.occlusionTextureIndex >= 0 ? 4 : -1;
                 pushConstants.emissiveTextureSet = material.emissiveTextureIndex >= 0 ? 5 : -1;
             } else {
-                // Default material properties
-                pushConstants.baseColorFactor = glm::vec4(1.0f);
-                pushConstants.metallicFactor = 1.0f;
-                pushConstants.roughnessFactor = 1.0f;
-                pushConstants.baseColorTextureSet = 1;
-                pushConstants.physicalDescriptorTextureSet = -1;
-                pushConstants.normalTextureSet = -1;
-                pushConstants.occlusionTextureSet = -1;
-                pushConstants.emissiveTextureSet = -1;
+                // Apply sensible default material properties for unassigned materials
+                pushConstants.baseColorFactor = glm::vec4(1.0f);               // White base color
+                pushConstants.metallicFactor = 1.0f;                           // Fully metallic (safe default)
+                pushConstants.roughnessFactor = 1.0f;                          // Fully rough (safe default)
+                pushConstants.baseColorTextureSet = 1;                         // Assume default texture
+                pushConstants.physicalDescriptorTextureSet = -1;               // No metallic/roughness texture
+                pushConstants.normalTextureSet = -1;                           // No normal map
+                pushConstants.occlusionTextureSet = -1;                        // No ambient occlusion
+                pushConstants.emissiveTextureSet = -1;                         // No emissive texture
             }
+----
 
-            // Update model matrix in push constants
-            commandBuffer.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstantBlock), &pushConstants);
+The material configuration system bridges the gap between artist-authored materials and GPU shader parameters. Push constants provide the fastest path for updating per-object material data, as they bypass the GPU's memory hierarchy and are directly accessible to shader cores. This makes them ideal for material properties that change frequently between draw calls.
 
-            // Bind vertex and index buffers
+The texture index mapping system (-1 for unused, positive integers for active bindings) allows shaders to conditionally sample textures based on availability. This approach provides flexibility where some materials might have normal maps while others don't, without requiring different shader variants or complex branching logic.
+
+The default material properties are chosen conservatively to prevent rendering artifacts when materials are missing or improperly configured. Metallic and roughness values of 1.0 tend to produce visually acceptable results across different lighting conditions, though they may not represent the intended material appearance.
+
+=== GPU resource binding and draw command execution
+
+The final rendering phase binds GPU resources and issues the actual draw command that transforms the scene graph node into rendered pixels on the screen.
+
+[source,cpp]
+----
+            // Upload material properties to GPU via push constants
+            // This provides fast, per-draw-call material parameter updates
+            commandBuffer.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eFragment,
+                                      0, sizeof(PushConstantBlock), &pushConstants);
+
+            // Bind geometry data buffers for GPU access
+            // Vertex buffer contains position, normal, texture coordinate data
             commandBuffer.bindVertexBuffers(0, *vertexBuffers[node->vertexBufferIndex], {0});
+            // Index buffer defines triangle connectivity and enables vertex reuse
             commandBuffer.bindIndexBuffer(*indexBuffers[node->indexBufferIndex], 0, vk::IndexType::eUint32);
 
-            // Draw the mesh
+            // Execute the draw command to render this mesh
+            // GPU processes indices to generate triangles and runs vertex/fragment shaders
             commandBuffer.drawIndexed(static_cast<uint32_t>(node->mesh.indices.size()), 1, 0, 0, 0);
         }
+----
 
-        // Recursively render children
+The resource binding sequence follows Vulkan's explicit binding model where each resource type must be bound before use. Vertex buffers provide the per-vertex attribute data (positions, normals, texture coordinates), while index buffers define how vertices connect to form triangles. This indexed rendering approach reduces memory usage by allowing vertex reuse across multiple triangles.
+
+The `drawIndexed` command triggers GPU execution of the entire graphics pipeline for this mesh. The GPU processes each index to fetch vertex data, runs the vertex shader to transform geometry, rasterizes triangles to generate fragments, and executes the fragment shader to determine final pixel colors. All the material properties we configured via push constants become available to the fragment shader during this process.
+
+=== Hierarchical recursion
+
+Finally, ensure complete scene graph traversal by recursively processing child nodes with the accumulated transformation matrix, maintaining the hierarchical structure throughout the rendering process.
+
+[source,cpp]
+----
+        // Recursively process child nodes with accumulated transformation
+        // This maintains the hierarchical transformation chain down the scene graph
         if (!node->children.empty()) {
             renderNode(commandBuffer, node->children, nodeMatrix);
         }
@@ -131,6 +187,11 @@ glm::mat4 getLocalMatrix() {
 ----
 
 ==== Material Setup
+
+[NOTE]
+====
+We covered PBR material theory and shader details earlier in Loading_Models/05_pbr_rendering.adoc, so we won’t restate that here. This section focuses on the wiring: how material properties are packed into push constants and consumed by the draw call in this chapter’s context.
+====
 
 If the node has a mesh, we need to set up its material properties before rendering:
 
@@ -214,7 +275,13 @@ This ensures that all nodes in the scene graph are visited and rendered with the
 
 === Integrating Scene Rendering in the Main Loop
 
-To use our scene rendering system in the main rendering loop, we need to set up the necessary Vulkan state and call the `renderScene` function:
+To use our scene rendering system in the main rendering loop, we need to set up the necessary Vulkan state and call the `renderScene` function. To keep this digestible, think of the frame as five steps:
+
+1) Begin and describe attachments (dynamic rendering inputs)
+2) Begin rendering, bind pipeline, set viewport/scissor
+3) Update camera UBO (view/projection)
+4) Traverse scene graph and issue per-mesh draws
+5) End rendering and present
 
 [source,cpp]
 ----

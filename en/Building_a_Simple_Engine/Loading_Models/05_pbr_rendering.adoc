@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Implementing PBR for glTF Models
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Applying PBR to glTF Models
 
@@ -65,6 +58,11 @@ This uniform buffer includes:
 5. *Image-Based Lighting Parameters*: For environment reflections (we'll cover this in a later chapter)
 
 ==== Push Constants for Materials
+
+[NOTE]
+====
+We introduced push constants earlier in link:../Lighting_Materials/03_push_constants.adoc[push constants]; here we focus on how the same mechanism carries glTF metallic‑roughness material knobs efficiently per draw.
+====
 
 We'll use link:https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-pushconstant[push constants] to pass material properties to the shader:
 

@@ -1,13 +1,6 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Understanding glTF
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Understanding glTF
 
@@ -196,7 +189,11 @@ For our engine, we use the .glb format with embedded KTX2 textures. This approac
 
 The glTF specification supports embedded textures through the `bufferView` property of image objects. When using KTX2 textures, the `mimeType` is set to `"image/ktx2"` to indicate the format.
 
-Here's how we extract material data and load embedded KTX2 textures from a glTF file:
+The texture loading process involves several complex steps that bridge the gap between glTF's abstract texture references and Vulkan's low-level GPU resources.
+
+=== Texture Loading: glTF Texture Iteration and Metadata Extraction
+
+First, we iterate through the glTF model's texture definitions and extracting the fundamental information needed to locate and identify each texture resource.
 
 [source,cpp]
 ----
@@ -208,7 +205,18 @@ for (size_t i = 0; i < gltfModel.textures.size(); i++) {
 
     Texture tex;
     tex.name = image.name.empty() ? "texture_" + std::to_string(i) : image.name;
+----
 
+The glTF texture system uses an indirection approach where textures reference images, and images contain the actual pixel data or references to it. This separation allows multiple textures to share the same image data but with different sampling parameters (like different filtering or wrapping modes). Our iteration process builds a comprehensive inventory of all texture resources that materials will eventually reference.
+
+The naming strategy provides essential debugging and asset management capabilities. When artists create textures in their 3D applications, meaningful names help developers identify which textures serve which purposes during development. The fallback naming scheme ensures every texture has a unique identifier even when artists haven't provided descriptive names.
+
+=== Texture Loading: Format Detection and Buffer Access
+
+Next, we need to figure out whether textures are embedded in the glTF file and identify their format, setting up the foundation for appropriate loading strategies.
+
+[source,cpp]
+----
     // Check if the image is embedded as KTX2
     if (image.mimeType == "image/ktx2" && image.bufferView >= 0) {
         // Get the buffer view that contains the KTX2 data
@@ -218,7 +226,18 @@ for (size_t i = 0; i < gltfModel.textures.size(); i++) {
         // Extract the KTX2 data from the buffer
         const uint8_t* ktx2Data = buffer.data.data() + bufferView.byteOffset;
         size_t ktx2Size = bufferView.byteLength;
+----
 
+The MIME type detection ensures we're working with KTX2 format specifically, which provides several advantages over traditional image formats like PNG or JPEG. KTX2 is designed specifically for GPU textures and supports advanced features like basis universal compression, multiple mipmap levels, and direct GPU format compatibility. The bufferView check confirms that the image data is embedded within the glTF file rather than referenced externally.
+
+The buffer access pattern demonstrates glTF's sophisticated data organization system. Rather than copying data unnecessarily, we obtain direct pointers to the KTX2 data within the loaded glTF buffer. This approach minimizes memory usage and avoids expensive copy operations, which is particularly important when dealing with large texture datasets that can easily consume hundreds of megabytes.
+
+=== Texture Loading: KTX2 Parsing and Validation
+
+Now we need to load the KTX2 texture data using the specialized KTX-Software library and perform initial validation to ensure the texture data is usable.
+
+[source,cpp]
+----
         // Load the KTX2 texture using KTX-Software library
         ktxTexture2* ktxTexture = nullptr;
         KTX_error_code result = ktxTexture2_CreateFromMemory(
@@ -231,7 +250,18 @@ for (size_t i = 0; i < gltfModel.textures.size(); i++) {
             std::cerr << "Failed to load KTX2 texture: " << ktxErrorString(result) << std::endl;
             continue;
         }
+----
 
+The KTX-Software library provides robust parsing of the complex KTX2 format, handling details like multiple mipmap levels, various pixel formats, and metadata that would be extremely complex to implement correctly from scratch. The `KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT` flag instructs the library to immediately load the actual pixel data into memory, preparing it for subsequent processing steps.
+
+Error handling at this stage is crucial because texture files can become corrupted during asset pipeline processing or file transfer. By continuing with the next texture when one fails to load, we ensure that a single problematic texture doesn't prevent the entire model from loading. This graceful degradation approach is essential for robust production systems where content issues shouldn't crash the application.
+
+=== Texture Loading: Basis Universal Transcoding
+
+Next, we handle the transcoding process that converts Basis Universal compressed textures into GPU-native formats for optimal runtime performance.
+
+[source,cpp]
+----
         // If the texture uses Basis Universal compression, transcode it to a GPU-friendly format
         if (ktxTexture->isCompressed && ktxTexture2_NeedsTranscoding(ktxTexture)) {
             // Choose the appropriate format based on GPU capabilities
@@ -253,7 +283,20 @@ for (size_t i = 0; i < gltfModel.textures.size(); i++) {
                 continue;
             }
         }
+----
 
+Basis Universal represents a revolutionary approach to texture compression that solves a fundamental problem in cross-platform development: different GPUs support different texture compression formats. Traditional approaches required storing multiple texture versions for different platforms, dramatically increasing storage requirements. Basis Universal stores textures in an intermediate format that can be quickly transcoded to any GPU-native format at load time.
+
+The format selection logic (shown in commented form) demonstrates how production systems handle GPU capability differences. Desktop GPUs typically support BC7 compression which provides excellent quality, while mobile GPUs often use ASTC or ETC2 formats. The transcoding process happens at runtime based on the actual capabilities of the target GPU, ensuring optimal performance and quality on every platform.
+
+The transcoding operation itself is computationally intensive but happens only once during asset loading. The resulting GPU-native format provides significantly better performance during rendering compared to uncompressed textures, making the upfront transcoding cost worthwhile. Failed transcoding attempts trigger cleanup of partially processed resources, preventing memory leaks in error conditions.
+
+=== Texture Loading: Vulkan Resource Creation and GPU Upload
+
+Finally, create the Vulkan resources needed for GPU rendering and uploads the processed texture data to video memory.
+
+[source,cpp]
+----
         // Create Vulkan image, memory, and view
         vk::Format format = static_cast<vk::Format>(ktxTexture2_GetVkFormat(ktxTexture));
         vk::Extent3D extent{

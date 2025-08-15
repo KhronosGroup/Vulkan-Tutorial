@@ -26,6 +26,14 @@ Experience with modern C++ concepts becomes particularly important here, as prof
 
 A basic familiarity with software development workflows and tools will provide context for the systems we'll build. While we'll explain the specific implementations, understanding why continuous integration matters, how debugging fits into development cycles, and why crash reporting improves user experience will help you appreciate the architectural decisions we make throughout this chapter.
 
+You should also be familiar with the following chapters from the main tutorial:
+
+* Basic Vulkan concepts:
+** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+
 Let's begin by exploring how to set up a CI/CD pipeline for Vulkan projects.
 
 link:../Subsystems/06_conclusion.adoc[Previous: Subsystems Conclusion] | link:02_cicd.adoc[Next: CI/CD for Vulkan Projects]

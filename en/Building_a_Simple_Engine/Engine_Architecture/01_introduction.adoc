@@ -37,6 +37,14 @@ Beyond Vulkan knowledge, you'll benefit from familiarity with object-oriented pr
 
 Modern C++ features play a crucial role in our implementation approach. Smart pointers help us manage resource lifetimes safely, templates enable flexible, reusable components, and other C++11/14/17 features allow us to write more expressive and maintainable code. If you're not comfortable with these concepts, consider reviewing them before proceeding.
 
+You should also be familiar with the following chapters from the main tutorial:
+
+* Basic Vulkan concepts:
+** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+
 === Why Architecture Matters
 
 The difference between a hastily assembled renderer and a well-architected engine becomes apparent as soon as you need to make changes or add features. Good architecture creates a foundation that supports your development process rather than fighting against it.

@@ -80,11 +80,11 @@ jobs:
 
 When setting up CI/CD for Vulkan projects, consider these specific challenges:
 
-===== 1. Vulkan SDK Installation
+===== Vulkan SDK Installation
 
 Ensure your CI environment has the Vulkan SDK installed. Many CI platforms don't include it by default. In the example above, we used a GitHub Action to install the SDK.
 
-===== 2. GPU Availability in CI Environments
+===== GPU Availability in CI Environments
 
 Most CI environments don't have GPUs available, which can make testing Vulkan applications challenging. Consider these approaches:
 
@@ -92,7 +92,7 @@ Most CI environments don't have GPUs available, which can make testing Vulkan ap
 * Implement a headless testing mode that doesn't require a display
 * Use cloud-based GPU instances for more comprehensive testing
 
-===== 3. Platform-Specific Vulkan Loaders
+===== Platform-Specific Vulkan Loaders
 
 Different platforms handle Vulkan loading differently. Ensure your build system correctly handles these differences:
 
@@ -100,7 +100,7 @@ Different platforms handle Vulkan loading differently. Ensure your build system 
 * Linux: libvulkan.so.1 is loaded at runtime
 * macOS: MoltenVK provides Vulkan support via Metal
 
-===== 4. Shader Compilation
+===== Shader Compilation
 
 Shader compilation can be a complex part of the build process. Consider these approaches:
 

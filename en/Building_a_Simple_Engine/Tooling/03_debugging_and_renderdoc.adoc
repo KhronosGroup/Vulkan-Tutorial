@@ -191,7 +191,9 @@ void submit_work(vk::raii::Queue& queue, vk::raii::CommandBuffer& cmd_buffer) {
 
 === Using RenderDoc
 
-RenderDoc is a powerful graphics debugging tool that allows you to capture frames from your application and analyze them in detail. It's particularly useful for Vulkan applications due to its comprehensive support for the API.
+RenderDoc is a graphics frame debugger and capture/analysis tool (not a compiler). It allows you to capture frames from your application and analyze them in detail. It's particularly useful for Vulkan applications due to its comprehensive support for the API.
+
+NOTE: In this section we refer to the Event Browser, Pipeline State, and Resource Inspector panels in RenderDoc. Screenshots should accompany these instructions to show where debug names and labels appear in the UI.
 
 ==== Integrating RenderDoc with Your Application
 
@@ -261,10 +263,10 @@ Once you've captured a frame, you can analyze it in the RenderDoc application. H
 
 To get the most out of RenderDoc:
 
-1. *Use Object Names*: As discussed earlier, naming your Vulkan objects makes them much easier to identify in RenderDoc
-2. *Use Command Buffer Labels*: These appear in RenderDoc's event browser, making it easier to navigate complex frames
-3. *Capture Specific Frames*: Use the in-application API to capture frames where issues occur
-4. *Reduce Workload*: For complex applications, consider disabling features or reducing resolution when debugging
+1. *Use Object Names*: As discussed earlier, naming your Vulkan objects makes them much easier to identify in RenderDoc (you'll see them in the Resource Inspector and Pipeline State views).
+2. *Use Command Buffer Labels*: These appear in RenderDoc's Event Browser and help you navigate to the relevant draw/dispatch quickly.
+3. *Capture the Problem Frame*: Trigger a capture exactly when the issue occurs (via hotkey or the in-application API) to minimize unrelated events and noise.
+4. *Minimize to a Repro*: Create a minimal reproducible scene or toggle features off to isolate the problem. If you reduce resolution, make sure it doesn't alter ordering/timing in a way that hides the bug.
 
 === Combining VK_KHR_debug_utils and RenderDoc
 

@@ -67,9 +67,9 @@ While our implementations provide a solid foundation, there are several areas wh
 
 ==== General Improvements
 
-* *Cross-Platform Support*: Ensure the subsystems work across different platforms, with appropriate fallbacks for devices without Vulkan support.
+* *Driver and Platform Coverage*: Test the subsystems across a representative set of Vulkan-capable platforms and drivers (e.g., Windows/Linux, major IHVs, Android, and macOS via MoltenVK). Non-Vulkan fallbacks are out of scope for this tutorial.
 * *Profiling and Optimization*: Add detailed profiling to identify and address performance bottlenecks.
-* *Memory Management*: Implement more sophisticated memory management to reduce fragmentation and improve cache coherency.
+* *Memory Management*: Use allocator suballocation strategies (e.g., Vulkan Memory Allocator or custom pools), batch buffer/image allocations, and group resources by usage to reduce fragmentation and improve cache locality.
 * *Multi-Threading*: Further optimize CPU-side processing with multi-threading where appropriate.
 
 === Integration with Other Engine Systems

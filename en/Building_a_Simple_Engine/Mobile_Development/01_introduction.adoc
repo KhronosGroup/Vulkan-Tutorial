@@ -12,7 +12,7 @@ Mobile development presents unique challenges and opportunities for Vulkan appli
 
 This chapter will guide you through the complex landscape of mobile Vulkan development, where desktop assumptions often don't apply. We'll start by examining the platform-specific requirements of Android and iOS, which present unique challenges in setup, lifecycle management, and input handling. Mobile applications face constraints that desktop applications rarely encounter—sudden interruptions, battery concerns, and varying hardware capabilities all require careful consideration in your engine design.
 
-Performance optimization takes on critical importance in mobile environments where every watt of power consumption and every millisecond of frame time affects user experience. We'll explore essential techniques like power-of-two texture usage and efficient texture formats, along with mobile-specific optimizations that can mean the difference between smooth performance and user frustration.
+Performance optimization takes on critical importance in mobile environments where every watt of power consumption and every millisecond of frame time affects user experience. We'll explore essential techniques like efficient texture formats, along with mobile-specific optimizations that can mean the difference between smooth performance and user frustration.
 
 Understanding the fundamental architectural differences between mobile and desktop GPUs becomes essential for effective optimization. We'll compare Tile-Based Rendering (TBR) and Immediate Mode Rendering (IMR) approaches, helping you understand why techniques that work well on desktop might perform poorly on mobile, and how to design rendering strategies that leverage mobile GPU strengths.
 

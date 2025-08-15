@@ -148,7 +148,7 @@ This extension enhances dynamic rendering by allowing fragment shaders to read f
 
 Key benefits include:
 
-1. *Reduced Memory Bandwidth*: Reads happen from on-chip memory rather than main memory, reducing bandwidth usage by up to 30% in bandwidth-intensive operations.
+1. *Reduced Memory Bandwidth*: Reads happen from on-chip memory rather than main memory, reducing bandwidth usage for bandwidth-intensive operations.
 2. *Improved Performance*: Particularly for algorithms that need to read from previously written attachments.
 3. *Power Efficiency*: Lower memory bandwidth means lower power consumption.
 
@@ -222,7 +222,7 @@ This extension allows shaders to:
 1. *Access Tile Memory Directly*: Read and write to the current tile's memory without going through main memory.
 2. *Perform Tile-Local Operations*: Execute operations that stay entirely within the tile memory.
 3. *Optimize Bandwidth-Intensive Algorithms*: Particularly beneficial for post-processing effects.
-4. *Reduce Memory Bandwidth*: Can reduce memory bandwidth usage by up to 30% for rendering workloads that involve multiple passes.
+4. *Reduce Memory Bandwidth*: Helps lower memory bandwidth by keeping data in tile-local memory during multi-pass workloads.
 
 ==== How It Reduces Memory Bandwidth
 
@@ -232,7 +232,7 @@ The `VK_EXT_shader_tile_image` extension is particularly effective at reducing m
 
 2. *Eliminates Intermediate Memory Transfers*: Without this extension, multi-pass rendering requires writing results to main memory after each pass and reading them back for the next pass. With `VK_EXT_shader_tile_image`, these intermediate results can stay in tile memory, eliminating these costly transfers.
 
-3. *Bandwidth Savings Measurements*: Testing on various mobile GPUs has shown memory bandwidth reductions of up to 30% for complex rendering pipelines that use multiple passes, such as those involving post-processing effects.
+3. *Bandwidth Savings Measurements*: Testing on various mobile GPUs has shown meaningful bandwidth reductions for complex multi-pass pipelines; actual gains are workload- and GPU-dependent.
 
 4. *Practical Applications*:
    - *Image Processing Filters*: Applying multiple filters (blur, sharpen, color correction) can be done without leaving tile memory.
@@ -308,36 +308,35 @@ vk::Device device = physical_device.createDevice(device_create_info);
 // ...
 ----
 
-=== Vendor-Specific Extension Support
+=== Device Extension Support
 
-Different mobile vendors may have varying levels of support for Vulkan extensions. Understanding these differences can help you optimize your application for specific hardware.
+Different mobile vendors and devices vary in which Vulkan extensions they expose. Understanding per-device support helps you pick features safely at runtime.
 
-==== Vendor-Specific Extension Support Details
+==== Device Extension Support Details
 
 Different mobile GPU vendors have varying levels of support for Vulkan extensions:
 
 * *Dynamic Rendering Support*: Many mobile GPUs have optimized
 implementations of `VK_KHR_dynamic_rendering`. This can lead to significant performance improvements compared to traditional render passes, especially on tile-based renderers.
 
-* *Tile-Based Optimizations*: For devices with tile-based renderers
-(including Mali, PowerVR, and many others), extensions like `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are particularly effective. These extensions can reduce memory bandwidth by up to 30% in some scenarios.
+* *Tile-Based Optimizations*: On tile-based GPUs (e.g., Mali, PowerVR), `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are effective because they keep reads and writes in tile memory. See the extension sections above for details; benefits are workload- and GPU-dependent.
 
-* *Checking for Vendor-Specific Extension Support*:
+* *Checking for Extension Support (EXT/KHR) on the current device*:
 
 [source,cpp]
 ----
-// Common vendor IDs
+// Common vendor IDs (used here only for labeling/logging output)
 const uint32_t VENDOR_ID_QUALCOMM = 0x5143; // Adreno
 const uint32_t VENDOR_ID_ARM = 0x13B5;      // Mali
 const uint32_t VENDOR_ID_IMAGINATION = 0x1010; // PowerVR
 const uint32_t VENDOR_ID_HUAWEI = 0x19E5;   // Kirin
 const uint32_t VENDOR_ID_APPLE = 0x106B;    // Apple
 
-bool check_vendor_extension_support(vk::PhysicalDevice physical_device) {
+bool log_device_extension_support(vk::PhysicalDevice physical_device) {
     vk::PhysicalDeviceProperties props = physical_device.getProperties();
     std::string vendor_name;
 
-    // Identify vendor
+    // Identify vendor for display purposes only
     switch (props.vendorID) {
         case VENDOR_ID_QUALCOMM: vendor_name = "Qualcomm"; break;
         case VENDOR_ID_ARM: vendor_name = "ARM Mali"; break;
@@ -347,7 +346,7 @@ bool check_vendor_extension_support(vk::PhysicalDevice physical_device) {
         default: vendor_name = "Unknown"; break;
     }
 
-    // Check for extensions that work well on mobile devices
+    // Check for widely useful EXT/KHR extensions on this device
     auto available_extensions = physical_device.enumerateDeviceExtensionProperties();
     bool has_dynamic_rendering = false;
     bool has_dynamic_rendering_local_read = false;
@@ -374,7 +373,7 @@ bool check_vendor_extension_support(vk::PhysicalDevice physical_device) {
 }
 ----
 
-* *Vendor-Specific Optimizations*: When developing for mobile devices,
+* *Platform-Specific Optimizations*: When developing for mobile devices,
 consider these optimizations:
    - Prioritize the use of dynamic rendering over traditional render passes on tile-based renderers
    - Use tile-based extensions whenever available

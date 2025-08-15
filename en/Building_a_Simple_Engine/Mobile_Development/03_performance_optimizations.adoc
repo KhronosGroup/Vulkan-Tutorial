@@ -8,77 +8,12 @@ Mobile devices have significantly different hardware constraints compared to des
 
 === Texture Optimizations
 
-To keep the workflow concrete and digestible, think of texture optimization in three steps:
-
-1) Step 1: Ensure power‑of‑two (POT) dimensions (resize if needed)
-2) Step 2: Pick a hardware‑compressed format supported by the device (ASTC → ETC2 → BC → fallback)
-3) Step 3: Upload/update the Vulkan image and clean up staging resources
-
 [NOTE]
 ====
 We focus on mobile‑specific decisions here. For general Vulkan image creation, staging uploads, and descriptor setup, refer back to earlier chapters in the engine series—link:../Engine_Architecture/04_resource_management.adoc[Resource Management], link:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]—or the Vulkan Guide (https://docs.vulkan.org/guide/latest/).
 ====
 
 Textures are often the largest consumers of memory in a graphics application. Optimizing them is crucial for mobile performance.
-
-==== Power-of-Two Textures
-
-One of the most important optimizations for mobile is using power-of-two (POT) texture dimensions (e.g., 256x256, 512x1024, etc.). Here's why:
-
-1. *Hardware Acceleration*: Most mobile GPUs are optimized for POT textures and can process them more efficiently.
-
-2. *Mipmapping*: POT textures are required for proper mipmapping, which is essential for performance and visual quality.
-
-3. *Memory Alignment*: POT textures align better with memory pages, improving memory access patterns.
-
-To ensure your textures are POT, you can implement a texture loading system that automatically resizes non-POT textures:
-
-[source,cpp]
-----
-vk::Extent2D make_power_of_two(uint32_t width, uint32_t height) {
-    // Find the next power of two for each dimension
-    uint32_t pot_width = 1;
-    while (pot_width < width) pot_width *= 2;
-
-    uint32_t pot_height = 1;
-    while (pot_height < height) pot_height *= 2;
-
-    return vk::Extent2D(pot_width, pot_height);
-}
-
-void load_texture(const std::string& path) {
-    // Load the image data
-    int width, height, channels;
-    stbi_uc* pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-
-    if (!pixels) {
-        throw std::runtime_error("Failed to load texture image: " + path);
-    }
-
-    // Check if the dimensions are power of two
-    bool is_pot = (width & (width - 1)) == 0 && (height & (height - 1)) == 0;
-
-    if (!is_pot) {
-        // Resize to power of two
-        vk::Extent2D pot_size = make_power_of_two(width, height);
-
-        stbi_uc* resized_pixels = new stbi_uc[pot_size.width * pot_size.height * 4];
-        stbir_resize_uint8(pixels, width, height, 0,
-                          resized_pixels, pot_size.width, pot_size.height, 0, 4);
-
-        stbi_image_free(pixels);
-        pixels = resized_pixels;
-        width = pot_size.width;
-        height = pot_size.height;
-    }
-
-    // Create Vulkan image and upload pixels
-    // ...
-
-    // Free the pixel data
-    stbi_image_free(pixels);
-}
-----
 
 ==== Efficient Texture Formats
 

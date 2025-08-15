@@ -2,6 +2,9 @@
 
 In this chapter, we'll explore the fundamentals of lighting and materials in 3D rendering, with a focus on Physically Based Rendering (PBR). Lighting is a crucial aspect of creating realistic and visually appealing 3D scenes. Without proper lighting, even the most detailed models can appear flat and lifeless.
 
+image:../../../images/bistro.png[Bistro scene with PBR, width=600, alt=Rendering the Bistro scene at night with PBR pass]
+
+
 [NOTE]
 ====
 *About PBR References*: Throughout this tutorial, you may encounter references to PBR (Physically Based Rendering) before reaching this chapter. PBR is a modern rendering approach that simulates how light interacts with surfaces based on physical principles. We'll cover PBR in detail in the sections that follow, so don't worry if you're not familiar with these concepts yet.

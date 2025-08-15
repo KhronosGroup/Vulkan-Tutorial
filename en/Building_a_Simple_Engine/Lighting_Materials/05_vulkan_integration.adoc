@@ -2,7 +2,21 @@
 
 In this section, we'll integrate our PBR implementation with the rest of the Vulkan rendering pipeline. We'll update our renderer class to support advanced lighting techniques that can be used with glTF models and their PBR materials. The techniques we develop here will be applied in the Loading_Models chapter when we load and render glTF models.
 
-Throughout our engine implementation, we're using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
+To keep the flow concrete and avoid repeating earlier theory, use this quick roadmap:
+
+1) Extend the renderer with PBR pipeline objects and a material push-constant block
+2) Create the PBR pipeline (layout, shaders, blending, formats) alongside the main pipeline
+3) Record draws: bind PBR pipeline, bind geometry, and push per-material constants per mesh
+4) Clean up via RAII (no special teardown required)
+
+[NOTE]
+====
+We won’t re-explain PBR theory or push-constant fundamentals here. See Lighting_Materials/03_push_constants.adoc for push constants and Lighting_Materials/01_introduction.adoc (and 05_pbr_rendering.adoc) for PBR concepts.
+====
+
+The PBR pass slots into the graphics pipeline as shown below:
+
+image::../../../images/rendering_pipeline_flowchart.png[Rendering Pipeline Flowchart, width=600, alt=Rendering pipeline flowchart showing where the PBR pass fits]
 
 == Updating the Renderer Class
 
@@ -132,71 +146,65 @@ void Renderer::recordCommandBuffer(vk::CommandBuffer commandBuffer, uint32_t ima
 
 == Creating the PBR Shader
 
-Now that we've updated our renderer to support our PBR implementation, we need to create the PBR shader that implements the concepts we've discussed in this chapter. Let's create a file called `pbr.slang` in our shaders directory:
+Now that we've updated our renderer to support our PBR implementation, we need to create the PBR shader that implements the concepts we've discussed in this chapter. Rather than presenting this as a monolithic code dump, let's break down the shader creation into logical sections that explain both the technical implementation and the reasoning behind each component.
+
+=== Section 1: Shader Structure and Data Interface
+
+The first section establishes the communication interface between our CPU application and GPU shader, defining how data flows through the rendering pipeline.
 
 [source,cpp]
 ----
-// Let's create our PBR shader based on the concepts we've learned
-// We can create the shader file programmatically:
-//
-// std::ofstream shaderFile("shaders/pbr.slang");
-// shaderFile << R"(
-//
-// Or we can create it manually in our shaders directory.
-//
-// Here's what our PBR shader looks like:
-//
 // Combined vertex and fragment shader for PBR rendering
 
-// Input from vertex buffer
+// Input from vertex buffer - Data sent per vertex from CPU
 struct VSInput {
-    float3 Position : POSITION;
-    float3 Normal : NORMAL;
-    float2 UV : TEXCOORD0;
-    float4 Tangent : TANGENT;
+    float3 Position : POSITION;     // 3D position in model space
+    float3 Normal : NORMAL;         // Surface normal for lighting calculations
+    float2 UV : TEXCOORD0;          // Texture coordinates for material sampling
+    float4 Tangent : TANGENT;       // Tangent vector for normal mapping (w component = handedness)
 };
 
-// Output from vertex shader / Input to fragment shader
+// Output from vertex shader / Input to fragment shader - Interpolated data
 struct VSOutput {
-    float4 Position : SV_POSITION;
-    float3 WorldPos : POSITION;
-    float3 Normal : NORMAL;
-    float2 UV : TEXCOORD0;
-    float4 Tangent : TANGENT;
+    float4 Position : SV_POSITION; // Required clip space position for rasterization
+    float3 WorldPos : POSITION;    // World space position for lighting calculations
+    float3 Normal : NORMAL;        // World space normal (interpolated)
+    float2 UV : TEXCOORD0;         // Texture coordinates (interpolated)
+    float4 Tangent : TANGENT;      // World space tangent (interpolated)
 };
 
-// Uniform buffer
+// Uniform buffer - Global data shared across all vertices/fragments
 struct UniformBufferObject {
-    float4x4 model;
-    float4x4 view;
-    float4x4 proj;
-    float4 lightPositions[4];
-    float4 lightColors[4];
-    float4 camPos;
-    float exposure;
-    float gamma;
-    float prefilteredCubeMipLevels;
-    float scaleIBLAmbient;
+    float4x4 model;                     // Model-to-world transformation matrix
+    float4x4 view;                      // World-to-camera transformation matrix
+    float4x4 proj;                      // Camera-to-clip space projection matrix
+    float4 lightPositions[4];           // Light positions in world space
+    float4 lightColors[4];              // Light intensities and colors
+    float4 camPos;                      // Camera position for view-dependent effects
+    float exposure;                     // HDR exposure control
+    float gamma;                        // Gamma correction value (typically 2.2)
+    float prefilteredCubeMipLevels;     // IBL prefiltered environment map mip levels
+    float scaleIBLAmbient;              // IBL ambient contribution scale
 };
 
-// Push constants for material properties
+// Push constants - Fast, small data updated frequently per material/object
 struct PushConstants {
-    float4 baseColorFactor;
-    float metallicFactor;
-    float roughnessFactor;
-    int baseColorTextureSet;
-    int physicalDescriptorTextureSet;
-    int normalTextureSet;
-    int occlusionTextureSet;
-    int emissiveTextureSet;
-    float alphaMask;
-    float alphaMaskCutoff;
+    float4 baseColorFactor;             // Base color tint/multiplier
+    float metallicFactor;               // Metallic property multiplier
+    float roughnessFactor;              // Surface roughness multiplier
+    int baseColorTextureSet;            // Texture binding index for base color (-1 = none)
+    int physicalDescriptorTextureSet;   // Texture binding for metallic/roughness
+    int normalTextureSet;               // Texture binding for normal maps
+    int occlusionTextureSet;            // Texture binding for ambient occlusion
+    int emissiveTextureSet;             // Texture binding for emissive maps
+    float alphaMask;                    // Alpha masking enable flag
+    float alphaMaskCutoff;              // Alpha cutoff threshold
 };
 
-// Constants
+// Mathematical constants
 static const float PI = 3.14159265359;
 
-// Bindings
+// Resource bindings - Connect CPU resources to GPU shader registers
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
 [[vk::binding(1, 0)]] Texture2D baseColorMap;
 [[vk::binding(1, 0)]] SamplerState baseColorSampler;
@@ -210,143 +218,205 @@ static const float PI = 3.14159265359;
 [[vk::binding(5, 0)]] SamplerState emissiveSampler;
 
 [[vk::push_constant]] PushConstants material;
+----
 
-// PBR functions
+This interface design reflects modern GPU architecture principles where different types of data flow through different pathways based on their update frequency and size. Uniform buffers efficiently handle large, infrequently changing data like transformation matrices, while push constants provide ultra-fast updates for small, frequently changing material properties.
+
+=== Section 2: PBR Mathematical Foundation
+
+The second section implements the core mathematical functions that form the foundation of physically-based rendering, translating complex light-surface interactions into computationally efficient approximations.
+
+[source,cpp]
+----
+// Normal Distribution Function (D) - GGX/Trowbridge-Reitz Distribution
+// Describes the statistical distribution of microfacet orientations
 float DistributionGGX(float NdotH, float roughness) {
-    float a = roughness * roughness;
+    float a = roughness * roughness;        // Remapping for more perceptual linearity
     float a2 = a * a;
     float NdotH2 = NdotH * NdotH;
 
-    float nom = a2;
+    float nom = a2;                         // Numerator: concentration factor
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
+    denom = PI * denom * denom;             // Normalization factor
 
-    return nom / denom;
+    return nom / denom;                     // Normalized distribution
 }
 
+// Geometry Function (G) - Smith's method with Schlick-GGX approximation
+// Models self-shadowing and masking between microfacets
 float GeometrySmith(float NdotV, float NdotL, float roughness) {
     float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
+    float k = (r * r) / 8.0;               // Direct lighting remapping
 
+    // Geometry obstruction from view direction (masking)
     float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
+    // Geometry obstruction from light direction (shadowing)
     float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
 
-    return ggx1 * ggx2;
+    return ggx1 * ggx2;                     // Combined masking-shadowing
 }
 
+// Fresnel Reflectance (F) - Schlick's approximation
+// Models how reflectance changes with viewing angle
 float3 FresnelSchlick(float cosTheta, float3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
+----
 
-// Vertex shader entry point
+These mathematical functions represent decades of computer graphics research distilled into efficient real-time approximations. The GGX distribution provides more realistic highlight falloff compared to older models, while the Smith geometry function ensures energy conservation at grazing angles. The Fresnel approximation captures the essential angle-dependent reflection behavior that makes materials look convincing under different viewing conditions.
+
+=== Section 3: Vertex and Fragment Shader Implementation
+
+The final section contains the actual shader entry points that execute for each vertex and pixel, implementing the complete PBR pipeline from geometry transformation through final color output.
+
+[source,cpp]
+----
+// Vertex shader entry point - Executes once per vertex
 [[shader("vertex")]]
 VSOutput VSMain(VSInput input)
 {
     VSOutput output;
 
-    // Transform position to clip space
+    // Transform vertex position through the rendering pipeline
+    // Model -> World -> Camera -> Clip space transformation chain
     float4 worldPos = mul(ubo.model, float4(input.Position, 1.0));
     output.Position = mul(ubo.proj, mul(ubo.view, worldPos));
 
-    // Pass world position to fragment shader
+    // Pass world position for fragment lighting calculations
+    // Fragment shader needs world space position to calculate light vectors
     output.WorldPos = worldPos.xyz;
 
-    // Transform normal to world space
+    // Transform normal from model space to world space
+    // Use only rotation/scale part of model matrix (upper-left 3x3)
+    // Normalize to ensure unit length after transformation
     output.Normal = normalize(mul((float3x3)ubo.model, input.Normal));
 
-    // Pass texture coordinates
+    // Pass through texture coordinates unchanged
+    // UV coordinates are typically in [0,1] range and don't need transformation
     output.UV = input.UV;
 
-    // Pass tangent
+    // Pass tangent vector for normal mapping
+    // Will be used in fragment shader to construct tangent-space basis
     output.Tangent = input.Tangent;
 
     return output;
 }
 
-// Fragment shader entry point
+// Fragment shader entry point - Executes once per pixel
 [[shader("fragment")]]
 float4 PSMain(VSOutput input) : SV_TARGET
 {
-    // Sample material textures
+    // === MATERIAL PROPERTY SAMPLING ===
+    // Sample base color texture and apply material color factor
     float4 baseColor = baseColorMap.Sample(baseColorSampler, input.UV) * material.baseColorFactor;
+
+    // Sample metallic-roughness texture (metallic=B channel, roughness=G channel)
+    // glTF standard: metallic stored in blue, roughness in green
     float2 metallicRoughness = metallicRoughnessMap.Sample(metallicRoughnessSampler, input.UV).bg;
     float metallic = metallicRoughness.x * material.metallicFactor;
     float roughness = metallicRoughness.y * material.roughnessFactor;
+
+    // Sample ambient occlusion (typically stored in red channel)
     float ao = occlusionMap.Sample(occlusionSampler, input.UV).r;
+
+    // Sample emissive texture for self-illuminating materials
     float3 emissive = emissiveMap.Sample(emissiveSampler, input.UV).rgb;
 
-    // Calculate normal in tangent space
+    // === NORMAL CALCULATION ===
+    // Start with interpolated surface normal
     float3 N = normalize(input.Normal);
+
+    // Apply normal mapping if texture is available
     if (material.normalTextureSet >= 0) {
-        // Apply normal mapping
+        // Sample normal map and convert from [0,1] to [-1,1] range
         float3 tangentNormal = normalMap.Sample(normalSampler, input.UV).xyz * 2.0 - 1.0;
-        float3 T = normalize(input.Tangent.xyz);
-        float3 B = normalize(cross(N, T)) * input.Tangent.w;
-        float3x3 TBN = float3x3(T, B, N);
+
+        // Construct tangent-space to world-space transformation matrix (TBN)
+        float3 T = normalize(input.Tangent.xyz);              // Tangent
+        float3 B = normalize(cross(N, T)) * input.Tangent.w;  // Bitangent (w = handedness)
+        float3x3 TBN = float3x3(T, B, N);                     // Tangent-Bitangent-Normal matrix
+
+        // Transform normal from tangent space to world space
         N = normalize(mul(tangentNormal, TBN));
     }
 
-    // Calculate view and reflection vectors
+    // === LIGHTING SETUP ===
+    // Calculate view direction (camera to fragment)
     float3 V = normalize(ubo.camPos.xyz - input.WorldPos);
+
+    // Calculate reflection vector for environment mapping
     float3 R = reflect(-V, N);
 
-    // Calculate F0 (base reflectivity)
-    float3 F0 = float3(0.04, 0.04, 0.04);
-    F0 = lerp(F0, baseColor.rgb, metallic);
+    // === PBR MATERIAL SETUP ===
+    // Calculate F0 (reflectance at normal incidence)
+    // Non-metals: low reflectance (~0.04), Metals: colored reflectance from base color
+    float3 F0 = float3(0.04, 0.04, 0.04);  // Dielectric default
+    F0 = lerp(F0, baseColor.rgb, metallic); // Lerp to metallic behavior
 
-    // Initialize lighting
+    // Initialize outgoing radiance accumulator
     float3 Lo = float3(0.0, 0.0, 0.0);
 
-    // Calculate lighting for each light
+    // === DIRECT LIGHTING LOOP ===
+    // Calculate contribution from each light source
     for (int i = 0; i < 4; i++) {
         float3 lightPos = ubo.lightPositions[i].xyz;
         float3 lightColor = ubo.lightColors[i].rgb;
 
-        // Calculate light direction and distance
-        float3 L = normalize(lightPos - input.WorldPos);
-        float distance = length(lightPos - input.WorldPos);
-        float attenuation = 1.0 / (distance * distance);
-        float3 radiance = lightColor * attenuation;
+        // Calculate light direction and attenuation
+        float3 L = normalize(lightPos - input.WorldPos);      // Light direction
+        float distance = length(lightPos - input.WorldPos);   // Distance for falloff
+        float attenuation = 1.0 / (distance * distance);     // Inverse square falloff
+        float3 radiance = lightColor * attenuation;           // Attenuated light color
 
-        // Calculate half vector
+        // Calculate half vector (between view and light directions)
         float3 H = normalize(V + L);
 
-        // Calculate BRDF terms
-        float NdotL = max(dot(N, L), 0.0);
-        float NdotV = max(dot(N, V), 0.0);
-        float NdotH = max(dot(N, H), 0.0);
-        float HdotV = max(dot(H, V), 0.0);
+        // === BRDF EVALUATION ===
+        // Calculate all necessary dot products for BRDF terms
+        float NdotL = max(dot(N, L), 0.0);  // Lambertian falloff
+        float NdotV = max(dot(N, V), 0.0);  // View angle
+        float NdotH = max(dot(N, H), 0.0);  // Half vector for specular
+        float HdotV = max(dot(H, V), 0.0);  // For Fresnel calculation
 
-        // Specular BRDF
-        float D = DistributionGGX(NdotH, roughness);
-        float G = GeometrySmith(NdotV, NdotL, roughness);
-        float3 F = FresnelSchlick(HdotV, F0);
+        // Evaluate Cook-Torrance BRDF components
+        float D = DistributionGGX(NdotH, roughness);    // Normal distribution
+        float G = GeometrySmith(NdotV, NdotL, roughness); // Geometry function
+        float3 F = FresnelSchlick(HdotV, F0);           // Fresnel reflectance
 
+        // Calculate specular BRDF
         float3 numerator = D * G * F;
-        float denominator = 4.0 * NdotV * NdotL + 0.0001;
+        float denominator = 4.0 * NdotV * NdotL + 0.0001; // Prevent division by zero
         float3 specular = numerator / denominator;
 
-        // Energy conservation
-        float3 kS = F;
-        float3 kD = float3(1.0, 1.0, 1.0) - kS;
-        kD *= 1.0 - metallic;
+        // === ENERGY CONSERVATION ===
+        // Fresnel term represents specular reflection ratio
+        float3 kS = F;                          // Specular contribution
+        float3 kD = float3(1.0, 1.0, 1.0) - kS; // Diffuse contribution (energy conservation)
+        kD *= 1.0 - metallic;                   // Metals have no diffuse reflection
 
-        // Add to outgoing radiance
+        // === RADIANCE ACCUMULATION ===
+        // Combine diffuse (Lambertian) and specular (Cook-Torrance) terms
+        // Multiply by incident radiance and cosine foreshortening
         Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
     }
 
-    // Add ambient and emissive
+    // === AMBIENT AND EMISSIVE ===
+    // Add simple ambient lighting (should be replaced with IBL in production)
     float3 ambient = float3(0.03, 0.03, 0.03) * baseColor.rgb * ao;
+
+    // Combine all lighting contributions
     float3 color = ambient + Lo + emissive;
 
-    // HDR tonemapping and gamma correction
+    // === HDR TONE MAPPING AND GAMMA CORRECTION ===
+    // Apply Reinhard tone mapping to compress HDR values to [0,1] range
     color = color / (color + float3(1.0, 1.0, 1.0));
+
+    // Apply gamma correction for sRGB display (inverse gamma)
     color = pow(color, float3(1.0 / ubo.gamma, 1.0 / ubo.gamma, 1.0 / ubo.gamma));
 
+    // Output final color with original alpha
     return float4(color, baseColor.a);
 }
-)";
-shaderFile.close();
 ----
 
 == Compiling the Shader

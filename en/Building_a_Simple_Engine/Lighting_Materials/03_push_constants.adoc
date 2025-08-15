@@ -2,28 +2,15 @@
 
 In this section, we'll explore push constants, a powerful feature in Vulkan that allows us to efficiently pass small amounts of data to shaders without the overhead of descriptor sets.
 
-Throughout our engine implementation, we're using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
-
 == What Are Push Constants?
 
 Push constants are a way to send a small amount of data directly to shaders. Unlike uniform buffers, which require descriptor sets and memory allocation, push constants are part of the command buffer itself. This makes them ideal for small, frequently changing data.
 
-Some key characteristics of push constants:
-
-1. *Size Limitations*: Push constants have a limited size (typically 128 bytes, but this can vary depending on the device).
-2. *Efficiency*: They're more efficient than uniform buffers for small, frequently changing data.
-3. *Simplicity*: They don't require descriptor sets or memory allocation.
-4. *Scope*: They're available to all shader stages in a pipeline.
+Some key characteristics of push constants: they are tiny (typically up to 128 bytes, device dependent), fast to update per draw, and require no descriptor sets or allocations because they live on the command buffer. They can be read by any shader stage you enable in the pipeline.
 
 == When to Use Push Constants
 
-Push constants are particularly useful for:
-
-1. *Per-Draw Data*: Data that changes for each draw call, such as material properties.
-2. *Small Data Sets*: Data that fits within the size limitations of push constants.
-3. *Frequently Changing Data*: Data that changes often, where the overhead of updating a uniform buffer would be significant.
-
-For our PBR implementation, push constants are perfect for storing material properties like base color, metallic factor, and roughness factor.
+Use push constants for tiny, per‑draw parameters that change frequently—exactly the kind of material knobs (base color, metallic, roughness) we tweak per object. If the data is larger than the device’s push‑constant limit or doesn’t change often, prefer a uniform buffer instead.
 
 == Defining Push Constants in Shaders
 

@@ -1,13 +1,6 @@
 :pp: {plus}{plus}
 
 = Engine Architecture: Event Systems
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Event Systems
 
@@ -38,6 +31,10 @@ When designing an event system, consider these principles:
 
 Let's implement a basic event system:
 
+==== Base event type and convenience macro
+
+We start with a minimal base event interface and a helper macro to define strongly typed events without boilerplate.
+
 [source,cpp]
 ----
 // Base event class
@@ -57,7 +54,16 @@ public:
     static const char* GetStaticType() { return #type; } \
     virtual const char* GetType() const override { return GetStaticType(); } \
     virtual Event* Clone() const override { return new type(*this); }
+----
 
+This lets us identify and copy events generically while keeping concrete event classes small.
+
+==== Concrete event types
+
+Keep event payloads focused and lightweight; they should represent facts, not behavior.
+
+[source,cpp]
+----
 // Example event types
 class WindowResizeEvent : public Event {
 private:
@@ -86,7 +92,14 @@ public:
 
     DEFINE_EVENT_TYPE(KeyPressEvent)
 };
+----
 
+==== Listener and type-safe dispatcher
+
+Listeners receive events; the dispatcher routes a generic Event to a typed handler when types match.
+
+[source,cpp]
+----
 // Event listener interface
 class EventListener {
 public:
@@ -112,7 +125,14 @@ public:
         return false;
     }
 };
+----
 
+==== Event bus (immediate vs. queued)
+
+The bus can deliver immediately (low latency) or queue for later (deterministic ordering across frames).
+
+[source,cpp]
+----
 // Event bus
 class EventBus {
 private:

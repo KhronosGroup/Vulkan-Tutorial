@@ -1,13 +1,6 @@
 :pp: {plus}{plus}
 
 = Engine Architecture: Architectural Patterns
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Architectural Patterns
 

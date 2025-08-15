@@ -1,13 +1,6 @@
 :pp: {plus}{plus}
 
 = Engine Architecture: Introduction
-:doctype: book
-:sectnums:
-:sectnumlevels: 4
-:toc: left
-:icons: font
-:source-highlighter: highlightjs
-:source-language: c++
 
 == Introduction
 
@@ -26,41 +19,35 @@ well-designed architecture is crucial for creating a flexible, maintainable, and
 
 === What You'll Learn
 
-In this chapter, we'll cover:
+This chapter will take you through the foundational concepts that underpin effective engine design. We'll begin by exploring architectural patterns—the proven design approaches that game and rendering engines rely on to manage complexity and enable extensibility. Understanding these patterns helps you choose the right structural approach for different engine subsystems.
 
-* *Architectural Patterns* - Common design patterns used in game and rendering engines, including their strengths and trade-offs.
+From there, we'll dive into component systems, which provide the flexibility to build modular, reusable code. You'll see how component-based architecture allows different parts of your engine to work together while remaining loosely coupled, making your codebase easier to maintain and extend.
 
-* *Component Systems* - How to implement a flexible component-based architecture that allows for modular and reusable code.
+Resource management forms another crucial pillar of engine architecture. We'll examine strategies for efficiently handling textures, models, shaders, and other assets, ensuring your engine can scale from simple scenes to complex, asset-heavy applications without performance bottlenecks.
 
-* *Resource Management* - Strategies for efficiently managing and accessing various resources like textures, models, and shaders.
+The rendering pipeline design we'll cover shows you how to create a flexible system that can accommodate various rendering techniques and effects. This foundation will serve you well as you add more advanced rendering features in later chapters.
 
-* *Rendering Pipeline* - Designing a flexible rendering pipeline that can accommodate different rendering techniques and effects.
-
-* *Event Systems* - Implementing communication between different parts of your engine through event-driven architecture.
+Finally, we'll implement event systems that enable clean communication between different engine components. This event-driven approach reduces tight coupling and makes your engine more maintainable as it grows in complexity.
 
 === Prerequisites
 
-Before starting this chapter, you should have completed:
+This chapter builds directly on the foundation established in the main Vulkan tutorial series, so completing that series is essential. The architectural concepts we'll discuss assume you're comfortable with Vulkan's core rendering concepts and have hands-on experience implementing them.
 
-* The main Vulkan tutorial series
+Beyond Vulkan knowledge, you'll benefit from familiarity with object-oriented programming principles, as modern engine architecture relies heavily on encapsulation, inheritance, and polymorphism to manage complexity. Experience with common design patterns like Observer, Factory, and Singleton will help you recognize when and why we apply these patterns in our engine design.
 
-You should also be familiar with:
-
-* Object-oriented programming concepts
-* Basic design patterns (Observer, Factory, Singleton, etc.)
-* Modern C++ features (smart pointers, templates, etc.)
+Modern C++ features play a crucial role in our implementation approach. Smart pointers help us manage resource lifetimes safely, templates enable flexible, reusable components, and other C++11/14/17 features allow us to write more expressive and maintainable code. If you're not comfortable with these concepts, consider reviewing them before proceeding.
 
 === Why Architecture Matters
 
-A well-designed engine architecture provides several benefits:
+The difference between a hastily assembled renderer and a well-architected engine becomes apparent as soon as you need to make changes or add features. Good architecture creates a foundation that supports your development process rather than fighting against it.
 
-1. *Maintainability* - Clean separation of concerns makes it easier to update and fix individual components without affecting the entire system.
+Maintainability emerges from clean separation of concerns—when each component has a clear, focused responsibility, you can update or fix individual pieces without worrying about cascading effects throughout the system. This becomes invaluable when debugging graphics issues or implementing new rendering techniques.
 
-2. *Extensibility* - A modular design allows you to add new features without major refactoring.
+Extensibility flows naturally from modular design. When your architecture provides clear extension points and interfaces, adding new features becomes a matter of implementing new components rather than rewriting existing systems. This allows your engine to evolve with your project's needs.
 
-3. *Reusability* - Well-encapsulated components can be reused across different projects or parts of the same project.
+Reusability multiplies your development effort. Well-encapsulated components can move between projects or serve different purposes within the same project. A thoughtfully designed material system, for example, might work equally well for both game objects and UI elements.
 
-4. *Performance* - A thoughtful architecture can enable optimizations like multithreading, batching, and caching.
+Performance opportunities often emerge from architectural decisions made early in development. Good architecture enables optimizations like multithreading (by avoiding tight coupling between systems), batching (through predictable interfaces), and caching (via clear data flow patterns). While premature optimization is dangerous, premature architecture decisions can make later optimization impossible.
 
 Let's begin our exploration of engine architecture with an overview of common architectural patterns used in modern rendering engines.
 

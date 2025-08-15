@@ -53,7 +53,7 @@ public:
      * @brief Render the ImGui frame.
      * @param commandBuffer The command buffer to record rendering commands to.
      */
-    void Render(vk::raii::CommandBuffer & commandBuffer);
+    void Render(vk::raii::CommandBuffer & commandBuffer, uint32_t frameIndex);
 
     /**
      * @brief Handle mouse input.
@@ -146,12 +146,13 @@ private:
     vk::raii::Image fontImage = nullptr;
     vk::raii::DeviceMemory fontMemory = nullptr;
     vk::raii::ImageView fontView = nullptr;
-    vk::raii::Buffer vertexBuffer = nullptr;
-    vk::raii::DeviceMemory vertexBufferMemory = nullptr;
-    vk::raii::Buffer indexBuffer = nullptr;
-    vk::raii::DeviceMemory indexBufferMemory = nullptr;
-    uint32_t vertexCount = 0;
-    uint32_t indexCount = 0;
+    // Per-frame dynamic buffers to avoid GPU/CPU contention when frames are in flight
+    std::vector<vk::raii::Buffer> vertexBuffers;
+    std::vector<vk::raii::DeviceMemory> vertexBufferMemories;
+    std::vector<vk::raii::Buffer> indexBuffers;
+    std::vector<vk::raii::DeviceMemory> indexBufferMemories;
+    std::vector<uint32_t> vertexCounts;
+    std::vector<uint32_t> indexCounts;
 
     // Window dimensions
     uint32_t width = 0;
@@ -217,5 +218,5 @@ private:
     /**
      * @brief Update vertex and index buffers.
      */
-    void updateBuffers();
+    void updateBuffers(uint32_t frameIndex);
 };

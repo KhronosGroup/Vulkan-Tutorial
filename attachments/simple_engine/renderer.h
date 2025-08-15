@@ -180,6 +180,9 @@ public:
      */
     vk::Device GetDevice() const { return *device; }
 
+    // Expose max frames in flight for per-frame resource duplication
+    uint32_t GetMaxFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
+
     /**
      * @brief Get the Vulkan RAII device.
      * @return The Vulkan RAII device.

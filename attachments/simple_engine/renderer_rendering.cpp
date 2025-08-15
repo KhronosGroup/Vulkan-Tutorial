@@ -767,7 +767,7 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
 
     // Render ImGui if provided
     if (imguiSystem) {
-        imguiSystem->Render(commandBuffers[currentFrame]);
+        imguiSystem->Render(commandBuffers[currentFrame], currentFrame);
     }
 
     // End dynamic rendering

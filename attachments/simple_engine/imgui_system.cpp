@@ -51,6 +51,23 @@ bool ImGuiSystem::Initialize(Renderer* renderer, uint32_t width, uint32_t height
         return false;
     }
 
+    // Initialize per-frame buffers containers
+    if (renderer) {
+        uint32_t frames = renderer->GetMaxFramesInFlight();
+        vertexBuffers.clear(); vertexBuffers.reserve(frames);
+        vertexBufferMemories.clear(); vertexBufferMemories.reserve(frames);
+        indexBuffers.clear(); indexBuffers.reserve(frames);
+        indexBufferMemories.clear(); indexBufferMemories.reserve(frames);
+        for (uint32_t i = 0; i < frames; ++i) {
+            vertexBuffers.emplace_back(nullptr);
+            vertexBufferMemories.emplace_back(nullptr);
+            indexBuffers.emplace_back(nullptr);
+            indexBufferMemories.emplace_back(nullptr);
+        }
+        vertexCounts.assign(frames, 0);
+        indexCounts.assign(frames, 0);
+    }
+
     initialized = true;
     return true;
 }
@@ -368,7 +385,7 @@ void ImGuiSystem::NewFrame() {
     ImGui::End();
 }
 
-void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer) {
+void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer, uint32_t frameIndex) {
     if (!initialized) {
         return;
     }
@@ -377,8 +394,8 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer) {
     // End the frame and prepare for rendering
     ImGui::Render();
 
-    // Update vertex and index buffers
-    updateBuffers();
+    // Update vertex and index buffers for this frame
+    updateBuffers(frameIndex);
 
     // Record rendering commands
     ImDrawData* drawData = ImGui::GetDrawData();
@@ -411,11 +428,11 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer) {
 
         commandBuffer.pushConstants<PushConstBlock>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstBlock);
 
-        // Bind vertex and index buffers
-        std::array vertexBuffers = {*vertexBuffer};
+        // Bind vertex and index buffers for this frame
+        std::array<vk::Buffer, 1> vertexBuffersArr = {*vertexBuffers[frameIndex]};
         std::array<vk::DeviceSize, 1> offsets = {};
-        commandBuffer.bindVertexBuffers(0, vertexBuffers, offsets);
-        commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
+        commandBuffer.bindVertexBuffers(0, vertexBuffersArr, offsets);
+        commandBuffer.bindIndexBuffer(*indexBuffers[frameIndex], 0, vk::IndexType::eUint16);
 
         // Render command lists
         int vertexOffset = 0;
@@ -906,7 +923,7 @@ bool ImGuiSystem::createPipeline() {
     }
 }
 
-void ImGuiSystem::updateBuffers() {
+void ImGuiSystem::updateBuffers(uint32_t frameIndex) {
     ImDrawData* drawData = ImGui::GetDrawData();
     if (!drawData || drawData->CmdListsCount == 0) {
         return;
@@ -919,11 +936,13 @@ void ImGuiSystem::updateBuffers() {
         vk::DeviceSize vertexBufferSize = drawData->TotalVtxCount * sizeof(ImDrawVert);
         vk::DeviceSize indexBufferSize = drawData->TotalIdxCount * sizeof(ImDrawIdx);
 
-        // Resize buffers if needed
-        if (drawData->TotalVtxCount > vertexCount) {
-            // Clean up old buffer - RAII will handle this automatically
-            vertexBuffer = nullptr;
-            vertexBufferMemory = nullptr;
+        // Resize buffers if needed for this frame
+        if (frameIndex >= vertexCounts.size()) return; // Safety
+
+        if (drawData->TotalVtxCount > vertexCounts[frameIndex]) {
+            // Clean up old buffer
+            vertexBuffers[frameIndex] = vk::raii::Buffer(nullptr);
+            vertexBufferMemories[frameIndex] = vk::raii::DeviceMemory(nullptr);
 
             // Create new vertex buffer
             vk::BufferCreateInfo bufferInfo;
@@ -931,24 +950,24 @@ void ImGuiSystem::updateBuffers() {
             bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer;
             bufferInfo.sharingMode = vk::SharingMode::eExclusive;
 
-            vertexBuffer = vk::raii::Buffer(device, bufferInfo);
+            vertexBuffers[frameIndex] = vk::raii::Buffer(device, bufferInfo);
 
-            vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
+            vk::MemoryRequirements memRequirements = vertexBuffers[frameIndex].getMemoryRequirements();
 
             vk::MemoryAllocateInfo allocInfo;
             allocInfo.allocationSize = memRequirements.size;
             allocInfo.memoryTypeIndex = renderer->FindMemoryType(memRequirements.memoryTypeBits,
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-            vertexBufferMemory = vk::raii::DeviceMemory(device, allocInfo);
-            vertexBuffer.bindMemory(*vertexBufferMemory, 0);
-            vertexCount = drawData->TotalVtxCount;
+            vertexBufferMemories[frameIndex] = vk::raii::DeviceMemory(device, allocInfo);
+            vertexBuffers[frameIndex].bindMemory(*vertexBufferMemories[frameIndex], 0);
+            vertexCounts[frameIndex] = drawData->TotalVtxCount;
         }
 
-        if (drawData->TotalIdxCount > indexCount) {
-            // Clean up old buffer - RAII will handle this automatically
-            indexBuffer = nullptr;
-            indexBufferMemory = nullptr;
+        if (drawData->TotalIdxCount > indexCounts[frameIndex]) {
+            // Clean up old buffer
+            indexBuffers[frameIndex] = vk::raii::Buffer(nullptr);
+            indexBufferMemories[frameIndex] = vk::raii::DeviceMemory(nullptr);
 
             // Create new index buffer
             vk::BufferCreateInfo bufferInfo;
@@ -956,23 +975,23 @@ void ImGuiSystem::updateBuffers() {
             bufferInfo.usage = vk::BufferUsageFlagBits::eIndexBuffer;
             bufferInfo.sharingMode = vk::SharingMode::eExclusive;
 
-            indexBuffer = vk::raii::Buffer(device, bufferInfo);
+            indexBuffers[frameIndex] = vk::raii::Buffer(device, bufferInfo);
 
-            vk::MemoryRequirements memRequirements = indexBuffer.getMemoryRequirements();
+            vk::MemoryRequirements memRequirements = indexBuffers[frameIndex].getMemoryRequirements();
 
             vk::MemoryAllocateInfo allocInfo;
             allocInfo.allocationSize = memRequirements.size;
             allocInfo.memoryTypeIndex = renderer->FindMemoryType(memRequirements.memoryTypeBits,
                 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-            indexBufferMemory = vk::raii::DeviceMemory(device, allocInfo);
-            indexBuffer.bindMemory(*indexBufferMemory, 0);
-            indexCount = drawData->TotalIdxCount;
+            indexBufferMemories[frameIndex] = vk::raii::DeviceMemory(device, allocInfo);
+            indexBuffers[frameIndex].bindMemory(*indexBufferMemories[frameIndex], 0);
+            indexCounts[frameIndex] = drawData->TotalIdxCount;
         }
 
-        // Upload data to buffers
-        void* vtxMappedMemory = vertexBufferMemory.mapMemory(0, vertexBufferSize);
-        void* idxMappedMemory = indexBufferMemory.mapMemory(0, indexBufferSize);
+        // Upload data to buffers for this frame
+        void* vtxMappedMemory = vertexBufferMemories[frameIndex].mapMemory(0, vertexBufferSize);
+        void* idxMappedMemory = indexBufferMemories[frameIndex].mapMemory(0, indexBufferSize);
 
         ImDrawVert* vtxDst = static_cast<ImDrawVert*>(vtxMappedMemory);
         ImDrawIdx* idxDst = static_cast<ImDrawIdx*>(idxMappedMemory);
@@ -985,8 +1004,8 @@ void ImGuiSystem::updateBuffers() {
             idxDst += cmdList->IdxBuffer.Size;
         }
 
-        vertexBufferMemory.unmapMemory();
-        indexBufferMemory.unmapMemory();
+        vertexBufferMemories[frameIndex].unmapMemory();
+        indexBufferMemories[frameIndex].unmapMemory();
     } catch (const std::exception& e) {
         std::cerr << "Failed to update buffers: " << e.what() << std::endl;
     }

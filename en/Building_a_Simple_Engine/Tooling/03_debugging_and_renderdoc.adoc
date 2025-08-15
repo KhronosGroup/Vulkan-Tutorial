@@ -193,7 +193,6 @@ void submit_work(vk::raii::Queue& queue, vk::raii::CommandBuffer& cmd_buffer) {
 
 RenderDoc is a graphics frame debugger and capture/analysis tool (not a compiler). It allows you to capture frames from your application and analyze them in detail. It's particularly useful for Vulkan applications due to its comprehensive support for the API.
 
-NOTE: In this section we refer to the Event Browser, Pipeline State, and Resource Inspector panels in RenderDoc. Screenshots should accompany these instructions to show where debug names and labels appear in the UI.
 
 ==== Integrating RenderDoc with Your Application
 

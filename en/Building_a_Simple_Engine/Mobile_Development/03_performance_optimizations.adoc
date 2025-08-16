@@ -73,7 +73,7 @@ vk::Format find_supported_format(vk::PhysicalDevice physical_device,
 
 === Memory Optimizations
 
-Memory is a precious resource on mobile devices. Here are some key optimizations:
+Memory is a precious resource on all platforms. It tends to be more performance‑critical on mobile due to tighter bandwidth, power, and thermal budgets. Here are some key optimizations:
 
 ==== Minimize Memory Allocations
 

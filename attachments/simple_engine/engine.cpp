@@ -411,16 +411,8 @@ void Engine::Render() {
         return;
     }
 
-    // Get all active entities
-    std::vector<Entity*> activeEntities;
-    for (auto& entity : entities) {
-        if (entity->IsActive()) {
-            activeEntities.push_back(entity.get());
-        }
-    }
-
     // Render the scene (ImGui will be rendered within the render pass)
-    renderer->Render(activeEntities, activeCamera, imguiSystem.get());
+    renderer->Render(entities, activeCamera, imguiSystem.get());
 }
 
 float Engine::CalculateDeltaTime() {

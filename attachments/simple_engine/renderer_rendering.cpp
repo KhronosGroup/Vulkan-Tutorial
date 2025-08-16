@@ -504,7 +504,7 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity
 }
 
 // Render the scene
-void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
+void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
     // Set rendering active to prevent memory pool growth during rendering
     if (memoryPool) {
         memoryPool->setRenderingActive(true);
@@ -608,7 +608,11 @@ void Renderer::Render(const std::vector<Entity*>& entities, CameraComponent* cam
     vk::raii::PipelineLayout* currentLayout = nullptr;
 
     // Render each entity
-    for (auto entity : entities) {
+    for (auto const& uptr : entities) {
+        Entity* entity = uptr.get();
+        if (!entity || !entity->IsActive()) {
+            continue;
+        }
         // Check if ball-only rendering is enabled and filter entities accordingly
         if (imguiSystem && imguiSystem->IsBallOnlyRenderingEnabled()) {
             // Only render entities whose names contain "Ball_"

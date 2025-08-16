@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <algorithm>
+#include <memory>
 
 #include "platform.h"
 #include "entity.h"
@@ -135,7 +136,7 @@ public:
      * @param camera The camera to use for rendering.
      * @param imguiSystem The ImGui system for UI rendering (optional).
      */
-    void Render(const std::vector<Entity*>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem = nullptr);
+    void Render(const std::vector<std::unique_ptr<Entity>>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem = nullptr);
 
     /**
      * @brief Wait for the device to be idle.

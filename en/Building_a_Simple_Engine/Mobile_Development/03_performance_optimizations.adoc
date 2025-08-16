@@ -13,22 +13,27 @@ Mobile devices have significantly different hardware constraints compared to des
 We focus on mobile‑specific decisions here. For general Vulkan image creation, staging uploads, and descriptor setup, refer back to earlier chapters in the engine series—link:../Engine_Architecture/04_resource_management.adoc[Resource Management], link:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]—or the Vulkan Guide (https://docs.vulkan.org/guide/latest/).
 ====
 
-Textures are often the largest consumers of memory in a graphics application. Optimizing them is crucial for mobile performance.
+Textures are often the largest consumers of memory in a graphics application. Optimizing them is crucial for performance on both mobile and desktop.
 
 ==== Efficient Texture Formats
 
-Choosing the right texture format is crucial for mobile performance:
+Choosing the right texture format is crucial across platforms; what differs is which formats are natively supported by a given device/driver:
 
 1. *Compressed Formats*: Use hardware-supported compressed formats whenever possible:
-   - *ASTC* (Adaptive Scalable Texture Compression): Widely supported on modern mobile GPUs, offers excellent quality-to-size ratio with flexible block sizes.
-   - *ETC2/EAC*: Required for OpenGL ES 3.0 and supported by most Android devices.
+   - *ASTC* (Adaptive Scalable Texture Compression): Widely supported on modern mobile GPUs and increasingly available on desktop; excellent quality-to-size ratio with flexible block sizes.
+   - *ETC2/EAC*: Required for OpenGL ES 3.0 and supported by most Android devices; commonly available on Vulkan stacks, too.
    - *PVRTC*: Primarily supported on iOS devices with PowerVR GPUs.
-   - *BC* (Block Compression): More common on desktop but supported by some high-end mobile GPUs.
+   - *BC* (Block Compression, a.k.a. DXT/BCn): Ubiquitous on desktop; supported by some mobile GPUs.
 
-2. *Format Selection Based on Content*: Choose formats based on the type of texture:
-   - Use ASTC 4x4 or 6x6 for normal maps and detailed textures.
-   - Use ASTC 8x8 or 12x12 for diffuse/albedo textures.
-   - Consider using R8 for single-channel textures like height maps.
+2. *Format Selection Based on Content and Support*: Choose formats based on the type of texture and what the device reports:
+   - For high detail (normals, roughness): prefer ASTC 4x4 or 6x6 when supported; on desktop, BC5/BC7 are common alternatives.
+   - For albedo/basecolor: ASTC 6x6–8x8 works well when available; on desktop, BC1/BC7 are typical.
+   - For single-channel data: consider R8 or compressed single-channel alternatives when available.
+
+[NOTE]
+====
+This guidance is not mobile-only: block compression reduces memory footprint and bandwidth on all platforms. The Mobile chapter highlights it because bandwidth and power are tighter constraints on phones/tablets. On desktop, the same benefits apply; the primary difference is which formats are commonly available (e.g., BC on desktop, ASTC/ETC2 on many mobile devices).
+====
 
 Here's how to check for and use compressed formats in Vulkan:
 
@@ -61,57 +66,67 @@ vk::Format find_supported_format(vk::PhysicalDevice physical_device,
 }
 
 vk::Format find_best_compressed_format(vk::PhysicalDevice physical_device) {
-    // Try ASTC formats first (best quality-to-size ratio)
+    // Choose based on reported feature support; benefits apply on mobile and desktop.
+    vk::PhysicalDeviceFeatures features = physical_device.getFeatures();
+
+    // Candidate lists
     std::vector<vk::Format> astc_formats = {
         vk::Format::eAstc8x8SrgbBlock,
         vk::Format::eAstc6x6SrgbBlock,
         vk::Format::eAstc4x4SrgbBlock
     };
-
-    try {
-        return find_supported_format(
-            physical_device,
-            astc_formats,
-            vk::ImageTiling::eOptimal,
-            vk::FormatFeatureFlagBits::eSampledImage
-        );
-    } catch (const std::runtime_error&) {
-        // ASTC not supported, try ETC2
-    }
-
-    std::vector<vk::Format> etc2_formats = {
-        vk::Format::eEtc2R8G8B8A8SrgbBlock,
-        vk::Format::eEtc2R8G8B8SrgbBlock
-    };
-
-    try {
-        return find_supported_format(
-            physical_device,
-            etc2_formats,
-            vk::ImageTiling::eOptimal,
-            vk::FormatFeatureFlagBits::eSampledImage
-        );
-    } catch (const std::runtime_error&) {
-        // ETC2 not supported, try BC
-    }
-
     std::vector<vk::Format> bc_formats = {
         vk::Format::eBc7SrgbBlock,
         vk::Format::eBc3SrgbBlock,
         vk::Format::eBc1SrgbBlock
     };
+    std::vector<vk::Format> etc2_formats = {
+        vk::Format::eEtc2R8G8B8A8SrgbBlock,
+        vk::Format::eEtc2R8G8B8SrgbBlock
+    };
 
-    try {
-        return find_supported_format(
-            physical_device,
-            bc_formats,
-            vk::ImageTiling::eOptimal,
-            vk::FormatFeatureFlagBits::eSampledImage
-        );
-    } catch (const std::runtime_error&) {
-        // Fall back to uncompressed
-        return vk::Format::eR8G8B8A8Srgb;
+    // Build a simple preference order:
+    // - If only BC is supported, try BC first (typical on desktop-only stacks).
+    // - If ASTC is supported, try ASTC (common on mobile; also available on some desktop drivers).
+    // - Then try the remaining supported families.
+    std::vector<std::vector<vk::Format>> preference;
+
+    if (features.textureCompressionBC && !features.textureCompressionASTC_LDR) {
+        preference.push_back(bc_formats);
     }
+    if (features.textureCompressionASTC_LDR) {
+        preference.push_back(astc_formats);
+    }
+    if (features.textureCompressionBC && features.textureCompressionASTC_LDR) {
+        // Both supported; add BC as alternative if not already first
+        if (preference.empty() || preference[0] != bc_formats) {
+            preference.push_back(bc_formats);
+        }
+    }
+    if (features.textureCompressionETC2) {
+        preference.push_back(etc2_formats);
+    }
+
+    // As a fallback, try all families regardless of feature bits (some drivers may expose formats via properties).
+    if (preference.empty()) {
+        preference = { astc_formats, etc2_formats, bc_formats };
+    }
+
+    for (const auto& family : preference) {
+        try {
+            return find_supported_format(
+                physical_device,
+                family,
+                vk::ImageTiling::eOptimal,
+                vk::FormatFeatureFlagBits::eSampledImage
+            );
+        } catch (const std::runtime_error&) {
+            // Try next family
+        }
+    }
+
+    // Fall back to uncompressed
+    return vk::Format::eR8G8B8A8Srgb;
 }
 ----
 

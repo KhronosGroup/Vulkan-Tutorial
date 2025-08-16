@@ -350,7 +350,7 @@ Then you can add the Slang build step to your target like this:
 [,cmake]
 ----
 add_slang_shader_target( foo SOURCES ${SHADER_SLANG_SOURCES})
-target_add_dependencies(bar PUBLIC foo)
+add_dependencies(bar foo)
 ----
 
 == Loading a shader

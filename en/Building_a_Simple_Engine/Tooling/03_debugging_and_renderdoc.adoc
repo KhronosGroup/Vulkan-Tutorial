@@ -1,0 +1,363 @@
+:pp: {plus}{plus}
+
+= Tooling: Debugging with VK_KHR_debug_utils and RenderDoc
+
+== Debugging Vulkan Applications
+
+Debugging graphics applications can be challenging due to their complex, parallel nature and the fact that much of the processing happens on the GPU. Vulkan, with its explicit design, provides powerful debugging tools that can help identify and fix issues in your application. In this section, we'll explore two key approaches to debugging Vulkan applications:
+
+1. Using the VK_KHR_debug_utils extension for in-application debugging
+2. Using external tools like RenderDoc for frame capture and analysis
+
+=== Using VK_KHR_debug_utils
+
+The VK_KHR_debug_utils extension provides a comprehensive set of tools for debugging Vulkan applications. It allows you to:
+
+* Label objects with meaningful names
+* Mark the beginning and end of command buffer regions
+* Insert debug markers
+* Set up debug messengers to receive validation layer messages
+
+Let's explore how to use these features with C++20 modules and vk::raii.
+
+==== Setting Up Debug Messaging
+
+First, let's set up a debug messenger to receive validation layer messages:
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+// Debug callback function
+VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+    VkDebugUtilsMessageTypeFlagsEXT message_type,
+    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+    void* user_data) {
+
+    // Convert severity to string
+    std::string severity;
+    if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+        severity = "VERBOSE";
+    } else if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+        severity = "INFO";
+    } else if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        severity = "WARNING";
+    } else if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        severity = "ERROR";
+    }
+
+    // Convert type to string
+    std::string type;
+    if (message_type & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) {
+        type = "GENERAL";
+    } else if (message_type & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
+        type = "VALIDATION";
+    } else if (message_type & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
+        type = "PERFORMANCE";
+    }
+
+    // Log the message
+    std::cerr << "[" << severity << ": " << type << "] "
+              << callback_data->pMessage << std::endl;
+
+    // Return false to indicate the Vulkan call should not be aborted
+    return VK_FALSE;
+}
+
+// Create a debug messenger using vk::raii
+vk::raii::DebugUtilsMessengerEXT create_debug_messenger(vk::raii::Instance& instance) {
+    vk::DebugUtilsMessengerCreateInfoEXT create_info{};
+    create_info.setMessageSeverity(
+        vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+        vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
+        vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+        vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+    );
+    create_info.setMessageType(
+        vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+        vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+        vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
+    );
+    create_info.setPfnUserCallback(debug_callback);
+
+    return vk::raii::DebugUtilsMessengerEXT(instance, create_info);
+}
+----
+
+==== Object Naming
+
+One of the most useful features of VK_KHR_debug_utils is the ability to give meaningful names to Vulkan objects. This makes debugging much easier, as you can identify objects in validation layer messages and tools like RenderDoc:
+
+[source,cpp]
+----
+// Helper function to set a name on any Vulkan handle
+template<typename T>
+void set_object_name(vk::raii::Device& device, T handle, const std::string& name) {
+    vk::DebugUtilsObjectNameInfoEXT name_info{};
+    name_info.setObjectType(get_object_type<T>());
+    name_info.setObjectHandle(reinterpret_cast<uint64_t>(static_cast<T>(handle)));
+    name_info.setPObjectName(name.c_str());
+
+    device.setDebugUtilsObjectNameEXT(name_info);
+}
+
+// Example usage
+void name_vulkan_objects(vk::raii::Device& device) {
+    // Name the device itself
+    set_object_name(device, *device, "Main Device");
+
+    // Name a buffer
+    vk::BufferCreateInfo buffer_info{};
+    // ... set buffer creation parameters
+    vk::raii::Buffer buffer(device, buffer_info);
+    set_object_name(device, *buffer, "Vertex Buffer");
+
+    // Name a pipeline
+    vk::raii::Pipeline pipeline = create_graphics_pipeline(device);
+    set_object_name(device, *pipeline, "Main Render Pipeline");
+}
+----
+
+==== Command Buffer Labeling
+
+You can also label regions of command buffer execution, which helps identify where issues occur during rendering:
+
+[source,cpp]
+----
+void record_command_buffer(vk::raii::CommandBuffer& cmd_buffer) {
+    cmd_buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+    // Begin a labeled region
+    vk::DebugUtilsLabelEXT label_info{};
+    label_info.setPLabelName("Shadow Pass");
+    label_info.setColor(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}); // Black for shadow pass
+    cmd_buffer.beginDebugUtilsLabelEXT(label_info);
+
+    // Record shadow pass commands
+    // ...
+
+    // End the labeled region
+    cmd_buffer.endDebugUtilsLabelEXT();
+
+    // Begin another labeled region
+    label_info.setPLabelName("Main Render Pass");
+    label_info.setColor(std::array<float, 4>{0.0f, 1.0f, 0.0f, 1.0f}); // Green for main pass
+    cmd_buffer.beginDebugUtilsLabelEXT(label_info);
+
+    // Record main render pass commands
+    // ...
+
+    // Insert a marker within this region
+    cmd_buffer.insertDebugUtilsLabelEXT({
+        "Drawing Opaque Objects",
+        std::array<float, 4>{1.0f, 1.0f, 1.0f, 1.0f}
+    });
+
+    // More rendering commands
+    // ...
+
+    // End the labeled region
+    cmd_buffer.endDebugUtilsLabelEXT();
+
+    cmd_buffer.end();
+}
+----
+
+==== Queue Labeling
+
+Similarly, you can label operations submitted to a queue:
+
+[source,cpp]
+----
+void submit_work(vk::raii::Queue& queue, vk::raii::CommandBuffer& cmd_buffer) {
+    // Begin a labeled region for the queue submission
+    vk::DebugUtilsLabelEXT label_info{};
+    label_info.setPLabelName("Frame Rendering");
+    label_info.setColor(std::array<float, 4>{0.0f, 0.5f, 1.0f, 1.0f}); // Blue for frame
+    queue.beginDebugUtilsLabelEXT(label_info);
+
+    // Submit the command buffer
+    vk::SubmitInfo submit_info{};
+    submit_info.setCommandBufferCount(1);
+    submit_info.setPCommandBuffers(&(*cmd_buffer));
+    queue.submit(submit_info, nullptr);
+
+    // End the labeled region
+    queue.endDebugUtilsLabelEXT();
+}
+----
+
+=== Using RenderDoc
+
+RenderDoc is a graphics frame debugger and capture/analysis tool (not a compiler). It allows you to capture frames from your application and analyze them in detail. It's particularly useful for Vulkan applications due to its comprehensive support for the API.
+
+
+==== Integrating RenderDoc with Your Application
+
+You can integrate RenderDoc directly into your application using its in-application API:
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+#include <renderdoc_app.h>
+
+// Load the RenderDoc API
+RENDERDOC_API_1_4_1* renderdoc_api = nullptr;
+
+bool load_renderdoc_api() {
+    #if defined(_WIN32)
+    HMODULE renderdoc_module = LoadLibraryA("renderdoc.dll");
+    #else
+    void* renderdoc_module = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
+    #endif
+
+    if (!renderdoc_module) {
+        std::cerr << "RenderDoc not loaded in this application" << std::endl;
+        return false;
+    }
+
+    #if defined(_WIN32)
+    pRENDERDOC_GetAPI get_api = (pRENDERDOC_GetAPI)GetProcAddress(renderdoc_module, "RENDERDOC_GetAPI");
+    #else
+    pRENDERDOC_GetAPI get_api = (pRENDERDOC_GetAPI)dlsym(renderdoc_module, "RENDERDOC_GetAPI");
+    #endif
+
+    if (!get_api) {
+        std::cerr << "Failed to get RenderDoc API function" << std::endl;
+        return false;
+    }
+
+    int ret = get_api(eRENDERDOC_API_Version_1_4_1, (void**)&renderdoc_api);
+    if (ret != 1) {
+        std::cerr << "Failed to initialize RenderDoc API" << std::endl;
+        return false;
+    }
+
+    std::cout << "RenderDoc API initialized successfully" << std::endl;
+    return true;
+}
+
+// Trigger a capture
+void capture_frame() {
+    if (renderdoc_api) {
+        renderdoc_api->TriggerCapture();
+    }
+}
+----
+
+==== Analyzing Captures
+
+Once you've captured a frame, you can analyze it in the RenderDoc application. Here are some key features to look for:
+
+1. *Pipeline State*: Examine the full graphics pipeline state for each draw call
+2. *Resource Inspection*: View the contents of buffers, textures, and other resources
+3. *Shader Debugging*: Step through shader execution for specific pixels
+4. *Timing Information*: Analyze performance of different parts of your frame
+
+==== Best Practices for RenderDoc
+
+To get the most out of RenderDoc:
+
+1. *Use Object Names*: As discussed earlier, naming your Vulkan objects makes them much easier to identify in RenderDoc (you'll see them in the Resource Inspector and Pipeline State views).
+2. *Use Command Buffer Labels*: These appear in RenderDoc's Event Browser and help you navigate to the relevant draw/dispatch quickly.
+3. *Capture the Problem Frame*: Trigger a capture exactly when the issue occurs (via hotkey or the in-application API) to minimize unrelated events and noise.
+4. *Minimize to a Repro*: Create a minimal reproducible scene or toggle features off to isolate the problem. If you reduce resolution, make sure it doesn't alter ordering/timing in a way that hides the bug.
+
+=== Combining VK_KHR_debug_utils and RenderDoc
+
+The real power comes from combining these approaches:
+
+1. Use VK_KHR_debug_utils to add rich debugging information to your application
+2. Use RenderDoc to capture and analyze frames with this information
+3. Use validation layers to catch API usage errors
+
+Here's an example of setting up a debugging environment that combines these approaches:
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+class DebugManager {
+public:
+    DebugManager() {
+        // Try to load RenderDoc API
+        load_renderdoc_api();
+    }
+
+    void setup_instance_debugging(vk::raii::Context& context, vk::InstanceCreateInfo& create_info) {
+        // Add validation layers
+        std::vector<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
+        create_info.setPEnabledLayerNames(validation_layers);
+
+        // Add debug utils extension
+        std::vector<const char*> extensions = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+        // Add any existing extensions
+        if (create_info.enabledExtensionCount > 0) {
+            for (uint32_t i = 0; i < create_info.enabledExtensionCount; i++) {
+                extensions.push_back(create_info.ppEnabledExtensionNames[i]);
+            }
+        }
+        create_info.setPEnabledExtensionNames(extensions);
+
+        // Store debug messenger create info for instance creation
+        debug_create_info.setMessageSeverity(
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+        );
+        debug_create_info.setMessageType(
+            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+            vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+            vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
+        );
+        debug_create_info.setPfnUserCallback(debug_callback);
+
+        // Add to pNext chain
+        debug_create_info.pNext = create_info.pNext;
+        create_info.pNext = &debug_create_info;
+    }
+
+    void setup_debug_messenger(vk::raii::Instance& instance) {
+        debug_messenger = vk::raii::DebugUtilsMessengerEXT(instance, debug_create_info);
+    }
+
+    template<typename T>
+    void set_name(vk::raii::Device& device, T handle, const std::string& name) {
+        try {
+            vk::DebugUtilsObjectNameInfoEXT name_info{};
+            name_info.setObjectType(get_object_type<T>());
+            name_info.setObjectHandle(reinterpret_cast<uint64_t>(static_cast<T>(handle)));
+            name_info.setPObjectName(name.c_str());
+
+            device.setDebugUtilsObjectNameEXT(name_info);
+        } catch (vk::SystemError& err) {
+            std::cerr << "Failed to set object name: " << err.what() << std::endl;
+        }
+    }
+
+    void capture_next_frame() {
+        if (renderdoc_api) {
+            renderdoc_api->TriggerCapture();
+        }
+    }
+
+private:
+    vk::DebugUtilsMessengerCreateInfoEXT debug_create_info{};
+    vk::raii::DebugUtilsMessengerEXT debug_messenger{nullptr};
+    RENDERDOC_API_1_4_1* renderdoc_api = nullptr;
+};
+----
+
+=== Conclusion
+
+Effective debugging is essential for developing complex Vulkan applications. By combining the power of VK_KHR_debug_utils for in-application debugging and RenderDoc for frame capture and analysis, you can quickly identify and fix issues in your rendering pipeline.
+
+In the next section, we'll explore crash handling and minidumps, which are crucial for diagnosing issues that occur in production environments.
+
+link:02_cicd.adoc[Previous: CI/CD for Vulkan Projects] | link:04_crash_minidump.adoc[Next: Crash Handling and Minidumps]

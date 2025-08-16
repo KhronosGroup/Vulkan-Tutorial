@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="600" height="450" xmlns="http://www.w3.org/2000/svg">
+  <!-- Service Locator Pattern Diagram -->
+  <style>
+    .interface { fill: #e6f2ff; stroke: #0066cc; stroke-width: 2; }
+    .implementation { fill: #fff2e6; stroke: #ff8c1a; stroke-width: 2; }
+    .locator { fill: #e6ffe6; stroke: #339933; stroke-width: 2; }
+    .client { fill: #f2e6ff; stroke: #8c1aff; stroke-width: 2; }
+    .text { font-family: Arial; font-size: 14px; text-anchor: middle; }
+    .small-text { font-family: Arial; font-size: 12px; text-anchor: middle; }
+    .title-text { font-family: Arial; font-size: 16px; font-weight: bold; text-anchor: middle; }
+    .main-title { font-family: Arial; font-size: 20px; font-weight: bold; text-anchor: middle; }
+    .arrow { stroke: #555; stroke-width: 2; marker-end: url(#arrowhead); }
+    .dashed { stroke-dasharray: 5,5; }
+  </style>
+
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555" />
+    </marker>
+  </defs>
+
+  <text x="300" y="30" class="main-title">Service Locator Pattern</text>
+
+  <!-- Service Interface -->
+  <rect x="200" y="60" width="200" height="60" rx="5" class="interface" />
+  <text x="300" y="85" class="title-text">IAudioService</text>
+  <text x="300" y="105" class="small-text">+ PlaySound(soundName)</text>
+
+  <!-- Service Implementations -->
+  <rect x="50" y="170" width="180" height="60" rx="5" class="implementation" />
+  <text x="140" y="195" class="title-text">OpenALAudioService</text>
+  <text x="140" y="215" class="small-text">implements IAudioService</text>
+
+  <rect x="250" y="170" width="180" height="60" rx="5" class="implementation" />
+  <text x="340" y="195" class="title-text">NullAudioService</text>
+  <text x="340" y="215" class="small-text">implements IAudioService</text>
+
+  <rect x="450" y="170" width="100" height="60" rx="5" class="implementation" />
+  <text x="500" y="195" class="title-text">...</text>
+  <text x="500" y="215" class="small-text">Other services</text>
+
+  <!-- Service Locator -->
+  <rect x="200" y="280" width="200" height="80" rx="5" class="locator" />
+  <text x="300" y="305" class="title-text">ServiceLocator</text>
+  <text x="300" y="325" class="small-text">+ GetAudioService()</text>
+  <text x="300" y="345" class="small-text">+ ProvideAudioService(service)</text>
+
+  <!-- Client -->
+  <rect x="200" y="390" width="200" height="50" rx="5" class="client" />
+  <text x="300" y="420" class="title-text">Client Code</text>
+
+  <!-- Implementation to Interface arrows -->
+  <line x1="140" y1="170" x2="250" y2="120" class="arrow" />
+  <line x1="340" y1="170" x2="300" y2="120" class="arrow" />
+  <line x1="500" y1="170" x2="350" y2="120" class="arrow" />
+
+  <!-- Service Locator to Interface arrow -->
+  <line x1="300" y1="280" x2="300" y2="120" class="arrow" />
+
+  <!-- Service Locator to Implementations arrows -->
+  <line x1="250" y1="280" x2="140" y2="230" class="arrow dashed" />
+  <line x1="300" y1="280" x2="340" y2="230" class="arrow dashed" />
+  <line x1="350" y1="280" x2="500" y2="230" class="arrow dashed" />
+
+  <!-- Client to Service Locator arrow -->
+  <line x1="300" y1="390" x2="300" y2="360" class="arrow" />
+
+  <!-- Explanation -->
+  <text x="140" y="150" class="small-text">Concrete Implementations</text>
+  <text x="300" y="50" class="small-text">Service Interface</text>
+  <text x="300" y="270" class="small-text">Global Access Point</text>
+  <text x="300" y="380" class="small-text">Uses services via locator</text>
+</svg>

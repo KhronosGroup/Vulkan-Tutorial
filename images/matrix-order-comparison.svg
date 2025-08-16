@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }
+      .label { font-family: Arial, sans-serif; font-size: 12px; }
+      .step-label { font-family: Arial, sans-serif; font-size: 11px; }
+      .correct-path { stroke: #2E8B57; fill: #2E8B57; }
+      .incorrect-path { stroke: #DC143C; fill: #DC143C; }
+      .cube-correct { fill: #4CAF50; stroke: #2E7D32; stroke-width: 2; }
+      .cube-incorrect { fill: #F44336; stroke: #C62828; stroke-width: 2; }
+      .arrow { stroke-width: 2; marker-end: url(#arrowhead); }
+      .origin { fill: #666; stroke: #333; stroke-width: 1; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="25" text-anchor="middle" class="title">Matrix Order Comparison: T × R × S vs R × T × S</text>
+
+  <!-- Correct Order Section -->
+  <text x="400" y="50" text-anchor="middle" class="subtitle correct-path">CORRECT ORDER: T × R × S (Applied right-to-left: Scale → Rotate → Translate)</text>
+
+  <!-- Step 1: Scale -->
+  <g transform="translate(50, 80)">
+    <text x="50" y="15" text-anchor="middle" class="step-label">Step 1: Scale</text>
+    <rect x="40" y="25" width="20" height="20" class="cube-correct" />
+    <text x="50" y="55" text-anchor="middle" class="label">Original cube</text>
+    <text x="50" y="70" text-anchor="middle" class="label">at origin</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <line x1="120" y1="115" x2="180" y2="115" class="arrow correct-path" />
+
+  <!-- Step 2: Rotate -->
+  <g transform="translate(200, 80)">
+    <text x="50" y="15" text-anchor="middle" class="step-label">Step 2: Rotate</text>
+    <polygon points="40,25 60,35 60,55 40,45" class="cube-correct" />
+    <text x="50" y="70" text-anchor="middle" class="label">Rotated in place</text>
+    <text x="50" y="85" text-anchor="middle" class="label">around its center</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <line x1="270" y1="115" x2="330" y2="115" class="arrow correct-path" />
+
+  <!-- Step 3: Translate -->
+  <g transform="translate(350, 80)">
+    <text x="50" y="15" text-anchor="middle" class="step-label">Step 3: Translate</text>
+    <polygon points="60,25 80,35 80,55 60,45" class="cube-correct" />
+    <text x="70" y="70" text-anchor="middle" class="label">Moved to new position</text>
+    <text x="70" y="85" text-anchor="middle" class="label">(final desired result)</text>
+    <!-- Origin point -->
+    <circle cx="30" cy="50" r="3" class="origin" />
+    <text x="30" y="65" text-anchor="middle" class="step-label">Origin</text>
+  </g>
+
+  <!-- Separator Line -->
+  <line x1="50" y1="200" x2="750" y2="200" stroke="#ccc" stroke-width="1" />
+
+  <!-- Incorrect Order Section -->
+  <text x="400" y="230" text-anchor="middle" class="subtitle incorrect-path">INCORRECT ORDER: R × T × S (Applied right-to-left: Scale → Translate → Rotate)</text>
+
+  <!-- Step 1: Scale -->
+  <g transform="translate(50, 260)">
+    <text x="50" y="15" text-anchor="middle" class="step-label">Step 1: Scale</text>
+    <rect x="40" y="25" width="20" height="20" class="cube-incorrect" />
+    <text x="50" y="55" text-anchor="middle" class="label">Original cube</text>
+    <text x="50" y="70" text-anchor="middle" class="label">at origin</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <line x1="120" y1="295" x2="180" y2="295" class="arrow incorrect-path" />
+
+  <!-- Step 2: Translate -->
+  <g transform="translate(200, 260)">
+    <text x="50" y="15" text-anchor="middle" class="step-label">Step 2: Translate</text>
+    <rect x="60" y="45" width="20" height="20" class="cube-incorrect" />
+    <text x="70" y="80" text-anchor="middle" class="label">Moved away from</text>
+    <text x="70" y="95" text-anchor="middle" class="label">origin first</text>
+    <!-- Origin point -->
+    <circle cx="30" cy="50" r="3" class="origin" />
+    <text x="30" y="65" text-anchor="middle" class="step-label">Origin</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <line x1="270" y1="295" x2="330" y2="295" class="arrow incorrect-path" />
+
+  <!-- Step 3: Rotate -->
+  <g transform="translate(350, 260)">
+    <text x="50" y="15" text-anchor="middle" class="step-label">Step 3: Rotate</text>
+    <rect x="30" y="65" width="20" height="20" class="cube-incorrect" />
+    <text x="70" y="50" text-anchor="middle" class="label">Rotated around world origin</text>
+    <text x="70" y="65" text-anchor="middle" class="label">(cube orbits, not desired!)</text>
+    <!-- Origin point -->
+    <circle cx="70" cy="30" r="3" class="origin" />
+    <text x="70" y="20" text-anchor="middle" class="step-label">Origin</text>
+    <!-- Orbital path indication -->
+    <path d="M 70,30 Q 40,50 40,85 Q 70,105 100,85 Q 130,50 100,30"
+          fill="none" stroke="#DC143C" stroke-width="1" stroke-dasharray="3,3" opacity="0.7" />
+  </g>
+
+  <!-- Key Insight Box -->
+  <g transform="translate(50, 380)">
+    <rect x="0" y="0" width="700" height="80" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1" rx="5" />
+    <text x="20" y="25" class="subtitle">Key Insight:</text>
+    <text x="20" y="45" class="label">In the incorrect order, the cube is moved away from the origin first, then rotated around the world origin,</text>
+    <text x="20" y="60" class="label">causing it to orbit in a circle rather than rotate in place and then move to the desired position.</text>
+  </g>
+</svg>

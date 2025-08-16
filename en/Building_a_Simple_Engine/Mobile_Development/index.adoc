@@ -1,0 +1,15 @@
+:pp: {plus}{plus}
+
+= Mobile Development
+
+
+This chapter covers the essential aspects of adapting your Vulkan engine for mobile platforms, focusing on Android and iOS development, performance optimizations, rendering approaches, and mobile-specific Vulkan extensions.
+
+* link:01_introduction.adoc[Introduction]
+* link:02_platform_considerations.adoc[Platform Considerations for Android and iOS]
+* link:03_performance_optimizations.adoc[Performance Optimizations for Mobile]
+* link:04_rendering_approaches.adoc[Rendering Approaches: TBR vs IMR]
+* link:05_vulkan_extensions.adoc[Vulkan Extensions for Mobile]
+* link:06_conclusion.adoc[Conclusion]
+
+link:../Tooling/07_conclusion.adoc[Previous: Tooling Conclusion] | link:../index.html[Back to Building a Simple Engine]

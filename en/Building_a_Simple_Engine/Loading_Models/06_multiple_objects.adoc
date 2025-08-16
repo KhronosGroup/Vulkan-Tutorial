@@ -1,0 +1,787 @@
+:pp: {plus}{plus}
+
+= Loading Models: Managing Multiple Objects
+
+== Managing Multiple Objects in a 3D Scene
+
+=== Introduction to Multi-Object Rendering
+
+In previous chapters, we've focused on loading and rendering a single 3D model. However, real-world applications rarely display just one object. Games, simulations, and visualizations typically contain many objects that interact within a shared environment. This chapter explores how to efficiently manage and render multiple objects in a 3D scene.
+
+The ability to render multiple objects is fundamental to creating rich, interactive environments. It involves not just duplicating models, but also managing their unique properties, spatial relationships, and rendering states. As we'll see, this introduces both challenges and opportunities for optimization.
+
+=== Approaches to Managing Multiple Objects
+
+There are several strategies for handling multiple objects in a 3D engine, each with different trade-offs:
+
+==== Object Instances vs. Multiple Models
+
+When creating a scene with multiple similar objects (like trees in a forest or buildings in a city), we have two main approaches:
+
+* *Multiple Model Instances*: Load the model once but render it multiple times with different transformations
+  - Advantages: Memory efficient, single asset to manage
+  - Use cases: Repeated elements like trees, rocks, furniture
+
+* *Unique Models*: Load separate models for each unique object
+  - Advantages: Greater variety, independent modifications
+  - Use cases: Main characters, unique structures, varied elements
+
+For our engine, we'll implement the instancing approach, which is more memory-efficient and suitable for many common scenarios.
+
+==== Scene Organization Strategies
+
+Beyond simply having multiple objects, we need to organize them effectively:
+
+* *Flat Collection*: Store all objects in a simple list or array
+  - Advantages: Simplicity, easy iteration
+  - Disadvantages: No spatial relationships, inefficient for large scenes
+
+* *Spatial Partitioning*: Organize objects by their location in 3D space
+  - Advantages: Efficient culling and queries, better performance for large scenes
+  - Examples: Octrees, BSP trees, grid systems
+
+* *Scene Graph*: Organize objects in a hierarchical tree structure
+  - Advantages: Parent-child relationships, hierarchical transformations
+  - Use cases: Articulated models, complex object relationships
+
+Our implementation will use a simple collection for this example, but in a more advanced engine, you would typically combine this with spatial partitioning and scene graph techniques.
+
+=== Performance Considerations
+
+Rendering multiple objects efficiently requires careful attention to performance:
+
+==== Draw Call Optimization
+
+Each object typically requires at least one draw call, which can become a bottleneck:
+
+* *Batching*: Combining similar objects into a single draw call
+* *Instanced Rendering*: Using hardware instancing to draw multiple copies of the same mesh
+* *Level of Detail (LOD)*: Using simpler models for distant objects
+
+==== Culling Techniques
+
+Not all objects need to be rendered every frame:
+
+* *Frustum Culling*: Skip rendering objects outside the camera's view
+* *Occlusion Culling*: Skip rendering objects hidden behind other objects
+* *Distance Culling*: Skip rendering objects too far from the camera
+
+==== Memory Management
+
+With multiple objects, memory usage becomes more critical:
+
+* *Shared Resources*: Reuse meshes, textures, and materials across objects
+* *Asset Streaming*: Load and unload assets based on proximity to the camera
+* *Instance Data*: Store only transformation and material variations per instance
+
+=== Implementing Object Instances
+
+Now let's implement a system for managing multiple object instances. We'll start with a simple structure to store instance data:
+
+[source,cpp]
+----
+// Object instances - using the same structure as in our model system
+struct ObjectInstance {
+    glm::vec3 position;   // Position in world space
+    glm::vec3 rotation;   // Rotation in Euler angles (degrees)
+    glm::vec3 scale;      // Scale factors for each axis
+};
+
+// Collection of object instances
+std::vector<ObjectInstance> objectInstances;
+----
+
+This structure stores the position, rotation, and scale for each instance, along with a method to compute the model matrix. The model matrix transforms the object from its local space to world space, combining all three transformations.
+
+Next, we'll set up several instances with different transformations:
+
+[source,cpp]
+----
+void setupObjectInstances() {
+    // Create multiple instances of the model with different positions
+    const int MAX_OBJECTS = 10;  // Define how many objects we want
+    objectInstances.resize(MAX_OBJECTS);
+
+    // Instance 1 - Center
+    objectInstances[0].position = glm::vec3(0.0f, 0.0f, 0.0f);
+    objectInstances[0].rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+    objectInstances[0].scale = glm::vec3(1.0f);
+
+    // Instance 2 - Left
+    objectInstances[1].position = glm::vec3(-2.0f, 0.0f, -1.0f);
+    objectInstances[1].rotation = glm::vec3(0.0f, 45.0f, 0.0f);
+    objectInstances[1].scale = glm::vec3(0.8f);
+
+    // Instance 3 - Right
+    objectInstances[2].position = glm::vec3(2.0f, 0.0f, -1.0f);
+    objectInstances[2].rotation = glm::vec3(0.0f, -45.0f, 0.0f);
+    objectInstances[2].scale = glm::vec3(0.8f);
+
+    // Instance 4 - Back Left
+    objectInstances[3].position = glm::vec3(-1.5f, 0.0f, -3.0f);
+    objectInstances[3].rotation = glm::vec3(0.0f, 30.0f, 0.0f);
+    objectInstances[3].scale = glm::vec3(0.7f);
+
+    // Instance 5 - Back Right
+    objectInstances[4].position = glm::vec3(1.5f, 0.0f, -3.0f);
+    objectInstances[4].rotation = glm::vec3(0.0f, -30.0f, 0.0f);
+    objectInstances[4].scale = glm::vec3(0.7f);
+
+    // Instance 6 - Front Left
+    objectInstances[5].position = glm::vec3(-1.5f, 0.0f, 1.5f);
+    objectInstances[5].rotation = glm::vec3(0.0f, -30.0f, 0.0f);
+    objectInstances[5].scale = glm::vec3(0.6f);
+
+    // Instance 7 - Front Right
+    objectInstances[6].position = glm::vec3(1.5f, 0.0f, 1.5f);
+    objectInstances[6].rotation = glm::vec3(0.0f, 30.0f, 0.0f);
+    objectInstances[6].scale = glm::vec3(0.6f);
+
+    // Instance 8 - Above
+    objectInstances[7].position = glm::vec3(0.0f, 2.0f, -2.0f);
+    objectInstances[7].rotation = glm::vec3(45.0f, 0.0f, 0.0f);
+    objectInstances[7].scale = glm::vec3(0.5f);
+
+    // Instance 9 - Below
+    objectInstances[8].position = glm::vec3(0.0f, -1.0f, -2.0f);
+    objectInstances[8].rotation = glm::vec3(-30.0f, 0.0f, 0.0f);
+    objectInstances[8].scale = glm::vec3(0.5f);
+
+    // Instance 10 - Far Back
+    objectInstances[9].position = glm::vec3(0.0f, 0.5f, -5.0f);
+    objectInstances[9].rotation = glm::vec3(0.0f, 180.0f, 0.0f);
+    objectInstances[9].scale = glm::vec3(1.2f);
+}
+----
+
+This function creates ten instances of our model, each with a unique position, rotation, and scale. This allows us to create a more interesting scene with varied object placements.
+
+=== Rendering Multiple Objects
+
+Now that we have our object instances set up, we need to render them. Here's how we can modify our rendering loop to handle multiple objects:
+
+[source,cpp]
+----
+void drawFrame() {
+    // ... (standard Vulkan frame setup)
+
+    // Begin command buffer recording
+    commandBuffer.begin({});
+
+    // Transition image layout for rendering
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        {},
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    // Set up rendering attachments
+    vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+    vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
+
+    vk::RenderingAttachmentInfo colorAttachmentInfo = {
+        .imageView = swapChainImageViews[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearColor
+    };
+
+    vk::RenderingAttachmentInfo depthAttachmentInfo = {
+        .imageView = depthImageView,
+        .imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearDepth
+    };
+
+    vk::RenderingInfo renderingInfo = {
+        .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachmentInfo,
+        .pDepthAttachment = &depthAttachmentInfo
+    };
+
+    // Begin dynamic rendering
+    commandBuffer.beginRendering(renderingInfo);
+
+    // Bind pipeline
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+
+    // Set viewport and scissor
+    commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+    commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+
+    // Bind descriptor set with uniform buffer and textures
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics,
+        pipelineLayout,
+        0,
+        1,
+        &descriptorSets[currentFrame],
+        0,
+        nullptr
+    );
+
+    // Update view and projection in uniform buffer
+    UniformBufferObject ubo{};
+    ubo.view = camera.getViewMatrix();
+    ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
+    ubo.proj[1][1] *= -1;  // Vulkan's Y coordinate is inverted
+
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
+
+    // Render each object instance
+    for (size_t i = 0; i < objectInstances.size(); i++) {
+        const auto& instance = objectInstances[i];
+
+        // Create model matrix for this instance
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::translate(modelMatrix, instance.position);
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(instance.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(instance.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(instance.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        modelMatrix = glm::scale(modelMatrix, instance.scale);
+
+        // Render all nodes in the model
+        renderNode(commandBuffer, model.nodes, modelMatrix);
+    }
+
+    // End dynamic rendering
+    commandBuffer.endRendering();
+
+    // Transition image layout for presentation
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe
+    );
+
+    // End command buffer recording
+    commandBuffer.end();
+
+    // ... (submit command buffer and present)
+}
+
+// Helper function to recursively render all nodes in the model
+void renderNode(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes, const glm::mat4& parentMatrix) {
+    for (const auto node : nodes) {
+        // Calculate global matrix for this node
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+
+        // If this node has a mesh, render it
+        if (!node->mesh.vertices.empty() && !node->mesh.indices.empty() &&
+            node->vertexBufferIndex >= 0 && node->indexBufferIndex >= 0) {
+
+            // Set up push constants for material properties
+            PushConstantBlock pushConstants{};
+
+            if (node->mesh.materialIndex >= 0 && node->mesh.materialIndex < static_cast<int>(model.materials.size())) {
+                const auto& material = model.materials[node->mesh.materialIndex];
+                pushConstants.baseColorFactor = material.baseColorFactor;
+                pushConstants.metallicFactor = material.metallicFactor;
+                pushConstants.roughnessFactor = material.roughnessFactor;
+                pushConstants.baseColorTextureSet = material.baseColorTextureIndex >= 0 ? 1 : -1;
+                pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex >= 0 ? 2 : -1;
+                pushConstants.normalTextureSet = material.normalTextureIndex >= 0 ? 3 : -1;
+                pushConstants.occlusionTextureSet = material.occlusionTextureIndex >= 0 ? 4 : -1;
+                pushConstants.emissiveTextureSet = material.emissiveTextureIndex >= 0 ? 5 : -1;
+            } else {
+                // Default material properties
+                pushConstants.baseColorFactor = glm::vec4(1.0f);
+                pushConstants.metallicFactor = 1.0f;
+                pushConstants.roughnessFactor = 1.0f;
+                pushConstants.baseColorTextureSet = 1;
+                pushConstants.physicalDescriptorTextureSet = -1;
+                pushConstants.normalTextureSet = -1;
+                pushConstants.occlusionTextureSet = -1;
+                pushConstants.emissiveTextureSet = -1;
+            }
+
+            // Update model matrix in push constants
+            commandBuffer.pushConstants(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstantBlock), &pushConstants);
+
+            // Bind vertex and index buffers
+            commandBuffer.bindVertexBuffers(0, *vertexBuffers[node->vertexBufferIndex], {0});
+            commandBuffer.bindIndexBuffer(*indexBuffers[node->indexBufferIndex], 0, vk::IndexType::eUint32);
+
+            // Draw the mesh
+            commandBuffer.drawIndexed(static_cast<uint32_t>(node->mesh.indices.size()), 1, 0, 0, 0);
+        }
+
+        // Recursively render children
+        if (!node->children.empty()) {
+            renderNode(commandBuffer, node->children, nodeMatrix);
+        }
+    }
+}
+----
+
+This rendering approach leverages our model system to efficiently render multiple instances of a model:
+
+1. It uses the scene graph structure to handle complex models with multiple parts
+2. It properly handles parent-child relationships and hierarchical transformations
+3. It applies material properties to each mesh using push constants
+4. It supports animations through the node transformation system
+
+While this approach is more sophisticated than a simple flat list of objects, it does have some limitations:
+
+1. It still requires a separate draw call for each mesh in each instance, which can be inefficient for large numbers of objects
+2. It doesn't implement any culling or batching optimizations
+3. For very large scenes, additional spatial partitioning would be beneficial
+
+=== Advanced Techniques: Hardware Instancing
+
+For more efficient rendering of many similar objects, we can use hardware instancing. This allows us to draw multiple instances of the same model with a single draw call:
+
+[source,cpp]
+----
+// Instance data for GPU instancing
+struct InstanceData {
+    glm::mat4 model;  // Model matrix for this instance
+};
+
+// Create buffers to hold instance data for each node with a mesh
+std::vector<vk::raii::Buffer> instanceBuffers;
+std::vector<vk::raii::DeviceMemory> instanceBufferMemories;
+std::vector<void*> instanceBuffersMapped;
+
+void setupInstanceBuffers() {
+    // Create an instance buffer for each node with a mesh
+    for (auto node : model.linearNodes) {
+        if (node->mesh.vertices.empty() || node->mesh.indices.empty()) {
+            continue;
+        }
+
+        // Calculate buffer size
+        vk::DeviceSize bufferSize = sizeof(InstanceData) * objectInstances.size();
+
+        // Create the buffer
+        vk::raii::Buffer instanceBuffer = nullptr;
+        vk::raii::DeviceMemory instanceBufferMemory = nullptr;
+        createBuffer(
+            bufferSize,
+            vk::BufferUsageFlagBits::eVertexBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            instanceBuffer,
+            instanceBufferMemory
+        );
+
+        // Map the buffer memory
+        void* instanceBufferMapped = device.mapMemory(instanceBufferMemory, 0, bufferSize, {});
+
+        // Store buffer and memory
+        instanceBuffers.push_back(instanceBuffer);
+        instanceBufferMemories.push_back(instanceBufferMemory);
+        instanceBuffersMapped.push_back(instanceBufferMapped);
+
+        // Set the instance buffer index for this node
+        node->instanceBufferIndex = static_cast<int>(instanceBuffers.size() - 1);
+    }
+
+    // Update all instance buffers
+    updateInstanceBuffers();
+}
+
+void updateInstanceBuffers() {
+    // For each node with an instance buffer
+    for (auto node : model.linearNodes) {
+        if (node->instanceBufferIndex < 0) {
+            continue;
+        }
+
+        // Prepare instance data for this node
+        std::vector<InstanceData> instanceData(objectInstances.size());
+        for (size_t i = 0; i < objectInstances.size(); i++) {
+            // Create model matrix for this instance
+            glm::mat4 modelMatrix = glm::mat4(1.0f);
+            modelMatrix = glm::translate(modelMatrix, objectInstances[i].position);
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(objectInstances[i].rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(objectInstances[i].rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(objectInstances[i].rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+            modelMatrix = glm::scale(modelMatrix, objectInstances[i].scale);
+
+            // Combine with node's local matrix
+            instanceData[i].model = modelMatrix * node->getLocalMatrix();
+        }
+
+        // Copy to instance buffer
+        memcpy(instanceBuffersMapped[node->instanceBufferIndex], instanceData.data(), sizeof(InstanceData) * instanceData.size());
+    }
+}
+
+// Modify vertex input state to include instance data
+vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+// ... (standard vertex input setup)
+
+// Add instance data bindings and attributes
+vk::VertexInputBindingDescription instanceBindingDescription{};
+instanceBindingDescription.binding = 1;  // Use binding point 1 for instance data
+instanceBindingDescription.stride = sizeof(InstanceData);
+instanceBindingDescription.inputRate = vk::VertexInputRate::eInstance;  // Advance per instance
+
+// Four attributes for the 4x4 matrix (one per row)
+std::array<vk::VertexInputAttributeDescription, 4> instanceAttributeDescriptions{};
+for (uint32_t i = 0; i < 4; i++) {
+    instanceAttributeDescriptions[i].binding = 1;
+    instanceAttributeDescriptions[i].location = 4 + i;  // Start after vertex attributes
+    instanceAttributeDescriptions[i].format = vk::Format::eR32G32B32A32Sfloat;
+    instanceAttributeDescriptions[i].offset = sizeof(float) * 4 * i;
+}
+
+// Combine vertex and instance bindings/attributes
+std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = {
+    vertexBindingDescription,
+    instanceBindingDescription
+};
+
+std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
+// Add vertex attributes
+for (const auto& attr : vertexAttributeDescriptions) {
+    attributeDescriptions.push_back(attr);
+}
+// Add instance attributes
+for (const auto& attr : instanceAttributeDescriptions) {
+    attributeDescriptions.push_back(attr);
+}
+
+// Update vertex input info
+vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+----
+
+With hardware instancing set up, we can modify our rendering loop to draw all instances in a single call:
+
+The same five steps apply here; the difference is in step 4 where we bind the instance buffer and draw N instances:
+
+* Begin and describe attachments
+* Begin rendering, bind pipeline, set viewport/scissor
+* Update camera UBO (view/projection)
+* Bind per‑mesh vertex + index buffers and a per‑mesh instance buffer, then draw instanced
+* End rendering and present
+
+[source,cpp]
+----
+void drawFrame() {
+    // ... (standard Vulkan frame setup)
+
+    // Begin command buffer recording
+    commandBuffer.begin({});
+
+    // Transition image layout for rendering
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        {},
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    // Set up rendering attachments
+    vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+    vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
+
+    vk::RenderingAttachmentInfo colorAttachmentInfo = {
+        .imageView = swapChainImageViews[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearColor
+    };
+
+    vk::RenderingAttachmentInfo depthAttachmentInfo = {
+        .imageView = depthImageView,
+        .imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearDepth
+    };
+
+    vk::RenderingInfo renderingInfo = {
+        .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachmentInfo,
+        .pDepthAttachment = &depthAttachmentInfo
+    };
+
+    // Begin dynamic rendering
+    commandBuffer.beginRendering(renderingInfo);
+
+    // Bind pipeline
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+
+    // Set viewport and scissor
+    commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+    commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+
+    // Update view and projection in uniform buffer
+    UniformBufferObject ubo{};
+    ubo.view = camera.getViewMatrix();
+    ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
+    ubo.proj[1][1] *= -1;  // Vulkan's Y coordinate is inverted
+
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
+
+    // Bind descriptor set
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics,
+        pipelineLayout,
+        0,
+        1,
+        &descriptorSets[currentFrame],
+        0,
+        nullptr
+    );
+
+    // Render all nodes in the model with instancing
+    renderNodeInstanced(commandBuffer, model.nodes);
+
+    // End dynamic rendering
+    commandBuffer.endRendering();
+
+    // Transition image layout for presentation
+    transition_image_layout(
+        imageIndex,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe
+    );
+
+    // End command buffer recording
+    commandBuffer.end();
+
+    // ... (submit command buffer and present)
+}
+
+// Helper function to recursively render all nodes in the model with instancing
+void renderNodeInstanced(const vk::raii::CommandBuffer& commandBuffer, const std::vector<Node*>& nodes) {
+    for (const auto node : nodes) {
+        // If this node has a mesh and an instance buffer, render it
+        if (!node->mesh.vertices.empty() && !node->mesh.indices.empty() &&
+            node->vertexBufferIndex >= 0 && node->indexBufferIndex >= 0 &&
+            node->instanceBufferIndex >= 0) {
+
+            // Set up push constants for material properties
+            PushConstantBlock pushConstants{};
+
+            if (node->mesh.materialIndex >= 0 && node->mesh.materialIndex < static_cast<int>(model.materials.size())) {
+                const auto& material = model.materials[node->mesh.materialIndex];
+                pushConstants.baseColorFactor = material.baseColorFactor;
+                pushConstants.metallicFactor = material.metallicFactor;
+                pushConstants.roughnessFactor = material.roughnessFactor;
+                pushConstants.baseColorTextureSet = material.baseColorTextureIndex >= 0 ? 1 : -1;
+                pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex >= 0 ? 2 : -1;
+                pushConstants.normalTextureSet = material.normalTextureIndex >= 0 ? 3 : -1;
+                pushConstants.occlusionTextureSet = material.occlusionTextureIndex >= 0 ? 4 : -1;
+                pushConstants.emissiveTextureSet = material.emissiveTextureIndex >= 0 ? 5 : -1;
+            } else {
+                // Default material properties
+                pushConstants.baseColorFactor = glm::vec4(1.0f);
+                pushConstants.metallicFactor = 1.0f;
+                pushConstants.roughnessFactor = 1.0f;
+                pushConstants.baseColorTextureSet = 1;
+                pushConstants.physicalDescriptorTextureSet = -1;
+                pushConstants.normalTextureSet = -1;
+                pushConstants.occlusionTextureSet = -1;
+                pushConstants.emissiveTextureSet = -1;
+            }
+
+            // Update push constants
+            commandBuffer.pushConstants(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstantBlock), &pushConstants);
+
+            // Bind vertex and instance buffers
+            vk::Buffer vertexBuffers[] = {*vertexBuffers[node->vertexBufferIndex], *instanceBuffers[node->instanceBufferIndex]};
+            vk::DeviceSize offsets[] = {0, 0};
+            commandBuffer.bindVertexBuffers(0, 2, vertexBuffers, offsets);
+            commandBuffer.bindIndexBuffer(*indexBuffers[node->indexBufferIndex], 0, vk::IndexType::eUint32);
+
+            // Draw all instances of this mesh in a single call
+            commandBuffer.drawIndexed(
+                static_cast<uint32_t>(node->mesh.indices.size()),
+                static_cast<uint32_t>(objectInstances.size()),  // Instance count
+                0, 0, 0
+            );
+        }
+
+        // Recursively render children
+        if (!node->children.empty()) {
+            renderNodeInstanced(commandBuffer, node->children);
+        }
+    }
+}
+----
+
+This approach is much more efficient for rendering large numbers of similar objects, as it reduces the number of draw calls and uniform buffer updates.
+
+=== Vertex Shader Modifications for Instancing
+
+To support hardware instancing, we need to modify our vertex shader to use the instance data:
+
+[source,glsl]
+----
+#version 450
+
+// Vertex attributes
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec3 inColor;
+layout(location = 3) in vec2 inTexCoord;
+
+// Instance attributes (model matrix, one row per attribute)
+layout(location = 4) in vec4 instanceModelRow0;
+layout(location = 5) in vec4 instanceModelRow1;
+layout(location = 6) in vec4 instanceModelRow2;
+layout(location = 7) in vec4 instanceModelRow3;
+
+// Uniform buffer for view and projection matrices
+layout(binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+
+    // PBR parameters (not used in this shader but included for compatibility)
+    vec4 lightPositions[4];
+    vec4 lightColors[4];
+    vec4 camPos;
+    float exposure;
+    float gamma;
+    float prefilteredCubeMipLevels;
+    float scaleIBLAmbient;
+} ubo;
+
+// Output to fragment shader
+layout(location = 0) out vec3 fragPosition;
+layout(location = 1) out vec3 fragNormal;
+layout(location = 2) out vec2 fragTexCoord;
+layout(location = 3) out vec3 fragColor;
+
+void main() {
+    // Reconstruct model matrix from instance attributes
+    mat4 instanceModel = mat4(
+        instanceModelRow0,
+        instanceModelRow1,
+        instanceModelRow2,
+        instanceModelRow3
+    );
+
+    // Calculate world position
+    vec4 worldPos = instanceModel * vec4(inPosition, 1.0);
+
+    // Output position in clip space
+    gl_Position = ubo.proj * ubo.view * worldPos;
+
+    // Pass data to fragment shader
+    fragPosition = worldPos.xyz;
+    fragNormal = mat3(instanceModel) * inNormal;  // This is simplified; should use normal matrix
+    fragTexCoord = inTexCoord;
+    fragColor = inColor;
+}
+----
+
+=== Beyond Basic Instancing: Material Variations
+
+So far, we've focused on positioning multiple instances of the same model with the same material. In a real application, you might want to vary the materials as well:
+
+[source,cpp]
+----
+// Create materials with variations for each instance
+void createMaterialVariations() {
+    // Resize the materials vector to hold one material per instance
+    model.materials.resize(objectInstances.size());
+
+    for (size_t i = 0; i < objectInstances.size(); i++) {
+        // Get reference to this instance's material
+        Material& material = model.materials[i];
+
+        // Vary materials based on position or other factors
+        float distanceFromCenter = glm::length(objectInstances[i].position);
+        float angle = atan2(objectInstances[i].position.z, objectInstances[i].position.x);
+
+        // Vary color based on angle
+        float hue = (angle + glm::pi<float>()) / (2.0f * glm::pi<float>());
+        glm::vec3 color = hsvToRgb(glm::vec3(hue, 0.7f, 0.9f));
+        material.baseColorFactor = glm::vec4(color, 1.0f);
+
+        // Vary metallic/roughness based on distance
+        material.metallicFactor = glm::clamp(distanceFromCenter / 5.0f, 0.0f, 1.0f);
+        material.roughnessFactor = glm::clamp(1.0f - distanceFromCenter / 5.0f, 0.1f, 0.9f);
+
+        // Vary emissive strength for some objects
+        material.emissiveFactor = (i % 3 == 0) ? glm::vec3(1.0f) : glm::vec3(0.0f);  // Every third object glows
+    }
+
+    // Update material indices for all nodes
+    for (auto node : model.linearNodes) {
+        // For demonstration, we'll assign materials based on node index
+        // In a real application, you might use more sophisticated logic
+        if (!node->mesh.vertices.empty()) {
+            size_t materialIndex = node->index % objectInstances.size();
+            node->mesh.materialIndex = static_cast<int>(materialIndex);
+        }
+    }
+}
+
+// Helper function to convert HSV to RGB
+glm::vec3 hsvToRgb(glm::vec3 hsv) {
+    float h = hsv.x;
+    float s = hsv.y;
+    float v = hsv.z;
+
+    float r, g, b;
+
+    int i = floor(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+
+    return glm::vec3(r, g, b);
+}
+
+// To use these material variations, call createMaterialVariations() after loading the model
+// The renderNode() and renderNodeInstanced() methods will automatically use the assigned materials
+----
+
+This approach allows for much more visual variety in your scene, even when using the same base model for all instances.
+
+=== Conclusion and Next Steps
+
+In this chapter, we've explored how to manage and render multiple objects in a 3D scene. We've covered:
+
+* Different approaches to organizing multiple objects
+* Performance considerations for multi-object rendering
+* Basic implementation of object instances
+* Advanced techniques like hardware instancing
+* Material variations for visual diversity
+
+These techniques form the foundation for creating complex, visually rich 3D scenes. In the next chapter, we'll build upon this foundation to implement a complete scene rendering system that integrates all the components we've developed so far.
+
+link:05_pbr_rendering.adoc[Previous: Understanding Physically Based Rendering] | link:07_scene_rendering.adoc[Next: Rendering the Scene]

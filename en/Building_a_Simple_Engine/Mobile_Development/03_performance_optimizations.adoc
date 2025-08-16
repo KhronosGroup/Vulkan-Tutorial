@@ -64,70 +64,6 @@ vk::Format find_supported_format(vk::PhysicalDevice physical_device,
 
     throw std::runtime_error("Failed to find supported format");
 }
-
-vk::Format find_best_compressed_format(vk::PhysicalDevice physical_device) {
-    // Choose based on reported feature support; benefits apply on mobile and desktop.
-    vk::PhysicalDeviceFeatures features = physical_device.getFeatures();
-
-    // Candidate lists
-    std::vector<vk::Format> astc_formats = {
-        vk::Format::eAstc8x8SrgbBlock,
-        vk::Format::eAstc6x6SrgbBlock,
-        vk::Format::eAstc4x4SrgbBlock
-    };
-    std::vector<vk::Format> bc_formats = {
-        vk::Format::eBc7SrgbBlock,
-        vk::Format::eBc3SrgbBlock,
-        vk::Format::eBc1SrgbBlock
-    };
-    std::vector<vk::Format> etc2_formats = {
-        vk::Format::eEtc2R8G8B8A8SrgbBlock,
-        vk::Format::eEtc2R8G8B8SrgbBlock
-    };
-
-    // Build a simple preference order:
-    // - If only BC is supported, try BC first (typical on desktop-only stacks).
-    // - If ASTC is supported, try ASTC (common on mobile; also available on some desktop drivers).
-    // - Then try the remaining supported families.
-    std::vector<std::vector<vk::Format>> preference;
-
-    if (features.textureCompressionBC && !features.textureCompressionASTC_LDR) {
-        preference.push_back(bc_formats);
-    }
-    if (features.textureCompressionASTC_LDR) {
-        preference.push_back(astc_formats);
-    }
-    if (features.textureCompressionBC && features.textureCompressionASTC_LDR) {
-        // Both supported; add BC as alternative if not already first
-        if (preference.empty() || preference[0] != bc_formats) {
-            preference.push_back(bc_formats);
-        }
-    }
-    if (features.textureCompressionETC2) {
-        preference.push_back(etc2_formats);
-    }
-
-    // As a fallback, try all families regardless of feature bits (some drivers may expose formats via properties).
-    if (preference.empty()) {
-        preference = { astc_formats, etc2_formats, bc_formats };
-    }
-
-    for (const auto& family : preference) {
-        try {
-            return find_supported_format(
-                physical_device,
-                family,
-                vk::ImageTiling::eOptimal,
-                vk::FormatFeatureFlagBits::eSampledImage
-            );
-        } catch (const std::runtime_error&) {
-            // Try next family
-        }
-    }
-
-    // Fall back to uncompressed
-    return vk::Format::eR8G8B8A8Srgb;
-}
 ----
 
 === Memory Optimizations
@@ -284,21 +220,10 @@ vk::Format get_optimal_texture_format(vk::PhysicalDevice physical_device) {
     vk::PhysicalDeviceFeatures features = physical_device.getFeatures();
 
     // Check for ASTC support (widely supported on modern mobile GPUs)
+    // Most games are written with knowledge of what the assets were compressed with so it's standard practice to only ensure the required format is supported.
     if (features.textureCompressionASTC_LDR) {
         return vk::Format::eAstc8x8SrgbBlock;
     }
-
-    // Check for vendor-specific optimizations
-    // Huawei devices (Mali GPUs)
-    if (props.vendorID == 0x19E5) {
-        // Check for ETC2 support as fallback
-        if (supports_texture_format(physical_device, vk::Format::eEtc2R8G8B8A8SrgbBlock)) {
-            return vk::Format::eEtc2R8G8B8A8SrgbBlock;
-        }
-    }
-
-    // Otherwise, fall back to the general format selection
-    return find_best_compressed_format(physical_device);
 }
 ----
 

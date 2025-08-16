@@ -587,7 +587,7 @@ void AudioSystem::Update(float deltaTime) {
 
     // Synchronize HRTF listener position and orientation with active camera
     if (engine) {
-        CameraComponent* activeCamera = engine->GetActiveCamera();
+        const CameraComponent* activeCamera = engine->GetActiveCamera();
         if (activeCamera) {
             // Get camera position
             glm::vec3 cameraPos = activeCamera->GetPosition();

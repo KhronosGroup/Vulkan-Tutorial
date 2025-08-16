@@ -114,9 +114,7 @@ void Engine::Run() {
     running = true;
 
     // Main loop
-    int loopCount = 0;
     while (running) {
-        loopCount++;
         // Process platform events
         if (!platform->ProcessEvents()) {
             running = false;
@@ -180,17 +178,16 @@ void Engine::Cleanup() {
 }
 
 Entity* Engine::CreateEntity(const std::string& name) {
-    // Check if an entity with this name already exists
-    if (entityMap.contains(name)) {
-        return nullptr;
-    }
-
+    // Always allow duplicate names; map stores a representative entity
     // Create the entity
     auto entity = std::make_unique<Entity>(name);
-    // Add to the map and vector
+    // Add to the vector and map
     entities.push_back(std::move(entity));
+    Entity* rawPtr = entities.back().get();
+    // Update the map to point to the most recently created entity with this name
+    entityMap[name] = rawPtr;
 
-    return entities.back().get();
+    return rawPtr;
 }
 
 Entity* Engine::GetEntity(const std::string& name) const {
@@ -206,6 +203,9 @@ bool Engine::RemoveEntity(Entity* entity) {
         return false;
     }
 
+    // Remember the name before erasing ownership
+    std::string name = entity->GetName();
+
     // Find the entity in the vector
     auto it = std::find_if(entities.begin(), entities.end(),
         [entity](const std::unique_ptr<Entity>& e) {
@@ -213,11 +213,20 @@ bool Engine::RemoveEntity(Entity* entity) {
         });
 
     if (it != entities.end()) {
-        // Remove from the map
-        entityMap.erase(entity->GetName());
-
-        // Remove from the vector
+        // Remove from the vector (ownership)
         entities.erase(it);
+
+        // Update the map: point to another entity with the same name if one exists
+        auto remainingIt = std::find_if(entities.begin(), entities.end(),
+            [&name](const std::unique_ptr<Entity>& e) {
+                return e->GetName() == name;
+            });
+
+        if (remainingIt != entities.end()) {
+            entityMap[name] = remainingIt->get();
+        } else {
+            entityMap.erase(name);
+        }
 
         return true;
     }
@@ -233,50 +242,39 @@ bool Engine::RemoveEntity(const std::string& name) {
     return false;
 }
 
-std::vector<Entity*> Engine::GetAllEntities() const {
-    std::vector<Entity*> result;
-    result.reserve(entities.size());
-
-    for (const auto& entity : entities) {
-        result.push_back(entity.get());
-    }
-
-    return result;
-}
-
 void Engine::SetActiveCamera(CameraComponent* cameraComponent) {
     activeCamera = cameraComponent;
 }
 
-CameraComponent* Engine::GetActiveCamera() const {
+const CameraComponent* Engine::GetActiveCamera() const {
     return activeCamera;
 }
 
-ResourceManager* Engine::GetResourceManager() const {
+const ResourceManager* Engine::GetResourceManager() const {
     return resourceManager.get();
 }
 
-Platform* Engine::GetPlatform() const {
+const Platform* Engine::GetPlatform() const {
     return platform.get();
 }
 
-Renderer* Engine::GetRenderer() const {
+Renderer* Engine::GetRenderer() {
     return renderer.get();
 }
 
-ModelLoader* Engine::GetModelLoader() const {
+ModelLoader* Engine::GetModelLoader() {
     return modelLoader.get();
 }
 
-AudioSystem* Engine::GetAudioSystem() const {
+const AudioSystem* Engine::GetAudioSystem() const {
     return audioSystem.get();
 }
 
-PhysicsSystem* Engine::GetPhysicsSystem() const {
+PhysicsSystem* Engine::GetPhysicsSystem() {
     return physicsSystem.get();
 }
 
-ImGuiSystem* Engine::GetImGuiSystem() const {
+const ImGuiSystem* Engine::GetImGuiSystem() const {
     return imguiSystem.get();
 }
 

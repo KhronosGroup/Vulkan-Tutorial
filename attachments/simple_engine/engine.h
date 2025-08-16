@@ -82,12 +82,6 @@ public:
     bool RemoveEntity(const std::string& name);
 
     /**
-     * @brief Get all entities.
-     * @return A vector of pointers to all entities.
-     */
-    std::vector<Entity*> GetAllEntities() const;
-
-    /**
      * @brief Set the active camera.
      * @param cameraComponent The camera component to set as active.
      */
@@ -97,49 +91,49 @@ public:
      * @brief Get the active camera.
      * @return A pointer to the active camera component, or nullptr if none is set.
      */
-    CameraComponent* GetActiveCamera() const;
+    const CameraComponent* GetActiveCamera() const;
 
     /**
      * @brief Get the resource manager.
      * @return A pointer to the resource manager.
      */
-    ResourceManager* GetResourceManager() const;
+    const ResourceManager* GetResourceManager() const;
 
     /**
      * @brief Get the platform.
      * @return A pointer to the platform.
      */
-    Platform* GetPlatform() const;
+    const Platform* GetPlatform() const;
 
     /**
      * @brief Get the renderer.
      * @return A pointer to the renderer.
      */
-    Renderer* GetRenderer() const;
+    Renderer* GetRenderer();
 
     /**
      * @brief Get the model loader.
      * @return A pointer to the model loader.
      */
-    ModelLoader* GetModelLoader() const;
+     ModelLoader* GetModelLoader();
 
     /**
      * @brief Get the audio system.
      * @return A pointer to the audio system.
      */
-    AudioSystem* GetAudioSystem() const;
+    const AudioSystem* GetAudioSystem() const;
 
     /**
      * @brief Get the physics system.
      * @return A pointer to the physics system.
      */
-    PhysicsSystem* GetPhysicsSystem() const;
+     PhysicsSystem* GetPhysicsSystem();
 
     /**
      * @brief Get the ImGui system.
      * @return A pointer to the ImGui system.
      */
-    ImGuiSystem* GetImGuiSystem() const;
+    const ImGuiSystem* GetImGuiSystem() const;
 
     /**
      * @brief Handles mouse input for interaction and camera control.

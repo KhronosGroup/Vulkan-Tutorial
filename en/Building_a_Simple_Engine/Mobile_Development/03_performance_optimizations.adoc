@@ -6,6 +6,11 @@
 
 Mobile devices have significantly different hardware constraints compared to desktop systems. In this section, we'll explore key performance optimizations that are essential for achieving good performance on mobile platforms.
 
+[NOTE]
+====
+This chapter covers general mobile performance. For practices that arise specifically because the GPU is tile-based (TBR), see link:04_rendering_approaches.adoc[Rendering Approaches: Tile-Based Rendering].
+====
+
 === Texture Optimizations
 
 [NOTE]
@@ -181,6 +186,11 @@ struct OptimizedVertex {
 };
 ----
 
+[NOTE]
+====
+If you are targeting tile-based GPUs (TBR), bandwidth can be heavily impacted by attachment load/store behavior and tile flushes. See link:04_rendering_approaches.adoc[Rendering Approaches] — sections “Attachment Load/Store Operations on Tilers” and “Pipelining on Tilers: Subpass Dependencies and BY_REGION” for concrete guidance.
+====
+
 === Draw Call Optimizations
 
 Mobile GPUs are particularly sensitive to draw call overhead:
@@ -190,6 +200,11 @@ Mobile GPUs are particularly sensitive to draw call overhead:
 2. *Batching*: Combine multiple objects into a single mesh where possible.
 
 3. *Level of Detail (LOD)*: Implement LOD systems to reduce geometry complexity for distant objects.
+
+[NOTE]
+====
+On tile-based GPUs, reducing CPU overhead is important, but keeping work and data on-chip via proper pipelining and subpasses often yields larger gains. See link:04_rendering_approaches.adoc[Rendering Approaches] — “Pipelining on Tilers: Subpass Dependencies and BY_REGION” for barrier/subpass patterns, and “Attachment Load/Store Operations on Tilers” for loadOp/storeOp guidance that avoids external memory traffic.
+====
 
 === Vendor-Specific Optimizations
 

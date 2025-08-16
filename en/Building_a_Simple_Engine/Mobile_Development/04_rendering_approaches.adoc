@@ -47,7 +47,7 @@ depth_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
 depth_attachment.setInitialLayout(vk::ImageLayout::eUndefined);
 depth_attachment.setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-// When creating the image, use the transient flag
+// When creating the image, mark the attachment as transient
 vk::ImageCreateInfo image_info{};
 image_info.setImageType(vk::ImageType::e2D);
 image_info.setExtent(vk::Extent3D(width, height, 1));
@@ -56,9 +56,10 @@ image_info.setArrayLayers(1);
 image_info.setFormat(depth_format);
 image_info.setTiling(vk::ImageTiling::eOptimal);
 image_info.setInitialLayout(vk::ImageLayout::eUndefined);
-image_info.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
+image_info.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransientAttachment);
 image_info.setSamples(vk::SampleCountFlagBits::e1);
-image_info.setFlags(vk::ImageCreateFlagBits::eTransient);  // Transient flag
+// Prefer lazily allocated memory for transient attachments when supported
+// Choose memory with vk::MemoryPropertyFlagBits::eLazilyAllocated
 ----
 
 * *Render Pass Structure*: Design your render passes to take advantage of
@@ -104,6 +105,89 @@ vk::RenderPass render_pass = device.createRenderPass(render_pass_info);
   - In Vulkan, use input attachments within subpasses or the `VK_KHR_dynamic_rendering_local_read` capability to perform tile-local reads without leaving tile memory. This is often referred to as pixel-local storage (PLS) on tile-based architectures.
 
 * *Optimize for Tile Size*: Consider the tile size when designing your rendering algorithm. For example, if you know the tile size is 16x16, you might organize your data or algorithms to work efficiently with that size.
+
+===== Attachment Load/Store Operations on Tilers
+
+On tile-based GPUs, correctly using loadOp and storeOp is one of the highest-impact optimizations:
+
+- Clear attachments with loadOp = CLEAR and initialLayout = UNDEFINED when you don't need previous contents. This avoids an external memory read for the tile.
+- Use storeOp = DONT_CARE for attachments whose results are not needed after the render pass (e.g., transient depth or intermediate color targets). This can prevent flushing the tile back to main memory.
+- For the swapchain image (or any image you will sample/transfer from later), use storeOp = STORE and set finalLayout appropriately (e.g., PRESENT_SRC_KHR for the swapchain).
+- For MSAA, resolve within the same render pass so the hardware can resolve from tile memory and only store the resolved image to external memory.
+
+[source,cpp]
+----
+// Color attachment that we clear and present
+vk::AttachmentDescription color_attachment{};
+color_attachment.setFormat(swapchain_format);
+color_attachment.setSamples(vk::SampleCountFlagBits::e1);
+color_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore); // we need to present
+color_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+color_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+color_attachment.setInitialLayout(vk::ImageLayout::eUndefined); // no need to load previous contents
+color_attachment.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+
+// Depth attachment used only within the pass
+vk::AttachmentDescription depth_attachment{};
+depth_attachment.setFormat(depth_format);
+depth_attachment.setSamples(vk::SampleCountFlagBits::e1);
+depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare); // don't flush depth to memory
+depth_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+depth_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+depth_attachment.setInitialLayout(vk::ImageLayout::eUndefined);
+depth_attachment.setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
+----
+
+[NOTE]
+====
+If you use dynamic rendering, the same rules apply via vk::RenderingAttachmentInfo loadOp/storeOp fields.
+See Vulkan Guide for background: Render Passes and Subpasses, Tile-based GPUs.
+====
+
+===== Pipelining on Tilers: Subpass Dependencies and BY_REGION
+
+Tile-based GPUs benefit from fine-grained synchronization that keeps work and data on-chip:
+
+- Prefer subpasses with input attachments to keep producer/consumer within the same render pass, enabling tile-local reads.
+- Use vk::DependencyFlagBits::eByRegion to scope hazards to the pixel regions actually written/read, avoiding unnecessary tile flushes.
+- Avoid over-broad barriers (e.g., ALL_COMMANDS, MEMORY_READ/WRITE) that serialize the pipeline and may force external memory traffic. Use precise stage/access masks.
+
+Example: dependency from a color-writing subpass to a subpass that reads that color as an input attachment.
+
+[source,cpp]
+----
+vk::SubpassDependency dep{};
+dep.setSrcSubpass(0);
+dep.setDstSubpass(1);
+dep.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+dep.setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader);
+dep.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+dep.setDstAccessMask(vk::AccessFlagBits::eInputAttachmentRead);
+dep.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
+----
+
+Example: external dependency to the first subpass of a render pass, allowing pipelining with prior pass while limiting scope by region.
+
+[source,cpp]
+----
+vk::SubpassDependency externalDep{};
+externalDep.setSrcSubpass(VK_SUBPASS_EXTERNAL);
+externalDep.setDstSubpass(0);
+externalDep.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+externalDep.setDstStageMask(vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eColorAttachmentOutput);
+externalDep.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+externalDep.setDstAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentWrite | vk::AccessFlagBits::eColorAttachmentWrite);
+externalDep.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
+----
+
+[NOTE]
+====
+With Synchronization2 (vkCmdPipelineBarrier2 and friends) avoid ALL_COMMANDS and prefer the minimal set of stages/access that capture your hazard. Use render pass/subpass structure when possible—it's the most tiler-friendly way to express pipelining.
+====
+
+For further guidance, see the xref:https://docs.vulkan.org/guide/latest/[Vulkan Guide] topics on Tile-based GPUs, Render Passes, and Synchronization.
 
 ===== Memory Management
 

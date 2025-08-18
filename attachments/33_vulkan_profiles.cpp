@@ -10,6 +10,7 @@
 #include <array>
 #include <chrono>
 #include <optional>
+#include <assert.h>
 
 #ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
@@ -101,13 +102,14 @@ private:
     vk::raii::SurfaceKHR             surface        = nullptr;
     vk::raii::PhysicalDevice         physicalDevice = nullptr;
     vk::raii::Device                 device         = nullptr;
-	uint32_t                         queueIndex     = ~0;
+    uint32_t                         queueIndex     = ~0;
     vk::raii::Queue                  queue          = nullptr;
-    vk::raii::SwapchainKHR swapChain = nullptr;
-    std::vector<vk::Image> swapChainImages;
-    vk::Format swapChainImageFormat = {};
-    vk::Extent2D swapChainExtent;
+    vk::raii::SwapchainKHR           swapChain      = nullptr;
+    std::vector<vk::Image>           swapChainImages;
+    vk::SurfaceFormatKHR             swapChainSurfaceFormat;
+    vk::Extent2D                     swapChainExtent;
     std::vector<vk::raii::ImageView> swapChainImageViews;
+
     vk::raii::RenderPass renderPass = nullptr;
     vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
     vk::raii::PipelineLayout pipelineLayout = nullptr;
@@ -471,43 +473,30 @@ private:
 
     void createSwapChain() {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+        swapChainExtent                          = chooseSwapExtent( swapChainSupport.capabilities );
+        swapChainSurfaceFormat                   = chooseSwapSurfaceFormat( swapChainSupport.formats );
+        vk::SwapchainCreateInfoKHR swapChainCreateInfo{ .surface          = *surface,
+                                                        .minImageCount    = chooseSwapMinImageCount( swapChainSupport.capabilities ),
+                                                        .imageFormat      = swapChainSurfaceFormat.format,
+                                                        .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
+                                                        .imageExtent      = swapChainExtent,
+                                                        .imageArrayLayers = 1,
+                                                        .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
+                                                        .imageSharingMode = vk::SharingMode::eExclusive,
+                                                        .preTransform     = swapChainSupport.capabilities.currentTransform,
+                                                        .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                                                        .presentMode      = chooseSwapPresentMode( swapChainSupport.presentModes ),
+                                                        .clipped          = true };
 
-        vk::SurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-        vk::PresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-        vk::Extent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
-
-        uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-        if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
-            imageCount = swapChainSupport.capabilities.maxImageCount;
-        }
-
-        vk::SwapchainCreateInfoKHR createInfo{
-            .surface = *surface,
-            .minImageCount = imageCount,
-            .imageFormat = surfaceFormat.format,
-            .imageColorSpace = surfaceFormat.colorSpace,
-            .imageExtent = extent,
-            .imageArrayLayers = 1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
-			.imageSharingMode = vk::SharingMode::eExclusive
-        };
-
-        createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
-        createInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-        createInfo.presentMode = presentMode;
-        createInfo.clipped = VK_TRUE;
-
-        swapChain = device.createSwapchainKHR(createInfo);
+        swapChain = device.createSwapchainKHR(swapChainCreateInfo);
         swapChainImages = swapChain.getImages();
-        swapChainImageFormat = surfaceFormat.format;
-        swapChainExtent = extent;
     }
 
     void createImageViews() {
         swapChainImageViews.reserve(swapChainImages.size());
 
         for (const auto& image : swapChainImages) {
-            swapChainImageViews.push_back(createImageView(image, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1));
+            swapChainImageViews.push_back(createImageView(image, swapChainSurfaceFormat.format, vk::ImageAspectFlagBits::eColor, 1));
         }
     }
 
@@ -515,7 +504,7 @@ private:
         // This is only called if the Best Practices profile is not supported
         // or if dynamic rendering is not available
         vk::AttachmentDescription colorAttachment{
-            .format = swapChainImageFormat,
+            .format = swapChainSurfaceFormat.format,
             .samples = msaaSamples,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -537,7 +526,7 @@ private:
         };
 
         vk::AttachmentDescription colorAttachmentResolve{
-            .format = swapChainImageFormat,
+            .format = swapChainSurfaceFormat.format,
             .samples = vk::SampleCountFlagBits::e1,
             .loadOp = vk::AttachmentLoadOp::eDontCare,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -727,7 +716,7 @@ private:
         // Configure pipeline based on whether we're using the KHR roadmap 2022 profile
         if (appInfo.profileSupported) {
             // With the KHR roadmap 2022 profile, we can use dynamic rendering
-            vk::Format colorFormat = swapChainImageFormat;
+            vk::Format colorFormat = swapChainSurfaceFormat.format;
             vk::Format depthFormat = findDepthFormat();
 
             vk::PipelineRenderingCreateInfo renderingInfo{
@@ -787,7 +776,7 @@ private:
     }
 
     void createColorResources() {
-        vk::Format colorFormat = swapChainImageFormat;
+        vk::Format colorFormat = swapChainSurfaceFormat.format;
 
         createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, colorImage, colorImageMemory);
         colorImageView = createImageView(*colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
@@ -1610,19 +1599,30 @@ private:
         throw std::runtime_error("failed to find suitable memory type!");
     }
 
-    vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        return (availableFormats[0].format == vk::Format::eUndefined)
-            ? vk::SurfaceFormatKHR{vk::Format::eB8G8R8A8Unorm, availableFormats[0].colorSpace}
-            : availableFormats[0];
+    static uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const & surfaceCapabilities) {
+        auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
+        if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount)) {
+            minImageCount = surfaceCapabilities.maxImageCount;
+        }
+        return minImageCount;
+    }
+
+    static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
+        assert(!availableFormats.empty());
+        const auto formatIt = std::ranges::find_if(
+            availableFormats,
+            []( const auto & format ) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; } );
+        return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
     }
 
     vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
+        assert(std::ranges::any_of(availablePresentModes, [](auto presentMode){ return presentMode == vk::PresentModeKHR::eFifo; }));
         return std::ranges::any_of(availablePresentModes,
             [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; } ) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
     }
 
     vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) {
-        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        if (capabilities.currentExtent.width != 0xFFFFFFFF) {
             return capabilities.currentExtent;
         }
             int width, height;

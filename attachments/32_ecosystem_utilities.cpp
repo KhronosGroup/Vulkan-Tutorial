@@ -10,6 +10,7 @@
 #include <array>
 #include <chrono>
 #include <optional>
+#include <assert.h>
 
 #ifdef __INTELLISENSE__
 #include <vulkan/vulkan_raii.hpp>
@@ -107,11 +108,10 @@ private:
     vk::raii::Device                 device         = nullptr;
     uint32_t                         queueIndex     = ~0;
     vk::raii::Queue                  queue          = nullptr;
-
-    vk::raii::SwapchainKHR swapChain = nullptr;
-    std::vector<vk::Image> swapChainImages;
-    vk::Format swapChainImageFormat = vk::Format::eUndefined;
-    vk::Extent2D swapChainExtent;
+    vk::raii::SwapchainKHR           swapChain      = nullptr;
+    std::vector<vk::Image>           swapChainImages;
+    vk::SurfaceFormatKHR             swapChainSurfaceFormat;
+    vk::Extent2D                     swapChainExtent;
     std::vector<vk::raii::ImageView> swapChainImageViews;
 
     // Traditional render pass (fallback for non-dynamic rendering)
@@ -496,19 +496,21 @@ private:
     }
 
     void createSwapChain() {
-        auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
-        swapChainImageFormat = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR( surface ));
-        swapChainExtent = chooseSwapExtent(surfaceCapabilities);
-        auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
-        minImageCount = ( surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount ) ? surfaceCapabilities.maxImageCount : minImageCount;
-        vk::SwapchainCreateInfoKHR swapChainCreateInfo{
-            .surface = surface, .minImageCount = minImageCount,
-            .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
-            .imageExtent = swapChainExtent, .imageArrayLayers =1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive,
-            .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-            .presentMode = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR(surface)),
-            .clipped = true };
+        auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( *surface );
+        swapChainExtent          = chooseSwapExtent( surfaceCapabilities );
+        swapChainSurfaceFormat   = chooseSwapSurfaceFormat( physicalDevice.getSurfaceFormatsKHR( *surface ) );
+        vk::SwapchainCreateInfoKHR swapChainCreateInfo{ .surface          = *surface,
+                                                        .minImageCount    = chooseSwapMinImageCount( surfaceCapabilities ),
+                                                        .imageFormat      = swapChainSurfaceFormat.format,
+                                                        .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
+                                                        .imageExtent      = swapChainExtent,
+                                                        .imageArrayLayers = 1,
+                                                        .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
+                                                        .imageSharingMode = vk::SharingMode::eExclusive,
+                                                        .preTransform     = surfaceCapabilities.currentTransform,
+                                                        .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                                                        .presentMode      = chooseSwapPresentMode( physicalDevice.getSurfacePresentModesKHR( *surface ) ),
+                                                        .clipped          = true };
 
         swapChain = vk::raii::SwapchainKHR(device, swapChainCreateInfo);
         swapChainImages = swapChain.getImages();
@@ -517,7 +519,7 @@ private:
     void createImageViews() {
         vk::ImageViewCreateInfo imageViewCreateInfo{
             .viewType = vk::ImageViewType::e2D,
-            .format = swapChainImageFormat,
+            .format = swapChainSurfaceFormat.format,
             .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
         };
         for ( auto image : swapChainImages )
@@ -538,7 +540,7 @@ private:
 
         // Color attachment description
         vk::AttachmentDescription colorAttachment{
-            .format = swapChainImageFormat,
+            .format = swapChainSurfaceFormat.format,
             .samples = msaaSamples,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -560,7 +562,7 @@ private:
         };
 
         vk::AttachmentDescription colorAttachmentResolve{
-            .format = swapChainImageFormat,
+            .format = swapChainSurfaceFormat.format,
             .samples = vk::SampleCountFlagBits::e1,
             .loadOp = vk::AttachmentLoadOp::eDontCare,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -743,7 +745,7 @@ private:
         if (appInfo.dynamicRenderingSupported) {
             std::cout << "Configuring pipeline for dynamic rendering\n";
             pipelineRenderingCreateInfo.colorAttachmentCount = 1;
-            pipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChainImageFormat;
+            pipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChainSurfaceFormat.format;
             pipelineRenderingCreateInfo.depthAttachmentFormat = findDepthFormat();
 
             pipelineInfo.pNext = &pipelineRenderingCreateInfo;
@@ -767,7 +769,7 @@ private:
     }
 
     void createColorResources() {
-        vk::Format colorFormat = swapChainImageFormat;
+        vk::Format colorFormat = swapChainSurfaceFormat.format;
 
         createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,  vk::MemoryPropertyFlagBits::eDeviceLocal, colorImage, colorImageMemory);
         colorImageView = createImageView(colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
@@ -1608,17 +1610,30 @@ private:
         return shaderModule;
     }
 
-    static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
-        return (availableFormats[0].format == vk::Format::eUndefined) ? vk::Format::eB8G8R8A8Unorm : availableFormats[0].format;
+    static uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const & surfaceCapabilities) {
+        auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
+        if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount)) {
+            minImageCount = surfaceCapabilities.maxImageCount;
+        }
+        return minImageCount;
+    }
+
+    static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
+        assert(!availableFormats.empty());
+        const auto formatIt = std::ranges::find_if(
+            availableFormats,
+            []( const auto & format ) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; } );
+        return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
+        assert(std::ranges::any_of(availablePresentModes, [](auto presentMode){ return presentMode == vk::PresentModeKHR::eFifo; }));
         return std::ranges::any_of(availablePresentModes,
             [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; } ) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
     }
 
     [[nodiscard]] vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) const {
-        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        if (capabilities.currentExtent.width != 0xFFFFFFFF) {
             return capabilities.currentExtent;
         }
             int width, height;

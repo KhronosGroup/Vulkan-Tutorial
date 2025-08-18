@@ -52,7 +52,7 @@ private:
     vk::raii::Queue                  queue          = nullptr;
     vk::raii::SwapchainKHR           swapChain      = nullptr;
     std::vector<vk::Image>           swapChainImages;
-    vk::Format                       swapChainImageFormat = vk::Format::eUndefined;
+    vk::SurfaceFormatKHR             swapChainSurfaceFormat;
     vk::Extent2D                     swapChainExtent;
     std::vector<vk::raii::ImageView> swapChainImageViews;
 
@@ -245,19 +245,21 @@ private:
     }
 
     void createSwapChain() {
-        auto                       surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surface );
-        vk::SwapchainCreateInfoKHR swapChainCreateInfo{ .surface          = surface,
-                                                    .minImageCount    = chooseSwapMinImageCount( surfaceCapabilities ),
-                                                    .imageFormat      = chooseSwapSurfaceFormat( physicalDevice.getSurfaceFormatsKHR( surface ) ),
-                                                    .imageColorSpace  = vk::ColorSpaceKHR::eSrgbNonlinear,
-                                                    .imageExtent      = chooseSwapExtent( surfaceCapabilities ),
-                                                    .imageArrayLayers = 1,
-                                                    .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
-                                                    .imageSharingMode = vk::SharingMode::eExclusive,
-                                                    .preTransform     = surfaceCapabilities.currentTransform,
-                                                    .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-                                                    .presentMode      = chooseSwapPresentMode( physicalDevice.getSurfacePresentModesKHR( surface ) ),
-                                                    .clipped          = true };
+        auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( *surface );
+        swapChainExtent          = chooseSwapExtent( surfaceCapabilities );
+        swapChainSurfaceFormat   = chooseSwapSurfaceFormat( physicalDevice.getSurfaceFormatsKHR( *surface ) );
+        vk::SwapchainCreateInfoKHR swapChainCreateInfo{ .surface          = *surface,
+                                                        .minImageCount    = chooseSwapMinImageCount( surfaceCapabilities ),
+                                                        .imageFormat      = swapChainSurfaceFormat.format,
+                                                        .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
+                                                        .imageExtent      = swapChainExtent,
+                                                        .imageArrayLayers = 1,
+                                                        .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
+                                                        .imageSharingMode = vk::SharingMode::eExclusive,
+                                                        .preTransform     = surfaceCapabilities.currentTransform,
+                                                        .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                                                        .presentMode      = chooseSwapPresentMode( physicalDevice.getSurfacePresentModesKHR( *surface ) ),
+                                                        .clipped          = true };
 
         swapChain = vk::raii::SwapchainKHR( device, swapChainCreateInfo );
         swapChainImages = swapChain.getImages();
@@ -271,16 +273,16 @@ private:
         return minImageCount;
     }
 
-    static vk::Format chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const & availableFormats) {
+    static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const & availableFormats) {
         assert(!availableFormats.empty());
         const auto formatIt = std::ranges::find_if(
             availableFormats,
             []( const auto & format ) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; } );
-        return formatIt != availableFormats.end() ? formatIt->format : availableFormats[0].format;
+        return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
     }
 
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
-        assert(std::ranges::any_of(availablePresentModes, [](auto presentMode){ return presentMode == vk::PresentMode::eFifo; }));
+        assert(std::ranges::any_of(availablePresentModes, [](auto presentMode){ return presentMode == vk::PresentModeKHR::eFifo; }));
         return std::ranges::any_of(availablePresentModes,
             [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; } ) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
     }

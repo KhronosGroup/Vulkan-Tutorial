@@ -201,7 +201,7 @@ bool PhysicsSystem::Initialize() {
     return true;
 }
 
-void PhysicsSystem::Update(float deltaTime) {
+void PhysicsSystem::Update(std::chrono::milliseconds deltaTime) {
     // GPU-ONLY physics - NO CPU fallback available
 
     // Check if GPU physics is properly initialized and available
@@ -977,7 +977,7 @@ void PhysicsSystem::CleanupVulkanResources() {
     vulkanResources.physicsBufferMemory = nullptr;
 }
 
-void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
+void PhysicsSystem::UpdateGPUPhysicsData(std::chrono::milliseconds deltaTime) const {
     if (!renderer) {
         return;
     }
@@ -1082,7 +1082,7 @@ void PhysicsSystem::UpdateGPUPhysicsData(float deltaTime) const {
 
     // Update params buffer
     PhysicsParams params{};
-    params.deltaTime = deltaTime; // Use actual deltaTime instead of fixed timestep
+    params.deltaTime = deltaTime.count() * 0.001f; // Use actual deltaTime instead of fixed timestep
     params.numBodies = static_cast<uint32_t>(rigidBodies.size());
     params.maxCollisions = maxGPUCollisions;
     params.padding = 0.0f; // Initialize padding to zero for proper std140 alignment
@@ -1192,7 +1192,7 @@ void PhysicsSystem::ReadbackGPUPhysicsData() const {
     }
 }
 
-void PhysicsSystem::SimulatePhysicsOnGPU(const float deltaTime) const {
+void PhysicsSystem::SimulatePhysicsOnGPU(const std::chrono::milliseconds deltaTime) const {
     if (!renderer) {
         fprintf(stderr, "SimulatePhysicsOnGPU: No renderer available");
         return;

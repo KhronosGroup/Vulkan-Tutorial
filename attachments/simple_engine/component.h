@@ -1,6 +1,6 @@
 #pragma once
 
-#include <memory>
+#include <chrono>
 #include <string>
 
 // Forward declaration
@@ -44,7 +44,7 @@ public:
      * Called every frame.
      * @param deltaTime The time elapsed since the last frame.
      */
-    virtual void Update(float deltaTime) {}
+    virtual void Update(std::chrono::milliseconds deltaTime) {}
 
     /**
      * @brief Render the component.

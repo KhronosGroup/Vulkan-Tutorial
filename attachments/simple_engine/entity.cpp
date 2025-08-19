@@ -9,7 +9,7 @@ void Entity::Initialize() {
     }
 }
 
-void Entity::Update(float deltaTime) {
+void Entity::Update(std::chrono::milliseconds deltaTime) {
     if (!active) return;
 
     for (auto& component : components) {

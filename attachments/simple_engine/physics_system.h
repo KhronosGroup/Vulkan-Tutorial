@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
@@ -209,7 +210,7 @@ public:
      * @brief Update the physics system.
      * @param deltaTime The time elapsed since the last update.
      */
-    void Update(float deltaTime);
+    void Update(std::chrono::milliseconds deltaTime);
 
     /**
      * @brief Create a rigid body.
@@ -361,11 +362,11 @@ private:
     void CleanupVulkanResources();
 
     // Update physics data on the GPU
-    void UpdateGPUPhysicsData(float deltaTime) const;
+    void UpdateGPUPhysicsData(std::chrono::milliseconds deltaTime) const;
 
     // Read back physics data from the GPU
     void ReadbackGPUPhysicsData() const;
 
     // Perform GPU-accelerated physics simulation
-    void SimulatePhysicsOnGPU(float deltaTime) const;
+    void SimulatePhysicsOnGPU(std::chrono::milliseconds deltaTime) const;
 };

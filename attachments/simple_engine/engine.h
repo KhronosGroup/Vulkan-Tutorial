@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <chrono>
 
 #include "platform.h"
 #include "renderer.h"
@@ -23,6 +24,7 @@
  */
 class Engine {
 public:
+    using TimeDelta = std::chrono::milliseconds;
     /**
      * @brief Default constructor.
      */
@@ -197,8 +199,9 @@ private:
     bool running = false;
 
     // Delta time calculation
-    float deltaTime = 0.0f;
-    uint64_t lastFrameTime = 0;
+    // deltaTimeMs: time since last frame in milliseconds (for clarity)
+    std::chrono::milliseconds deltaTimeMs{0};
+    uint64_t lastFrameTimeMs = 0;
 
     // Frame counter and FPS calculation
     uint64_t frameCount = 0;
@@ -269,7 +272,8 @@ private:
      * @brief Update the engine state.
      * @param deltaTime The time elapsed since the last update.
      */
-    void Update(float deltaTime);
+    // Accepts a time delta in milliseconds for clarity
+    void Update(TimeDelta deltaTime);
 
     /**
      * @brief Render the scene.
@@ -277,10 +281,10 @@ private:
     void Render();
 
     /**
-     * @brief Calculate the delta time between frames.
-     * @return The delta time in seconds.
+     * @brief Calculate the time delta between frames.
+     * @return The delta time in milliseconds (steady_clock based).
      */
-    float CalculateDeltaTime();
+    std::chrono::milliseconds CalculateDeltaTimeMs();
 
     /**
      * @brief Handle window resize events.
@@ -293,7 +297,7 @@ private:
      * @brief Update camera controls based on input state.
      * @param deltaTime The time elapsed since the last update.
      */
-    void UpdateCameraControls(float deltaTime) const;
+    void UpdateCameraControls(TimeDelta deltaTime) const;
 
     /**
      * @brief Generate random PBR material properties for the ball.

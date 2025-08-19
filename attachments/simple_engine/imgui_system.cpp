@@ -281,6 +281,7 @@ void ImGuiSystem::NewFrame() {
     if (ImGui::Button("Play")) {
         if (currentSource) {
             currentSource->Play();
+            if (audioSystem) { audioSystem->FlushOutput(); }
             if (useDebugPing) {
                 std::cout << "Started playing debug ping (800Hz sine wave) with HRTF processing" << std::endl;
             } else {
@@ -311,34 +312,10 @@ void ImGuiSystem::NewFrame() {
         ImGui::Text("Use directional buttons to move the audio source in 3D space");
         ImGui::Text("You should hear the audio move around you!");
 
-        // HRTF Processing Mode Selection
+        // HRTF Processing Mode: GPU only (checkbox removed)
         ImGui::Separator();
         ImGui::Text("HRTF Processing Mode:");
-
-        static bool cpuOnlyMode = false;
-        static bool initialized = false;
-
-        // Initialize checkbox state to match audio system state
-        if (!initialized && audioSystem) {
-            cpuOnlyMode = audioSystem->IsHRTFCPUOnly();
-            initialized = true;
-        }
-
-        if (ImGui::Checkbox("Force CPU-only HRTF processing", &cpuOnlyMode)) {
-            if (audioSystem) {
-                audioSystem->SetHRTFCPUOnly(cpuOnlyMode);
-                std::cout << "HRTF processing mode changed to: " << (cpuOnlyMode ? "CPU-only" : "Vulkan shader (when available)") << std::endl;
-            }
-        }
-
-        // Display current processing mode
-        if (audioSystem) {
-            if (audioSystem->IsHRTFCPUOnly()) {
-                ImGui::Text("Current Mode: CPU-only processing");
-            } else {
-                ImGui::Text("Current Mode: Vulkan shader processing (when available)");
-            }
-        }
+        ImGui::Text("Current Mode: Vulkan shader processing (GPU)");
     } else {
         ImGui::Text("HRTF Processing: DISABLED");
     }

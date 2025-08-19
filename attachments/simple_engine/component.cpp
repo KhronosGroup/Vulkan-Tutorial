@@ -1,5 +1,4 @@
 #include "component.h"
-#include "entity.h"
 
 // Most of the Component class implementation is in the header file
 // This file is mainly for any methods that need to access the Entity class

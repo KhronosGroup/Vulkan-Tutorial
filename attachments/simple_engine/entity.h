@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <algorithm>
+#include <chrono>
 #include <typeindex>
 #include <unordered_map>
 #include <type_traits>
@@ -62,7 +63,7 @@ public:
      * @brief Update all components of the entity.
      * @param deltaTime The time elapsed since the last frame.
      */
-    void Update(float deltaTime);
+    void Update(std::chrono::milliseconds deltaTime);
 
     /**
      * @brief Render all components of the entity.

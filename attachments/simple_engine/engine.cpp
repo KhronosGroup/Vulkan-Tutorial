@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <iostream>
 #include <random>
@@ -122,11 +123,11 @@ void Engine::Run() {
         }
 
         // Calculate delta time
-        deltaTime = CalculateDeltaTime();
+        deltaTimeMs = CalculateDeltaTimeMs();
 
         // Update frame counter and FPS
         frameCount++;
-        fpsUpdateTimer += deltaTime;
+        fpsUpdateTimer += deltaTimeMs.count() * 0.001f;
 
         // Update window title with FPS and frame time every second
         if (fpsUpdateTimer >= 1.0f) {
@@ -147,7 +148,7 @@ void Engine::Run() {
         }
 
         // Update
-        Update(deltaTime);
+        Update(deltaTimeMs);
 
         // Render
         Render();
@@ -369,7 +370,7 @@ void Engine::handleKeyInput(uint32_t key, bool pressed) {
     }
 }
 
-void Engine::Update(float deltaTime) {
+void Engine::Update(TimeDelta deltaTime) {
     // Debug: Verify Update method is being called
     static int updateCallCount = 0;
     updateCallCount++;
@@ -415,7 +416,7 @@ void Engine::Render() {
     renderer->Render(entities, activeCamera, imguiSystem.get());
 }
 
-float Engine::CalculateDeltaTime() {
+std::chrono::milliseconds Engine::CalculateDeltaTimeMs() {
     // Get current time using a steady clock to avoid system time jumps
     uint64_t currentTime = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -423,19 +424,19 @@ float Engine::CalculateDeltaTime() {
         ).count()
     );
 
-    // Initialize lastFrameTime on first call
-    if (lastFrameTime == 0) {
-        lastFrameTime = currentTime;
-        return 0.016f; // ~16ms as a sane initial guess
+    // Initialize lastFrameTimeMs on first call
+    if (lastFrameTimeMs == 0) {
+        lastFrameTimeMs = currentTime;
+        return std::chrono::milliseconds(16); // ~16ms as a sane initial guess
     }
 
     // Calculate delta time in milliseconds
-    uint64_t delta = currentTime - lastFrameTime;
+    uint64_t delta = currentTime - lastFrameTimeMs;
 
     // Update last frame time
-    lastFrameTime = currentTime;
+    lastFrameTimeMs = currentTime;
 
-    return static_cast<float>(delta) / 1000.0f;
+    return std::chrono::milliseconds(static_cast<long long>(delta));
 }
 
 void Engine::HandleResize(int width, int height) const {
@@ -458,7 +459,7 @@ void Engine::HandleResize(int width, int height) const {
     }
 }
 
-void Engine::UpdateCameraControls(float deltaTime) const {
+void Engine::UpdateCameraControls(TimeDelta deltaTime) const {
     if (!activeCamera) return;
 
     // Get a camera transform component
@@ -492,7 +493,7 @@ void Engine::UpdateCameraControls(float deltaTime) const {
 
     // Manual camera controls (only when tracking is disabled)
     // Calculate movement speed
-    float velocity = cameraControl.cameraSpeed * deltaTime;
+    float velocity = cameraControl.cameraSpeed * deltaTime.count() * .001f;
 
     // Calculate camera direction vectors based on yaw and pitch
     glm::vec3 front;
@@ -859,10 +860,10 @@ void Engine::RunAndroid() {
     // We just need to update and render when the platform is ready
 
     // Calculate delta time
-    deltaTime = CalculateDeltaTime();
+    deltaTimeMs = CalculateDeltaTimeMs();
 
     // Update
-    Update(deltaTime);
+    Update(deltaTimeMs);
 
     // Render
     Render();

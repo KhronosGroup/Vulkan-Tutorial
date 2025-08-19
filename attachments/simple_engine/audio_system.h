@@ -149,6 +149,11 @@ public:
     AudioSystem() = default;
 
     /**
+     * @brief Flush audio output: clears pending processing and device buffers so playback restarts cleanly.
+     */
+    void FlushOutput();
+
+    /**
      * @brief Destructor for proper cleanup.
      */
     ~AudioSystem();
@@ -165,7 +170,7 @@ public:
      * @brief Update the audio system.
      * @param deltaTime The time elapsed since the last update.
      */
-    void Update(float deltaTime);
+    void Update(std::chrono::milliseconds deltaTime);
 
     /**
      * @brief Load an audio file.
@@ -318,8 +323,9 @@ private:
         std::vector<float> inputBuffer;
         std::vector<float> outputBuffer;
         float sourcePosition[3];
-        uint32_t sampleCount;
-        uint32_t actualSamplesProcessed;
+        uint32_t sampleCount;              // total frames in input/output (may include history)
+        uint32_t actualSamplesProcessed;   // frames to write this tick (new part)
+        uint32_t trimFront;                // frames to skip from output front (history length)
         AudioOutputDevice* outputDevice;
         float masterVolume;
     };
@@ -392,5 +398,5 @@ private:
      * @param actualSamplesProcessed The number of samples actually processed.
      * @return True if the task was submitted successfully, false otherwise.
      */
-    bool submitAudioTask(const float* inputBuffer, uint32_t sampleCount, const float* sourcePosition, uint32_t actualSamplesProcessed);
+    bool submitAudioTask(const float* inputBuffer, uint32_t sampleCount, const float* sourcePosition, uint32_t actualSamplesProcessed, uint32_t trimFront);
 };

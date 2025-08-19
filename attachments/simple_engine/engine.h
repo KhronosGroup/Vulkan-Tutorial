@@ -169,7 +169,11 @@ public:
      * @param enableValidationLayers Whether to enable Vulkan validation layers.
      * @return True if initialization was successful, false otherwise.
      */
+    #if defined(NDEBUG)
+    bool InitializeAndroid(android_app* app, const std::string& appName, bool enableValidationLayers = false);
+    #else
     bool InitializeAndroid(android_app* app, const std::string& appName, bool enableValidationLayers = true);
+    #endif
 
     /**
      * @brief Run the engine on Android.

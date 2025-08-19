@@ -9,7 +9,11 @@
 // Constants
 constexpr int WINDOW_WIDTH = 800;
 constexpr int WINDOW_HEIGHT = 600;
+#if defined(NDEBUG)
+constexpr bool ENABLE_VALIDATION_LAYERS = false;
+#else
 constexpr bool ENABLE_VALIDATION_LAYERS = true;
+#endif
 
 
 /**

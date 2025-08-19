@@ -26,7 +26,7 @@ if not exist %TEMP%\vcpkg-cache mkdir %TEMP%\vcpkg-cache
 
 :: Install all dependencies at once using vcpkg with parallel installation
 echo Installing all dependencies...
-vcpkg install --triplet=x64-windows --x-manifest-root=%~dp0\.. --feature-flags=binarycaching,manifests --x-install-root=%VCPKG_INSTALLATION_ROOT%/installed
+vcpkg install --triplet=x64-windows --x-manifest-root=%~dp0 --feature-flags=binarycaching,manifests --x-install-root=%VCPKG_INSTALLATION_ROOT%/installed
 
 :: Remind about Vulkan SDK
 echo.

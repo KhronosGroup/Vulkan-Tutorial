@@ -496,14 +496,13 @@ AudioSystem::~AudioSystem() {
 
 void AudioSystem::GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint32_t playbackPosition) {
     constexpr float sampleRate = 44100.0f;
-    const float frequency = 800.0f;   // 800Hz ping to match UI label
+    const float frequency = 800.0f;   // 800Hz ping
     constexpr float pingDuration = 0.75f; // 0.75 second ping duration
     constexpr auto pingSamples = static_cast<uint32_t>(pingDuration * sampleRate);
     constexpr float silenceDuration = 1.0f; // 1 second silence after ping
     constexpr auto silenceSamples = static_cast<uint32_t>(silenceDuration * sampleRate);
     constexpr uint32_t totalCycleSamples = pingSamples + silenceSamples;
 
-    // Use near-constant amplitude with very short attack/release to avoid clicks and volume pumping
     const uint32_t attackSamples = static_cast<uint32_t>(0.001f * sampleRate);   // ~1ms attack
     const uint32_t releaseSamples = static_cast<uint32_t>(0.001f * sampleRate);  // ~1ms release
     constexpr float amplitude = 0.6f;
@@ -630,7 +629,6 @@ void AudioSystem::Update(std::chrono::milliseconds deltaTime) {
             // Accumulate samples based on real time and process in fixed-size chunks to avoid tiny buffers
             double acc = concreteSource->GetSampleAccumulator();
             acc += (static_cast<double>(deltaTime.count()) * 44100.0) / 1000.0; // ms -> samples
-            // Process one full ping per chunk to avoid splitting it: 0.75s at 44.1 kHz = 33075 samples
             constexpr uint32_t kChunk = 33075;
             uint32_t available = static_cast<uint32_t>(acc);
             if (available < kChunk) {

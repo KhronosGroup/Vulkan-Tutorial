@@ -5,8 +5,6 @@
 #include <string>
 #include <algorithm>
 #include <chrono>
-#include <typeindex>
-#include <unordered_map>
 #include <type_traits>
 
 #include "component.h"
@@ -22,7 +20,6 @@ private:
     std::string name;
     bool active = true;
     std::vector<std::unique_ptr<Component>> components;
-    std::unordered_map<std::type_index, Component*> componentMap;
 
 public:
     /**
@@ -88,10 +85,7 @@ public:
         // Set the owner
         componentPtr->SetOwner(this);
 
-        // Add to the map for quick lookup
-        componentMap[std::type_index(typeid(T))] = componentPtr;
-
-        // Add to the vector for ownership
+        // Add to the vector for ownership and iteration
         components.push_back(std::move(component));
 
         // Initialize the component
@@ -109,11 +103,12 @@ public:
     T* GetComponent() const {
         static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
 
-        auto it = componentMap.find(std::type_index(typeid(T)));
-        if (it != componentMap.end()) {
-            return static_cast<T*>(it->second);
+        // Search from the back to preserve previous behavior of returning the last-added component of type T
+        for (auto it = components.rbegin(); it != components.rend(); ++it) {
+            if (auto* casted = dynamic_cast<T*>(it->get())) {
+                return casted;
+            }
         }
-
         return nullptr;
     }
 
@@ -126,21 +121,9 @@ public:
     bool RemoveComponent() {
         static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
 
-        auto it = componentMap.find(std::type_index(typeid(T)));
-        if (it != componentMap.end()) {
-            Component* componentPtr = it->second;
-
-            // Remove from the map
-            componentMap.erase(it);
-
-            // Find and remove from the vector
-            auto vecIt = std::find_if(components.begin(), components.end(),
-                [componentPtr](const std::unique_ptr<Component>& comp) {
-                    return comp.get() == componentPtr;
-                });
-
-            if (vecIt != components.end()) {
-                components.erase(vecIt);
+        for (auto it = components.rbegin(); it != components.rend(); ++it) {
+            if (dynamic_cast<T*>(it->get()) != nullptr) {
+                components.erase(std::next(it).base());
                 return true;
             }
         }
@@ -156,6 +139,6 @@ public:
     template<typename T>
     bool HasComponent() const {
         static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
-        return componentMap.contains(std::type_index(typeid(T)));
+        return GetComponent<T>() != nullptr;
     }
 };

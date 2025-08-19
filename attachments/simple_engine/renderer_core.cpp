@@ -83,7 +83,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
             return false;
         }
 
-        // Pre-allocate memory pools to prevent allocation during rendering
+        // Optionally pre-allocate initial memory blocks for pools
         if (!memoryPool->preAllocatePools()) {
             std::cerr << "Failed to pre-allocate memory pools" << std::endl;
             return false;

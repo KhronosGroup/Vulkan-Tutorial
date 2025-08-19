@@ -23,8 +23,7 @@ bool MemoryPool::initialize() {
             PoolType::VERTEX_BUFFER,
             128 * 1024 * 1024, // 128MB blocks (doubled)
             4096,               // 4KB allocation units
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            16                  // Max 16 blocks (2GB total, quadrupled)
+            vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
         // Index buffer pool: Medium allocations, device-local (increased for large models like bistro)
@@ -32,8 +31,7 @@ bool MemoryPool::initialize() {
             PoolType::INDEX_BUFFER,
             64 * 1024 * 1024,  // 64MB blocks (doubled)
             2048,               // 2KB allocation units
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            8                   // Max 8 blocks (512MB total, quadrupled)
+            vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
         // Uniform buffer pool: Small allocations, host-visible
@@ -42,8 +40,7 @@ bool MemoryPool::initialize() {
             PoolType::UNIFORM_BUFFER,
             4 * 1024 * 1024,   // 4MB blocks
             64,                 // 64B allocation units (aligned to nonCoherentAtomSize)
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            4                   // Max 4 blocks (16MB total)
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
         // Staging buffer pool: Variable allocations, host-visible
@@ -52,8 +49,7 @@ bool MemoryPool::initialize() {
             PoolType::STAGING_BUFFER,
             16 * 1024 * 1024,  // 16MB blocks
             64,                 // 64B allocation units (aligned to nonCoherentAtomSize)
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            4                   // Max 4 blocks (64MB total)
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
         // Texture image pool: Large allocations, device-local (significantly increased for large models like bistro)
@@ -61,8 +57,7 @@ bool MemoryPool::initialize() {
             PoolType::TEXTURE_IMAGE,
             256 * 1024 * 1024, // 256MB blocks (doubled)
             4096,               // 4KB allocation units
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            24                  // Max 24 blocks (6GB total, 6x increase)
+            vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
         return true;
@@ -76,14 +71,12 @@ void MemoryPool::configurePool(
     const PoolType poolType,
     const vk::DeviceSize blockSize,
     const vk::DeviceSize allocationUnit,
-    const vk::MemoryPropertyFlags properties,
-    const uint32_t maxBlocks) {
+    const vk::MemoryPropertyFlags properties) {
 
     PoolConfig config;
     config.blockSize = blockSize;
     config.allocationUnit = allocationUnit;
     config.properties = properties;
-    config.maxBlocks = maxBlocks;
 
     poolConfigs[poolType] = config;
 }
@@ -126,16 +119,16 @@ std::unique_ptr<MemoryPool::MemoryBlock> MemoryPool::createMemoryBlock(PoolType 
 
     uint32_t memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, config.properties);
 
-    // Allocate the memory block
+    // Allocate the memory block using the device-required size
     vk::MemoryAllocateInfo allocInfo{
-        .allocationSize = blockSize,
+        .allocationSize = memRequirements.size,
         .memoryTypeIndex = memoryTypeIndex
     };
 
     // Create MemoryBlock with proper initialization to avoid default constructor issues
     auto block = std::unique_ptr<MemoryBlock>(new MemoryBlock{
         .memory = vk::raii::DeviceMemory(device, allocInfo),
-        .size = blockSize,
+        .size = memRequirements.size,
         .used = 0,
         .memoryTypeIndex = memoryTypeIndex,
         .isMapped = false,
@@ -147,24 +140,23 @@ std::unique_ptr<MemoryPool::MemoryBlock> MemoryPool::createMemoryBlock(PoolType 
     // Map memory if it's host-visible
     block->isMapped = (config.properties & vk::MemoryPropertyFlagBits::eHostVisible) != vk::MemoryPropertyFlags{};
     if (block->isMapped) {
-        block->mappedPtr = block->memory.mapMemory(0, blockSize);
+        block->mappedPtr = block->memory.mapMemory(0, memRequirements.size);
     } else {
         block->mappedPtr = nullptr;
     }
 
-    // Initialize a free list
-    const size_t numUnits = blockSize / config.allocationUnit;
+    // Initialize a free list based on the actual allocated size
+    const size_t numUnits = static_cast<size_t>(block->size / config.allocationUnit);
     block->freeList.resize(numUnits, true);  // All units initially free
 
 
     return block;
 }
 
-MemoryPool::MemoryBlock* MemoryPool::findSuitableBlock(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment) {
+std::pair<MemoryPool::MemoryBlock*, size_t> MemoryPool::findSuitableBlock(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment) {
     auto poolIt = pools.find(poolType);
     if (poolIt == pools.end()) {
-        pools[poolType] = std::vector<std::unique_ptr<MemoryBlock>>();
-        poolIt = pools.find(poolType);
+        poolIt = pools.try_emplace( poolType ).first;
     }
 
     auto& poolBlocks = poolIt->second;
@@ -178,11 +170,15 @@ MemoryPool::MemoryBlock* MemoryPool::findSuitableBlock(PoolType poolType, vk::De
     for (const auto& block : poolBlocks) {
         // Find consecutive free units
         size_t consecutiveFree = 0;
+        size_t startUnitCandidate = 0;
         for (size_t i = 0; i < block->freeList.size(); ++i) {
             if (block->freeList[i]) {
+                if (consecutiveFree == 0) {
+                    startUnitCandidate = i;
+                }
                 consecutiveFree++;
                 if (consecutiveFree >= requiredUnits) {
-                    return block.get();
+                    return {block.get(), startUnitCandidate};
                 }
             } else {
                 consecutiveFree = 0;
@@ -190,35 +186,23 @@ MemoryPool::MemoryBlock* MemoryPool::findSuitableBlock(PoolType poolType, vk::De
         }
     }
 
-    // No suitable block found, create a new one if we haven't reached the limit AND rendering is not active
-    if (poolBlocks.size() < config.maxBlocks) {
-        if (renderingActive) {
-            std::cerr << "ERROR: Attempted to create new memory block during rendering! Pool type: "
-                      << static_cast<int>(poolType) << ", required size: " << alignedSize << std::endl;
-            std::cerr << "This violates the constraint that no new memory should be allocated during PBR rendering." << std::endl;
-            return nullptr;
-        }
-
-        try {
-            auto newBlock = createMemoryBlock(poolType, alignedSize);
-            poolBlocks.push_back(std::move(newBlock));
-            std::cout << "Created new memory block during initialization (pool type: "
-                      << static_cast<int>(poolType) << ")" << std::endl;
-            return poolBlocks.back().get();
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to create new memory block: " << e.what() << std::endl;
-            return nullptr;
-        }
+    // No suitable block found; create a new one on demand (no hard limits, allowed during rendering)
+    try {
+        auto newBlock = createMemoryBlock(poolType, alignedSize);
+        poolBlocks.push_back(std::move(newBlock));
+        std::cout << "Created new memory block (pool type: "
+                  << static_cast<int>(poolType) << ")" << std::endl;
+        return {poolBlocks.back().get(), 0};
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create new memory block: " << e.what() << std::endl;
+        return {nullptr, 0};
     }
-
-    std::cerr << "Memory pool exhausted for pool type " << static_cast<int>(poolType) << std::endl;
-    return nullptr;
 }
 
 std::unique_ptr<MemoryPool::Allocation> MemoryPool::allocate(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment) {
     std::lock_guard<std::mutex> lock(poolMutex);
 
-    MemoryBlock* block = findSuitableBlock(poolType, size, alignment);
+    auto [block, startUnit] = findSuitableBlock(poolType, size, alignment);
     if (!block) {
         return nullptr;
     }
@@ -228,30 +212,6 @@ std::unique_ptr<MemoryPool::Allocation> MemoryPool::allocate(PoolType poolType, 
     // Calculate required units (accounting for alignment)
     const vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
     const size_t requiredUnits = (alignedSize + config.allocationUnit - 1) / config.allocationUnit;
-
-    // Find consecutive free units
-    size_t startUnit = 0;
-    size_t consecutiveFree = 0;
-    bool found = false;
-
-    for (size_t i = 0; i < block->freeList.size(); ++i) {
-        if (block->freeList[i]) {
-            if (consecutiveFree == 0) {
-                startUnit = i;
-            }
-            consecutiveFree++;
-            if (consecutiveFree >= requiredUnits) {
-                found = true;
-                break;
-            }
-        } else {
-            consecutiveFree = 0;
-        }
-    }
-
-    if (!found) {
-        return nullptr;
-    }
 
     // Mark units as used
     for (size_t i = startUnit; i < startUnit + requiredUnits; ++i) {
@@ -427,14 +387,13 @@ bool MemoryPool::preAllocatePools() {
     std::lock_guard<std::mutex> lock(poolMutex);
 
     try {
-        std::cout << "Pre-allocating memory pools to prevent allocation during rendering..." << std::endl;
+        std::cout << "Pre-allocating initial memory blocks for pools..." << std::endl;
 
         // Pre-allocate at least one block for each pool type
         for (const auto& [poolType, config] : poolConfigs) {
             auto poolIt = pools.find(poolType);
             if (poolIt == pools.end()) {
-                pools[poolType] = std::vector<std::unique_ptr<MemoryBlock>>();
-                poolIt = pools.find(poolType);
+                poolIt = pools.try_emplace( poolType ).first;
             }
 
             auto& poolBlocks = poolIt->second;

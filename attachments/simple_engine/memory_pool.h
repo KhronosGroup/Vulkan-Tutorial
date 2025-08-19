@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <cstdint>
+#include <utility>
 
 /**
  * @brief Memory pool allocator for Vulkan resources
@@ -62,7 +63,6 @@ private:
         vk::DeviceSize blockSize;           // Size of each memory block
         vk::DeviceSize allocationUnit;      // Minimum allocation unit
         vk::MemoryPropertyFlags properties; // Memory properties
-        uint32_t maxBlocks;                 // Maximum number of blocks
     };
 
     // Memory pools for different types
@@ -72,13 +72,13 @@ private:
     // Thread safety
     mutable std::mutex poolMutex;
 
-    // Rendering state tracking to prevent pool growth during rendering
+    // Optional rendering state flag (no allocation restrictions enforced)
     bool renderingActive = false;
 
     // Helper methods
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const;
     std::unique_ptr<MemoryBlock> createMemoryBlock(PoolType poolType, vk::DeviceSize size);
-    MemoryBlock* findSuitableBlock(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment);
+    std::pair<MemoryBlock*, size_t> findSuitableBlock(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment);
 
 public:
     /**
@@ -165,30 +165,28 @@ public:
      * @param blockSize Size of each memory block
      * @param allocationUnit Minimum allocation unit
      * @param properties Memory properties
-     * @param maxBlocks Maximum number of blocks
      */
     void configurePool(
         PoolType poolType,
         vk::DeviceSize blockSize,
         vk::DeviceSize allocationUnit,
-        vk::MemoryPropertyFlags properties,
-        uint32_t maxBlocks
+        vk::MemoryPropertyFlags properties
     );
 
     /**
-     * @brief Pre-allocate memory pools to prevent allocation during rendering
+     * @brief Pre-allocate initial memory blocks for configured pools
      * @return True if pre-allocation was successful
      */
     bool preAllocatePools();
 
     /**
-     * @brief Set rendering active state to prevent pool growth
+     * @brief Set rendering active state flag (informational only)
      * @param active Whether rendering is currently active
      */
     void setRenderingActive(bool active);
 
     /**
-     * @brief Check if rendering is currently active
+     * @brief Check if rendering is currently active (informational only)
      * @return True if rendering is active
      */
     bool isRenderingActive() const;

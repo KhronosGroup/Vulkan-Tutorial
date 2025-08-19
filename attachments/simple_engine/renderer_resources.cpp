@@ -1420,12 +1420,6 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
         throw std::runtime_error("Memory pool not available - cannot create buffer");
     }
 
-    // Check if we're trying to allocate during rendering
-    if (memoryPool->isRenderingActive()) {
-        std::cerr << "ERROR: Attempted to create buffer during rendering! Size: " << size << " bytes" << std::endl;
-        std::cerr << "This violates the constraint that no new memory should be allocated during rendering." << std::endl;
-        throw std::runtime_error("Buffer creation attempted during rendering - this is not allowed");
-    }
 
     // Only allow direct allocation for staging buffers (temporary, host-visible)
     if (!(properties & vk::MemoryPropertyFlagBits::eHostVisible)) {

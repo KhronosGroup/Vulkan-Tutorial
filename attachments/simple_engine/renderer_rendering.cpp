@@ -505,7 +505,7 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity
 
 // Render the scene
 void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
-    // Set rendering active to prevent memory pool growth during rendering
+    // Mark rendering as active (informational flag for systems that care)
     if (memoryPool) {
         memoryPool->setRenderingActive(true);
     }

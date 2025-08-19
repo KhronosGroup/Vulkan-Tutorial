@@ -261,7 +261,7 @@ private:
 
     PhysicsScaling physicsScaling;
 
-    // Pending ball creation data (to avoid memory pool constraints during rendering)
+    // Pending ball creation data
     struct PendingBall {
         glm::vec3 spawnPosition;
         glm::vec3 throwDirection;

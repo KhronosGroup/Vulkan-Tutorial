@@ -84,6 +84,7 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
@@ -141,6 +142,7 @@ private:
     }
 
     void recreateSwapChain() {
+        framebufferResized = false;
         int width = 0, height = 0;
         glfwGetFramebufferSize(window, &width, &height);
         while (width == 0 || height == 0) {
@@ -153,6 +155,13 @@ private:
         cleanupSwapChain();
         createSwapChain();
         createImageViews();
+        // Recreate dependent objects in case format or extent changed
+        graphicsPipeline = nullptr;
+        createGraphicsPipeline();
+        createSyncObjects();
+        // Reset indices to avoid out-of-range after swapchain resize
+        semaphoreIndex = 0;
+        currentFrame = 0;
     }
 
     void createInstance() {
@@ -250,8 +259,9 @@ private:
                                                                  { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                                    } );
 
-            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+                                            features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                             features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
@@ -285,11 +295,12 @@ private:
             throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
         }
 
-        // query for Vulkan 1.3 features
-        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+        // query for required features (Vulkan 1.1 and 1.3)
+        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
             {},                                                     // vk::PhysicalDeviceFeatures2
-            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
-            {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+            { .shaderDrawParameters = true },                       // vk::PhysicalDeviceVulkan11Features
+            { .synchronization2 = true, .dynamicRendering = true }, // vk::PhysicalDeviceVulkan13Features
+            { .extendedDynamicState = true }                        // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
         };
 
         // create a Device

@@ -67,7 +67,7 @@ public:
      * @param name The name of the entity.
      * @return A pointer to the entity, or nullptr if not found.
      */
-    Entity* GetEntity(const std::string& name) const;
+    Entity* GetEntity(const std::string& name);
 
     /**
      * @brief Remove an entity.

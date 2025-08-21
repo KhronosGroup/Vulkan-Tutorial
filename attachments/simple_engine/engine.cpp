@@ -191,7 +191,7 @@ Entity* Engine::CreateEntity(const std::string& name) {
     return rawPtr;
 }
 
-Entity* Engine::GetEntity(const std::string& name) const {
+Entity* Engine::GetEntity(const std::string& name) {
     auto it = entityMap.find(name);
     if (it != entityMap.end()) {
         return it->second;

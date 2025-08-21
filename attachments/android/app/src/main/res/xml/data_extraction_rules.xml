@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Include all data by default -->
+        <include domain="root" path="."/>
+        <include domain="file" path="."/>
+        <include domain="database" path="."/>
+        <include domain="sharedpref" path="."/>
+        <include domain="external" path="."/>
+    </cloud-backup>
+    <device-transfer>
+        <!-- Include all data by default -->
+        <include domain="root" path="."/>
+        <include domain="file" path="."/>
+        <include domain="database" path="."/>
+        <include domain="sharedpref" path="."/>
+        <include domain="external" path="."/>
+    </device-transfer>
+</data-extraction-rules>

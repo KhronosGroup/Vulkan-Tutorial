@@ -26,7 +26,7 @@ raii context:
 ----
 private:
 vk::raii::Context  context;
-std::unique_ptr<vk::raii::Instance> instance;
+vk::raii::Instance instance = nullptr;
 ----
 
 Now, to create an instance, we'll first have to fill in a struct with some
@@ -77,14 +77,26 @@ that which we can pass to the struct:
 
 [,c++]
 ----
+// Get the required instance extensions from GLFW.
 uint32_t glfwExtensionCount = 0;
-const char** glfwExtensions;
+auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+// Check if the required GLFW extensions are supported by the Vulkan implementation.
+auto extensionProperties = context.enumerateInstanceExtensionProperties();
+for (uint32_t i = 0; i < glfwExtensionCount; ++i)
+{
+    if (std::ranges::none_of(extensionProperties,
+                             [glfwExtension = glfwExtensions[i]](auto const& extensionProperty)
+                             { return strcmp(extensionProperty.extensionName, glfwExtension) == 0; }))
+    {
+        throw std::runtime_error("Required GLFW extension not supported: " + std::string(glfwExtensions[i]));
+    }
+}
 
 vk::InstanceCreateInfo createInfo{
     .pApplicationInfo = &appInfo,
-    .ppEnabledLayerNames = glfwExtensions};
+    .enabledExtensionCount = glfwExtensionCount,
+    .ppEnabledExtensionNames = glfwExtensions};
 ----
 
 The other missing piece is the Layers to enable. Here is where we'll talk

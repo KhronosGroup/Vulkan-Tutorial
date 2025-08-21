@@ -352,7 +352,7 @@ renderPassInfo.pDependencies = &dependency;
 The `VkRenderPassCreateInfo` struct has two fields to specify an array of dependencies.
 
 The above is completely optional and not reproduced in the
-link:../../../attachments/15_hello_triangle.cpp[demo code.]
+link:/attachments/15_hello_triangle.cpp[demo code.]
 
 == Presentation
 
@@ -441,4 +441,7 @@ barriers and further refine our understanding of synchronization in Vulkan.
 
 The xref:./03_Frames_in_flight.adoc[next chapter] will expand the render loop to handle multiple frames in flight.
 
-link:/attachments/15_hello_triangle.cpp[C{pp} code] / link:/attachments/09_shader_base.vert[Vertex shader] / link:/attachments/09_shader_base.frag[Fragment shader]
+link:/attachments/15_hello_triangle.cpp[C{pp} code] /
+link:/attachments/09_shader_base.slang[Slang shader] /
+link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
+link:/attachments/09_shader_base.frag[GLSL Fragment shader]

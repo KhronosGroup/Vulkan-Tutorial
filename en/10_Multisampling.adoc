@@ -326,4 +326,6 @@ The current program can be extended in many ways, like adding Blinn-Phong lighti
 You should be able to learn how these effects work from tutorials for other APIs, because despite Vulkan's explicitness, many concepts still work the same.
 
 link:/attachments/30_multisampling.cpp[C{pp} code] /
-link:/attachments/27_shader_depth.slang[SLang shader]
+link:/attachments/27_shader_depth.slang[slang shader] /
+link:/attachments/27_shader_depth.vert[GLSL Vertex shader] /
+link:/attachments/27_shader_depth.frag[GLSL Fragment shader]

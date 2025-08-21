@@ -327,7 +327,7 @@ void initVulkan() {
 
 void createSwapChain() {
     auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surface );
-    swapChainImageFormat = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR( surface ));
+    swapChainSurfaceFormat = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR( surface ));
     swapChainExtent = chooseSwapExtent(surfaceCapabilities);
     auto minImageCount = std::max( 3u, surfaceCapabilities.minImageCount );
     minImageCount = ( surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount ) ? surfaceCapabilities.maxImageCount : minImageCount;
@@ -372,7 +372,7 @@ object so it is among the larger createInfo structures in Vulkan:
 vk::SwapchainCreateInfoKHR swapChainCreateInfo{
     .flags = vk::SwapchainCreateFlagsKHR(), .
     surface = surface, .minImageCount = minImageCount,
-    .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
+    .imageFormat = swapChainSurfaceFormat.format, .imageColorSpace = swapChainSurfaceFormat.colorSpace,
     .imageExtent = swapChainExtent, .imageArrayLayers =1,
     .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive,
     .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -380,7 +380,7 @@ vk::SwapchainCreateInfoKHR swapChainCreateInfo{
     .clipped = true, .oldSwapchain = nullptr };
 ----
 
-he `imageArrayLayers` specifies the number of layers each image consists of.
+The `imageArrayLayers` specifies the number of layers each image consists of.
 This is always `1` unless you are developing a stereoscopic 3D application. The
 `imageUsage` bit field specifies what kind of operations we'll use the images in
 the swap chain for. In this tutorial, we're going to render directly to them,
@@ -395,13 +395,13 @@ the rendered image to a swap chain image.
 uint32_t queueFamilyIndices[] = {graphicsFamily, presentFamily};
 
 if (graphicsFamily != presentFamily) {
-    createInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-    createInfo.queueFamilyIndexCount = 2;
-    createInfo.pQueueFamilyIndices = queueFamilyIndices;
+    swapChainCreateInfo.imageSharingMode = vk::SharingMode::eConcurrent;
+    swapChainCreateInfo.queueFamilyIndexCount = 2;
+    swapChainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
 } else {
-    createInfo.imageSharingMode = vk::SharingMode::eExclusive;
-    createInfo.queueFamilyIndexCount = 0; // Optional
-    createInfo.pQueueFamilyIndices = nullptr; // Optional
+    swapChainCreateInfo.imageSharingMode = vk::SharingMode::eExclusive;
+    swapChainCreateInfo.queueFamilyIndexCount = 0; // Optional
+    swapChainCreateInfo.pQueueFamilyIndices = nullptr; // Optional
 }
 ----
 
@@ -430,7 +430,7 @@ queue families.
 
 [,c++]
 ----
-createInfo.preTransform = surfaceCapabilities.currentTransform;
+swapChainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
 ----
 
 We can specify that a certain transform should be applied to images in the swap
@@ -440,7 +440,7 @@ any transformation, simply specify the current transformation.
 
 [,c++]
 ----
-createInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
+swapChainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
 ----
 
 The `compositeAlpha` field specifies if the alpha channel should be used for
@@ -449,8 +449,8 @@ simply ignore the alpha channel, hence `VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR`.
 
 [,c++]
 ----
-createInfo.presentMode = presentMode;
-createInfo.clipped = vk::True;
+swapChainCreateInfo.presentMode = presentMode;
+swapChainCreateInfo.clipped = vk::True;
 ----
 
 The `presentMode` member speaks for itself. If the `clipped` member is set to
@@ -461,7 +461,7 @@ you'll get the best performance by enabling clipping.
 
 [,c++]
 ----
-createInfo.oldSwapchain = VK_NULL_HANDLE;
+swapChainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
 ----
 
 That leaves one last field, `oldSwapChain`. With Vulkan, it's possible that
@@ -472,11 +472,12 @@ be specified in this field. This is a complex topic that we'll learn more about
 in xref:03_Drawing_a_triangle/04_Swap_chain_recreation.adoc[a future chapter]. For now, we'll assume that we'll only ever create
 one swap chain.
 
-Now add a class member to store the `VkSwapchainKHR` object:
+Now add class members to store the `VkSwapchainKHR` object and its images:
 
 [,c++]
 ----
 VkSwapchainKHR swapChain;
+std::vector<vk::Image> swapChainImages;
 ----
 
 Creating the swap chain is now as simple as calling `vkCreateSwapchainKHR`:
@@ -496,7 +497,7 @@ successfully! If at this point you get an access violation error in
 'vkGetInstanceProcAddress' in layer SteamOverlayVulkanLayer.dll`, then see
 the xref:90_FAQ.adoc[FAQ entry] about the Steam overlay layer.
 
-Try removing the `createInfo.imageExtent = extent;` line with validation layers
+Try removing the `swapChainCreateInfo.imageExtent = extent;` line with validation layers
 enabled. You'll see that one of the validation layers immediately catches the
 mistake and a helpful message is printed:
 

@@ -27,8 +27,8 @@ Many of the models on that site are available in OBJ format with a permissive li
 For this tutorial, I've decided to go with the https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38[Viking room] model by https://sketchfab.com/nigelgoh[nigelgoh] (https://web.archive.org/web/20200428202538/https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38[CC BY 4.0]).
 I tweaked the size and orientation of the model to use it as a drop-in replacement for the current geometry:
 
-* xref:attachment$viking_room.obj[viking_room.obj]
-* xref:attachment$viking_room.png[viking_room.png]
+* xref:attachment$assets/viking_room.obj[viking_room.obj]
+* xref:attachment$assets/viking_room.png[viking_room.png]
 
 Feel free to use your own model, but make sure that it only consists of one material and that is has dimensions of about 1.5 x 1.5 x 1.5 units.
 If it is larger than that, then you'll have to change the view matrix.
@@ -293,4 +293,7 @@ This definitely saves us a lot of GPU memory.
 
 In the xref:09_Generating_Mipmaps.adoc[next chapter,] we'll learn about a technique to improve texture rendering.
 
-link:/attachments/28_model_loading.cpp[C{pp} code] / link:/attachments/27_shader_depth.slang[Slang shader]
+link:/attachments/28_model_loading.cpp[C{pp} code] /
+link:/attachments/27_shader_depth.slang[slang shader] /
+link:/attachments/27_shader_depth.vert[GLSL Vertex shader] /
+link:/attachments/27_shader_depth.frag[GLSL Fragment shader]

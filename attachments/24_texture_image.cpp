@@ -59,9 +59,9 @@ struct Vertex {
 };
 
 struct UniformBufferObject {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 
 const std::vector<Vertex> vertices = {
@@ -142,6 +142,7 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
@@ -177,18 +178,7 @@ private:
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
-            try {
-                drawFrame();
-            } catch (const vk::SystemError& e) {
-                if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
-                    // Swapchain is out of date, this can happen during window close
-                    // Just ignore and continue to close
-                    std::cout << "Ignoring ErrorOutOfDateKHR during shutdown" << std::endl;
-                } else {
-                    // Rethrow other errors
-                    throw;
-                }
-            }
+            drawFrame();
         }
 
         device.waitIdle();
@@ -315,8 +305,9 @@ private:
                                                                  { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                                    } );
 
-            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+                                            features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                             features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
             return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
@@ -350,11 +341,12 @@ private:
             throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
         }
 
-        // query for Vulkan 1.3 features
-        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+        // query for required features (Vulkan 1.1 and 1.3)
+        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
             {},                                                     // vk::PhysicalDeviceFeatures2
-            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
-            {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+            { .shaderDrawParameters = true },                       // vk::PhysicalDeviceVulkan11Features
+            { .synchronization2 = true, .dynamicRendering = true }, // vk::PhysicalDeviceVulkan13Features
+            { .extendedDynamicState = true }                        // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
         };
 
         // create a Device
@@ -390,6 +382,8 @@ private:
     }
 
     void createImageViews() {
+        swapChainImageViews.clear();
+
         vk::ImageViewCreateInfo imageViewCreateInfo{ .viewType = vk::ImageViewType::e2D, .format = swapChainImageFormat,
           .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
         for ( auto image : swapChainImages )
@@ -799,14 +793,23 @@ private:
         queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
 
-        const vk::PresentInfoKHR presentInfoKHR{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex],
-                                                .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex };
-        result = queue.presentKHR( presentInfoKHR );
-        if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
-            framebufferResized = false;
-            recreateSwapChain();
-        } else if (result != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to present swap chain image!");
+        try {
+            const vk::PresentInfoKHR presentInfoKHR{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex],
+                                                    .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex };
+            result = queue.presentKHR( presentInfoKHR );
+            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+                framebufferResized = false;
+                recreateSwapChain();
+            } else if (result != vk::Result::eSuccess) {
+                throw std::runtime_error("failed to present swap chain image!");
+            }
+        } catch (const vk::SystemError& e) {
+            if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
+                recreateSwapChain();
+                return;
+            } else {
+                throw;
+            }
         }
         semaphoreIndex = (semaphoreIndex + 1) % presentCompleteSemaphore.size();
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

@@ -131,7 +131,6 @@ private:
     }
 
     void recreateSwapChain() {
-        framebufferResized = false;
         int width = 0, height = 0;
         glfwGetFramebufferSize(window, &width, &height);
         while (width == 0 || height == 0) {
@@ -144,13 +143,6 @@ private:
         cleanupSwapChain();
         createSwapChain();
         createImageViews();
-        // Recreate dependent objects in case format or extent changed
-        graphicsPipeline = nullptr;
-        createGraphicsPipeline();
-        createSyncObjects();
-        // Reset indices to avoid out-of-range after swapchain resize
-        semaphoreIndex = 0;
-        currentFrame = 0;
     }
 
     void createInstance() {

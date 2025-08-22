@@ -105,18 +105,7 @@ private:
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
-            try {
-                drawFrame();
-            } catch (const vk::SystemError& e) {
-                if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
-                    // Swapchain is out of date, this can happen during window close
-                    // Just ignore and continue to close
-                    std::cout << "Ignoring ErrorOutOfDateKHR during shutdown" << std::endl;
-                } else {
-                    // Rethrow other errors
-                    throw;
-                }
-            }
+            drawFrame();
         }
 
         device.waitIdle();

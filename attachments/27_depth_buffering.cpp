@@ -62,9 +62,9 @@ struct Vertex {
 };
 
 struct UniformBufferObject {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 
 const std::vector<Vertex> vertices = {
@@ -157,6 +157,7 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
@@ -1040,11 +1041,9 @@ private:
             }
         } catch (const vk::SystemError& e) {
             if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
-                // Swapchain is out of date, this can happen during window close
-                // Just ignore and continue to close
-                std::cout << "Ignoring ErrorOutOfDateKHR during presentation" << std::endl;
+                recreateSwapChain();
+                return;
             } else {
-                // Rethrow other errors
                 throw;
             }
         }

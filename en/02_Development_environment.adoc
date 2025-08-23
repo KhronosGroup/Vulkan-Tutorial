@@ -271,7 +271,7 @@ everything works.
 I will assume that you already have some basic experience with CMake, like
 how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
-You can now use the link:/attachments/[attachments] directory in this tutorial
+You can now use the link:https://github.com/KhronosGroup/Vulkan-Tutorial/tree/main/attachments[attachments] directory in this tutorial
 as a template for your Vulkan projects. Make a copy, rename it to something like `HelloTriangle`
 and remove all the code in `main.cpp`.
 

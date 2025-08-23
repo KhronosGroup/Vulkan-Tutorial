@@ -243,6 +243,7 @@ public:
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan Cross-Platform", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
@@ -1177,7 +1178,7 @@ private:
     // Create synchronization objects
     void createSyncObjects() {
         imageAvailableSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
+        renderFinishedSemaphores.reserve(swapChainImages.size());
         inFlightFences.reserve(MAX_FRAMES_IN_FLIGHT);
 
         vk::SemaphoreCreateInfo semaphoreInfo{};
@@ -1187,22 +1188,21 @@ private:
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
-            renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
             inFlightFences.push_back(device.createFence(fenceInfo));
+        }
+
+        for (size_t i = 0; i < swapChainImages.size(); i++) {
+            renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
         }
     }
 
     // Clean up swap chain
     void cleanupSwapChain() {
-        for (auto& framebuffer : swapChainFramebuffers) {
-            framebuffer = nullptr;
-        }
+       swapChainFramebuffers.clear();
+       swapChainImageViews.clear();
 
-        for (auto& imageView : swapChainImageViews) {
-            imageView = nullptr;
-        }
-
-        swapChain = nullptr;
+       // Semaphores tied to swapchain image indices need to be rebuilt on resize
+       renderFinishedSemaphores.clear();
     }
 
     // Record command buffer
@@ -1281,30 +1281,34 @@ private:
             .commandBufferCount = 1,
             .pCommandBuffers = &*commandBuffers[currentFrame],
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]
+            .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]
         };
         queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
-        const vk::PresentInfoKHR presentInfoKHR{
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &*renderFinishedSemaphores[currentFrame],
-            .swapchainCount = 1,
-            .pSwapchains = &*swapChain,
-            .pImageIndices = &imageIndex
-        };
-
-        vk::Result result;
         try {
-            result = queue.presentKHR(presentInfoKHR);
-        } catch (vk::OutOfDateKHRError&) {
-            result = vk::Result::eErrorOutOfDateKHR;
-        }
+            const vk::PresentInfoKHR presentInfoKHR{
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex],
+                .swapchainCount = 1,
+                .pSwapchains = &*swapChain,
+                .pImageIndices = &imageIndex
+            };
 
-        if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
-            framebufferResized = false;
-            recreateSwapChain();
-        } else if (result != vk::Result::eSuccess) {
-            throw std::runtime_error("Failed to present swap chain image");
+            vk::Result result = queue.presentKHR(presentInfoKHR);
+
+            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+                framebufferResized = false;
+                recreateSwapChain();
+            } else if (result != vk::Result::eSuccess) {
+                throw std::runtime_error("Failed to present swap chain image");
+            }
+        } catch (const vk::SystemError& e) {
+            if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
+                recreateSwapChain();
+                return;
+            } else {
+                throw;
+            }
         }
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -1312,16 +1316,34 @@ private:
 
     // Recreate swap chain
     void recreateSwapChain() {
+#if !PLATFORM_ANDROID
+        // On desktop, wait until the framebuffer has a non-zero size (e.g., when window is minimized)
+        int width = 0, height = 0;
+        if (window) {
+            glfwGetFramebufferSize(window, &width, &height);
+            while (width == 0 || height == 0) {
+                glfwGetFramebufferSize(window, &width, &height);
+                glfwWaitEvents();
+            }
+        }
+#endif
         // Wait for device to finish operations
         device.waitIdle();
 
         // Clean up old swap chain
         cleanupSwapChain();
 
-        // Create new swap chain
+        // Create new swap chain and dependent resources
         createSwapChain();
         createImageViews();
         createFramebuffers();
+
+        // Recreate per-swapchain-image present semaphores for presenting
+        renderFinishedSemaphores.reserve(swapChainImages.size());
+        vk::SemaphoreCreateInfo semaphoreInfo{};
+        for (size_t i = 0; i < swapChainImages.size(); ++i) {
+            renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+        }
     }
 
     // Get required extensions

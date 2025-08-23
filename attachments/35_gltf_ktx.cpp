@@ -1197,7 +1197,7 @@ private:
             .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = depthImage,
+            .image = *depthImage,
             .subresourceRange = {
                 .aspectMask = vk::ImageAspectFlagBits::eDepth,
                 .baseMipLevel = 0,

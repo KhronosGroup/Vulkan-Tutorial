@@ -68,6 +68,7 @@ struct GameObject {
 ----
 
 This structure encapsulates:
+
 * The object's transform (position, rotation, scale)
 * Per-object uniform buffers (one for each frame in flight)
 * Per-object descriptor sets (one for each frame in flight)

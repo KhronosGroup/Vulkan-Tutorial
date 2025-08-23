@@ -700,8 +700,8 @@ private:
             .depthClampEnable = vk::False,
             .rasterizerDiscardEnable = vk::False,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack, // Re-enabled culling for better performance
-            .frontFace = vk::FrontFace::eClockwise, // Keeping Clockwise for glTF
+            .cullMode = vk::CullModeFlagBits::eBack,
+            .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = vk::False
         };
         rasterizer.lineWidth = 1.0f;
@@ -736,8 +736,13 @@ private:
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0 };
 
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
-
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format };
+        
+        vk::Format depthFormat = findDepthFormat();
+        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &swapChainSurfaceFormat.format,
+            .depthAttachmentFormat = depthFormat
+        };
         vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
             .stageCount = 2,
             .pStages = shaderStages,
@@ -1011,10 +1016,7 @@ private:
                     Vertex vertex{};
 
                     const float* pos = reinterpret_cast<const float*>(&posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset + i * 12]);
-                    // glTF uses a right-handed coordinate system with Y-up
-                    // Vulkan uses a right-handed coordinate system with Y-down
-                    // We need to flip the Y coordinate
-                    vertex.pos = {pos[0], -pos[1], pos[2]};
+                    vertex.pos = {pos[0], pos[1], pos[2]};
 
                     if (hasTexCoords) {
                         const float* texCoord = reinterpret_cast<const float*>(&texCoordBuffer->data[texCoordBufferView->byteOffset + texCoordAccessor->byteOffset + i * 8]);
@@ -1097,17 +1099,17 @@ private:
     void setupGameObjects() {
         // Object 1 - Center
         gameObjects[0].position = {0.0f, 0.0f, 0.0f};
-        gameObjects[0].rotation = {0.0f, 0.0f, 0.0f};
+        gameObjects[0].rotation = {0.0f, glm::radians(-90.0f), 0.0f};
         gameObjects[0].scale = {1.0f, 1.0f, 1.0f};
 
         // Object 2 - Left
         gameObjects[1].position = {-2.0f, 0.0f, -1.0f};
-        gameObjects[1].rotation = {0.0f, glm::radians(45.0f), 0.0f};
+        gameObjects[1].rotation = {0.0f, glm::radians(-45.0f), 0.0f};
         gameObjects[1].scale = {0.75f, 0.75f, 0.75f};
 
         // Object 3 - Right
         gameObjects[2].position = {2.0f, 0.0f, -1.0f};
-        gameObjects[2].rotation = {0.0f, glm::radians(-45.0f), 0.0f};
+        gameObjects[2].rotation = {0.0f, glm::radians(45.0f), 0.0f};
         gameObjects[2].scale = {0.75f, 0.75f, 0.75f};
     }
 
@@ -1275,6 +1277,31 @@ private:
             vk::PipelineStageFlagBits2::eTopOfPipe,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput
         );
+        vk::ImageMemoryBarrier2 depthBarrier = {
+            .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+            .srcAccessMask = {},
+            .dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+            .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = depthImage,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eDepth,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        vk::DependencyInfo depthDependencyInfo = {
+            .dependencyFlags = {},
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &depthBarrier
+        };
+        commandBuffers[currentFrame].pipelineBarrier2(depthDependencyInfo);
+
         vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
         vk::RenderingAttachmentInfo attachmentInfo = {
             .imageView = *swapChainImageViews[imageIndex],
@@ -1283,11 +1310,20 @@ private:
             .storeOp = vk::AttachmentStoreOp::eStore,
             .clearValue = clearColor
         };
+        vk::ClearValue clearDepth = vk::ClearDepthStencilValue{ 1.0f, 0 };
+        vk::RenderingAttachmentInfo depthAttachmentInfo{
+            .imageView = *depthImageView,
+            .imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eDontCare,
+            .clearValue = clearDepth
+        };
         vk::RenderingInfo renderingInfo = {
             .renderArea = { .offset = { 0, 0 }, .extent = swapChainExtent },
             .layerCount = 1,
             .colorAttachmentCount = 1,
-            .pColorAttachments = &attachmentInfo
+            .pColorAttachments = &attachmentInfo,
+            .pDepthAttachment = &depthAttachmentInfo
         };
         commandBuffers[currentFrame].beginRendering(renderingInfo);
         commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
@@ -1387,6 +1423,8 @@ private:
         // Camera and projection matrices (shared by all objects)
         glm::mat4 view = glm::lookAt(glm::vec3(2.0f, 2.0f, 6.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 proj = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 20.0f);
+        proj[1][1] *= -1;
+
         // Update uniform buffers for each object
         for (auto& gameObject : gameObjects) {
             // Apply continuous rotation to the object based on frame time

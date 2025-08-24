@@ -189,7 +189,7 @@ private:
 
     double lastFrameTime = 0.0;
 
-    // Removed resize-related variables and FSM state management as per simplification request
+    bool framebufferResized = false;
 
     double lastTime = 0.0f;
 
@@ -240,7 +240,7 @@ private:
             []( const auto & format ) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; } );
         return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
     }
-    
+
     static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
         assert(std::ranges::any_of(availablePresentModes, [](auto presentMode){ return presentMode == vk::PresentModeKHR::eFifo; }));
         return std::ranges::any_of(availablePresentModes,
@@ -282,12 +282,20 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan Multithreading", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
         lastTime = glfwGetTime();
+    }
+
+    static void framebufferResizeCallback(GLFWwindow* window, int, int) {
+        auto app = reinterpret_cast<MultithreadedApplication*>(glfwGetWindowUserPointer(window));
+        if (app) {
+            app->framebufferResized = true;
+        }
     }
 
     void initVulkan() {
@@ -437,6 +445,28 @@ private:
         shaderStorageBuffersMemory.clear();
 
         swapChain = nullptr;
+    }
+
+    void recreateSwapChain() {
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(window, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window, &width, &height);
+            glfwWaitEvents();
+        }
+        device.waitIdle();
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
+        createComputeDescriptorSetLayout();
+        createGraphicsPipeline();
+        createComputePipeline();
+        createShaderStorageBuffers();
+        createUniformBuffers();
+        createDescriptorPool();
+        createComputeDescriptorSets();
     }
 
     void stopThreads() {
@@ -1075,10 +1105,22 @@ private:
         // Wait for the previous frame to finish
         while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX))
             ;
-        device.resetFences(*inFlightFences[currentFrame]);
+
+        // If the framebuffer was resized, rebuild the swap chain before acquiring a new image
+        if (framebufferResized) {
+            recreateSwapChain();
+            framebufferResized = false;
+            return;
+        }
 
         // Acquire the next image
         auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame], nullptr);
+        if (result == vk::Result::eErrorOutOfDateKHR) {
+            recreateSwapChain();
+            return;
+        } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
+            throw std::runtime_error("failed to acquire swap chain image!");
+        }
 
         // Update timeline values for synchronization
         uint64_t computeWaitValue = timelineValue;
@@ -1168,6 +1210,7 @@ private:
         // Submit graphics work
         {
             std::lock_guard<std::mutex> lock(queueSubmitMutex);
+            device.resetFences(*inFlightFences[currentFrame]);
             queue.submit(graphicsSubmitInfo, *inFlightFences[currentFrame]);
         }
 
@@ -1194,6 +1237,13 @@ private:
         };
 
         result = queue.presentKHR(presentInfo);
+        if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+            framebufferResized = false;
+            recreateSwapChain();
+            return;
+        } else if (result != vk::Result::eSuccess) {
+            throw std::runtime_error("failed to present swap chain image!");
+        }
 
         // Move to the next frame
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

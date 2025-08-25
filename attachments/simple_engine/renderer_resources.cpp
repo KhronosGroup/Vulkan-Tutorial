@@ -562,11 +562,13 @@ vk::Format Renderer::determineTextureFormat(const std::string& textureId) {
     std::string idLower = textureId;
     std::transform(idLower.begin(), idLower.end(), idLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
 
-    // BaseColor/Albedo/Diffuse textures should be in sRGB space for proper gamma correction
+    // BaseColor/Albedo/Diffuse & SpecGloss RGB should be sRGB for proper gamma correction
     if (idLower.find("basecolor") != std::string::npos ||
         idLower.find("base_color") != std::string::npos ||
         idLower.find("albedo") != std::string::npos ||
         idLower.find("diffuse") != std::string::npos ||
+        idLower.find("specgloss") != std::string::npos ||
+        idLower.find("specularglossiness") != std::string::npos ||
         textureId == Renderer::SHARED_DEFAULT_ALBEDO_ID) {
         return vk::Format::eR8G8B8A8Srgb;
     }

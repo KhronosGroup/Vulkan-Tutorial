@@ -422,15 +422,6 @@ bool Renderer::createPBRPipeline() {
 
         pbrPipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
-        // Enable alpha blending for translucency (glass)
-        colorBlendAttachment.blendEnable = VK_TRUE;
-        colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-        colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-        colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-        colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-        colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-        colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
-
         // Create pipeline rendering info
         vk::Format depthFormat = findDepthFormat();
 
@@ -444,8 +435,19 @@ bool Renderer::createPBRPipeline() {
             .stencilAttachmentFormat = vk::Format::eUndefined
         };
 
-        // Create a graphics pipeline
-        vk::GraphicsPipelineCreateInfo pipelineInfo{
+        // 1) Opaque PBR pipeline (no blending, depth writes enabled)
+        vk::PipelineColorBlendAttachmentState opaqueBlendAttachment = colorBlendAttachment;
+        opaqueBlendAttachment.blendEnable = VK_FALSE;
+        vk::PipelineColorBlendStateCreateInfo colorBlendingOpaque{
+            .logicOpEnable = VK_FALSE,
+            .logicOp = vk::LogicOp::eCopy,
+            .attachmentCount = 1,
+            .pAttachments = &opaqueBlendAttachment
+        };
+        vk::PipelineDepthStencilStateCreateInfo depthStencilOpaque = depthStencil;
+        depthStencilOpaque.depthWriteEnable = VK_TRUE;
+
+        vk::GraphicsPipelineCreateInfo opaquePipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &pbrPipelineRenderingCreateInfo,
             .flags = vk::PipelineCreateFlags{},
@@ -456,8 +458,8 @@ bool Renderer::createPBRPipeline() {
             .pViewportState = &viewportState,
             .pRasterizationState = &rasterizer,
             .pMultisampleState = &multisampling,
-            .pDepthStencilState = &depthStencil,
-            .pColorBlendState = &colorBlending,
+            .pDepthStencilState = &depthStencilOpaque,
+            .pColorBlendState = &colorBlendingOpaque,
             .pDynamicState = &dynamicState,
             .layout = *pbrPipelineLayout,
             .renderPass = nullptr,
@@ -465,8 +467,48 @@ bool Renderer::createPBRPipeline() {
             .basePipelineHandle = nullptr,
             .basePipelineIndex = -1
         };
+        pbrGraphicsPipeline = vk::raii::Pipeline(device, nullptr, opaquePipelineInfo);
 
-        pbrGraphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+        // 2) Blended PBR pipeline (alpha blending, depth writes disabled for translucency)
+        vk::PipelineColorBlendAttachmentState blendedAttachment = colorBlendAttachment;
+        blendedAttachment.blendEnable = VK_TRUE;
+        blendedAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+        blendedAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        blendedAttachment.colorBlendOp = vk::BlendOp::eAdd;
+        blendedAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+        blendedAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        blendedAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+        vk::PipelineColorBlendStateCreateInfo colorBlendingBlended{
+            .logicOpEnable = VK_FALSE,
+            .logicOp = vk::LogicOp::eCopy,
+            .attachmentCount = 1,
+            .pAttachments = &blendedAttachment
+        };
+        vk::PipelineDepthStencilStateCreateInfo depthStencilBlended = depthStencil;
+        depthStencilBlended.depthWriteEnable = VK_FALSE;
+
+        vk::GraphicsPipelineCreateInfo blendedPipelineInfo{
+            .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
+            .pNext = &pbrPipelineRenderingCreateInfo,
+            .flags = vk::PipelineCreateFlags{},
+            .stageCount = 2,
+            .pStages = shaderStages,
+            .pVertexInputState = &vertexInputInfo,
+            .pInputAssemblyState = &inputAssembly,
+            .pViewportState = &viewportState,
+            .pRasterizationState = &rasterizer,
+            .pMultisampleState = &multisampling,
+            .pDepthStencilState = &depthStencilBlended,
+            .pColorBlendState = &colorBlendingBlended,
+            .pDynamicState = &dynamicState,
+            .layout = *pbrPipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = -1
+        };
+        pbrBlendGraphicsPipeline = vk::raii::Pipeline(device, nullptr, blendedPipelineInfo);
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to create PBR pipeline: " << e.what() << std::endl;

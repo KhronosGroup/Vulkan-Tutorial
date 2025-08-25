@@ -96,6 +96,10 @@ struct MaterialProperties {
     alignas(4) float alphaMaskCutoff;
     alignas(16) glm::vec3 emissiveFactor;  // Emissive factor for HDR emissive sources
     alignas(4) float emissiveStrength;     // KHR_materials_emissive_strength extension
+    alignas(4) float transmissionFactor;   // KHR_materials_transmission
+    alignas(4) int useSpecGlossWorkflow;   // 1 if using KHR_materials_pbrSpecularGlossiness
+    alignas(4) float glossinessFactor;     // SpecGloss glossiness scalar
+    alignas(16) glm::vec3 specularFactor;  // SpecGloss specular color factor
 };
 
 /**
@@ -460,6 +464,7 @@ private:
     vk::raii::Pipeline graphicsPipeline = nullptr;
     vk::raii::PipelineLayout pbrPipelineLayout = nullptr;
     vk::raii::Pipeline pbrGraphicsPipeline = nullptr;
+    vk::raii::Pipeline pbrBlendGraphicsPipeline = nullptr;
     vk::raii::PipelineLayout lightingPipelineLayout = nullptr;
     vk::raii::Pipeline lightingPipeline = nullptr;
 

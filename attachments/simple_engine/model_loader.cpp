@@ -230,6 +230,120 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             material->emissiveStrength = 1.0f * light_scale;
         }
 
+        // Alpha mode / cutoff
+        material->alphaMode = gltfMaterial.alphaMode.empty() ? std::string("OPAQUE") : gltfMaterial.alphaMode;
+        material->alphaCutoff = static_cast<float>(gltfMaterial.alphaCutoff);
+
+        // Transmission (KHR_materials_transmission)
+        auto transIt = gltfMaterial.extensions.find("KHR_materials_transmission");
+        if (transIt != gltfMaterial.extensions.end()) {
+            const tinygltf::Value& ext = transIt->second;
+            if (ext.Has("transmissionFactor") && ext.Get("transmissionFactor").IsNumber()) {
+                material->transmissionFactor = static_cast<float>(ext.Get("transmissionFactor").Get<double>());
+            }
+        }
+
+        // Specular-Glossiness (KHR_materials_pbrSpecularGlossiness)
+        auto sgIt = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
+        if (sgIt != gltfMaterial.extensions.end()) {
+            const tinygltf::Value& ext = sgIt->second;
+            material->useSpecularGlossiness = true;
+            // diffuseFactor -> albedo and alpha
+            if (ext.Has("diffuseFactor") && ext.Get("diffuseFactor").IsArray()) {
+                const auto& arr = ext.Get("diffuseFactor").Get<tinygltf::Value::Array>();
+                if (arr.size() >= 3) {
+                    material->albedo = glm::vec3(
+                        arr[0].IsNumber() ? static_cast<float>(arr[0].Get<double>()) : material->albedo.r,
+                        arr[1].IsNumber() ? static_cast<float>(arr[1].Get<double>()) : material->albedo.g,
+                        arr[2].IsNumber() ? static_cast<float>(arr[2].Get<double>()) : material->albedo.b
+                    );
+                    if (arr.size() >= 4 && arr[3].IsNumber()) {
+                        material->alpha = static_cast<float>(arr[3].Get<double>());
+                    }
+                }
+            }
+            // specularFactor (vec3)
+            if (ext.Has("specularFactor") && ext.Get("specularFactor").IsArray()) {
+                const auto& arr = ext.Get("specularFactor").Get<tinygltf::Value::Array>();
+                if (arr.size() >= 3) {
+                    material->specularFactor = glm::vec3(
+                        arr[0].IsNumber() ? static_cast<float>(arr[0].Get<double>()) : material->specularFactor.r,
+                        arr[1].IsNumber() ? static_cast<float>(arr[1].Get<double>()) : material->specularFactor.g,
+                        arr[2].IsNumber() ? static_cast<float>(arr[2].Get<double>()) : material->specularFactor.b
+                    );
+                }
+            }
+            // glossinessFactor (float)
+            if (ext.Has("glossinessFactor") && ext.Get("glossinessFactor").IsNumber()) {
+                material->glossinessFactor = static_cast<float>(ext.Get("glossinessFactor").Get<double>());
+            }
+
+            // Load diffuseTexture into albedoTexturePath if present
+            if (ext.Has("diffuseTexture") && ext.Get("diffuseTexture").IsObject()) {
+                const auto& diffObj = ext.Get("diffuseTexture");
+                if (diffObj.Has("index") && diffObj.Get("index").IsInt()) {
+                    int texIndex = diffObj.Get("index").Get<int>();
+                    if (texIndex >= 0 && texIndex < static_cast<int>(gltfModel.textures.size())) {
+                        const auto& texture = gltfModel.textures[texIndex];
+                        int imageIndex = -1;
+                        if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
+                            imageIndex = texture.source;
+                        } else {
+                            auto extBasis = texture.extensions.find("KHR_texture_basisu");
+                            if (extBasis != texture.extensions.end()) {
+                                const tinygltf::Value &e = extBasis->second;
+                                if (e.Has("source") && e.Get("source").IsInt()) {
+                                    int src = e.Get("source").Get<int>();
+                                    if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) imageIndex = src;
+                                }
+                            }
+                        }
+                        if (imageIndex >= 0) {
+                            const auto& image = gltfModel.images[imageIndex];
+                            std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
+                            if (!image.image.empty()) {
+                                if (renderer->LoadTextureFromMemory(textureId, image.image.data(), image.width, image.height, image.component)) {
+                                    material->albedoTexturePath = textureId;
+                                }
+                            } else if (!image.uri.empty()) {
+                                std::vector<uint8_t> data; int w=0,h=0,c=0;
+                                std::string filePath = baseTexturePath + image.uri;
+                                if (LoadKTX2FileToRGBA(filePath, data, w, h, c) && renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                                    material->albedoTexturePath = textureId;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Load specularGlossinessTexture into specGlossTexturePath and mirror to metallicRoughnessTexturePath (binding 2)
+            if (ext.Has("specularGlossinessTexture") && ext.Get("specularGlossinessTexture").IsObject()) {
+                const auto& sgObj = ext.Get("specularGlossinessTexture");
+                if (sgObj.Has("index") && sgObj.Get("index").IsInt()) {
+                    int texIndex = sgObj.Get("index").Get<int>();
+                    if (texIndex >= 0 && texIndex < static_cast<int>(gltfModel.textures.size())) {
+                        const auto& texture = gltfModel.textures[texIndex];
+                        if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
+                            std::string textureId = "gltf_specGloss_" + std::to_string(texIndex);
+                            const auto& image = gltfModel.images[texture.source];
+                            if (!image.image.empty()) {
+                                if (renderer->LoadTextureFromMemory(textureId, image.image.data(), image.width, image.height, image.component)) {
+                                    material->specGlossTexturePath = textureId;
+                                    material->metallicRoughnessTexturePath = textureId; // reuse binding 2
+                                }
+                            } else if (!image.uri.empty()) {
+                                std::vector<uint8_t> data; int w=0,h=0,c=0;
+                                std::string filePath = baseTexturePath + image.uri;
+                                if (LoadKTX2FileToRGBA(filePath, data, w, h, c) && renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
+                                    material->specGlossTexturePath = textureId;
+                                    material->metallicRoughnessTexturePath = textureId; // reuse binding 2
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Extract texture information and load embedded texture data
         if (gltfMaterial.pbrMetallicRoughness.baseColorTexture.index >= 0) {

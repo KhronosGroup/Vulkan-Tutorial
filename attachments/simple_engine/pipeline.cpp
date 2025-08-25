@@ -1,4 +1,5 @@
 #include "pipeline.h"
+#include "mesh_component.h"
 #include <iostream>
 #include <fstream>
 
@@ -52,7 +53,7 @@ bool Pipeline::createDescriptorSetLayout() {
 bool Pipeline::createPBRDescriptorSetLayout() {
     try {
         // Create descriptor set layout bindings for PBR shader
-        std::array<vk::DescriptorSetLayoutBinding, 6> bindings = {
+        std::array<vk::DescriptorSetLayoutBinding, 7> bindings = {
             // Binding 0: Uniform buffer (UBO)
             vk::DescriptorSetLayoutBinding{
                 .binding = 0,
@@ -97,6 +98,14 @@ bool Pipeline::createPBRDescriptorSetLayout() {
             vk::DescriptorSetLayoutBinding{
                 .binding = 5,
                 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = 1,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            // Binding 6: Light storage buffer (StructuredBuffer<LightData>)
+            vk::DescriptorSetLayoutBinding{
+                .binding = 6,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
                 .descriptorCount = 1,
                 .stageFlags = vk::ShaderStageFlagBits::eFragment,
                 .pImmutableSamplers = nullptr
@@ -330,49 +339,28 @@ bool Pipeline::createPBRPipeline() {
 
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-        // Define vertex binding description
-        vk::VertexInputBindingDescription bindingDescription{
-            .binding = 0,
-            .stride = sizeof(float) * (3 + 3 + 2 + 4),  // Position(3) + Normal(3) + UV(2) + Tangent(4)
-            .inputRate = vk::VertexInputRate::eVertex
-        };
+        // Define vertex and instance binding descriptions using MeshComponent layouts
+        auto vertexBinding = Vertex::getBindingDescription();
+        auto instanceBinding = InstanceData::getBindingDescription();
+        std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { vertexBinding, instanceBinding };
 
-        // Define vertex attribute descriptions
-        std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
-            // Position attribute
-            vk::VertexInputAttributeDescription{
-                .location = 0,
-                .binding = 0,
-                .format = vk::Format::eR32G32B32Sfloat,
-                .offset = 0
-            },
-            // Normal attribute
-            vk::VertexInputAttributeDescription{
-                .location = 1,
-                .binding = 0,
-                .format = vk::Format::eR32G32B32Sfloat,
-                .offset = sizeof(float) * 3
-            },
-            // UV attribute
-            vk::VertexInputAttributeDescription{
-                .location = 2,
-                .binding = 0,
-                .format = vk::Format::eR32G32Sfloat,
-                .offset = sizeof(float) * 6
-            },
-            // Tangent attribute
-            vk::VertexInputAttributeDescription{
-                .location = 3,
-                .binding = 0,
-                .format = vk::Format::eR32G32B32A32Sfloat,
-                .offset = sizeof(float) * 8
-            }
-        };
+        // Define vertex and instance attribute descriptions
+        auto vertexAttrArray = Vertex::getAttributeDescriptions();
+        auto instanceAttrArray = InstanceData::getAttributeDescriptions();
+        std::array<vk::VertexInputAttributeDescription, 11> attributeDescriptions{};
+        // Copy vertex attributes (0..3)
+        for (size_t i = 0; i < vertexAttrArray.size(); ++i) {
+            attributeDescriptions[i] = vertexAttrArray[i];
+        }
+        // Copy instance attributes (4..10)
+        for (size_t i = 0; i < instanceAttrArray.size(); ++i) {
+            attributeDescriptions[vertexAttrArray.size() + i] = instanceAttrArray[i];
+        }
 
         // Create vertex input info
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{
-            .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &bindingDescription,
+            .vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size()),
+            .pVertexBindingDescriptions = bindingDescriptions.data(),
             .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
             .pVertexAttributeDescriptions = attributeDescriptions.data()
         };
@@ -425,7 +413,7 @@ bool Pipeline::createPBRPipeline() {
             .sampleShadingEnable = VK_FALSE,
             .minSampleShading = 1.0f,
             .pSampleMask = nullptr,
-            .alphaToCoverageEnable = VK_FALSE,
+            .alphaToCoverageEnable = VK_TRUE,
             .alphaToOneEnable = VK_FALSE
         };
 

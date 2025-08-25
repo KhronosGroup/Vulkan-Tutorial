@@ -497,7 +497,7 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity
     ubo.exposure = this->exposure;
     ubo.gamma = this->gamma;
     ubo.prefilteredCubeMipLevels = 0.0f;
-    ubo.scaleIBLAmbient = 1.0f;
+    ubo.scaleIBLAmbient = 0.5f;
 
     // Copy to uniform buffer
     std::memcpy(entityIt->second.uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -606,6 +606,7 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
     // Track current pipeline to avoid unnecessary bindings
     vk::raii::Pipeline* currentPipeline = nullptr;
     vk::raii::PipelineLayout* currentLayout = nullptr;
+    std::vector<Entity*> blendedQueue;
 
     // Render each entity
     for (auto const& uptr : entities) {
@@ -642,8 +643,47 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
         // Use basic pipeline only when PBR is explicitly disabled via ImGui
         bool useBasic = imguiSystem && !imguiSystem->IsPBREnabled();
         bool usePBR = !useBasic; // BRDF/PBR is now the default lighting model
-        vk::raii::Pipeline* selectedPipeline = usePBR ? &pbrGraphicsPipeline : &graphicsPipeline;
-        vk::raii::PipelineLayout* selectedLayout = usePBR ? &pbrPipelineLayout : &pipelineLayout;
+
+        // Choose PBR pipeline variant per material (BLEND -> blended pipeline)
+        vk::raii::Pipeline* selectedPipeline = nullptr;
+        vk::raii::PipelineLayout* selectedLayout = nullptr;
+        if (usePBR) {
+            bool useBlended = false;
+            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                std::string entityName = entity->GetName();
+                size_t tagPos = entityName.find("_Material_");
+                if (tagPos != std::string::npos) {
+                    size_t afterTag = tagPos + std::string("_Material_").size();
+                    size_t sep = entityName.find('_', afterTag);
+                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
+                        std::string materialName = entityName.substr(sep + 1);
+                        Material* material = modelLoader->GetMaterial(materialName);
+                        if (material) {
+                            if (material->alphaMode == "BLEND") {
+                                useBlended = true;
+                            } else if (material->alphaMode != "MASK" && material->transmissionFactor > 0.001f) {
+                                // Use blended pipeline for transmissive materials
+                                useBlended = true;
+                            } else if (material->useSpecularGlossiness && material->alpha < 0.999f) {
+                                // SpecGloss glass with alpha < 1 should blend
+                                useBlended = true;
+                            }
+                        }
+                    }
+                }
+            }
+            // Defer blended/transmissive materials to a second pass
+            if (useBlended) {
+                blendedQueue.push_back(entity);
+                continue;
+            }
+            // Opaques use the non-blended PBR pipeline in this first pass
+            selectedPipeline = &pbrGraphicsPipeline;
+            selectedLayout = &pbrPipelineLayout;
+        } else {
+            selectedPipeline = &graphicsPipeline;
+            selectedLayout = &pipelineLayout;
+        }
 
         // Get the mesh resources - they should already exist from pre-allocation
         auto meshIt = meshResources.find(meshComponent);
@@ -723,6 +763,20 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
                             pushConstants.roughnessFactor = material->roughness;
                             pushConstants.emissiveFactor = material->emissive;  // Set emissive factor for HDR emissive sources
                             pushConstants.emissiveStrength = material->emissiveStrength;  // Set emissive strength from KHR_materials_emissive_strength extension
+                            pushConstants.transmissionFactor = material->transmissionFactor;  // KHR_materials_transmission
+                            // SpecGloss workflow push constants
+                            if (material->useSpecularGlossiness) {
+                                pushConstants.useSpecGlossWorkflow = 1;
+                                pushConstants.specularFactor = material->specularFactor;
+                                pushConstants.glossinessFactor = material->glossinessFactor;
+                                // If no SpecGloss texture, signal shader to use factors-only path
+                                pushConstants.physicalDescriptorTextureSet = material->specGlossTexturePath.empty() ? -1 : 0;
+                            } else {
+                                pushConstants.useSpecGlossWorkflow = 0;
+                                pushConstants.specularFactor = glm::vec3(0.04f);
+                                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
+                                pushConstants.physicalDescriptorTextureSet = 0;
+                            }
                         } else {
                             // Default PBR material properties
                             pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
@@ -740,6 +794,11 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
                 pushConstants.roughnessFactor = 0.7f;
                 pushConstants.emissiveFactor = glm::vec3(0.0f);
                 pushConstants.emissiveStrength = 0.0f;
+                pushConstants.transmissionFactor = 0.0f;
+                // Default to MR workflow
+                pushConstants.useSpecGlossWorkflow = 0;
+                pushConstants.specularFactor = glm::vec3(0.04f);
+                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
             }
 
             // Set texture binding indices
@@ -753,8 +812,29 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
                 emissiveSet = 0;
             }
             pushConstants.emissiveTextureSet = emissiveSet;
+            // Alpha mask from glTF material
             pushConstants.alphaMask = 0.0f;
             pushConstants.alphaMaskCutoff = 0.5f;
+            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                std::string entityName = entity->GetName();
+                size_t tagPos = entityName.find("_Material_");
+                if (tagPos != std::string::npos) {
+                    size_t afterTag = tagPos + std::string("_Material_").size();
+                    size_t sep = entityName.find('_', afterTag);
+                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
+                        std::string materialName = entityName.substr(sep + 1);
+                        Material* material = modelLoader->GetMaterial(materialName);
+                        if (material) {
+                            if (material->alphaMode == "MASK") {
+                                pushConstants.alphaMask = 1.0f;
+                                pushConstants.alphaMaskCutoff = material->alphaCutoff;
+                            } else {
+                                pushConstants.alphaMask = 0.0f; // OPAQUE or BLEND not handled here
+                            }
+                        }
+                    }
+                }
+            }
 
             // Push constants to the shader
             commandBuffers[currentFrame].pushConstants(
@@ -767,6 +847,145 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
 
         uint32_t instanceCount = static_cast<uint32_t>(std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount())));
         commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
+    }
+
+    // Second pass: render blended/transmissive materials after opaque
+    if (!blendedQueue.empty()) {
+        for (Entity* entity : blendedQueue) {
+            if (!entity || !entity->IsActive()) { continue; }
+
+            auto meshComponent = entity->GetComponent<MeshComponent>();
+            if (!meshComponent) { continue; }
+            auto transformComponent = entity->GetComponent<TransformComponent>();
+            if (!transformComponent) { continue; }
+
+            // Mesh & entity resources
+            auto meshIt = meshResources.find(meshComponent);
+            if (meshIt == meshResources.end()) {
+                std::cerr << "ERROR: Mesh resources not found for blended entity " << entity->GetName() << std::endl;
+                continue;
+            }
+            auto entityIt = entityResources.find(entity);
+            if (entityIt == entityResources.end()) {
+                std::cerr << "ERROR: Entity resources not found for blended entity " << entity->GetName() << std::endl;
+                continue;
+            }
+
+            // Use blended PBR pipeline
+            vk::raii::Pipeline* selectedPipeline = &pbrBlendGraphicsPipeline;
+            vk::raii::PipelineLayout* selectedLayout = &pbrPipelineLayout;
+            if (currentPipeline != selectedPipeline) {
+                commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
+                currentPipeline = selectedPipeline;
+                currentLayout = selectedLayout;
+            }
+
+            // Bind vertex + instance buffers
+            std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+            std::array<vk::DeviceSize, 2> offsets = {0, 0};
+            commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
+
+            // Update UBO for this entity
+            updateUniformBuffer(currentFrame, entity, camera);
+
+            // Bind index buffer
+            commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
+
+            // Bind descriptor set (PBR)
+            auto& selectedDescriptorSets = entityIt->second.pbrDescriptorSets;
+            if (selectedDescriptorSets.empty() || currentFrame >= selectedDescriptorSets.size()) {
+                std::cerr << "Error: No valid PBR descriptor set for blended entity " << entity->GetName() << std::endl;
+                continue;
+            }
+            commandBuffers[currentFrame].bindDescriptorSets(
+                vk::PipelineBindPoint::eGraphics, **currentLayout, 0, {*selectedDescriptorSets[currentFrame]}, {}
+            );
+
+            // Push PBR material properties (same as first pass)
+            MaterialProperties pushConstants{};
+            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                std::string entityName = entity->GetName();
+                size_t tagPos = entityName.find("_Material_");
+                if (tagPos != std::string::npos) {
+                    size_t afterTag = tagPos + std::string("_Material_").size();
+                    size_t sep = entityName.find('_', afterTag);
+                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
+                        std::string materialName = entityName.substr(sep + 1);
+                        Material* material = modelLoader->GetMaterial(materialName);
+                        if (material) {
+                            pushConstants.baseColorFactor = glm::vec4(material->albedo, material->alpha);
+                            pushConstants.metallicFactor = material->metallic;
+                            pushConstants.roughnessFactor = material->roughness;
+                            pushConstants.emissiveFactor = material->emissive;
+                            pushConstants.emissiveStrength = material->emissiveStrength;
+                            pushConstants.transmissionFactor = material->transmissionFactor;
+                            if (material->useSpecularGlossiness) {
+                                pushConstants.useSpecGlossWorkflow = 1;
+                                pushConstants.specularFactor = material->specularFactor;
+                                pushConstants.glossinessFactor = material->glossinessFactor;
+                                pushConstants.physicalDescriptorTextureSet = material->specGlossTexturePath.empty() ? -1 : 0;
+                            } else {
+                                pushConstants.useSpecGlossWorkflow = 0;
+                                pushConstants.specularFactor = glm::vec3(0.04f);
+                                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
+                                pushConstants.physicalDescriptorTextureSet = 0;
+                            }
+                        } else {
+                            pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+                            pushConstants.metallicFactor = 0.1f;
+                            pushConstants.roughnessFactor = 0.7f;
+                            pushConstants.emissiveFactor = glm::vec3(0.0f);
+                            pushConstants.emissiveStrength = 1.0f;
+                        }
+                    }
+                }
+            } else {
+                pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+                pushConstants.metallicFactor = 0.1f;
+                pushConstants.roughnessFactor = 0.7f;
+                pushConstants.emissiveFactor = glm::vec3(0.0f);
+                pushConstants.emissiveStrength = 0.0f;
+                pushConstants.transmissionFactor = 0.0f;
+                pushConstants.useSpecGlossWorkflow = 0;
+                pushConstants.specularFactor = glm::vec3(0.04f);
+                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
+            }
+            pushConstants.baseColorTextureSet = 0;
+            pushConstants.physicalDescriptorTextureSet = 0;
+            pushConstants.normalTextureSet = 0;
+            pushConstants.occlusionTextureSet = 0;
+            int emissiveSet = -1;
+            if (meshComponent && !meshComponent->GetEmissiveTexturePath().empty()) { emissiveSet = 0; }
+            pushConstants.emissiveTextureSet = emissiveSet;
+            pushConstants.alphaMask = 0.0f;
+            pushConstants.alphaMaskCutoff = 0.5f;
+            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                std::string entityName = entity->GetName();
+                size_t tagPos = entityName.find("_Material_");
+                if (tagPos != std::string::npos) {
+                    size_t afterTag = tagPos + std::string("_Material_").size();
+                    size_t sep = entityName.find('_', afterTag);
+                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
+                        std::string materialName = entityName.substr(sep + 1);
+                        Material* material = modelLoader->GetMaterial(materialName);
+                        if (material && material->alphaMode == "MASK") {
+                            pushConstants.alphaMask = 1.0f;
+                            pushConstants.alphaMaskCutoff = material->alphaCutoff;
+                        }
+                    }
+                }
+            }
+
+            commandBuffers[currentFrame].pushConstants(
+                **currentLayout,
+                vk::ShaderStageFlagBits::eFragment,
+                0,
+                vk::ArrayProxy<const uint8_t>(sizeof(MaterialProperties), reinterpret_cast<const uint8_t*>(&pushConstants))
+            );
+
+            uint32_t instanceCount = static_cast<uint32_t>(std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount())));
+            commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
+        }
     }
 
     // Render ImGui if provided

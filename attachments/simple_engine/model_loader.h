@@ -25,7 +25,7 @@ class Material {
 
         [[nodiscard]] const std::string& GetName() const { return name; }
 
-        // PBR properties
+        // PBR properties (Metallic-Roughness default)
         glm::vec3 albedo = glm::vec3(1.0f);
         float metallic = 0.0f;
         float roughness = 1.0f;
@@ -33,6 +33,17 @@ class Material {
         glm::vec3 emissive = glm::vec3(0.0f);
         float emissiveStrength = 1.0f;  // KHR_materials_emissive_strength extension
         float alpha = 1.0f;             // Base color alpha (from MR baseColorFactor or SpecGloss diffuseFactor)
+        float transmissionFactor = 0.0f; // KHR_materials_transmission: 0=opaque, 1=fully transmissive
+
+        // Specular-Glossiness workflow (KHR_materials_pbrSpecularGlossiness)
+        bool useSpecularGlossiness = false;
+        glm::vec3 specularFactor = glm::vec3(0.04f);
+        float glossinessFactor = 1.0f;
+        std::string specGlossTexturePath; // Stored separately; also mirrored to metallicRoughnessTexturePath for binding 2
+
+        // Alpha handling (glTF alphaMode and cutoff)
+        std::string alphaMode = "OPAQUE"; // "OPAQUE", "MASK", or "BLEND"
+        float alphaCutoff = 0.5f;          // Used when alphaMode == MASK
 
         // Texture paths for PBR materials
         std::string albedoTexturePath;

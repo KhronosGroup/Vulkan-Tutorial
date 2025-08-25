@@ -64,6 +64,10 @@ struct PushConstants {
     float alphaMaskCutoff;
     float3 emissiveFactor;  // Emissive factor for HDR emissive sources
     float emissiveStrength; // KHR_materials_emissive_strength extension
+    float transmissionFactor; // KHR_materials_transmission
+    int useSpecGlossWorkflow;   // 1 if using KHR_materials_pbrSpecularGlossiness
+    float glossinessFactor;     // SpecGloss glossiness scalar
+    float3 specularFactor;      // SpecGloss specular color factor
 };
 
 // Constants
@@ -115,7 +119,7 @@ VSOutput VSMain(VSInput input)
 
     // Use instance matrices directly
     float4x4 instanceModelMatrix = input.InstanceModelMatrix;
-    float3x3 normalMatrix3x3 = (float3x3)input.InstanceNormalMatrix;
+    float3x3 instanceNormalMatrix3x3 = (float3x3)input.InstanceNormalMatrix;
 
     // Transform position to world space: entity model * instance model
     float4 worldPos = mul(ubo.model, mul(instanceModelMatrix, float4(input.Position, 1.0)));
@@ -124,15 +128,18 @@ VSOutput VSMain(VSInput input)
     // Pass world position to fragment shader
     output.WorldPos = worldPos.xyz;
 
-    // Transform normal to world space using reconstructed normal matrix and entity model
+    // Transform normal and tangent to world space (apply instance normal then entity model)
     float3x3 model3x3 = (float3x3)ubo.model;
-    output.Normal = normalize(mul(model3x3, mul(normalMatrix3x3, input.Normal)));
+    output.Normal = normalize(mul(model3x3, mul(instanceNormalMatrix3x3, input.Normal)));
+
+    float3 instTangent = mul(instanceNormalMatrix3x3, input.Tangent.xyz);
+    float3 worldTangent = normalize(mul(model3x3, instTangent));
 
     // Pass texture coordinates
     output.UV = input.UV;
 
-    // Pass tangent
-    output.Tangent = input.Tangent;
+    // Pass world-space tangent (preserve handedness in w)
+    output.Tangent = float4(worldTangent, input.Tangent.w);
 
     return output;
 }
@@ -144,22 +151,66 @@ float4 PSMain(VSOutput input) : SV_TARGET
     // Sample material textures (flip V to match glTF UV origin)
     float2 uv = float2(input.UV.x, 1.0 - input.UV.y);
     float4 baseColor = baseColorMap.Sample(uv) * material.baseColorFactor;
-    float2 metallicRoughness = metallicRoughnessMap.Sample(uv).bg;
-    float metallic = metallicRoughness.x * material.metallicFactor;
-    float roughness = metallicRoughness.y * material.roughnessFactor;
+    // For MR workflow: metallic in B, roughness in G; For SpecGloss: RGB=specular color, A=glossiness
+    float4 mrOrSpecGloss = (material.physicalDescriptorTextureSet < 0) ? float4(1.0, 1.0, 1.0, 1.0) : metallicRoughnessMap.Sample(uv);
+    float metallic = 0.0;
+    float roughness = 1.0;
+    float3 specColorSG = float3(0.0, 0.0, 0.0);
+    if (material.useSpecGlossWorkflow != 0) {
+        // Specular-Glossiness workflow
+        specColorSG = mrOrSpecGloss.rgb * material.specularFactor;
+        float gloss = clamp(mrOrSpecGloss.a * material.glossinessFactor, 0.0, 1.0);
+        roughness = clamp(1.0 - gloss, 0.0, 1.0);
+        metallic = 0.0; // not used in SpecGloss
+    } else {
+        // Metallic-Roughness workflow
+        float2 metallicRoughness = mrOrSpecGloss.bg;
+        metallic = clamp(metallicRoughness.x * material.metallicFactor, 0.0, 1.0);
+        roughness = clamp(metallicRoughness.y * material.roughnessFactor, 0.0, 1.0);
+    }
     float ao = occlusionMap.Sample(uv).r;
     float3 emissiveTex = (material.emissiveTextureSet < 0) ? float3(1.0, 1.0, 1.0) : emissiveMap.Sample(uv).rgb;
     float3 emissive = emissiveTex * material.emissiveFactor * material.emissiveStrength;
+
+    // Early alpha masking discard for masked materials only (glTF alphaMode == MASK)
+    if (material.alphaMask > 0.5 && baseColor.a < material.alphaMaskCutoff) {
+        discard;
+    }
 
     // Calculate normal in tangent space
     float3 N = normalize(input.Normal);
     if (material.normalTextureSet >= 0) {
         // Apply normal mapping
         float3 tangentNormal = normalMap.Sample(uv).xyz * 2.0 - 1.0;
-        float3 T = normalize(input.Tangent.xyz);
-        float3 B = normalize(cross(N, T)) * input.Tangent.w;
+
+        float3 T = input.Tangent.xyz;
+        bool hasTangent = dot(T, T) > 1e-6;
+        if (hasTangent) {
+            // Orthonormalize T against N to reduce shading artifacts
+            T = normalize(T);
+            T = normalize(T - N * dot(N, T));
+        } else {
+            // Fallback: derive tangent from screen-space derivatives of position and UVs
+            float3 dp1 = ddx(input.WorldPos);
+            float3 dp2 = ddy(input.WorldPos);
+            float2 duv1 = ddx(uv);
+            float2 duv2 = ddy(uv);
+            float det = duv1.x * duv2.y - duv1.y * duv2.x;
+            if (abs(det) > 1e-8) {
+                float r = 1.0 / det;
+                T = normalize((dp1 * duv2.y - dp2 * duv1.y) * r);
+            } else {
+                // Degenerate UV derivatives; fall back to a stable orthogonal vector
+                float3 up = (abs(N.y) < 0.999) ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+                T = normalize(cross(up, N));
+            }
+        }
+        float handedness = hasTangent ? input.Tangent.w : 1.0;
+        float3 B = normalize(cross(N, T)) * handedness;
+        // Construct tangent-to-world with T, B, N basis
         float3x3 TBN = float3x3(T, B, N);
-        N = normalize(mul(tangentNormal, TBN));
+        // Transform from tangent to world space using column-vector convention
+        N = normalize(mul(TBN, tangentNormal));
     }
 
     // Calculate view and reflection vectors
@@ -167,8 +218,15 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float3 R = reflect(-V, N);
 
     // Calculate F0 (base reflectivity)
-    float3 F0 = float3(0.04, 0.04, 0.04);
-    F0 = lerp(F0, baseColor.rgb, metallic);
+    float3 F0;
+    if (material.useSpecGlossWorkflow != 0) {
+        // SpecGloss: use specular color directly
+        F0 = specColorSG;
+    } else {
+        // MR: interpolate between dielectric and baseColor by metallic
+        F0 = float3(0.04, 0.04, 0.04);
+        F0 = lerp(F0, baseColor.rgb, metallic);
+    }
 
     // Initialize lighting
     float3 Lo = float3(0.0, 0.0, 0.0);
@@ -263,19 +321,34 @@ float4 PSMain(VSOutput input) : SV_TARGET
         }
     }
 
-    // Add only emissive (no hardcoded ambient - use only model-defined lights)
-    // Use full emissive contribution for proper HDR rendering
-    float3 color = Lo + emissive;
+    float3 ambient = baseColor.rgb * ao * (0.03 * ubo.scaleIBLAmbient);
+    // Base lit color from direct lighting and emissive
+    float3 opaqueLit = ambient + Lo + emissive;
+
+    // Transmission respecting roughness and Fresnel, but without environment map
+    float T = clamp(material.transmissionFactor, 0.0, 1.0);
+    float NdotV_glass = max(dot(N, V), 0.0);
+    float3 Fv = FresnelSchlick(NdotV_glass, F0);
+    float Favg = (Fv.x + Fv.y + Fv.z) / 3.0;
+    float roughTrans = clamp(1.0 - (roughness * roughness), 0.0, 1.0);
+    float T_eff = T * (1.0 - Favg) * roughTrans;
+
+    // Energy-conserving mix between opaque lighting and transmitted base color tint
+    float3 color = lerp(opaqueLit, baseColor.rgb, T_eff);
 
     // Apply exposure before tone mapping for proper HDR workflow
     color *= ubo.exposure;
 
     // Standard Reinhard tone mapping - simple and effective
-    // This prevents excessive brightness while preserving color relationships
     color = color / (1.0 + color);
 
     // Gamma correction (convert from linear to sRGB)
     color = pow(color, float3(1.0 / ubo.gamma, 1.0 / ubo.gamma, 1.0 / ubo.gamma));
 
-    return float4(color, baseColor.a);
+    // Alpha approximates remaining opacity (higher transmission -> lower alpha), clamped for readability
+    float alphaOut = baseColor.a;
+    if (T > 0.001) {
+        alphaOut = clamp(1.0 - T_eff, 0.08, 0.60);
+    }
+    return float4(color, alphaOut);
 }

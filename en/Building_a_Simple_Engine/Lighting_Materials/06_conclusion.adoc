@@ -1,0 +1,44 @@
+= Conclusion
+
+In this chapter, we've explored the fundamentals of lighting and materials in 3D rendering and introduced Physically Based Rendering (PBR) using the metallic-roughness workflow. We've covered the theory behind PBR and implemented a shader that can be used with glTF models. We've also learned how to use push constants to efficiently pass material properties to our shaders.
+
+== What We've Learned
+
+This chapter has taken you through the essential concepts needed to implement physically-based rendering in a Vulkan engine. We introduced the metallic‑roughness PBR workflow, mapped glTF material properties to shader inputs, and used push constants to drive per‑draw material parameters without descriptor churn. You saw how the BRDF pieces cooperate to conserve energy and produce plausible lighting, and how to plug the shader into a vk::raii‑based pipeline so models render correctly end‑to‑end.
+
+== Making it click: a mental model of this PBR pipeline
+
+At a high level, think of your frame as a linear-light computation that transforms physical inputs into displayable pixels:
+
+- Inputs in linear space: lights with intensities in physical-ish units, baseColor/metallic/roughness from material, and normal/AO/emissive maps. The work is done in linear HDR so you don’t lose headroom.
+- BRDF roles: D shapes the highlight (roughness controls lobe width), G enforces masking/self-shadowing on microfacets, F boosts reflectance at grazing angles and ties reflectivity to material type via F0. Energy conservation links specular (kS) and diffuse (kD) so total doesn’t exceed what came in.
+- Material knobs as levers:
+  * Roughness: widens/narrows the specular lobe and also reduces peak intensity via G.
+  * Metallic: cross-fades between dielectric behavior (colored diffuse + neutral specular) and conductor behavior (colored specular, no diffuse).
+  * Base color: is diffuse albedo for dielectrics and colored specular for metals.
+- Normal/AO/emissive context: normal maps perturb local orientation to add detail, AO damps indirect/ambient to avoid flat crevices, emissive adds light-independent glow.
+- Output staging: after summing ambient/indirect and direct lighting, compress HDR with a tone mapper (e.g., Reinhard/ACES) and only then apply gamma to match the display. Do gamma exactly once (either shader pow or sRGB framebuffer).
+
+A quick reasoning loop when results look off:
+
+1. Confirm spaces and order: linear lighting ➜ tone map ➜ gamma. Check you’re not doing double-gamma.
+2. Probe the BRDF: plastic look on everything? Roughness too low or kD not reduced by metallic. Dim, muddy highlights? Roughness too high or exposure too low.
+3. Validate normals/TBN: inverted green channel or wrong tangent handedness causes odd shading and seams.
+4. Calibrate exposure/tone map: if whites clip harshly, add exposure control and/or switch to ACES/Hable for smoother roll-off.
+5. Use AO and emissive judiciously: AO should affect ambient/IBL, not direct specular; emissive is additive and independent of lights.
+
+This mental model helps you predict how a change to any input will echo through the pipeline and appear on screen, which is the core of “understanding,” not just following a list.
+
+== Potential Improvements
+
+Our PBR pass is a solid baseline. The most impactful upgrades are image‑based lighting (environment maps for ambient/indirect), shadowing, and a few material extensions (e.g., clear coat or anisotropy). On the performance side, consider clustered forward or a deferred path when light counts grow. If you build an HDR chain, bloom and a more filmic tone mapper (ACES/Hable) round out the presentation.
+
+== Next Steps
+
+Pick one thread and go deep. For lighting, explore GI/AO/volumetrics as time allows. For materials, design a data‑driven system that maps glTF (and custom) parameters cleanly to your shaders. For visuals, prototype post effects (fog, bloom, DoF). For performance, profile first, then optimize the hot spots—especially on mobile.
+
+Remember that lighting is a complex topic with many approaches and techniques. The implementation we've covered in this chapter is just the beginning. As you continue to develop your engine, you'll likely want to refine and expand your lighting system to meet the specific needs of your projects.
+
+In the next chapter, we'll explore GUI implementation, which will allow us to create interactive user interfaces for our applications.
+
+link:05_vulkan_integration.adoc[Previous: Vulkan Integration] | link:../GUI/01_introduction.adoc[Next: GUI - Introduction]

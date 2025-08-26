@@ -8,8 +8,13 @@
 #include <optional>
 #include <unordered_map>
 #include <mutex>
+#include <shared_mutex>
 #include <algorithm>
 #include <memory>
+#include <future>
+#include <unordered_set>
+#include <condition_variable>
+#include <atomic>
 
 #include "platform.h"
 #include "entity.h"
@@ -17,6 +22,7 @@
 #include "camera_component.h"
 #include "memory_pool.h"
 #include "model_loader.h"
+#include "thread_pool.h"
 
 // Forward declarations
 class ImGuiSystem;
@@ -28,6 +34,7 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
     std::optional<uint32_t> computeFamily;
+    std::optional<uint32_t> transferFamily; // optional dedicated transfer queue family
 
     [[nodiscard]] bool isComplete() const {
         return graphicsFamily.has_value() && presentFamily.has_value() && computeFamily.has_value();
@@ -194,6 +201,10 @@ public:
      */
     const vk::raii::Device& GetRaiiDevice() const { return device; }
 
+    // Expose uploads timeline semaphore and last value for external waits
+    vk::Semaphore GetUploadsTimelineSemaphore() const { return *uploadsTimeline; }
+    uint64_t GetUploadsTimelineValue() const { return uploadTimelineValue.load(std::memory_order_relaxed); }
+
     /**
      * @brief Get the compute queue.
      * @return The compute queue.
@@ -218,7 +229,11 @@ public:
      * @return The compute queue family index.
      */
     uint32_t GetComputeQueueFamilyIndex() const {
-        return queueFamilyIndices.computeFamily.value();
+        if (queueFamilyIndices.computeFamily.has_value()) {
+            return queueFamilyIndices.computeFamily.value();
+        }
+        // Fallback to graphics family to avoid crashes on devices without a separate compute queue
+        return queueFamilyIndices.graphicsFamily.value();
     }
 
     /**
@@ -227,14 +242,17 @@ public:
      * @param fence The fence to signal when the operation completes.
      */
     void SubmitToComputeQueue(vk::CommandBuffer commandBuffer, vk::Fence fence) const {
-        // Use mutex to ensure thread-safe access to compute queue
-        {
-            vk::SubmitInfo submitInfo{
-                .commandBufferCount = 1,
-                .pCommandBuffers = &commandBuffer
-            };
-            std::lock_guard<std::mutex> lock(queueMutex);
+        // Use mutex to ensure thread-safe access to queues
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffer
+        };
+        std::lock_guard<std::mutex> lock(queueMutex);
+        // Prefer compute queue when available; otherwise, fall back to graphics queue to avoid crashes
+        if (*computeQueue) {
             computeQueue.submit(submitInfo, fence);
+        } else {
+            graphicsQueue.submit(submitInfo, fence);
         }
     }
 
@@ -264,6 +282,9 @@ public:
      */
     bool LoadTexture(const std::string& texturePath);
 
+    // Asynchronous texture loading APIs (thread-pool backed)
+    std::future<bool> LoadTextureAsync(const std::string& texturePath);
+
     /**
      * @brief Load a texture from raw image data in memory.
      * @param textureId The identifier for the texture.
@@ -275,6 +296,48 @@ public:
      */
     bool LoadTextureFromMemory(const std::string& textureId, const unsigned char* imageData,
                               int width, int height, int channels);
+
+    // Asynchronous upload from memory (RGBA/RGB/other). Safe for concurrent calls.
+    std::future<bool> LoadTextureFromMemoryAsync(const std::string& textureId, const unsigned char* imageData,
+                              int width, int height, int channels);
+
+    // Progress query for UI
+    uint32_t GetTextureTasksScheduled() const { return textureTasksScheduled.load(); }
+    uint32_t GetTextureTasksCompleted() const { return textureTasksCompleted.load(); }
+
+    // Global loading state (model/scene)
+    bool IsLoading() const { return loadingFlag.load(); }
+    void SetLoading(bool v) { loadingFlag.store(v); }
+
+    // Texture aliasing: map canonical IDs to actual loaded keys (e.g., file paths) to avoid duplicates
+    inline void RegisterTextureAlias(const std::string& aliasId, const std::string& targetId) {
+        std::unique_lock<std::shared_mutex> lock(textureResourcesMutex);
+        if (aliasId.empty() || targetId.empty()) return;
+        // Resolve targetId without re-locking by walking the alias map directly
+        std::string resolved = targetId;
+        for (int i = 0; i < 8; ++i) {
+            auto it = textureAliases.find(resolved);
+            if (it == textureAliases.end()) break;
+            if (it->second == resolved) break;
+            resolved = it->second;
+        }
+        if (aliasId == resolved) {
+            textureAliases.erase(aliasId);
+        } else {
+            textureAliases[aliasId] = resolved;
+        }
+    }
+    inline std::string ResolveTextureId(const std::string& id) const {
+        std::shared_lock<std::shared_mutex> lock(textureResourcesMutex);
+        std::string cur = id;
+        for (int i = 0; i < 8; ++i) { // prevent pathological cycles
+            auto it = textureAliases.find(cur);
+            if (it == textureAliases.end()) break;
+            if (it->second == cur) break; // self-alias guard
+            cur = it->second;
+        }
+        return cur;
+    }
 
     /**
      * @brief Transition an image layout.
@@ -387,6 +450,13 @@ public:
      */
     void updateAllDescriptorSetsWithNewLightBuffers();
 
+    // Upload helper: record both layout transitions and the copy in a single submit with a fence
+    void uploadImageFromStaging(vk::Buffer staging,
+                                vk::Image image,
+                                vk::Format format,
+                                const std::vector<vk::BufferImageCopy>& regions,
+                                uint32_t mipLevels = 1);
+
     vk::Format findDepthFormat();
 
     /**
@@ -487,11 +557,20 @@ private:
     // Command pool and buffers
     vk::raii::CommandPool commandPool = nullptr;
     std::vector<vk::raii::CommandBuffer> commandBuffers;
+    // Protect usage of shared commandPool for transient command buffers
+    mutable std::mutex commandMutex;
+
+    // Dedicated transfer queue (falls back to graphics if unavailable)
+    vk::raii::Queue transferQueue = nullptr;
 
     // Synchronization objects
     std::vector<vk::raii::Semaphore> imageAvailableSemaphores;
     std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
     std::vector<vk::raii::Fence> inFlightFences;
+
+    // Upload timeline semaphore for transfer -> graphics handoff (signaled per upload)
+    vk::raii::Semaphore uploadsTimeline = nullptr;
+    std::atomic<uint64_t> uploadTimelineValue{0};
 
     // Depth buffer
     vk::raii::Image depthImage = nullptr;
@@ -522,6 +601,27 @@ private:
         uint32_t mipLevels = 1; // Store number of mipmap levels
     };
     std::unordered_map<std::string, TextureResources> textureResources;
+    // Protect concurrent access to textureResources
+    mutable std::shared_mutex textureResourcesMutex;
+
+    // Texture aliasing: maps alias (canonical) IDs to actual loaded keys
+    std::unordered_map<std::string, std::string> textureAliases;
+
+    // Per-texture load de-duplication (serialize loads of the same texture ID only)
+    mutable std::mutex textureLoadStateMutex;
+    std::condition_variable textureLoadStateCv;
+    std::unordered_set<std::string> texturesLoading;
+
+    // Serialize GPU-side texture upload (image/buffer creation, transitions) to avoid driver/memory pool races
+    mutable std::mutex textureUploadMutex;
+
+    // Thread pool for background background tasks (textures, etc.)
+    std::unique_ptr<ThreadPool> threadPool;
+
+    // Texture loading progress (for UI)
+    std::atomic<uint32_t> textureTasksScheduled{0};
+    std::atomic<uint32_t> textureTasksCompleted{0};
+    std::atomic<bool> loadingFlag{false};
 
     // Default texture resources (used when no texture is provided)
     TextureResources defaultTextureResources;
@@ -632,6 +732,9 @@ private:
     bool createSyncObjects();
 
     void cleanupSwapChain();
+
+    // Ensure Vulkan-Hpp dispatcher is initialized for the current thread when using RAII objects on worker threads
+    void ensureThreadLocalVulkanInit() const;
     void recreateSwapChain();
 
     void updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera);

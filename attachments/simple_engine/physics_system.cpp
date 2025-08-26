@@ -202,6 +202,25 @@ bool PhysicsSystem::Initialize() {
 }
 
 void PhysicsSystem::Update(std::chrono::milliseconds deltaTime) {
+    // Drain any pending rigid body creations queued from background threads
+    std::vector<PendingCreation> toCreate;
+    {
+        std::lock_guard<std::mutex> lk(pendingMutex);
+        if (!pendingCreations.empty()) {
+            toCreate.swap(pendingCreations);
+        }
+    }
+    for (const auto& pc : toCreate) {
+        if (!pc.entity) continue;
+        if (rigidBodies.size() >= maxGPUObjects) break; // avoid oversubscription
+        RigidBody* rb = CreateRigidBody(pc.entity, pc.shape, pc.mass);
+        if (rb) {
+            rb->SetKinematic(pc.kinematic);
+            rb->SetRestitution(pc.restitution);
+            rb->SetFriction(pc.friction);
+        }
+    }
+
     // GPU-ONLY physics - NO CPU fallback available
 
     // Check if GPU physics is properly initialized and available
@@ -224,6 +243,17 @@ void PhysicsSystem::Update(std::chrono::milliseconds deltaTime) {
 
     // Clean up rigid bodies marked for removal (happens regardless of GPU/CPU physics path)
     CleanupMarkedBodies();
+}
+
+void PhysicsSystem::EnqueueRigidBodyCreation(Entity* entity,
+                                  CollisionShape shape,
+                                  float mass,
+                                  bool kinematic,
+                                  float restitution,
+                                  float friction) {
+    if (!entity) return;
+    std::lock_guard<std::mutex> lk(pendingMutex);
+    pendingCreations.push_back(PendingCreation{entity, shape, mass, kinematic, restitution, friction});
 }
 
 RigidBody* PhysicsSystem::CreateRigidBody(Entity* entity, CollisionShape shape, float mass) {
@@ -995,8 +1025,10 @@ void PhysicsSystem::UpdateGPUPhysicsData(std::chrono::milliseconds deltaTime) co
     if (!rigidBodies.empty()) {
         // Use persistent mapped memory for physics buffer
         auto* gpuData = static_cast<GPUPhysicsData*>(vulkanResources.persistentPhysicsMemory);
-        for (size_t i = 0; i < rigidBodies.size(); i++) {
+        const size_t count = std::min(rigidBodies.size(), static_cast<size_t>(maxGPUObjects));
+        for (size_t i = 0; i < count; i++) {
             const auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBodies[i].get());
+            if (!concreteRigidBody) { continue; }
 
             gpuData[i].position = glm::vec4(concreteRigidBody->GetPosition(), concreteRigidBody->GetInverseMass());
             gpuData[i].rotation = glm::vec4(concreteRigidBody->GetRotation().x, concreteRigidBody->GetRotation().y,
@@ -1083,7 +1115,7 @@ void PhysicsSystem::UpdateGPUPhysicsData(std::chrono::milliseconds deltaTime) co
     // Update params buffer
     PhysicsParams params{};
     params.deltaTime = deltaTime.count() * 0.001f; // Use actual deltaTime instead of fixed timestep
-    params.numBodies = static_cast<uint32_t>(rigidBodies.size());
+    params.numBodies = static_cast<uint32_t>(std::min(rigidBodies.size(), static_cast<size_t>(maxGPUObjects)));
     params.maxCollisions = maxGPUCollisions;
     params.padding = 0.0f; // Initialize padding to zero for proper std140 alignment
     params.gravity = glm::vec4(gravity, 0.0f); // Pack gravity into vec4 with padding
@@ -1172,8 +1204,10 @@ void PhysicsSystem::ReadbackGPUPhysicsData() const {
     if (!rigidBodies.empty()) {
         // Use persistent mapped memory for physics buffer readback
         const auto* gpuData = static_cast<const GPUPhysicsData*>(vulkanResources.persistentPhysicsMemory);
-        for (size_t i = 0; i < rigidBodies.size(); i++) {
+        const size_t count = std::min(rigidBodies.size(), static_cast<size_t>(maxGPUObjects));
+        for (size_t i = 0; i < count; i++) {
             const auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBodies[i].get());
+            if (!concreteRigidBody) { continue; }
 
             // Skip kinematic bodies
             if (concreteRigidBody->IsKinematic()) {

@@ -234,6 +234,8 @@ bool Renderer::createSyncObjects() {
             inFlightFences.emplace_back(device, fenceInfo);
         }
 
+        // Ensure uploads timeline semaphore exists (created early in createLogicalDevice)
+        // No action needed here unless reinitializing after swapchain recreation.
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to create sync objects: " << e.what() << std::endl;
@@ -608,7 +610,15 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
     vk::raii::PipelineLayout* currentLayout = nullptr;
     std::vector<Entity*> blendedQueue;
 
-    // Render each entity
+    // If loading, skip drawing scene entities (only clear and allow overlay)
+    bool blockScene = false;
+    if (imguiSystem) {
+        // Prefer renderer flag when available
+        blockScene = IsLoading() || (GetTextureTasksScheduled() > 0 && GetTextureTasksCompleted() < GetTextureTasksScheduled());
+    }
+
+    // Render each entity (skip while loading)
+    if (!blockScene)
     for (auto const& uptr : entities) {
         Entity* entity = uptr.get();
         if (!entity || !entity->IsActive()) {
@@ -1027,11 +1037,20 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
     commandBuffers[currentFrame].end();
 
     // Submit command buffer
-    vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+    // Wait for both image availability (binary) and all completed texture uploads (timeline)
+    std::array<vk::Semaphore, 2> waitSems = { *imageAvailableSemaphores[currentFrame], *uploadsTimeline };
+    std::array<vk::PipelineStageFlags, 2> waitStages = { vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eFragmentShader };
+    uint64_t uploadsValueToWait = uploadTimelineValue.load(std::memory_order_relaxed);
+    std::array<uint64_t, 2> waitValues = { 0ull, uploadsValueToWait };
+    vk::TimelineSemaphoreSubmitInfo timelineWaitInfo{
+        .waitSemaphoreValueCount = static_cast<uint32_t>(waitValues.size()),
+        .pWaitSemaphoreValues = waitValues.data()
+    };
     vk::SubmitInfo submitInfo{
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*imageAvailableSemaphores[currentFrame],
-        .pWaitDstStageMask = waitStages,
+        .pNext = &timelineWaitInfo,
+        .waitSemaphoreCount = static_cast<uint32_t>(waitSems.size()),
+        .pWaitSemaphores = waitSems.data(),
+        .pWaitDstStageMask = waitStages.data(),
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[currentFrame],
         .signalSemaphoreCount = 1,

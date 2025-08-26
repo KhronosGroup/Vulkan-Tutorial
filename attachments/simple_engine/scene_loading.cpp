@@ -47,8 +47,11 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
 
     if (!modelLoader || !renderer) {
         std::cerr << "Error: ModelLoader or Renderer is null" << std::endl;
+        if (renderer) { renderer->SetLoading(false); }
         return;
     }
+    // Ensure loading flag is cleared on any exit from this function
+    struct LoadingGuard { Renderer* r; ~LoadingGuard(){ if (r) r->SetLoading(false); } } loadingGuard{renderer};
 
     // Extract model name from file path for entity naming
     std::filesystem::path modelFilePath(modelPath);
@@ -228,14 +231,21 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                 // Use mesh collision shape for accurate geometry interaction
                 PhysicsSystem* physicsSystem = engine->GetPhysicsSystem();
                 if (physicsSystem) {
-                    RigidBody* rigidBody = physicsSystem->CreateRigidBody(materialEntity, CollisionShape::Mesh, 0.0f); // Mass 0 = static
-                    if (rigidBody) {
-                        rigidBody->SetKinematic(true); // Static geometry doesn't move
-                        rigidBody->SetRestitution(0.15f); // Very low bounce - balls lose 85%+ momentum
-                        rigidBody->SetFriction(0.5f); // Moderate friction
-                        std::cout << "Created physics body for geometry entity: " << entityName << std::endl;
+                    // Only create a physics body if the mesh has valid geometry
+                    auto* mc = materialEntity->GetComponent<MeshComponent>();
+                    if (mc && !mc->GetVertices().empty() && !mc->GetIndices().empty()) {
+                        // Queue rigid body creation to the main thread to avoid races
+                        physicsSystem->EnqueueRigidBodyCreation(
+                            materialEntity,
+                            CollisionShape::Mesh,
+                            0.0f,            // mass 0 = static
+                            true,            // kinematic
+                            0.15f,           // restitution
+                            0.5f             // friction
+                        );
+                        std::cout << "Queued physics body for geometry entity: " << entityName << std::endl;
                     } else {
-                        std::cerr << "Failed to create physics body for entity: " << entityName << std::endl;
+                        std::cerr << "Skipping physics body for entity (no geometry): " << entityName << std::endl;
                     }
                 }
 

@@ -123,6 +123,55 @@ void ImGuiSystem::NewFrame() {
 
     ImGui::NewFrame();
 
+    // Loading overlay: show only a fullscreen progress bar while model/textures are loading
+    if (renderer) {
+        const uint32_t scheduled = renderer->GetTextureTasksScheduled();
+        const uint32_t completed = renderer->GetTextureTasksCompleted();
+        const bool modelLoading = renderer->IsLoading();
+        if (modelLoading || (scheduled > 0 && completed < scheduled)) {
+            ImGuiIO& io = ImGui::GetIO();
+            // Suppress right-click while loading
+            if (io.MouseDown[1]) io.MouseDown[1] = false;
+
+            const ImVec2 dispSize = io.DisplaySize;
+
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::SetNextWindowSize(dispSize);
+            ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                                     ImGuiWindowFlags_NoResize |
+                                     ImGuiWindowFlags_NoMove |
+                                     ImGuiWindowFlags_NoScrollbar |
+                                     ImGuiWindowFlags_NoCollapse |
+                                     ImGuiWindowFlags_NoSavedSettings |
+                                     ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                     ImGuiWindowFlags_NoNav;
+
+            if (ImGui::Begin("##LoadingOverlay", nullptr, flags)) {
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+                // Center the progress elements
+                const float barWidth = dispSize.x * 0.8f;
+                const float barX = (dispSize.x - barWidth) * 0.5f;
+                const float barY = dispSize.y * 0.45f;
+                ImGui::SetCursorPos(ImVec2(barX, barY));
+                ImGui::BeginGroup();
+                float frac = (scheduled > 0) ? (float)completed / (float)scheduled : 0.0f;
+                ImGui::ProgressBar(frac, ImVec2(barWidth, 0.0f));
+                ImGui::Dummy(ImVec2(0.0f, 10.0f));
+                ImGui::SetCursorPosX(barX);
+                if (modelLoading) {
+                    ImGui::Text("Loading model...");
+                } else {
+                    ImGui::Text("Loading textures: %u / %u", completed, scheduled);
+                }
+                ImGui::EndGroup();
+                ImGui::PopStyleVar();
+            }
+            ImGui::End();
+            // Do not draw the rest of the UI until loading finishes
+            return;
+        }
+    }
+
     // Create HRTF Audio Control UI
     ImGui::Begin("HRTF Audio Controls");
     ImGui::Text("Hello, Vulkan!");
@@ -357,6 +406,19 @@ void ImGuiSystem::NewFrame() {
         ImGui::Text("Camera: Tracking ball automatically");
     } else {
         ImGui::Text("Camera: Manual control (WASD + mouse)");
+    }
+
+    // Texture loading progress
+    if (renderer) {
+        const uint32_t scheduled = renderer->GetTextureTasksScheduled();
+        const uint32_t completed = renderer->GetTextureTasksCompleted();
+        if (scheduled > 0 && completed < scheduled) {
+            ImGui::Separator();
+            float frac = scheduled ? (float)completed / (float)scheduled : 1.0f;
+            ImGui::Text("Loading textures: %u / %u", completed, scheduled);
+            ImGui::ProgressBar(frac, ImVec2(-FLT_MIN, 0.0f));
+            ImGui::Text("You can continue interacting while textures stream in...");
+        }
     }
 
     ImGui::End();

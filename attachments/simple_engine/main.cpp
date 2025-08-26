@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 // Constants
 constexpr int WINDOW_WIDTH = 800;
@@ -38,8 +39,13 @@ void SetupScene(Engine* engine) {
     // Set the camera as the active camera
     engine->SetActiveCamera(camera);
 
-    // Load GLTF model synchronously on the main thread
-    LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
+    // Kick off GLTF model loading on a background thread so the main loop can start and render the UI/progress bar
+    if (auto* renderer = engine->GetRenderer()) {
+        renderer->SetLoading(true);
+    }
+    std::thread([engine]{
+        LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
+    }).detach();
 }
 
 #if defined(PLATFORM_ANDROID)

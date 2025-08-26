@@ -120,27 +120,37 @@ QueueFamilyIndices Renderer::findQueueFamilies(const vk::raii::PhysicalDevice& d
     // Get queue family properties
     std::vector<vk::QueueFamilyProperties> queueFamilies = device.getQueueFamilyProperties();
 
-    // Find queue families that support graphics, compute, and present
+    // Find queue families that support graphics, compute, present, and (optionally) a dedicated transfer queue
     for (uint32_t i = 0; i < queueFamilies.size(); i++) {
+        const auto& qf = queueFamilies[i];
         // Check for graphics support
-        if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics) {
+        if ((qf.queueFlags & vk::QueueFlagBits::eGraphics) && !indices.graphicsFamily.has_value()) {
             indices.graphicsFamily = i;
         }
-
         // Check for compute support
-        if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute) {
+        if ((qf.queueFlags & vk::QueueFlagBits::eCompute) && !indices.computeFamily.has_value()) {
             indices.computeFamily = i;
         }
-
         // Check for present support
-        if (device.getSurfaceSupportKHR(i, surface)) {
+        if (!indices.presentFamily.has_value() && device.getSurfaceSupportKHR(i, surface)) {
             indices.presentFamily = i;
         }
-
-        // If all queue families are found, break
-        if (indices.isComplete()) {
+        // Prefer a dedicated transfer queue (transfer bit set, but NOT graphics) if available
+        if ((qf.queueFlags & vk::QueueFlagBits::eTransfer) && !(qf.queueFlags & vk::QueueFlagBits::eGraphics)) {
+            if (!indices.transferFamily.has_value()) {
+                indices.transferFamily = i;
+            }
+        }
+        // If all required queue families are found, we can still continue to try find a dedicated transfer queue
+        if (indices.isComplete() && indices.transferFamily.has_value()) {
+            // Found everything including dedicated transfer
             break;
         }
+    }
+
+    // Fallback: if no dedicated transfer queue, reuse graphics queue for transfer
+    if (!indices.transferFamily.has_value() && indices.graphicsFamily.has_value()) {
+        indices.transferFamily = indices.graphicsFamily;
     }
 
     return indices;

@@ -8,12 +8,12 @@
 #include <iostream>
 #include <filesystem>
 #include <cstring>
+#include <functional>
 
 // stb_image dependency removed; all GLTF textures are uploaded via memory path from ModelLoader.
 
 // KTX2 support
 #include <ktx.h>
-#include <ktxvulkan.h>
 
 // This file contains resource-related methods from the Renderer class
 
@@ -65,28 +65,67 @@ bool Renderer::createDepthResources() {
 // Create texture image
 bool Renderer::createTextureImage(const std::string& texturePath_, TextureResources& resources) {
     try {
-        auto texturePath = const_cast<std::string&>(texturePath_);
+        ensureThreadLocalVulkanInit();
+        const std::string textureId = ResolveTextureId(texturePath_);
         // Check if texture already exists
-        auto it = textureResources.find(texturePath);
-        if (it != textureResources.end()) {
-            // Texture already loaded and cached; leave cache intact and return success
-            return true;
+        {
+            std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+            auto it = textureResources.find(textureId);
+            if (it != textureResources.end()) {
+                // Texture already loaded and cached; leave cache intact and return success
+                return true;
+            }
         }
 
+        // Resolve on-disk path (may differ from logical ID)
+        std::string resolvedPath = textureId;
+
+        // Ensure command pool is initialized before any GPU work
+        if (!*commandPool) {
+            std::cerr << "createTextureImage: commandPool not initialized yet for '" << textureId << "'" << std::endl;
+            return false;
+        }
+
+        // Per-texture de-duplication (serialize loads of the same texture ID only)
+        {
+            std::unique_lock<std::mutex> lk(textureLoadStateMutex);
+            while (texturesLoading.find(textureId) != texturesLoading.end()) {
+                textureLoadStateCv.wait(lk);
+            }
+        }
+        // Double-check cache after the wait
+        {
+            std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+            auto it2 = textureResources.find(textureId);
+            if (it2 != textureResources.end()) {
+                return true;
+            }
+        }
+        // Mark as loading and ensure we notify on all exit paths
+        {
+            std::lock_guard<std::mutex> lk(textureLoadStateMutex);
+            texturesLoading.insert(textureId);
+        }
+        auto _loadingGuard = std::unique_ptr<void, std::function<void(void*)>>((void*)1, [this, textureId](void*){
+            std::lock_guard<std::mutex> lk(textureLoadStateMutex);
+            texturesLoading.erase(textureId);
+            textureLoadStateCv.notify_all();
+        });
+
         // Check if this is a KTX2 file
-        bool isKtx2 = texturePath.find(".ktx2") != std::string::npos;
+        bool isKtx2 = resolvedPath.find(".ktx2") != std::string::npos;
 
         // If it's a KTX2 texture but the path doesn't exist, try common fallback filename variants
         if (isKtx2) {
-            std::filesystem::path origPath(texturePath);
+            std::filesystem::path origPath(resolvedPath);
             if (!std::filesystem::exists(origPath)) {
                 std::string fname = origPath.filename().string();
                 std::string dir = origPath.parent_path().string();
                 auto tryCandidate = [&](const std::string& candidateName) -> bool {
                     std::filesystem::path cand = std::filesystem::path(dir) / candidateName;
                     if (std::filesystem::exists(cand)) {
-                        std::cout << "Resolved missing texture '" << texturePath << "' to existing file '" << cand.string() << "'" << std::endl;
-                        texturePath = cand.string();
+                        std::cout << "Resolved missing texture '" << resolvedPath << "' to existing file '" << cand.string() << "'" << std::endl;
+                        resolvedPath = cand.string();
                         return true;
                     }
                     return false;
@@ -115,31 +154,32 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
         ktxTexture2* ktxTex = nullptr;
         vk::DeviceSize imageSize;
 
-        // Track KTX2 transcoding state and original format across the function scope
+        // Track KTX2 transcoding state across the function scope (BasisU only)
         bool wasTranscoded = false;
-        VkFormat ktxHeaderVkFormat = VK_FORMAT_UNDEFINED;
+        // Track KTX2 header-provided VkFormat (0 == VK_FORMAT_UNDEFINED)
+        uint32_t headerVkFormatRaw = 0;
 
         uint32_t mipLevels = 1;
         std::vector<vk::BufferImageCopy> copyRegions;
 
         if (isKtx2) {
             // Load KTX2 file
-            KTX_error_code result = ktxTexture2_CreateFromNamedFile(texturePath.c_str(),
+            KTX_error_code result = ktxTexture2_CreateFromNamedFile(resolvedPath.c_str(),
                                                                    KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
                                                                    &ktxTex);
             if (result != KTX_SUCCESS) {
                 // Retry with sibling suffix variants if file exists but cannot be parsed/opened
-                std::filesystem::path origPath(texturePath);
+                std::filesystem::path origPath(resolvedPath);
                 std::string fname = origPath.filename().string();
                 std::string dir = origPath.parent_path().string();
                 auto tryLoad = [&](const std::string& candidateName) -> bool {
                     std::filesystem::path cand = std::filesystem::path(dir) / candidateName;
                     if (std::filesystem::exists(cand)) {
                         std::string candStr = cand.string();
-                        std::cout << "Retrying KTX2 load with sibling candidate '" << candStr << "' for original '" << texturePath << "'" << std::endl;
+                        std::cout << "Retrying KTX2 load with sibling candidate '" << candStr << "' for original '" << resolvedPath << "'" << std::endl;
                         result = ktxTexture2_CreateFromNamedFile(candStr.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTex);
                         if (result == KTX_SUCCESS) {
-                            texturePath = candStr; // Use the successfully opened candidate
+                            resolvedPath = candStr; // Use the successfully opened candidate
                             return true;
                         }
                     }
@@ -160,21 +200,23 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
                         if (loaded) break;
                     }
                 }
-                assert (result != KTX_SUCCESS);
             }
 
-            // Cache header-provided VkFormat
-            ktxHeaderVkFormat = static_cast<VkFormat>(ktxTex->vkFormat);
+            // Bail out if we still failed to load
+            if (result != KTX_SUCCESS || ktxTex == nullptr) {
+                std::cerr << "Failed to load KTX2 texture: " << resolvedPath << " (error: " << result << ")" << std::endl;
+                return false;
+            }
 
-            // Check if texture needs transcoding (Basis Universal compressed)
+            // Read header-provided vkFormat (if already GPU-compressed/transcoded offline)
+            headerVkFormatRaw = static_cast<uint32_t>(ktxTex->vkFormat);
+
+            // Check if the texture needs BasisU transcoding; if so, transcode to RGBA32
             wasTranscoded = ktxTexture2_NeedsTranscoding(ktxTex);
             if (wasTranscoded) {
-                // Transcode to RGBA8 uncompressed format for Vulkan compatibility
-                ktx_transcode_fmt_e transcodeFormat = KTX_TTF_RGBA32;
-
-                result = ktxTexture2_TranscodeBasis(ktxTex, transcodeFormat, 0);
+                result = ktxTexture2_TranscodeBasis(ktxTex, KTX_TTF_RGBA32, 0);
                 if (result != KTX_SUCCESS) {
-                    std::cerr << "Failed to transcode KTX2 texture: " << texturePath << " (error: " << result << ")" << std::endl;
+                    std::cerr << "Failed to transcode KTX2 BasisU texture to RGBA32: " << resolvedPath << " (error: " << result << ")" << std::endl;
                     ktxTexture_Destroy((ktxTexture*)ktxTex);
                     return false;
                 }
@@ -182,17 +224,13 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
 
             texWidth = ktxTex->baseWidth;
             texHeight = ktxTex->baseHeight;
-            texChannels = 4; // KTX2 textures are typically RGBA
+            texChannels = 4; // logical channels; compressed size handled below
             // Disable mipmapping for now - memory pool only supports single mip level
             // TODO: Implement proper mipmap support in memory pool
             mipLevels = 1;
 
-            // Calculate size for base level only
-            if (wasTranscoded) {
-                imageSize = texWidth * texHeight * 4; // RGBA = 4 bytes per pixel
-            } else {
-                imageSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0); // Only level 0
-            }
+            // Calculate size for base level only (use libktx for correct size incl. compression)
+            imageSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
 
             // Create single copy region for base level only
             copyRegions.push_back({
@@ -210,7 +248,7 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
             });
         } else {
             // Non-KTX texture loading via file path is disabled to simplify pipeline.
-            std::cerr << "Unsupported non-KTX2 texture path: " << texturePath << std::endl;
+            std::cerr << "Unsupported non-KTX2 texture path: " << textureId << std::endl;
             return false;
         }
 
@@ -225,24 +263,11 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
         void* data = stagingBufferMemory.mapMemory(0, imageSize);
 
         if (isKtx2) {
-            // Copy KTX2 texture data for base level only (level 0)
-            size_t levelSize;
-            const void* levelData;
-
-            if (ktxTexture2_NeedsTranscoding(ktxTex)) {
-                // For transcoded textures, get data from the transcoded buffer
-                levelSize = texWidth * texHeight * 4; // RGBA = 4 bytes per pixel
-                ktx_size_t offset;
-                ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
-                levelData = ktxTexture_GetData((ktxTexture*)ktxTex) + offset;
-            } else {
-                // For non-transcoded textures, get data directly
-                levelSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
-                ktx_size_t offset;
-                ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
-                levelData = ktxTexture_GetData((ktxTexture*)ktxTex) + offset;
-            }
-
+            // Copy KTX2 texture data for base level only (level 0), regardless of transcode target
+            ktx_size_t offset = 0;
+            ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
+            const void* levelData = ktxTexture_GetData((ktxTexture*)ktxTex) + offset;
+            size_t levelSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
             memcpy(data, levelData, levelSize);
         } else {
             // Copy regular image data
@@ -258,24 +283,25 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
             // no-op: non-KTX path disabled
         }
 
-        // Determine appropriate texture format based on texture type and KTX2 metadata
+        // Determine appropriate texture format
         vk::Format textureFormat;
         if (isKtx2) {
-            if (wasTranscoded) {
-                // For transcoded Basis to RGBA32, choose by heuristic (sRGB for baseColor/albedo/diffuse)
-                textureFormat = Renderer::determineTextureFormat(texturePath);
-            } else {
-                // Use the VkFormat provided by the KTX2 container if available (from header)
-                VkFormat vkfmt = ktxHeaderVkFormat;
-                if (vkfmt == VK_FORMAT_UNDEFINED) {
-                    textureFormat = Renderer::determineTextureFormat(texturePath);
+            // If the KTX2 provided a valid VkFormat and we did NOT transcode, use it (may be a GPU compressed format)
+            if (!wasTranscoded) {
+                VkFormat headerFmt = static_cast<VkFormat>(headerVkFormatRaw);
+                if (headerFmt != VK_FORMAT_UNDEFINED) {
+                    textureFormat = static_cast<vk::Format>(headerFmt);
                 } else {
-                    textureFormat = static_cast<vk::Format>(vkfmt);
+                    textureFormat = Renderer::determineTextureFormat(textureId);
                 }
+            } else {
+                // Transcoded to RGBA32; choose SRGB/UNORM by heuristic
+                textureFormat = Renderer::determineTextureFormat(textureId);
             }
         } else {
-            textureFormat = Renderer::determineTextureFormat(texturePath);
+            textureFormat = Renderer::determineTextureFormat(textureId);
         }
+
 
         // Create texture image using memory pool
         auto [textureImg, textureImgAllocation] = createImagePooled(
@@ -290,32 +316,8 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
         resources.textureImage = std::move(textureImg);
         resources.textureImageAllocation = std::move(textureImgAllocation);
 
-        // Transition image layout for copy
-        transitionImageLayout(
-            *resources.textureImage,
-            textureFormat,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal,
-            mipLevels
-        );
-
-        // Copy buffer to image
-        copyBufferToImage(
-            *stagingBuffer,
-            *resources.textureImage,
-            static_cast<uint32_t>(texWidth),
-            static_cast<uint32_t>(texHeight),
-            copyRegions
-        );
-
-        // Transition image layout for shader access
-        transitionImageLayout(
-            *resources.textureImage,
-            textureFormat,
-            vk::ImageLayout::eTransferDstOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            mipLevels
-        );
+        // GPU upload for this texture (no global serialization)
+        uploadImageFromStaging(*stagingBuffer, *resources.textureImage, textureFormat, copyRegions, mipLevels);
 
         // Store the format and mipLevels for createTextureImageView
         resources.format = textureFormat;
@@ -331,8 +333,11 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
             return false;
         }
 
-        // Add to texture resources map
-        textureResources[texturePath] = std::move(resources);
+        // Add to texture resources map (guarded)
+        {
+            std::unique_lock<std::shared_mutex> texLock(textureResourcesMutex);
+            textureResources[textureId] = std::move(resources);
+        }
 
         return true;
     } catch (const std::exception& e) {
@@ -499,6 +504,7 @@ bool Renderer::createDefaultTextureResources() {
 // Create texture sampler
 bool Renderer::createTextureSampler(TextureResources& resources) {
     try {
+        ensureThreadLocalVulkanInit();
         // Get physical device properties
         vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 
@@ -531,23 +537,30 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
 
 // Load texture from file (public wrapper for createTextureImage)
 bool Renderer::LoadTexture(const std::string& texturePath) {
+    ensureThreadLocalVulkanInit();
     if (texturePath.empty()) {
         std::cerr << "LoadTexture: Empty texture path provided" << std::endl;
         return false;
     }
 
+    // Resolve aliases (canonical ID -> actual key)
+    const std::string resolvedId = ResolveTextureId(texturePath);
+
     // Check if texture is already loaded
-    auto it = textureResources.find(texturePath);
-    if (it != textureResources.end()) {
-        // Texture already loaded
-        return true;
+    {
+        std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+        auto it = textureResources.find(resolvedId);
+        if (it != textureResources.end()) {
+            // Texture already loaded
+            return true;
+        }
     }
 
     // Create temporary texture resources (unused output; cache will be populated internally)
     TextureResources tempResources;
 
     // Use existing createTextureImage method (it inserts into textureResources on success)
-    bool success = createTextureImage(texturePath, tempResources);
+    bool success = createTextureImage(resolvedId, tempResources);
 
     if (!success) {
         std::cerr << "Failed to load texture: " << texturePath << std::endl;
@@ -581,17 +594,49 @@ vk::Format Renderer::determineTextureFormat(const std::string& textureId) {
 // Load texture from raw image data in memory
 bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigned char* imageData,
                                     int width, int height, int channels) {
-    if (textureId.empty() || !imageData || width <= 0 || height <= 0 || channels <= 0) {
+    ensureThreadLocalVulkanInit();
+    const std::string resolvedId = ResolveTextureId(textureId);
+    std::cout << "[LoadTextureFromMemory] start id=" << textureId << " -> resolved=" << resolvedId << " size=" << width << "x" << height << " ch=" << channels << std::endl;
+    if (resolvedId.empty() || !imageData || width <= 0 || height <= 0 || channels <= 0) {
         std::cerr << "LoadTextureFromMemory: Invalid parameters" << std::endl;
         return false;
     }
 
     // Check if texture is already loaded
-    auto it = textureResources.find(textureId);
-    if (it != textureResources.end()) {
-        // Texture already loaded
-        return true;
+    {
+        std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+        auto it = textureResources.find(resolvedId);
+        if (it != textureResources.end()) {
+            // Texture already loaded
+            return true;
+        }
     }
+
+    // Per-texture de-duplication (serialize loads of the same texture ID only)
+    {
+        std::unique_lock<std::mutex> lk(textureLoadStateMutex);
+        while (texturesLoading.find(resolvedId) != texturesLoading.end()) {
+            textureLoadStateCv.wait(lk);
+        }
+    }
+    // Double-check cache after the wait
+    {
+        std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+        auto it2 = textureResources.find(resolvedId);
+        if (it2 != textureResources.end()) {
+            return true;
+        }
+    }
+    // Mark as loading and ensure we notify on all exit paths
+    {
+        std::lock_guard<std::mutex> lk(textureLoadStateMutex);
+        texturesLoading.insert(resolvedId);
+    }
+    auto _loadingGuard = std::unique_ptr<void, std::function<void(void*)>>((void*)1, [this, resolvedId](void*){
+        std::lock_guard<std::mutex> lk(textureLoadStateMutex);
+        texturesLoading.erase(resolvedId);
+        textureLoadStateCv.notify_all();
+    });
 
     try {
         TextureResources resources;
@@ -648,6 +693,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
 
         // Determine the appropriate texture format based on the texture type
         vk::Format textureFormat = determineTextureFormat(textureId);
+
         // Create texture image using memory pool
         auto [textureImg, textureImgAllocation] = createImagePooled(
             width,
@@ -661,15 +707,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
         resources.textureImage = std::move(textureImg);
         resources.textureImageAllocation = std::move(textureImgAllocation);
 
-        // Transition image layout for copy
-        transitionImageLayout(
-            *resources.textureImage,
-            textureFormat,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal
-        );
-
-        // Copy buffer to image
+        // GPU upload (no global serialization). Copy buffer to image in a single submit.
         std::vector<vk::BufferImageCopy> regions = {{
             .bufferOffset = 0,
             .bufferRowLength = 0,
@@ -683,24 +721,13 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
             .imageOffset = {0, 0, 0},
             .imageExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1}
         }};
-        copyBufferToImage(
-            *stagingBuffer,
-            *resources.textureImage,
-            static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height),
-            regions
-        );
-
-        // Transition image layout for shader access
-        transitionImageLayout(
-            *resources.textureImage,
-            textureFormat,
-            vk::ImageLayout::eTransferDstOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal
-        );
+        uploadImageFromStaging(*stagingBuffer, *resources.textureImage, textureFormat, regions, 1);
 
         // Store the format for createTextureImageView
         resources.format = textureFormat;
+
+        // Use resolvedId as the cache key to avoid duplicates
+        const std::string& cacheId = resolvedId;
 
         // Create texture image view
         resources.textureImageView = createImageView(
@@ -714,10 +741,13 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
             return false;
         }
 
-        // Add to texture resources map
-        textureResources[textureId] = std::move(resources);
+        // Add to texture resources map (guarded)
+        {
+            std::unique_lock<std::shared_mutex> texLock(textureResourcesMutex);
+            textureResources[cacheId] = std::move(resources);
+        }
 
-        std::cout << "Successfully loaded texture from memory: " << textureId
+        std::cout << "Successfully loaded texture from memory: " << cacheId
                   << " (" << width << "x" << height << ", " << channels << " channels)" << std::endl;
         return true;
 
@@ -729,6 +759,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
 
 // Create mesh resources
 bool Renderer::createMeshResources(MeshComponent* meshComponent) {
+    ensureThreadLocalVulkanInit();
     try {
         // Check if mesh resources already exist
         auto it = meshResources.find(meshComponent);
@@ -811,6 +842,7 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
 
 // Create uniform buffers
 bool Renderer::createUniformBuffers(Entity* entity) {
+    ensureThreadLocalVulkanInit();
     try {
         // Check if entity resources already exist
         auto it = entityResources.find(entity);
@@ -942,6 +974,10 @@ bool Renderer::createDescriptorPool() {
 
 // Create descriptor sets
 bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePath, bool usePBR) {
+    // Resolve alias before taking the shared lock to avoid nested shared_lock on the same mutex
+    const std::string resolvedTexturePath = ResolveTextureId(texturePath);
+    // Guard textureResources access while resolving texture handles
+    std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
     try {
         // Get entity resources
         auto entityIt = entityResources.find(entity);
@@ -953,7 +989,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
         // Get texture resources - use default texture as fallback if specific texture fails
         TextureResources* textureRes = nullptr;
         if (!texturePath.empty()) {
-            auto textureIt = textureResources.find(texturePath);
+            auto textureIt = textureResources.find(resolvedTexturePath);
             if (textureIt == textureResources.end()) {
                 // If this is a GLTF embedded texture ID, don't try to load from disk
                 if (texturePath.rfind("gltf_", 0) == 0) {
@@ -985,8 +1021,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                         textureRes = &defaultTextureResources;
                     }
                 } else {
-                    std::cerr << "Warning: On-demand texture loading disabled for " << texturePath
-                              << "; using default texture instead" << std::endl;
+                    // Texture not yet available; bind default texture for now.
                     textureRes = &defaultTextureResources;
                 }
             } else {
@@ -1157,9 +1192,10 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
                 // Create image infos for each PBR texture binding
                 for (int j = 0; j < 5; j++) {
                     const std::string& currentTexturePath = pbrTexturePaths[j];
+                    const std::string resolvedBindingPath = ResolveTextureId(currentTexturePath);
 
                     // Find the texture resources for this binding
-                    auto textureIt = textureResources.find(currentTexturePath);
+                    auto textureIt = textureResources.find(resolvedBindingPath);
                     if (textureIt != textureResources.end()) {
                         // Use the specific texture for this binding
                         const auto& texRes = textureIt->second;
@@ -1466,10 +1502,16 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::createBuffer(
 
 // Copy buffer
 void Renderer::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) {
+    ensureThreadLocalVulkanInit();
     try {
-        // Create command buffer using RAII
+        // Create a temporary transient command pool and command buffer to isolate per-thread usage (transfer family)
+        vk::CommandPoolCreateInfo poolInfo{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = queueFamilyIndices.transferFamily.value()
+        };
+        vk::raii::CommandPool tempPool(device, poolInfo);
         vk::CommandBufferAllocateInfo allocInfo{
-            .commandPool = *commandPool,
+            .commandPool = *tempPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1
         };
@@ -1502,12 +1544,13 @@ void Renderer::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuff
             .pCommandBuffers = &*commandBuffer
         };
 
-        // Use mutex to ensure thread-safe access to graphics queue
+        // Use mutex to ensure thread-safe access to transfer queue
+        vk::raii::Fence fence(device, vk::FenceCreateInfo{});
         {
             std::lock_guard<std::mutex> lock(queueMutex);
-            graphicsQueue.submit(submitInfo, nullptr);
-            graphicsQueue.waitIdle();
+            transferQueue.submit(submitInfo, *fence);
         }
+        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer: " << e.what() << std::endl;
         throw;
@@ -1574,7 +1617,6 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
 
         // Use memory pool for allocation (mipmap support limited by memory pool API)
         auto [image, allocation] = memoryPool->createImage(width, height, format, tiling, usage, properties);
-        std::cout << "Created image using memory pool: " << width << "x" << height << " format=" << static_cast<int>(format) << " mipLevels=" << mipLevels << std::endl;
 
         return {std::move(image), std::move(allocation)};
 
@@ -1587,6 +1629,7 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
 // Create an image view
 vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels) {
     try {
+        ensureThreadLocalVulkanInit();
         // Create image view
         vk::ImageViewCreateInfo viewInfo{
             .image = *image,
@@ -1610,10 +1653,16 @@ vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format
 
 // Transition image layout
 void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels) {
+    ensureThreadLocalVulkanInit();
     try {
-        // Create a command buffer using RAII
+        // Create a temporary transient command pool and command buffer to isolate per-thread usage
+        vk::CommandPoolCreateInfo poolInfo{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = queueFamilyIndices.graphicsFamily.value()
+        };
+        vk::raii::CommandPool tempPool(device, poolInfo);
         vk::CommandBufferAllocateInfo allocInfo{
-            .commandPool = *commandPool,
+            .commandPool = *tempPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1
         };
@@ -1687,22 +1736,24 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
             nullptr,
             barrier
         );
+        std::cout << "[transitionImageLayout] recorded barrier image=" << (void*)image << " old=" << (int)oldLayout << " new=" << (int)newLayout << std::endl;
 
         // End command buffer
         commandBuffer.end();
 
         // Submit command buffer
 
-        // Use mutex to ensure thread-safe access to the graphics queue
+        // Submit transition; protect submit with mutex but wait outside
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &*commandBuffer
+        };
+        vk::raii::Fence fence(device, vk::FenceCreateInfo{});
         {
-            vk::SubmitInfo submitInfo{
-                .commandBufferCount = 1,
-                .pCommandBuffers = &*commandBuffer
-            };
-            std::lock_guard lock(queueMutex);
-            graphicsQueue.submit(submitInfo, nullptr);
-            graphicsQueue.waitIdle();
+            std::lock_guard<std::mutex> lock(queueMutex);
+            graphicsQueue.submit(submitInfo, *fence);
         }
+        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "Failed to transition image layout: " << e.what() << std::endl;
         throw;
@@ -1711,10 +1762,16 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 
 // Copy buffer to image
 void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, const std::vector<vk::BufferImageCopy>& regions) const {
+    ensureThreadLocalVulkanInit();
     try {
-        // Create a command buffer using RAII
+        // Create a temporary transient command pool for the transfer queue
+        vk::CommandPoolCreateInfo poolInfo{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = queueFamilyIndices.transferFamily.value()
+        };
+        vk::raii::CommandPool tempPool(device, poolInfo);
         vk::CommandBufferAllocateInfo allocInfo{
-            .commandPool = *commandPool,
+            .commandPool = *tempPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1
         };
@@ -1736,6 +1793,7 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
             vk::ImageLayout::eTransferDstOptimal,
             regions
         );
+        std::cout << "[copyBufferToImage] recorded copy img=" << (void*)image << std::endl;
 
         // End command buffer
         commandBuffer.end();
@@ -1746,12 +1804,13 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
             .pCommandBuffers = &*commandBuffer
         };
 
-        // Use mutex to ensure thread-safe access to graphics queue
+        // Protect submit with queue mutex, wait outside
+        vk::raii::Fence fence(device, vk::FenceCreateInfo{});
         {
             std::lock_guard<std::mutex> lock(queueMutex);
-            graphicsQueue.submit(submitInfo, nullptr);
-            graphicsQueue.waitIdle();
+            transferQueue.submit(submitInfo, *fence);
         }
+        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer to image: " << e.what() << std::endl;
         throw;
@@ -1939,5 +1998,151 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
     } catch (const std::exception& e) {
         std::cerr << "Failed to update light storage buffer: " << e.what() << std::endl;
         return false;
+    }
+}
+
+
+// Asynchronous texture loading implementations using ThreadPool
+std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath) {
+    if (texturePath.empty()) {
+        return std::async(std::launch::deferred, [] { return false; });
+    }
+    // Schedule the load without dropping tasks; throttling is handled during GPU upload
+    textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
+    auto task = [this, texturePath]() {
+        bool ok = this->LoadTexture(texturePath);
+        textureTasksCompleted.fetch_add(1, std::memory_order_relaxed);
+        return ok;
+    };
+    if (!threadPool) {
+        return std::async(std::launch::async, task);
+    }
+    return threadPool->enqueue(task);
+}
+
+std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textureId, const unsigned char* imageData,
+                              int width, int height, int channels) {
+    if (!imageData || textureId.empty() || width <= 0 || height <= 0 || channels <= 0) {
+        return std::async(std::launch::deferred, [] { return false; });
+    }
+    // Copy the source bytes so the caller can free/modify their buffer immediately
+    size_t srcSize = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels);
+    std::vector<unsigned char> dataCopy(srcSize);
+    std::memcpy(dataCopy.data(), imageData, srcSize);
+
+    textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
+    auto task = [this, textureId, data = std::move(dataCopy), width, height, channels]() mutable {
+        bool ok = this->LoadTextureFromMemory(textureId, data.data(), width, height, channels);
+        textureTasksCompleted.fetch_add(1, std::memory_order_relaxed);
+        return ok;
+    };
+    if (!threadPool) {
+        return std::async(std::launch::async, std::move(task));
+    }
+    return threadPool->enqueue(std::move(task));
+}
+
+
+// Record both layout transitions and the copy in a single submission with a fence
+void Renderer::uploadImageFromStaging(vk::Buffer staging,
+                                      vk::Image image,
+                                      vk::Format format,
+                                      const std::vector<vk::BufferImageCopy>& regions,
+                                      uint32_t mipLevels) {
+    ensureThreadLocalVulkanInit();
+    try {
+        // Use a temporary transient command pool for the transfer queue family
+        vk::CommandPoolCreateInfo poolInfo{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = queueFamilyIndices.transferFamily.value()
+        };
+        vk::raii::CommandPool tempPool(device, poolInfo);
+        vk::CommandBufferAllocateInfo allocInfo{
+            .commandPool = *tempPool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1
+        };
+        vk::raii::CommandBuffers cbs(device, allocInfo);
+        vk::raii::CommandBuffer& cb = cbs[0];
+
+        vk::CommandBufferBeginInfo beginInfo{ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+        cb.begin(beginInfo);
+
+        // Barrier: Undefined -> TransferDstOptimal
+        vk::ImageMemoryBarrier toTransfer{
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eTransferDstOptimal,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = image,
+            .subresourceRange = {
+                .aspectMask = (format == vk::Format::eD32Sfloat || format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint)
+                               ? vk::ImageAspectFlagBits::eDepth
+                               : vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = mipLevels,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        toTransfer.srcAccessMask = vk::AccessFlagBits::eNone;
+        toTransfer.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+        cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
+                           vk::PipelineStageFlagBits::eTransfer,
+                           vk::DependencyFlagBits::eByRegion,
+                           nullptr, nullptr, toTransfer);
+
+        // Copy
+        cb.copyBufferToImage(staging, image, vk::ImageLayout::eTransferDstOptimal, regions);
+
+        // Barrier: TransferDstOptimal -> ShaderReadOnlyOptimal
+        vk::ImageMemoryBarrier toShader{
+            .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+            .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = image,
+            .subresourceRange = {
+                .aspectMask = (format == vk::Format::eD32Sfloat || format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint)
+                               ? vk::ImageAspectFlagBits::eDepth
+                               : vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = mipLevels,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        toShader.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        toShader.dstAccessMask = vk::AccessFlagBits::eNone; // cannot use ShaderRead on transfer queue; visibility handled via timeline wait on graphics
+        cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                           vk::PipelineStageFlagBits::eTransfer,
+                           vk::DependencyFlagBits::eByRegion,
+                           nullptr, nullptr, toShader);
+
+        cb.end();
+
+        // Submit once on the transfer queue, signal timeline semaphore, and wait fence (for safety)
+        uint64_t signalValue = uploadTimelineValue.fetch_add(1, std::memory_order_relaxed) + 1;
+        vk::TimelineSemaphoreSubmitInfo timelineInfo{
+            .signalSemaphoreValueCount = 1,
+            .pSignalSemaphoreValues = &signalValue
+        };
+        vk::SubmitInfo submit{
+            .pNext = &timelineInfo,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &*cb,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &*uploadsTimeline
+        };
+        vk::raii::Fence fence(device, vk::FenceCreateInfo{});
+        // Prefer dedicated transfer queue
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            transferQueue.submit(submit, *fence);
+        }
+        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+    } catch (const std::exception& e) {
+        std::cerr << "uploadImageFromStaging failed: " << e.what() << std::endl;
+        throw;
     }
 }

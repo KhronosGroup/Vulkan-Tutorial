@@ -5,6 +5,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <vulkan/vulkan_raii.hpp>
+#include <mutex>
 
 class Entity;
 class Renderer;
@@ -287,11 +288,32 @@ public:
      */
     void SetCameraPosition(const glm::vec3& _cameraPosition) { cameraPosition = _cameraPosition; }
 
+    // Thread-safe enqueue for rigid body creation from any thread
+    void EnqueueRigidBodyCreation(Entity* entity,
+                                  CollisionShape shape,
+                                  float mass,
+                                  bool kinematic,
+                                  float restitution,
+                                  float friction);
+
 private:
     /**
      * @brief Clean up rigid bodies that are marked for removal.
      */
     void CleanupMarkedBodies();
+
+    // Pending rigid body creations queued from background threads
+    struct PendingCreation {
+        Entity* entity;
+        CollisionShape shape;
+        float mass;
+        bool kinematic;
+        float restitution;
+        float friction;
+    };
+    std::mutex pendingMutex;
+    std::vector<PendingCreation> pendingCreations;
+
     // Rigid bodies
     std::vector<std::unique_ptr<RigidBody>> rigidBodies;
 

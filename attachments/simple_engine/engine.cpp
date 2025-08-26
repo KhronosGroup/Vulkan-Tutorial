@@ -285,6 +285,11 @@ void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
     // Check if ImGui wants to capture mouse input first
         bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
 
+        // Suppress right-click while loading
+        if (renderer && renderer->IsLoading()) {
+            buttons &= ~2u; // clear right button bit
+        }
+
         if (!imguiWantsMouse) {
             // Handle mouse click for ball throwing (right mouse button)
             if (buttons & 2) { // Right mouse button (bit 1)

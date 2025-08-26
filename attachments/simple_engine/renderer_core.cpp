@@ -5,6 +5,7 @@
 #include <map>
 #include <cstring>
 #include <ranges>
+#include <thread>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE; // In a .cpp file
 
@@ -173,12 +174,48 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
+    // Initialize background thread pool for async tasks (textures, etc.) AFTER all Vulkan resources are ready
+    try {
+        // Size the thread pool based on hardware concurrency, clamped to a sensible range
+        unsigned int hw = std::max(2u, std::min(8u, std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : 4u));
+        threadPool = std::make_unique<ThreadPool>(hw);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create thread pool: " << e.what() << std::endl;
+        return false;
+    }
+
     initialized = true;
     return true;
 }
 
+void Renderer::ensureThreadLocalVulkanInit() const {
+    // Initialize Vulkan-Hpp dispatcher per-thread; required for multi-threaded RAII usage
+    static thread_local bool s_tlsInitialized = false;
+    if (s_tlsInitialized) return;
+    try {
+        vk::detail::DynamicLoader dl;
+        auto vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        if (vkGetInstanceProcAddr) {
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+        }
+        if (*instance) {
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
+        }
+        if (*device) {
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(*device);
+        }
+        s_tlsInitialized = true;
+    } catch (...) {
+        // best-effort
+    }
+}
+
 // Clean up renderer resources
 void Renderer::Cleanup() {
+    // Ensure background workers are stopped before tearing down Vulkan resources
+    if (threadPool) {
+        threadPool.reset();
+    }
     if (initialized) {
         std::cout << "Starting renderer cleanup..." << std::endl;
 
@@ -448,7 +485,8 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
         std::set uniqueQueueFamilies = {
             queueFamilyIndices.graphicsFamily.value(),
             queueFamilyIndices.presentFamily.value(),
-            queueFamilyIndices.computeFamily.value()
+            queueFamilyIndices.computeFamily.value(),
+            queueFamilyIndices.transferFamily.value()
         };
 
         float queuePriority = 1.0f;
@@ -522,6 +560,16 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
         graphicsQueue = vk::raii::Queue(device, queueFamilyIndices.graphicsFamily.value(), 0);
         presentQueue = vk::raii::Queue(device, queueFamilyIndices.presentFamily.value(), 0);
         computeQueue = vk::raii::Queue(device, queueFamilyIndices.computeFamily.value(), 0);
+        transferQueue = vk::raii::Queue(device, queueFamilyIndices.transferFamily.value(), 0);
+
+        // Create global timeline semaphore for uploads early (needed before default texture creation)
+        vk::SemaphoreTypeCreateInfo typeInfo{
+            .semaphoreType = vk::SemaphoreType::eTimeline,
+            .initialValue = 0
+        };
+        vk::SemaphoreCreateInfo timelineCreateInfo{ .pNext = &typeInfo };
+        uploadsTimeline = vk::raii::Semaphore(device, timelineCreateInfo);
+        uploadTimelineValue.store(0, std::memory_order_relaxed);
 
         return true;
     } catch (const std::exception& e) {

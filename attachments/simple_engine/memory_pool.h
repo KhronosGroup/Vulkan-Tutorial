@@ -57,6 +57,8 @@ public:
 private:
     const vk::raii::Device& device;
     const vk::raii::PhysicalDevice& physicalDevice;
+    vk::PhysicalDeviceMemoryProperties memPropsCache{};
+
 
     // Pool configurations
     struct PoolConfig {
@@ -78,6 +80,8 @@ private:
     // Helper methods
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const;
     std::unique_ptr<MemoryBlock> createMemoryBlock(PoolType poolType, vk::DeviceSize size);
+    // Create a memory block with an explicit memory type index (used for images requiring a specific type)
+    std::unique_ptr<MemoryBlock> createMemoryBlockWithType(PoolType poolType, vk::DeviceSize size, uint32_t memoryTypeIndex);
     std::pair<MemoryBlock*, size_t> findSuitableBlock(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment);
 
 public:

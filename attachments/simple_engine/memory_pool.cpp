@@ -1,10 +1,12 @@
 #include "memory_pool.h"
 #include <iostream>
 #include <algorithm>
+#include <vulkan/vulkan.hpp>
 
 MemoryPool::MemoryPool(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice)
     : device(device), physicalDevice(physicalDevice) {
 }
+
 
 MemoryPool::~MemoryPool() {
     // RAII will handle cleanup automatically
@@ -153,6 +155,48 @@ std::unique_ptr<MemoryPool::MemoryBlock> MemoryPool::createMemoryBlock(PoolType 
     return block;
 }
 
+std::unique_ptr<MemoryPool::MemoryBlock> MemoryPool::createMemoryBlockWithType(PoolType poolType, vk::DeviceSize size, uint32_t memoryTypeIndex) {
+    auto configIt = poolConfigs.find(poolType);
+    if (configIt == poolConfigs.end()) {
+        throw std::runtime_error("Pool type not configured");
+    }
+    const PoolConfig& config = configIt->second;
+
+    // Allocate the memory block with the exact requested size
+    vk::MemoryAllocateInfo allocInfo{
+        .allocationSize = size,
+        .memoryTypeIndex = memoryTypeIndex
+    };
+
+    // Determine properties from the chosen memory type
+    const auto memProps = physicalDevice.getMemoryProperties();
+    if (memoryTypeIndex >= memProps.memoryTypeCount) {
+        throw std::runtime_error("Invalid memoryTypeIndex for createMemoryBlockWithType");
+    }
+    const vk::MemoryPropertyFlags typeProps = memProps.memoryTypes[memoryTypeIndex].propertyFlags;
+
+    auto block = std::unique_ptr<MemoryBlock>(new MemoryBlock{
+        .memory = vk::raii::DeviceMemory(device, allocInfo),
+        .size = size,
+        .used = 0,
+        .memoryTypeIndex = memoryTypeIndex,
+        .isMapped = false,
+        .mappedPtr = nullptr,
+        .freeList = {},
+        .allocationUnit = config.allocationUnit
+    });
+
+    block->isMapped = (typeProps & vk::MemoryPropertyFlagBits::eHostVisible) != vk::MemoryPropertyFlags{};
+    if (block->isMapped) {
+        block->mappedPtr = block->memory.mapMemory(0, size);
+    }
+
+    const size_t numUnits = static_cast<size_t>(block->size / config.allocationUnit);
+    block->freeList.resize(numUnits, true);
+
+    return block;
+}
+
 std::pair<MemoryPool::MemoryBlock*, size_t> MemoryPool::findSuitableBlock(PoolType poolType, vk::DeviceSize size, vk::DeviceSize alignment) {
     auto poolIt = pools.find(poolType);
     if (poolIt == pools.end()) {
@@ -162,27 +206,42 @@ std::pair<MemoryPool::MemoryBlock*, size_t> MemoryPool::findSuitableBlock(PoolTy
     auto& poolBlocks = poolIt->second;
     const PoolConfig& config = poolConfigs[poolType];
 
-    // Calculate required units (accounting for alignment)
+    // Calculate required units (accounting for size alignment)
     const vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
-    const size_t requiredUnits = (alignedSize + config.allocationUnit - 1) / config.allocationUnit;
+    const size_t requiredUnits = static_cast<size_t>((alignedSize + config.allocationUnit - 1) / config.allocationUnit);
 
-    // Search existing blocks for sufficient free space
+    // Search existing blocks for sufficient free space with proper offset alignment
     for (const auto& block : poolBlocks) {
-        // Find consecutive free units
-        size_t consecutiveFree = 0;
-        size_t startUnitCandidate = 0;
-        for (size_t i = 0; i < block->freeList.size(); ++i) {
-            if (block->freeList[i]) {
-                if (consecutiveFree == 0) {
-                    startUnitCandidate = i;
-                }
-                consecutiveFree++;
-                if (consecutiveFree >= requiredUnits) {
-                    return {block.get(), startUnitCandidate};
-                }
-            } else {
-                consecutiveFree = 0;
+        const vk::DeviceSize unit = config.allocationUnit;
+        const size_t totalUnits = block->freeList.size();
+
+        size_t i = 0;
+        while (i < totalUnits) {
+            // Ensure starting unit produces an offset aligned to 'alignment'
+            vk::DeviceSize startOffset = static_cast<vk::DeviceSize>(i) * unit;
+            if ((alignment > 0) && (startOffset % alignment != 0)) {
+                // Advance i to the next unit that aligns with 'alignment'
+                const vk::DeviceSize remainder = startOffset % alignment;
+                const vk::DeviceSize advanceBytes = alignment - remainder;
+                const size_t advanceUnits = static_cast<size_t>((advanceBytes + unit - 1) / unit);
+                i += std::max<size_t>(advanceUnits, 1);
+                continue;
             }
+
+            // From aligned i, check for consecutive free units
+            size_t consecutiveFree = 0;
+            size_t j = i;
+            while (j < totalUnits && block->freeList[j] && consecutiveFree < requiredUnits) {
+                ++consecutiveFree;
+                ++j;
+            }
+
+            if (consecutiveFree >= requiredUnits) {
+                return {block.get(), i};
+            }
+
+            // Move past the checked range
+            i = (j > i) ? j : (i + 1);
         }
     }
 
@@ -333,13 +392,41 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> MemoryPool::
 
     vk::raii::Image image(device, imageInfo);
 
-    // Get memory requirements
+    // Get memory requirements for this image
     vk::MemoryRequirements memRequirements = image.getMemoryRequirements();
 
-    // Allocate from texture pool
-    auto allocation = allocate(PoolType::TEXTURE_IMAGE, memRequirements.size, memRequirements.alignment);
-    if (!allocation) {
-        throw std::runtime_error("Failed to allocate memory from texture pool");
+    // Pick a memory type compatible with this image
+    uint32_t memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    // Create a dedicated memory block for this image with the exact type and size
+    std::unique_ptr<Allocation> allocation;
+    {
+        std::lock_guard<std::mutex> lock(poolMutex);
+        auto poolIt = pools.find(PoolType::TEXTURE_IMAGE);
+        if (poolIt == pools.end()) {
+            poolIt = pools.try_emplace(PoolType::TEXTURE_IMAGE).first;
+        }
+        auto& poolBlocks = poolIt->second;
+        auto block = createMemoryBlockWithType(PoolType::TEXTURE_IMAGE, memRequirements.size, memoryTypeIndex);
+
+        // Prepare allocation that uses the new block from offset 0
+        allocation = std::make_unique<Allocation>();
+        allocation->memory = *block->memory;
+        allocation->offset = 0;
+        allocation->size = memRequirements.size;
+        allocation->memoryTypeIndex = memoryTypeIndex;
+        allocation->isMapped = block->isMapped;
+        allocation->mappedPtr = block->mappedPtr;
+
+        // Mark the entire block as used
+        block->used = memRequirements.size;
+        const size_t units = block->freeList.size();
+        for (size_t i = 0; i < units; ++i) {
+            block->freeList[i] = false;
+        }
+
+        // Keep the block owned by the pool for lifetime management and deallocation support
+        poolBlocks.push_back(std::move(block));
     }
 
     // Bind memory to image

@@ -1,0 +1,31 @@
+:pp: {plus}{plus}
+
+= Camera & Transformations: Introduction
+== Introduction
+
+Welcome to the "Camera & Transformations" chapter of our "Building a Simple Engine" series! In this chapter, we'll dive into the essential mathematics and techniques needed to implement a 3D camera system in Vulkan.
+
+Understanding how to manipulate 3D space is fundamental to creating interactive 3D applications. We'll explore the mathematical foundations of 3D transformations and implement a flexible camera system that will allow us to navigate and view our 3D scenes from any perspective.
+
+In this chapter, we'll focus on:
+
+* Understanding the mathematical foundations of 3D transformations
+* Implementing different types of transformation matrices (model, view, projection)
+* Creating a flexible camera system with different movement modes
+* Handling user input to control the camera
+* Integrating the camera system with our Vulkan rendering pipeline
+
+By the end of this chapter, you'll have a solid understanding of 3D transformations and a reusable camera system that can be integrated into your Vulkan applications.
+
+== Prerequisites
+
+Before starting this chapter, you should have completed the main Vulkan tutorial. You should also be familiar with:
+
+* Basic Vulkan concepts:
+** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+* Basic programming concepts and C++
+
+xref:02_math_foundations.adoc[Next: Mathematical Foundations]

@@ -1,0 +1,381 @@
+:pp: {plus}{plus}
+
+= Mobile Development: Rendering Approaches
+
+== Rendering Approaches for Mobile GPUs
+
+Mobile GPUs typically use different rendering architectures compared to desktop GPUs. Understanding these differences is crucial for optimizing your Vulkan application for mobile platforms. In this section, we'll explore the two main rendering approaches: Tile-Based Rendering (TBR) and Immediate Mode Rendering (IMR).
+
+=== Tile-Based Rendering (TBR)
+
+Most modern mobile GPUs use a tile-based rendering architecture, also known as Tile-Based Deferred Rendering (TBDR) in some implementations.
+
+==== How TBR Works
+
+1. *Tiling Phase*: The screen is divided into small tiles (typically 16x16 or 32x32 pixels).
+
+2. *Binning Phase*: The GPU determines which primitives (triangles) affect each tile.
+
+3. *Rendering Phase*: For each tile:
+   a. Load the primitives affecting that tile into on-chip memory.
+   b. Render the primitives to the tile.
+   c. Write the completed tile back to main memory.
+
+==== Advantages of TBR
+
+1. *Reduced Memory Bandwidth*: Since rendering happens in on-chip memory, there's less traffic to main memory.
+
+2. *Power Efficiency*: Lower memory bandwidth means lower power consumption, which is crucial for battery-powered devices.
+
+3. *Hidden Surface Removal*: Many TBR GPUs perform early depth testing during the binning phase, reducing overdraw.
+
+==== Optimizing for TBR
+
+To get the best performance from TBR GPUs, consider these optimizations:
+
+* *Transient Attachments*: Use transient attachments for render targets that are only used within a render pass:
+
+[source,cpp]
+----
+vk::AttachmentDescription depth_attachment{};
+depth_attachment.setFormat(depth_format);
+depth_attachment.setSamples(vk::SampleCountFlagBits::e1);
+depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare);  // Don't store the result
+depth_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+depth_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+depth_attachment.setInitialLayout(vk::ImageLayout::eUndefined);
+depth_attachment.setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
+
+// When creating the image, mark the attachment as transient
+vk::ImageCreateInfo image_info{};
+image_info.setImageType(vk::ImageType::e2D);
+image_info.setExtent(vk::Extent3D(width, height, 1));
+image_info.setMipLevels(1);
+image_info.setArrayLayers(1);
+image_info.setFormat(depth_format);
+image_info.setTiling(vk::ImageTiling::eOptimal);
+image_info.setInitialLayout(vk::ImageLayout::eUndefined);
+image_info.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransientAttachment);
+image_info.setSamples(vk::SampleCountFlagBits::e1);
+// Prefer lazily allocated memory for transient attachments when supported
+// Choose memory with vk::MemoryPropertyFlagBits::eLazilyAllocated
+----
+
+* *Render Pass Structure*: Design your render passes to take advantage of
+tile-based rendering:
+   - Use subpasses to keep rendering operations within the tile memory.
+   - Use the right load/store operations to minimize memory traffic.
+
+[source,cpp]
+----
+// Create a render pass with multiple subpasses
+vk::SubpassDescription subpass1{};
+subpass1.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
+subpass1.setColorAttachments(color_attachment_refs);
+subpass1.setDepthStencilAttachment(&depth_attachment_ref);
+
+vk::SubpassDescription subpass2{};
+subpass2.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
+subpass2.setInputAttachments(input_attachment_refs);  // Use output from subpass1 as input
+subpass2.setColorAttachments(final_color_attachment_refs);
+
+// Create a dependency to ensure proper ordering
+vk::SubpassDependency dependency{};
+dependency.setSrcSubpass(0);
+dependency.setDstSubpass(1);
+dependency.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+dependency.setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader);
+dependency.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+dependency.setDstAccessMask(vk::AccessFlagBits::eInputAttachmentRead);
+
+// Create the render pass
+vk::RenderPassCreateInfo render_pass_info{};
+render_pass_info.setAttachments(attachments);
+render_pass_info.setSubpasses({subpass1, subpass2});
+render_pass_info.setDependencies(dependency);
+
+vk::RenderPass render_pass = device.createRenderPass(render_pass_info);
+----
+
+==== Best Practices for TBR
+
+* *Avoid External Framebuffer Reads*: Avoid reading from images that require the tile to be flushed to external memory and reloaded; this is expensive on TBR.
+  - Local, same-pixel reads from on-chip/tile memory are fine and encouraged on tile-based GPUs.
+  - In Vulkan, use input attachments within subpasses or the `VK_KHR_dynamic_rendering_local_read` capability to perform tile-local reads without leaving tile memory. This is often referred to as pixel-local storage (PLS) on tile-based architectures.
+
+* *Optimize for Tile Size*: Consider the tile size when designing your rendering algorithm. For example, if you know the tile size is 16x16, you might organize your data or algorithms to work efficiently with that size.
+
+===== Attachment Load/Store Operations on Tilers
+
+On tile-based GPUs, correctly using loadOp and storeOp is one of the highest-impact optimizations:
+
+- Clear attachments with loadOp = CLEAR and initialLayout = UNDEFINED when you don't need previous contents. This avoids an external memory read for the tile.
+- Use storeOp = DONT_CARE for attachments whose results are not needed after the render pass (e.g., transient depth or intermediate color targets). This can prevent flushing the tile back to main memory.
+- For the swapchain image (or any image you will sample/transfer from later), use storeOp = STORE and set finalLayout appropriately (e.g., PRESENT_SRC_KHR for the swapchain).
+- For MSAA, resolve within the same render pass so the hardware can resolve from tile memory and only store the resolved image to external memory.
+
+[source,cpp]
+----
+// Color attachment that we clear and present
+vk::AttachmentDescription color_attachment{};
+color_attachment.setFormat(swapchain_format);
+color_attachment.setSamples(vk::SampleCountFlagBits::e1);
+color_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore); // we need to present
+color_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+color_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+color_attachment.setInitialLayout(vk::ImageLayout::eUndefined); // no need to load previous contents
+color_attachment.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+
+// Depth attachment used only within the pass
+vk::AttachmentDescription depth_attachment{};
+depth_attachment.setFormat(depth_format);
+depth_attachment.setSamples(vk::SampleCountFlagBits::e1);
+depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare); // don't flush depth to memory
+depth_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+depth_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
+depth_attachment.setInitialLayout(vk::ImageLayout::eUndefined);
+depth_attachment.setFinalLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
+----
+
+[NOTE]
+====
+If you use dynamic rendering, the same rules apply via vk::RenderingAttachmentInfo loadOp/storeOp fields.
+See Vulkan Guide for background: Render Passes and Subpasses, Tile-based GPUs.
+====
+
+===== Pipelining on Tilers: Subpass Dependencies and BY_REGION
+
+Tile-based GPUs benefit from fine-grained synchronization that keeps work and data on-chip:
+
+- Prefer subpasses with input attachments to keep producer/consumer within the same render pass, enabling tile-local reads.
+- Use vk::DependencyFlagBits::eByRegion to scope hazards to the pixel regions actually written/read, avoiding unnecessary tile flushes.
+- Avoid over-broad barriers (e.g., ALL_COMMANDS, MEMORY_READ/WRITE) that serialize the pipeline and may force external memory traffic. Use precise stage/access masks.
+
+Example: dependency from a color-writing subpass to a subpass that reads that color as an input attachment.
+
+[source,cpp]
+----
+vk::SubpassDependency dep{};
+dep.setSrcSubpass(0);
+dep.setDstSubpass(1);
+dep.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+dep.setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader);
+dep.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+dep.setDstAccessMask(vk::AccessFlagBits::eInputAttachmentRead);
+dep.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
+----
+
+Example: external dependency to the first subpass of a render pass, allowing pipelining with prior pass while limiting scope by region.
+
+[source,cpp]
+----
+vk::SubpassDependency externalDep{};
+externalDep.setSrcSubpass(VK_SUBPASS_EXTERNAL);
+externalDep.setDstSubpass(0);
+externalDep.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+externalDep.setDstStageMask(vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eColorAttachmentOutput);
+externalDep.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+externalDep.setDstAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentWrite | vk::AccessFlagBits::eColorAttachmentWrite);
+externalDep.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
+----
+
+[NOTE]
+====
+With Synchronization2 (vkCmdPipelineBarrier2 and friends) avoid ALL_COMMANDS and prefer the minimal set of stages/access that capture your hazard. Use render pass/subpass structure when possible—it's the most tiler-friendly way to express pipelining.
+====
+
+For further guidance, see the xref:https://docs.vulkan.org/guide/latest/[Vulkan Guide] topics on Tile-based GPUs, Render Passes, and Synchronization.
+
+===== Memory Management
+
+To improve the efficiency of memory allocation in TBR architectures:
+
+* *Select Optimal Memory Types*: Choose the best matching memory type (with the appropriate VkMemoryPropertyFlags) when using vkAllocateMemory.
+
+* *Batch Allocations*: For each type of resource (e.g., index buffer, vertex buffer, and uniform buffer), allocate large chunks of memory with a specific size in one go when possible.
+
+* *Reuse Memory Resources*: Let multiple passes take turns using the allocated memory through time slicing.
+
+* *Use Cached Memory When Appropriate*: Consider using VK_MEMORY_PROPERTY_HOST_CACHED_BIT and manually flushing memory when it may be accessed by the CPU. This is often more efficient than VK_MEMORY_PROPERTY_HOST_COHERENT_BIT because the driver can refresh a large block of memory at once.
+
+* *Minimize Allocation Calls*: Avoid frequent calls to vkAllocateMemory. The number of memory allocations is limited by maxMemoryAllocationCount.
+
+===== Shader Optimizations
+
+Optimizing shaders for TBR architectures can significantly improve performance:
+
+* *Vectorized Memory Access*: Access memory in a vectorized manner to reduce access cycles and bandwidth. For example:
+
+[source,glsl]
+----
+// Recommended: Vectorized access
+struct TileStructSample {
+    vec4 data;
+};
+
+void main() {
+    uint idx = 0u;
+    TileStructSample ts[3];
+    while (idx < 3u) {
+        ts[int(idx)].data = a;
+        idx++;
+    }
+}
+
+// Not recommended: Non-vectorized access
+struct TileStructSample {
+    float data1;
+    float data2;
+    float data3;
+    float data4;
+};
+
+void main() {
+    uint idx = 0u;
+    TileStructSample ts[3];
+    while (idx < 3u) {
+        ts[int(idx)].data1 = a;
+        ts[int(idx)].data2 = b;
+        ts[int(idx)].data3 = c;
+        ts[int(idx)].data4 = d;
+        idx++;
+    }
+}
+----
+
+* *Optimize Uniform Buffers*: Consider using push constants or macro constants instead of uniform buffers for small data. Avoid dynamic indexing when possible.
+
+* *Minimize Branching*: Reduce complex branch structures, branch nesting, and loop structures as they can harm parallelism.
+
+* *Use Half-Precision*: When appropriate, use half-precision floats to reduce bandwidth and power consumption. In SPIR-V, use relaxed-precision decoration on variables or results.
+
+===== Depth Testing Optimizations
+
+Proper depth testing is crucial for TBR performance:
+
+* *Enable Depth Testing and Writing*: This allows the GPU to cull hidden primitives and reduce overdraw.
+
+* *Avoid Operations That Disable Early-Z*: The following operations can prevent effective early depth testing:
+  - Using the discard instruction in fragment shaders
+  - Writing to gl_FragDepth (GLSL) SV_Depth (slang) explicitly
+  - Using storage images or storage buffers
+  - Using gl_SampleMask (GLSL explicit way to turn on/off specific pixels)
+  - Enabling both depth bounds and depth write
+  - Enabling both blending and depth write
+
+* *Consistent Compare Operations*: When using compareOp, try to keep the values consistent for each draw in the render pass.
+
+* *Clear Attachments Properly*: Attachments should be cleared at the beginning of the render pass, or when no valid compareOp value is assigned to previous draw calls.
+
+=== Immediate Mode Rendering (IMR)
+
+Traditional desktop GPUs and some older mobile GPUs use an immediate mode rendering architecture.
+
+==== How IMR Works
+
+1. *Vertex Processing*: Process vertices and assemble primitives.
+
+2. *Rasterization*: Convert primitives to fragments.
+
+3. *Fragment Processing*: Process each fragment and write the result directly to the framebuffer in main memory.
+
+==== Advantages of IMR
+
+1. *Simplicity*: The rendering model is more straightforward and matches the traditional graphics pipeline.
+
+2. *Flexibility*: Some algorithms that require reading from the framebuffer are easier to implement.
+
+==== Optimizing for IMR
+
+If your target device uses IMR, consider these optimizations:
+
+1. *Front-to-Back Rendering*: Render opaque objects from front to back to minimize overdraw.
+
+2. *Early-Z*: Use depth testing to reject fragments early in the pipeline.
+
+3. *Occlusion Culling*: Implement occlusion culling to avoid rendering objects that won't be visible.
+
+=== Detecting Rendering Architecture
+
+Vulkan doesn't provide a direct way to determine if a GPU uses TBR or IMR. However, you can make educated guesses based on the device vendor and model:
+
+[source,cpp]
+----
+bool is_likely_tbr_gpu(vk::PhysicalDevice physical_device) {
+    vk::PhysicalDeviceProperties props = physical_device.getProperties();
+
+    // Most mobile GPUs from these vendors use TBR
+    if (props.vendorID == 0x5143) {  // Qualcomm
+        return true;
+    }
+    if (props.vendorID == 0x1010) {  // PowerVR (Imagination Technologies)
+        return true;
+    }
+    if (props.vendorID == 0x13B5) {  // ARM Mali
+        return true;
+    }
+    if (props.vendorID == 0x19E5) {  // Huawei
+        return true;
+    }
+
+    // Apple GPUs are also TBR
+    if (props.vendorID == 0x106B) {  // Apple
+        return true;
+    }
+
+    // For other vendors, you might need to maintain a list of known TBR GPUs
+    // or just assume desktop GPUs are IMR and mobile GPUs are TBR
+
+    return false;
+}
+----
+
+=== Adapting to Both Architectures
+
+The best approach is to design your engine to work well on both TBR and IMR architectures:
+
+* *Detect the Architecture*: Use heuristics to detect the likely architecture.
+
+* *Conditional Optimizations*: Apply different optimizations based on the
+detected architecture:
+
+[source,cpp]
+----
+void configure_rendering_pipeline(vk::PhysicalDevice physical_device) {
+    bool is_tbr = is_likely_tbr_gpu(physical_device);
+
+    if (is_tbr) {
+        // TBR optimizations
+        use_transient_attachments = true;
+        prioritize_subpass_dependencies = true;
+        avoid_framebuffer_reads = true;
+    } else {
+        // IMR optimizations
+        use_front_to_back_sorting = true;
+        prioritize_early_z = true;
+        implement_occlusion_culling = true;
+    }
+}
+----
+
+* *Fallback Strategy*: If you can't determine the architecture, optimize for
+TBR, as those optimizations generally don't harm IMR performance significantly.
+
+=== Best Practices for Both Architectures
+
+Regardless of the rendering architecture, these practices will help optimize performance:
+
+1. *Minimize State Changes*: Group draw calls by material to reduce state changes.
+
+2. *Batch Similar Objects*: Use instancing or batching to reduce draw call overhead.
+
+3. *Use Appropriate Synchronization*: Use the minimum synchronization required to ensure correct rendering.
+
+4. *Profile on Target Devices*: Always test your optimizations on actual target devices.
+
+In the next section, we'll explore Vulkan extensions that can help you optimize performance on mobile devices, particularly those that leverage the tile-based architecture.
+
+link:03_performance_optimizations.adoc[Previous: Performance Optimizations] | link:05_vulkan_extensions.adoc[Next: Vulkan Extensions for Mobile]

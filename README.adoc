@@ -26,6 +26,8 @@ It also contains Vulkan usage clarifications, improved synchronization and new c
 The repository is organized into several important directories:
 
 * `en/` - Contains the tutorial content in English, organized by chapters
+** The main tutorial covers fundamental Vulkan concepts (chapters 00-17)
+** The "Building a Simple Engine" section builds upon these fundamentals to create a structured rendering engine
 * `attachments/` - Contains code examples, shader files, and resources used in the tutorial
 * `images/` - Contains illustrations, diagrams, and screenshots used in the tutorial
 * `scripts/` - Contains utility scripts, including dependency installation scripts

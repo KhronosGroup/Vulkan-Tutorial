@@ -1,0 +1,28 @@
+:pp: {plus}{plus}
+
+= Loading Models: Conclusion
+
+== Conclusion
+
+In this chapter, we've completed our simple engine by integrating model loading capabilities with the architecture and camera systems developed in the previous chapters. Building upon our knowledge of glTF from the link:../../15_GLTF_KTX2_Migration.html[main tutorial], we've implemented:
+
+1. A hierarchical scene graph for organizing 3D objects
+2. Support for glTF animations
+3. A PBR material system that leverages glTF's material properties
+4. Multi-object rendering with individual transformations
+
+This approach demonstrates how the concepts learned throughout this tutorial series can be structured into a more reusable and extensible engine architecture. By combining the engine architecture principles, camera transformation systems, and now model loading capabilities, we've created a foundation that you can build upon for your own projects.
+
+As you continue to develop your engine, consider exploring these advanced topics:
+
+1. A more sophisticated material system
+2. Advanced lighting techniques
+3. Post-processing effects
+4. Physics integration
+5. Audio systems
+
+The code for this chapter can be found in the `simple_engine/20_loading_models.cpp` file.
+
+link:../../attachments/simple_engine/20_loading_models.cpp[C{pp} code]
+
+link:08_animations.adoc[Previous: Updating Animations] | link:../Subsystems/01_introduction.adoc[Next: Subsystems] | link:../index.html[Back to Building a Simple Engine]

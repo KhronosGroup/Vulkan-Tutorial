@@ -1,0 +1,375 @@
+::pp: {plus}{plus}
+
+= Loading Models: Asset Pipeline Concepts
+:doctype: book
+:sectnums:
+:sectnumlevels: 4
+:toc: left
+:icons: font
+:source-highlighter: highlightjs
+:source-language: c++
+
+== Understanding Asset Pipelines
+
+After exploring engine architecture and camera systems, it's important to understand how 3D assets are managed in rendering engines. A well-designed asset pipeline is crucial for efficiently handling models, textures, and other resources in any production environment.
+
+=== Asset Organization Concepts
+
+When designing an asset organization system, consider these key principles:
+
+1. *Categorization* - Group similar assets together
+2. *Hierarchy* - Use a nested structure to manage complexity
+3. *Discoverability* - Make assets easy to find and reference
+4. *Scalability* - Design for growth as your project expands
+
+Here's an example of how assets might be organized in a final product, demonstrating all four principles:
+
+[source]
+----
+assets/
+  ├── models/                  // 3D model files (Categorization)
+  │   ├── characters/          // Character models (Hierarchy)
+  │   │   ├── player/          // Player character models (Hierarchy)
+  │   │   └── npc/             // Non-player character models (Hierarchy)
+  │   ├── environments/        // Environment models
+  │   │   ├── indoor/          // Indoor environment models
+  │   │   └── outdoor/         // Outdoor environment models
+  │   └── props/               // Prop models
+  ├── textures/                // Texture files (Categorization)
+  │   ├── common/              // Shared textures (Discoverability)
+  │   └── high_resolution/     // High-res textures for close-up views (Scalability)
+  ├── shaders/                 // Shader files
+  │   ├── core/                // Essential shaders (Discoverability)
+  │   ├── effects/             // Special effect shaders
+  │   └── mobile/              // Mobile-optimized shaders (Scalability)
+  └── config/                  // Configuration files
+      └── quality_presets/     // Different quality settings (Scalability)
+----
+
+This example demonstrates all four principles:
+- *Categorization*: Assets are grouped by type (models, textures, shaders, config)
+- *Hierarchy*: Assets are organized in a nested structure (e.g., models > characters > player)
+- *Discoverability*: Common assets are placed in dedicated folders (e.g., common textures, core shaders) making them easy to find
+- *Scalability*: The structure accommodates different quality levels and platform-specific assets (e.g., high-resolution textures, mobile shaders, quality presets)
+
+The specific organization should be tailored to your project's needs, but the underlying principles remain consistent across different engines.
+
+=== Asset Pipeline Concepts
+
+A professional asset pipeline typically involves several stages, regardless of the specific engine implementation:
+
+1. *Creation* - Artists create models in 3D modeling software
+2. *Export* - Models are exported to interchange formats suitable for game engines
+3. *Validation* - Models are checked for issues (e.g., incorrect scale, missing textures)
+4. *Optimization* - Models are optimized for runtime performance
+5. *Conversion* - Development assets are converted to production-ready formats
+6. *Integration* - Assets are imported into the engine
+7. *Runtime Loading* - The engine loads assets efficiently during execution
+
+When designing an asset pipeline, consider these important factors:
+
+==== File Format Selection
+
+Different file formats offer different trade-offs:
+
+1. *Interchange Formats* (e.g., glTF, FBX, Collada)
+   - Pros: Widely supported by modeling tools, preserve most data
+   - Cons: May contain unnecessary data, not optimized for runtime
+
+2. *Runtime Formats* (e.g., glb, engine-specific binary formats)
+   - Pros: Optimized for loading speed and memory usage
+   - Cons: May not be editable outside the engine
+
+==== Texture Compression
+
+Texture compression is crucial for performance:
+
+1. *Development Formats* (e.g., PNG, JPEG)
+   - Pros: Lossless or high quality, widely supported by editing tools
+   - Cons: Large file sizes, not optimized for GPU
+
+2. *Runtime Formats* (e.g., ktx, compressed GPU formats)
+   - Pros: Smaller file sizes, directly usable by GPU
+   - Cons: May have quality loss, platform-specific considerations
+
+==== Asset Bundling
+
+Consider how assets are packaged:
+
+1. *Separate Files*
+   - Pros: Easier to update individual assets, simpler version control
+   - Cons: More file operations, potential for missing dependencies
+
+2. *Bundled Assets*
+   - Pros: Fewer file operations, guaranteed dependencies
+   - Cons: Larger atomic updates, more complex version control
+
+=== Artist-Engine Collaboration Concepts
+
+Successful integration of art assets into a rendering engine requires clear communication and established workflows between artists and programmers. Here are key concepts to consider:
+
+==== Technical Specifications
+
+Regardless of the specific engine, you'll need to define:
+
+1. *Coordinate System* - Different applications use different coordinate systems (e.g., Y-up vs. Z-up)
+2. *Scale* - Establish a consistent scale (e.g., 1 unit = 1 meter or 1 unit = 1 foot)
+3. *Origin Placement* - Define where the origin point should be for different asset types
+4. *Level of Detail* - Specify polygon count ranges for different asset types and usage scenarios
+
+==== Workflow Documentation
+
+Create documentation that addresses:
+
+1. *Naming Conventions* - Consistent naming helps with organization and automation
+2. *Material Standards* - Define how materials should be structured (e.g., PBR parameters)
+3. *Export Settings* - Document the correct export settings for your chosen interchange formats
+4. *Quality Checklists* - Provide criteria for validating assets before submission
+
+==== Technical Art Bridge
+
+Consider establishing a technical art role that:
+
+1. Creates tools to streamline the art-to-engine pipeline
+2. Validates assets before they enter the engine
+3. Provides feedback to artists on technical requirements
+4. Helps troubleshoot issues when assets don't appear correctly in-engine
+
+=== Development to Production Concepts
+
+The transition from artist-friendly development assets to optimized production assets involves several important concepts:
+
+==== Development vs. Production Assets
+
+Understanding the different needs at each stage:
+
+1. *Development Assets*
+   - Prioritize editability and iteration speed
+   - Use formats that are widely supported by content creation tools
+   - May be larger and less optimized for runtime performance
+   - Focus on preserving maximum quality and information
+
+2. *Production Assets*
+   - Prioritize runtime performance and memory efficiency
+   - Use formats optimized for the target platform(s)
+   - Apply appropriate compression and optimization techniques
+   - Balance quality against performance requirements
+
+==== Asset Validation
+
+Implement validation at key points in the pipeline:
+
+1. *Pre-Submission Validation*
+   - Check for adherence to technical specifications
+   - Verify that all required textures and materials are present
+   - Ensure proper scale, orientation, and origin placement
+
+2. *Pre-Conversion Validation*
+   - Verify that assets can be successfully processed by conversion tools
+   - Check for issues that might cause problems during conversion
+
+3. *Post-Conversion Validation*
+   - Verify that converted assets maintain visual fidelity
+   - Check for performance issues or memory consumption problems
+   - Ensure compatibility with target platforms
+
+==== Automation Considerations
+
+As projects grow, automation becomes increasingly important:
+
+1. *Batch Processing*
+   - Develop scripts or tools to process multiple assets at once
+   - Implement automated validation checks
+
+2. *Continuous Integration*
+   - Consider integrating asset processing into your CI/CD pipeline
+   - Automatically validate and convert assets when they're committed
+
+3. *Versioning*
+   - Track changes to assets and their processed versions
+   - Implement dependency tracking to rebuild only what's necessary
+
+=== Implementation Considerations
+
+When implementing a model loading system in any rendering engine, several key considerations should guide your approach:
+
+==== Abstraction Layers
+
+Design your model loading system with appropriate abstraction layers:
+
+1. *File Format Layer*
+   - Handles parsing specific file formats (e.g., glTF, FBX)
+   - Isolates format-specific code to make supporting multiple formats easier
+   - Converts from file format structures to your engine's internal structures
+
+2. *Resource Management Layer*
+   - Manages memory and GPU resources
+   - Handles caching and reference counting
+   - Provides a consistent interface regardless of the underlying file format
+
+3. *Scene Graph Layer*
+   - Organizes models in a hierarchical structure
+   - Manages transformations and parent-child relationships
+   - Facilitates operations like culling and scene traversal
+
+==== Performance Considerations
+
+Balance flexibility with performance:
+
+1. *Asynchronous Loading*
+   - Consider loading models in background threads to avoid blocking the main thread
+   - Implement a system for handling partially loaded models
+
+2. *Memory Management*
+   - Develop strategies for handling large models
+   - Consider level-of-detail (LOD) systems for complex scenes
+   - Implement streaming for very large environments
+
+3. *Batching and Instancing*
+   - Group similar models for efficient rendering
+   - Use instancing for repeated elements
+
+==== Extensibility
+
+Design for future expansion:
+
+1. *Material System*
+   - Create a flexible material system that can represent various shading models
+   - Support both simple and complex materials
+
+2. *Animation System*
+   - Design for different animation types (skeletal, morph targets, etc.)
+   - Consider how animations will interact with physics and gameplay systems
+
+3. *Custom Data*
+   - Allow for engine-specific metadata to be associated with models
+   - Support custom properties for gameplay or rendering purposes
+
+Understanding these concepts provides a solid foundation for designing and implementing model loading systems in any rendering engine. By carefully considering abstraction, performance, and extensibility from the beginning, you can create a robust system that will scale with your project's needs and adapt to changing requirements.
+
+== Our Project Implementation
+
+Now that we've explored the general concepts of asset pipelines, let's discuss how our specific project will implement these concepts.
+
+=== File Formats and Directory Structure
+
+For our engine, we'll use the following file formats and directory structure:
+
+1. *Model Format*: We'll use glTF 2.0 binary format (.glb) with embedded KTX2 textures. This format offers several advantages:
+   - Compact binary representation for efficient storage and loading
+   - Ability to embed textures, reducing file operations
+   - Support for animations, skinning, and PBR materials
+   - Industry standard with wide tool support
+
+2. *Texture Format*: We'll use KTX2 with Basis Universal compression for textures, which provides:
+   - Significant size reduction compared to PNG/JPEG
+   - GPU-ready formats that can be directly uploaded
+   - Cross-platform compatibility through transcoding
+   - Support for mipmaps and various compression formats
+
+3. *Directory Structure*:
+[source]
+----
+assets/
+  ├── models/                  // 3D model files
+  │   ├── characters/          // Character models
+  │   │   └── viking.glb       // Example character model
+  │   ├── environments/        // Environment models
+  │   │   └── room.glb         // Example environment model
+  │   └── props/               // Prop models
+  │       └── furniture.glb    // Example prop model
+  └── shaders/                 // Shader files
+      └── pbr.slang            // PBR shader
+----
+
+=== Tools and Libraries
+
+We'll use the following tools and libraries to implement our asset pipeline:
+
+1. *Model Loading*: We'll use the tinygltf library to parse glTF files. This library provides:
+   - Comprehensive support for the glTF 2.0 specification
+   - Efficient parsing of binary glTF files
+   - Access to all glTF components (meshes, materials, animations, etc.)
+
+2. *Texture Loading*: We'll use the KTX-Software library to load KTX2 textures, which offers:
+   - Support for loading and transcoding Basis Universal compressed textures
+   - Efficient mipmap handling
+   - Integration with Vulkan texture formats
+
+3. *Asset Conversion*: For converting development assets to production assets, we'll use:
+   - KTX-Tools for texture conversion (PNG/JPEG to KTX2)
+   - glTF-Transform for model processing and optimization
+   - Custom scripts for automating the conversion process
+
+=== Integration with Engine Architecture
+
+Our model loading system will integrate with the engine architecture from previous chapters:
+
+1. *Resource Management*: We'll leverage the resource management system from the Engine Architecture chapter to:
+   - Cache loaded models and textures
+   - Implement reference counting for efficient memory management
+   - Support asynchronous loading of models
+
+2. *Component System*: We'll create the following components:
+   - ModelComponent: Manages model rendering and animation
+   - MaterialComponent: Handles material properties and textures
+   - These components will work with the TransformComponent from the Camera Transformations chapter
+
+3. *Rendering Pipeline*: Our model loading system will integrate with the rendering pipeline by:
+   - Providing mesh data for the geometry pass
+   - Supporting PBR materials for the lighting pass
+   - Enabling instanced rendering for repeated models
+
+=== Artist Workflow
+
+Our workflow for artists will be:
+
+1. *Development Phase*:
+   - Artists create models in tools like Blender or Maya
+   - Export to standard glTF (.gltf) with separate PNG/JPEG textures
+   - Test with glTF viewers to ensure correct appearance
+
+2. *Technical Requirements*:
+   - Right-handed coordinate system with Y-up
+   - 1 unit = 1 meter scale
+   - PBR materials using the metallic-roughness workflow
+   - Textures with power-of-two dimensions
+
+3. *Conversion Process*:
+   - Validate models against technical requirements
+   - Convert textures to KTX2 with Basis Universal compression
+   - Embed textures into glb files
+   - Optimize models (remove unused vertices, compress meshes, etc.)
+
+4. *Integration*:
+   - Place converted assets in the appropriate directories
+   - Register assets in the resource management system
+   - Create entities with appropriate components
+
+=== Runtime Loading
+
+At runtime, our engine will:
+
+1. *Load Models*:
+   - Parse glb files using tinygltf
+   - Extract mesh data, materials, and animations
+   - Create Vulkan buffers for vertices and indices
+
+2. *Process Materials*:
+   - Load embedded KTX2 textures
+   - Create Vulkan image views and samplers
+   - Set up descriptor sets for PBR rendering
+
+3. *Handle Animations*:
+   - Parse animation data from glTF
+   - Implement skeletal animation system
+   - Support animation blending and transitions
+
+4. *Render Models*:
+   - Use the scene graph to organize models hierarchically
+   - Apply transformations from the transform component
+   - Render with appropriate materials and shaders
+
+By implementing these specific approaches, our engine will have a robust and efficient asset pipeline that aligns with the general concepts discussed earlier in this chapter.
+
+link:03_model_system.adoc[Next: Implementing the Model Loading System]

@@ -10,3 +10,11 @@ ebook/*.pdf
 ebook/*.epub
 
 convert.py
+
+attachments/build/**
+attachments/android/.gradle/**
+attachments/android/.idea
+attachments/android/.gradle/**
+attachments/android/app/.cxx/**
+attachments/android/app/build/**
+local.properties

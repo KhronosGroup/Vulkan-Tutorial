@@ -505,7 +505,7 @@ image::/images/swap_chain_validation_layer.png[]
 
 == Retrieving the swap chain images
 The swap chain has been created now, so all that remains is retrieving the
-handles of the `VkImage`s in it. We'll reference these during rendering
+handles of the ``VkImage``s in it. We'll reference these during rendering
 operations in later chapters.
 
 [,c++]

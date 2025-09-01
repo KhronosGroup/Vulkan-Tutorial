@@ -237,6 +237,7 @@ private:
             imageView = nullptr;
         }
 
+        swapChainImageViews.clear();
         swapChain = nullptr;
     }
 
@@ -493,6 +494,7 @@ private:
     }
 
     void createImageViews() {
+        assert(swapChainImageViews.empty());
         swapChainImageViews.reserve(swapChainImages.size());
 
         for (const auto& image : swapChainImages) {

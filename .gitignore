@@ -10,3 +10,5 @@ ebook/*.pdf
 ebook/*.epub
 
 convert.py
+
+attachments/build/

@@ -1203,6 +1203,7 @@ private:
             imageView = nullptr;
         }
 
+        swapChainImageViews.clear();
         swapChain = nullptr;
     }
 

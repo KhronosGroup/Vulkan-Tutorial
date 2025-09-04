@@ -140,7 +140,7 @@ can be directly replaced by this:
 vk::raii::Context context;
 constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion11);
 vk::InstanceCreateInfo createInfo({}, &appInfo, {}, {});
-vk::raii::instance = std::make_unique<vk::raii::Instance>(context, createInfo);
+vk::raii::Instance = std::make_unique<vk::raii::Instance>(context, createInfo);
 ----
 
 As this can be a little hard to read when we look at the structures.  We have

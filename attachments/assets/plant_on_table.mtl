@@ -1,0 +1,52 @@
+# Blender 4.0.2 MTL File: 'plant_on_table.blend'
+# www.blender.org
+
+newmtl nettle_plant
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd ../textures/nettle_plant_diff_4k.png
+
+newmtl nettle_plant.001
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd ../textures/nettle_plant_diff_4k.png
+
+newmtl potted_plant_02_pot
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd ../textures/potted_plant_02_pot_diff_1k.png
+
+newmtl wooden_picnic_table_bottom
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd ../textures/wooden_picnic_table_bottom_diff_1k.png
+map_Bump -bm 1.000000 ../textures/wooden_picnic_table_bottom_nor_gl_1k.png
+
+newmtl wooden_picnic_table_table
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd ../textures/wooden_picnic_table_top_diff_1k.png

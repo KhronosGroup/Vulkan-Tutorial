@@ -209,7 +209,7 @@ ignore for now.
 
 [,c++]
 ----
-auto extension = context.enumerateInstanceLayerProperties()
+auto extension = context.enumerateInstanceExtensionProperties();
 ----
 
 Each `VkExtensionProperties` struct contains the name and version of an

@@ -1,0 +1,574 @@
+:pp: {plus}{plus}
+
+= Loading Models: Implementing PBR for glTF Models
+
+== Applying PBR to glTF Models
+
+=== Building on PBR Knowledge
+
+In the xref:../Lighting_Materials/01_introduction.adoc[Lighting & Materials chapter], we explored the fundamentals of Physically Based Rendering (PBR), including its core principles, the BRDF, and material properties. Now, we'll apply that knowledge to implement a PBR pipeline for the glTF models we've loaded.
+
+As we learned in the link:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
+
+=== Leveraging glTF's PBR Materials
+
+The glTF format already includes all the material properties we need for PBR:
+
+* *Base Color*: Defined by the baseColorFactor and baseColorTexture
+* *Metallic and Roughness*: Defined by metallicFactor, roughnessFactor, and metallicRoughnessTexture
+* *Normal Maps*: For surface detail without additional geometry
+* *Occlusion Maps*: For approximating ambient occlusion
+* *Emissive Maps*: For self-illuminating parts of the material
+
+By using these properties directly, we can ensure our rendering matches the artist's intent and produces physically accurate results.
+
+=== Implementing PBR in Our Engine
+
+Now that we understand the theory behind PBR, let's implement it in our engine. We'll build on the material data we loaded from glTF files in the previous chapter.
+
+==== Uniform Buffer for PBR
+
+We need to extend our uniform buffer to include PBR parameters:
+
+[source,cpp]
+----
+// Structure for uniform buffer object
+struct UniformBufferObject {
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+
+    // PBR parameters
+    alignas(16) glm::vec4 lightPositions[4];  // Position and radius
+    alignas(16) glm::vec4 lightColors[4];     // RGB color and intensity
+    alignas(16) glm::vec4 camPos;             // Camera position for view-dependent effects
+    alignas(4) float exposure = 4.5f;         // Exposure for HDR rendering
+    alignas(4) float gamma = 2.2f;            // Gamma correction value
+    alignas(4) float prefilteredCubeMipLevels = 1.0f;  // For image-based lighting
+    alignas(4) float scaleIBLAmbient = 1.0f;  // Scale factor for ambient lighting
+};
+----
+
+This uniform buffer includes:
+
+1. *Standard Transformation Matrices*: Model, view, and projection matrices for vertex transformation
+2. *Light Information*: Positions and colors of up to four light sources
+3. *Camera Position*: Needed for view-dependent effects like Fresnel
+4. *Rendering Parameters*: Exposure, gamma, and other values for post-processing
+5. *Image-Based Lighting Parameters*: For environment reflections (we'll cover this in a later chapter)
+
+==== Push Constants for Materials
+
+[NOTE]
+====
+We introduced push constants earlier in xref:../Lighting_Materials/03_push_constants.adoc[push constants]; here we focus on how the same mechanism carries glTF metallic‑roughness material knobs efficiently per draw.
+====
+
+We'll use link:https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-pushconstant[push constants] to pass material properties to the shader:
+
+[source,cpp]
+----
+// Structure for push constants
+struct PushConstantBlock {
+    glm::vec4 baseColorFactor;            // RGB base color and alpha
+    float metallicFactor;                 // How metallic the surface is
+    float roughnessFactor;                // How rough the surface is
+    int baseColorTextureSet;              // Texture coordinate set for base color
+    int physicalDescriptorTextureSet;     // Texture coordinate set for metallic-roughness
+    int normalTextureSet;                 // Texture coordinate set for normal map
+    int occlusionTextureSet;              // Texture coordinate set for occlusion
+    int emissiveTextureSet;               // Texture coordinate set for emission
+    float alphaMask;                      // Whether to use alpha masking
+    float alphaMaskCutoff;                // Alpha threshold for masking
+};
+----
+
+Push constants are ideal for material properties because:
+
+* They can be updated quickly between draw calls
+* They don't require descriptor sets
+* They're perfect for per-object data like material properties
+
+==== Setting Up the Descriptor Sets
+
+To implement PBR, we need to set up descriptor sets for our textures and uniform buffer:
+
+[source,cpp]
+----
+// Create descriptor set layout
+void createDescriptorSetLayout() {
+    // Binding for uniform buffer
+    vk::DescriptorSetLayoutBinding uboBinding{
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment
+    };
+
+    // Bindings for textures
+    std::array<vk::DescriptorSetLayoutBinding, 5> textureBindings{};
+
+    // Base color texture
+    textureBindings[0].binding = 1;
+    textureBindings[0].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    textureBindings[0].descriptorCount = 1;
+    textureBindings[0].stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    // Metallic-roughness texture
+    textureBindings[1].binding = 2;
+    textureBindings[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    textureBindings[1].descriptorCount = 1;
+    textureBindings[1].stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    // Normal map
+    textureBindings[2].binding = 3;
+    textureBindings[2].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    textureBindings[2].descriptorCount = 1;
+    textureBindings[2].stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    // Occlusion map
+    textureBindings[3].binding = 4;
+    textureBindings[3].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    textureBindings[3].descriptorCount = 1;
+    textureBindings[3].stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    // Emissive map
+    textureBindings[4].binding = 5;
+    textureBindings[4].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    textureBindings[4].descriptorCount = 1;
+    textureBindings[4].stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    // Combine all bindings
+    std::array<vk::DescriptorSetLayoutBinding, 6> bindings = {
+        uboBinding,
+        textureBindings[0],
+        textureBindings[1],
+        textureBindings[2],
+        textureBindings[3],
+        textureBindings[4]
+    };
+
+    // Create the descriptor set layout
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{
+        .bindingCount = static_cast<uint32_t>(bindings.size()),
+        .pBindings = bindings.data()
+    };
+
+    descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
+}
+----
+
+==== Setting Up the Pipeline
+
+Our PBR pipeline needs to be configured for the specific requirements of physically-based rendering:
+
+[source,cpp]
+----
+void createPipeline() {
+    // ... (standard pipeline setup code)
+
+    // Enable alpha blending
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+        .blendEnable = vk::True,
+        .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
+        .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+        .colorBlendOp = vk::BlendOp::eAdd,
+        .srcAlphaBlendFactor = vk::BlendFactor::eOne,
+        .dstAlphaBlendFactor = vk::BlendFactor::eZero,
+        .alphaBlendOp = vk::BlendOp::eAdd,
+        .colorWriteMask =
+            vk::ColorComponentFlagBits::eR |
+            vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB |
+            vk::ColorComponentFlagBits::eA
+    };
+
+    // Set up push constants for material properties
+    vk::PushConstantRange pushConstantRange{
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
+        .offset = 0,
+        .size = sizeof(PushConstantBlock)
+    };
+
+    // Create the pipeline layout
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstantRange
+    };
+
+    pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+
+    // ... (rest of pipeline creation)
+}
+----
+
+=== PBR Shader Implementation
+
+The heart of our PBR implementation is in the fragment shader. Here's a simplified version of a PBR fragment shader written in Slang:
+
+[source,slang]
+----
+
+// Input from vertex shader
+struct VSOutput {
+    float3 WorldPos : POSITION;  // Automatically assigned to location 0
+    float3 Normal : NORMAL;      // Automatically assigned to location 1
+    float2 UV : TEXCOORD0;       // Automatically assigned to location 2
+    float4 Tangent : TANGENT;    // Automatically assigned to location 3
+};
+
+// Uniform buffer
+struct UniformBufferObject {
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+    float4 lightPositions[4];
+    float4 lightColors[4];
+    float4 camPos;
+    float exposure;
+    float gamma;
+    float prefilteredCubeMipLevels;
+    float scaleIBLAmbient;
+};
+
+// Push constants for material properties
+struct PushConstants {
+    float4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureSet;
+    int physicalDescriptorTextureSet;
+    int normalTextureSet;
+    int occlusionTextureSet;
+    int emissiveTextureSet;
+    float alphaMask;
+    float alphaMaskCutoff;
+};
+
+// Constants
+static const float PI = 3.14159265359;
+
+// Bindings
+ConstantBuffer<UniformBufferObject> ubo;
+Texture2D baseColorMap;
+SamplerState baseColorSampler;
+Texture2D metallicRoughnessMap;
+SamplerState metallicRoughnessSampler;
+Texture2D normalMap;
+SamplerState normalSampler;
+Texture2D occlusionMap;
+SamplerState occlusionSampler;
+Texture2D emissiveMap;
+SamplerState emissiveSampler;
+
+[[vk::push_constant]] PushConstants material;
+
+// PBR functions
+float DistributionGGX(float NdotH, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH2 = NdotH * NdotH;
+
+    float nom = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return nom / denom;
+}
+
+float GeometrySmith(float NdotV, float NdotL, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+
+    float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
+    float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
+
+    return ggx1 * ggx2;
+}
+
+float3 FresnelSchlick(float cosTheta, float3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Main fragment shader function
+float4 main(VSOutput input) : SV_TARGET
+{
+    // Sample material textures
+    float4 baseColor = baseColorMap.Sample(baseColorSampler, input.UV) * material.baseColorFactor;
+    float2 metallicRoughness = metallicRoughnessMap.Sample(metallicRoughnessSampler, input.UV).bg;
+    float metallic = metallicRoughness.x * material.metallicFactor;
+    float roughness = metallicRoughness.y * material.roughnessFactor;
+    float ao = occlusionMap.Sample(occlusionSampler, input.UV).r;  // link:https://learnopengl.com/Advanced-Lighting/SSAO[Ambient occlusion]
+    float3 emissive = emissiveMap.Sample(emissiveSampler, input.UV).rgb;  // link:https://learnopengl.com/PBR/Lighting[Emissive lighting] (self-illumination)
+
+    // Calculate normal in link:https://learnopengl.com/Advanced-Lighting/Normal-Mapping[tangent space]
+    float3 N = normalize(input.Normal);
+    if (material.normalTextureSet >= 0) {
+        // Apply link:https://learnopengl.com/Advanced-Lighting/Normal-Mapping[normal mapping]
+        float3 tangentNormal = normalMap.Sample(normalSampler, input.UV).xyz * 2.0 - 1.0;
+        float3 T = normalize(input.Tangent.xyz);
+        float3 B = normalize(cross(N, T)) * input.Tangent.w;
+        float3x3 TBN = float3x3(T, B, N);
+        N = normalize(mul(tangentNormal, TBN));
+    }
+
+    // Calculate view and reflection vectors
+    float3 V = normalize(ubo.camPos.xyz - input.WorldPos);
+    float3 R = reflect(-V, N);
+
+    // Calculate F0 (base reflectivity)
+    float3 F0 = float3(0.04, 0.04, 0.04);
+    F0 = lerp(F0, baseColor.rgb, metallic);
+
+    // Initialize lighting
+    float3 Lo = float3(0.0, 0.0, 0.0);
+
+    // Calculate lighting for each light
+    for (int i = 0; i < 4; i++) {
+        float3 lightPos = ubo.lightPositions[i].xyz;
+        float3 lightColor = ubo.lightColors[i].rgb;
+
+        // Calculate light direction and distance
+        float3 L = normalize(lightPos - input.WorldPos);
+        float distance = length(lightPos - input.WorldPos);
+        float attenuation = 1.0 / (distance * distance);
+        float3 radiance = lightColor * attenuation;
+
+        // Calculate half vector (the normalized vector halfway between view and light direction)
+        // Used in link:https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model[Blinn-Phong] and PBR models
+        float3 H = normalize(V + L);
+
+        // Calculate BRDF terms
+        float NdotL = max(dot(N, L), 0.0);
+        float NdotV = max(dot(N, V), 0.0);
+        float NdotH = max(dot(N, H), 0.0);
+        float HdotV = max(dot(H, V), 0.0);
+
+        // Specular BRDF
+        float D = DistributionGGX(NdotH, roughness);
+        float G = GeometrySmith(NdotV, NdotL, roughness);
+        float3 F = FresnelSchlick(HdotV, F0);
+
+        float3 numerator = D * G * F;
+        float denominator = 4.0 * NdotV * NdotL + 0.0001;
+        float3 specular = numerator / denominator;
+
+        // link:https://learnopengl.com/PBR/Theory[Energy conservation]
+        float3 kS = F;
+        float3 kD = float3(1.0, 1.0, 1.0) - kS;
+        kD *= 1.0 - metallic;
+
+        // Add to outgoing radiance
+        Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
+    }
+
+    // Add ambient and emissive
+    float3 ambient = float3(0.03, 0.03, 0.03) * baseColor.rgb * ao;
+    float3 color = ambient + Lo + emissive;
+
+    // link:https://en.wikipedia.org/wiki/High-dynamic-range_rendering[HDR] link:https://en.wikipedia.org/wiki/Tone_mapping[tonemapping] and link:https://en.wikipedia.org/wiki/Gamma_correction[gamma correction]
+    color = color / (color + float3(1.0, 1.0, 1.0));
+    color = pow(color, float3(1.0 / ubo.gamma, 1.0 / ubo.gamma, 1.0 / ubo.gamma));
+
+    return float4(color, baseColor.a);
+}
+----
+
+This shader implements the core PBR lighting model, including:
+
+* Sampling material textures
+* Calculating normal mapping
+* Computing the specular BRDF with D, F, and G terms
+* Applying energy conservation
+* Handling multiple light sources
+* Tone mapping and gamma correction
+
+==== Lighting Setup for PBR
+
+PBR requires careful setup of light sources to achieve realistic results. Here's how we can set up lights in our application:
+
+[source,cpp]
+----
+void setupLights() {
+    // Set up four lights with different positions and colors
+    std::array<glm::vec4, 4> lightPositions = {
+        glm::vec4(-10.0f, 10.0f, 10.0f, 1.0f),
+        glm::vec4(10.0f, 10.0f, 10.0f, 1.0f),
+        glm::vec4(-10.0f, -10.0f, 10.0f, 1.0f),
+        glm::vec4(10.0f, -10.0f, 10.0f, 1.0f)
+    };
+
+    std::array<glm::vec4, 4> lightColors = {
+        glm::vec4(300.0f, 300.0f, 300.0f, 1.0f),  // White
+        glm::vec4(300.0f, 300.0f, 0.0f, 1.0f),    // Yellow
+        glm::vec4(0.0f, 0.0f, 300.0f, 1.0f),      // Blue
+        glm::vec4(300.0f, 0.0f, 0.0f, 1.0f)       // Red
+    };
+
+    // Update uniform buffer with light data
+    for (size_t i = 0; i < maxConcurrentFrames; i++) {
+        UniformBufferObject ubo{};
+        // ... (set up transformation matrices)
+
+        // Set light positions and colors
+        for (int j = 0; j < 4; j++) {
+            ubo.lightPositions[j] = lightPositions[j];
+            ubo.lightColors[j] = lightColors[j];
+        }
+
+        // Set camera position for view-dependent effects
+        ubo.camPos = glm::vec4(camera.getPosition(), 1.0f);
+
+        // Set other PBR parameters
+        ubo.exposure = 4.5f;
+        ubo.gamma = 2.2f;
+
+        // Copy to uniform buffer (per frame-in-flight)
+        memcpy(uniformBuffers[i].mapped, &ubo, sizeof(ubo));
+    }
+}
+----
+
+==== Camera Integration for PBR
+
+PBR relies on view-dependent effects like the Fresnel effect, so we need to integrate our camera system:
+
+[source,cpp]
+----
+void updateUniformBuffer(uint32_t currentFrame) {
+    UniformBufferObject ubo{};
+
+    // Update transformation matrices
+    ubo.model = glm::mat4(1.0f);  // Or get from the model's node
+    ubo.view = camera.getViewMatrix();
+    ubo.proj = camera.getProjectionMatrix(swapChainExtent.width / (float)swapChainExtent.height);
+
+    // Vulkan's Y coordinate is inverted compared to OpenGL
+    ubo.proj[1][1] *= -1;
+
+    // Update camera position for PBR calculations
+    ubo.camPos = glm::vec4(camera.getPosition(), 1.0f);
+
+    // ... (update other PBR parameters)
+
+    // Copy to uniform buffer (per frame-in-flight)
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
+}
+----
+
+=== Rendering with PBR
+
+Finally, let's put it all together to render our models with PBR:
+
+[source,cpp]
+----
+void drawModel(vk::raii::CommandBuffer& commandBuffer, Model* model) {
+    // Bind descriptor set with uniform buffer and textures
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics,
+        pipelineLayout,
+        0,
+        1,
+        &descriptorSets[currentFrame],
+        0,
+        nullptr
+    );
+
+    // Traverse the model's scene graph
+    for (auto& node : model->linearNodes) {
+        if (node->mesh.indices.size() > 0) {
+            // Get the global transformation matrix
+            glm::mat4 nodeMatrix = node->getGlobalMatrix();
+
+            // Update model matrix in uniform buffer
+            // (In a real implementation, we'd use a separate UBO for each model)
+
+            // Set up push constants for material properties
+            if (node->mesh.materialIndex >= 0) {
+                Material& mat = model->materials[node->mesh.materialIndex];
+
+                PushConstantBlock pushConstants{};
+                pushConstants.baseColorFactor = mat.baseColorFactor;
+                pushConstants.metallicFactor = mat.metallicFactor;
+                pushConstants.roughnessFactor = mat.roughnessFactor;
+                pushConstants.baseColorTextureSet = mat.baseColorTextureIndex;
+                pushConstants.physicalDescriptorTextureSet = mat.metallicRoughnessTextureIndex;
+                pushConstants.normalTextureSet = mat.normalTextureIndex;
+                pushConstants.occlusionTextureSet = mat.occlusionTextureIndex;
+                pushConstants.emissiveTextureSet = mat.emissiveTextureIndex;
+
+                commandBuffer.pushConstants(
+                    pipelineLayout,
+                    vk::ShaderStageFlagBits::eFragment,
+                    0,
+                    sizeof(PushConstantBlock),
+                    &pushConstants
+                );
+            }
+
+            // Bind vertex and index buffers
+            vk::Buffer vertexBuffers[] = {*node->mesh.vertexBuffer};
+            vk::DeviceSize offsets[] = {0};
+            commandBuffer.bindVertexBuffers(0, 1, vertexBuffers, offsets);
+            commandBuffer.bindIndexBuffer(*node->mesh.indexBuffer, 0, vk::IndexType::eUint32);
+
+            // Draw the mesh
+            commandBuffer.drawIndexed(
+                static_cast<uint32_t>(node->mesh.indices.size()),
+                1,
+                0,
+                0,
+                0
+            );
+        }
+    }
+}
+----
+
+=== Advanced PBR Techniques
+
+While we've covered the basics of PBR implementation, there are several advanced techniques that can enhance the realism of your rendering:
+
+==== Image-Based Lighting (IBL)
+
+link:https://learnopengl.com/PBR/IBL/Diffuse-irradiance[IBL] uses environment maps to simulate global illumination:
+* *Diffuse IBL*: Uses link:https://learnopengl.com/PBR/IBL/Diffuse-irradiance[irradiance maps] for ambient lighting
+* *Specular IBL*: Uses link:https://learnopengl.com/PBR/IBL/Specular-IBL[pre-filtered environment maps] and link:https://learnopengl.com/PBR/IBL/Specular-IBL[BRDF integration maps] for reflections
+
+==== Subsurface Scattering
+
+For materials like skin, wax, or marble where light penetrates the surface:
+* link:https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-14-advanced-techniques-realistic-real-time-skin[Simulates how light scatters within translucent materials]
+* Can be approximated with techniques like subsurface scattering profiles
+
+==== Clear Coat
+
+For materials with a thin, glossy layer on top:
+* link:https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat[Automotive paint, varnished wood, etc.]
+* Implemented as an additional specular lobe
+
+==== Anisotropy
+
+For materials with directional reflections:
+* link:https://google.github.io/filament/Filament.html#materialsystem/anisotropicmodel[Brushed metal, hair, fabric, etc.]
+* Requires additional material parameters and modified BRDFs
+
+=== Conclusion and Next Steps
+
+In this chapter, we've applied the PBR knowledge from the Lighting & Materials chapter to implement a PBR pipeline for our glTF models. We've learned:
+
+* How to leverage the material properties from glTF for PBR rendering
+* How to set up uniform buffers and push constants for PBR parameters
+* How to implement a PBR shader that works with glTF materials
+* How to integrate our camera system with PBR for view-dependent effects
+* How to render glTF models with physically accurate lighting
+
+This implementation allows us to render the glTF models we loaded in the previous chapter with physically accurate materials, resulting in more realistic and consistent rendering across different lighting conditions.
+
+In the next chapter, we'll explore how to render multiple objects with different transformations, which will allow us to create more complex scenes with our PBR-enabled engine.
+
+If you want to dive deeper into lighting and materials, refer back to the Lighting & Materials chapter, where we explored the theory behind PBR in detail.
+
+xref:04_loading_gltf.adoc[Previous: Loading a glTF Model] | xref:06_multiple_objects.adoc[Next: Rendering Multiple Objects]

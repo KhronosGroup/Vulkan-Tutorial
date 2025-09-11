@@ -1,0 +1,189 @@
+= Lighting Models
+
+In this section, we'll explore various lighting models used in computer graphics, with a focus on understanding the concepts rather than implementation details. We'll discuss how different lighting models simulate the interaction of light with surfaces, their advantages and limitations, and when to use each approach.
+
+In this chapter, we'll introduce Physically Based Rendering (PBR) and other lighting models. The concepts we cover here will be applied in later chapters, such as the Loading_Models chapter where we'll use glTF, which uses PBR with the metallic-roughness workflow for its material system. By understanding the theory behind different lighting models, including PBR, we can better leverage the material properties provided by glTF models and extend our rendering capabilities.
+
+Throughout our engine implementation, we'll be using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
+
+== Understanding Light-Surface Interaction
+
+Before diving into specific lighting models, it's important to understand how light interacts with surfaces in the real world:
+
+* *Reflection*: Light bounces off the surface
+* *Absorption*: Light is absorbed by the surface and converted to heat
+* *Transmission*: Light passes through the surface (for transparent materials)
+* *Scattering*: Light is scattered in various directions within the material
+
+The way these interactions occur depends on the material properties and the characteristics of the light.
+
+=== Types of Reflection
+
+There are two main types of reflection:
+
+* *Diffuse Reflection*: Light is scattered in many directions, creating a matte appearance
+* *Specular Reflection*: Light is reflected in a specific direction, creating highlights
+
+Most real-world materials exhibit a combination of diffuse and specular reflection.
+
+== The Evolution of Lighting Models
+
+Lighting models in computer graphics have evolved significantly over time, each with their own approach to simulating light-surface interactions:
+
+=== Early Lighting Models
+
+==== Flat Shading
+
+The simplest lighting model, where each polygon is assigned a single color based on its normal and the light direction. This creates a faceted appearance with visible polygon edges.
+
+* *Advantages*: Very fast to compute
+* *Disadvantages*: Unrealistic appearance, visible polygon edges
+* *When to use*: For very low-power devices or stylized rendering
+
+==== Gouraud Shading
+
+An improvement over flat shading, where lighting is calculated at the vertices and then interpolated across the polygon.
+
+* *Advantages*: Smoother appearance than flat shading, still relatively fast
+* *Disadvantages*: Cannot accurately represent specular highlights
+* *When to use*: For low-power devices where Phong shading is too expensive
+
+==== Phong Lighting Model
+
+One of the most widely used traditional lighting models, developed by Bui Tuong Phong in 1975. It calculates lighting using three components:
+
+* *Ambient*: A constant light level to simulate indirect lighting
+* *Diffuse*: Light scattered in all directions (using Lambert's cosine law)
+* *Specular*: Shiny highlights (using a power function of the reflection vector and view vector)
+
+* *Advantages*: Reasonably realistic for many materials, intuitive parameters
+* *Disadvantages*: Not physically accurate, can look artificial under certain lighting conditions
+* *When to use*: For simple real-time applications where PBR is too expensive
+
+For more information on the Phong lighting model, see the link:https://en.wikipedia.org/wiki/Phong_reflection_model[Wikipedia article].
+
+==== Blinn-Phong Model
+
+A modification of the Phong model by Jim Blinn that uses the halfway vector between the light and view directions instead of the reflection vector, making it more efficient to compute.
+
+* *Advantages*: Faster than Phong, similar visual results
+* *Disadvantages*: Still not physically accurate
+* *When to use*: As a more efficient alternative to Phong
+
+Learn more about Blinn-Phong in this link:https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model[Wikipedia article] or this link:https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-5-implementing-improved-perlin-noise[GPU Gems chapter].
+
+=== Advanced Lighting Models
+
+==== Cook-Torrance Model
+
+A more physically-based model developed by Robert Cook and Kenneth Torrance in 1982. It uses microfacet theory to model surface roughness and includes a more accurate specular term.
+
+* *Advantages*: More physically accurate than Phong or Blinn-Phong
+* *Disadvantages*: More complex to implement and compute
+* *When to use*: When you need more realistic materials but full PBR is too expensive
+
+For more details, see the original link:https://graphics.pixar.com/library/ReflectanceModel/paper.pdf[Cook-Torrance paper].
+
+==== Oren-Nayar Model
+
+An extension of the Lambertian diffuse model that accounts for microfacet roughness in diffuse reflection, making it more suitable for rough surfaces like cloth, concrete, or sand.
+
+* *Advantages*: More realistic diffuse reflection for rough surfaces
+* *Disadvantages*: More expensive than Lambertian diffuse
+* *When to use*: For materials where diffuse roughness is important
+
+Learn more in the original link:https://www1.cs.columbia.edu/CAVE/publications/pdfs/Oren_SIGGRAPH94.pdf[Oren-Nayar paper].
+
+==== Physically Based Rendering (PBR)
+
+PBR represents one of the most significant advancements in real-time graphics over the past decade. Unlike earlier ad-hoc shading models, PBR aims to simulate how light interacts with surfaces based on the principles of physics.
+
+The key principles of PBR include:
+
+* *Energy Conservation*: A surface cannot reflect more light than it receives
+* *Microfacet Theory*: Surfaces are modeled as collections of tiny mirrors with varying orientations
+* *Fresnel Effect*: Reflectivity changes with viewing angle
+* *Metallic-Roughness Workflow*: Materials are defined by their base color, metalness, and roughness
+
+Considerations for using PBR:
+
+* *Advantages*: Realistic results that remain consistent across different lighting conditions, intuitive parameters for artists
+* *Disadvantages*: More complex and computationally expensive
+* *When to use*: For modern games and applications where realism is important
+
+For comprehensive information on PBR, see the link:https://www.pbr-book.org/[Physically Based Rendering book].
+
+== Lighting Models in glTF
+
+The glTF format uses PBR with the metallic-roughness workflow, which defines materials using these primary parameters:
+
+* *Base Color*: The albedo or diffuse color of the surface
+* *Metallic*: How "metal-like" the surface is (0.0 = non-metal, 1.0 = metal)
+* *Roughness*: How smooth or rough the surface is (0.0 = mirror-like, 1.0 = rough)
+
+This workflow is intuitive for artists and efficient for real-time rendering. The glTF specification provides a standardized way to define PBR materials that can be used across different rendering engines.
+
+For more information on the glTF PBR implementation, see the link:https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#materials[glTF 2.0 specification].
+
+== Light Types
+
+Different lighting models can work with various types of light sources:
+
+1. *Point Lights*: Light emanates in all directions from a single point.
+2. *Directional Lights*: Light rays are parallel, as if coming from a very distant source (like the sun).
+3. *Spot Lights*: Light is emitted in a cone shape from a point.
+4. *Area Lights*: Light is emitted from a surface area.
+5. *Image-Based Lighting (IBL)*: Light is derived from an environment map, simulating global illumination.
+
+Each type of light requires specific calculations for the light direction, attenuation, and other properties.
+
+== Advanced Lighting Techniques
+
+Beyond basic lighting models, there are several advanced techniques that can enhance the realism of your rendering:
+
+=== Global Illumination
+
+Global Illumination (GI) simulates how light bounces between surfaces, creating indirect lighting effects. Techniques include:
+
+* *Radiosity*: Calculates diffuse light transfer between surfaces
+* *Path Tracing*: Traces light paths through the scene
+* *Photon Mapping*: Stores light information in a spatial data structure
+
+For more information, see this link:https://developer.download.nvidia.com/books/HTML/gpugems2/chapters/gpugems2_chapter12.html[GPU Gems chapter on radiosity].
+
+=== Subsurface Scattering
+
+Subsurface Scattering (SSS) simulates how light penetrates and scatters within translucent materials like skin, wax, or marble.
+
+For more information, see this link:https://developer.nvidia.com/gpugems/gpugems/part-iii-materials/chapter-16-real-time-approximations-subsurface-scattering[GPU Gems chapter on subsurface scattering].
+
+=== Ambient Occlusion
+
+Ambient Occlusion (AO) approximates how much ambient light a surface point would receive, darkening corners and crevices.
+
+For more information, see this link:https://developer.download.nvidia.com/books/HTML/gpugems/gpugems_ch17.html[GPU Gems chapter on ambient occlusion].
+
+== Choosing the Right Lighting Model
+
+When deciding which lighting model to use for your application, consider:
+
+1. *Hardware Constraints*: More complex models require more processing power
+2. *Visual Requirements*: How realistic do your materials need to look?
+3. *Artist Workflow*: Some models are more intuitive for artists to work with
+4. *Consistency*: PBR provides more consistent results across different lighting conditions
+
+For our engine, we'll leverage the PBR implementation from the glTF format, as it provides a good balance of realism, performance, and artist-friendly parameters.
+
+== Further Reading
+
+To deepen your understanding of lighting models, here are some valuable resources:
+
+* link:https://www.pbr-book.org/[Physically Based Rendering: From Theory to Implementation] - The definitive book on PBR
+* link:https://learnopengl.com/PBR/Theory[LearnOpenGL PBR Tutorial] - An accessible introduction to PBR concepts
+* link:https://google.github.io/filament/Filament.html[Filament Material System] - Google's real-time PBR rendering engine documentation
+* link:https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#materials[glTF 2.0 Material Specification] - Details on how PBR is implemented in glTF
+* link:https://developer.nvidia.com/gpugems/gpugems/part-iii-materials[GPU Gems: Materials] - Collection of articles on advanced material rendering
+
+In the next section, we'll explore how to use push constants to efficiently pass material properties to our shaders.
+
+link:01_introduction.adoc[Previous: Introduction] | link:03_push_constants.adoc[Next: Push Constants]

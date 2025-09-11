@@ -1,0 +1,566 @@
+:pp: {plus}{plus}
+
+= Subsystems: Physics Basics
+
+== Physics System Fundamentals
+
+Before we explore how Vulkan can accelerate physics simulations, let's establish a foundation by implementing a basic physics system for our engine. This will give us a framework that we can later enhance with Vulkan compute capabilities.
+
+=== Physics System Architecture
+
+A typical game physics system consists of several key components:
+
+* *Rigid Body Dynamics*: Simulation of solid objects with mass, velocity, and rotational properties.
+* *Collision Detection*: Determining when objects intersect or contact each other.
+* *Collision Response*: Calculating how objects should react when they collide.
+* *Constraints*: Limiting the movement of objects based on joints, hinges, or other connections.
+* *Continuous Collision Detection*: Handling fast-moving objects that might pass through others between frames.
+* *Spatial Partitioning*: Optimizing collision detection by dividing the world into regions.
+
+Let's implement a simple physics system that covers these basics, using a modern C++ approach consistent with our engine's design.
+
+=== Basic Physics System Implementation
+
+We'll start by defining the core classes for our physics system:
+
+[source,cpp]
+----
+// Physics.h
+#pragma once
+
+#include <vector>
+#include <memory>
+#include <unordered_map>
+#include <string>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+
+namespace Engine {
+namespace Physics {
+
+enum class ColliderType {
+    Box,
+    Sphere,
+    Capsule,
+    Mesh
+};
+
+class Collider {
+public:
+    virtual ~Collider() = default;
+    virtual ColliderType GetType() const = 0;
+
+    void SetOffset(const glm::vec3& offset) { m_Offset = offset; }
+    const glm::vec3& GetOffset() const { return m_Offset; }
+
+protected:
+    glm::vec3 m_Offset = glm::vec3(0.0f);
+};
+
+class BoxCollider : public Collider {
+public:
+    BoxCollider(const glm::vec3& halfExtents) : m_HalfExtents(halfExtents) {}
+
+    ColliderType GetType() const override { return ColliderType::Box; }
+
+    const glm::vec3& GetHalfExtents() const { return m_HalfExtents; }
+    void SetHalfExtents(const glm::vec3& halfExtents) { m_HalfExtents = halfExtents; }
+
+private:
+    glm::vec3 m_HalfExtents;
+};
+
+class SphereCollider : public Collider {
+public:
+    SphereCollider(float radius) : m_Radius(radius) {}
+
+    ColliderType GetType() const override { return ColliderType::Sphere; }
+
+    float GetRadius() const { return m_Radius; }
+    void SetRadius(float radius) { m_Radius = radius; }
+
+private:
+    float m_Radius;
+};
+
+class RigidBody {
+public:
+    RigidBody();
+    ~RigidBody();
+
+    // Kinematic state
+    void SetPosition(const glm::vec3& position) { m_Position = position; }
+    void SetRotation(const glm::quat& rotation) { m_Rotation = rotation; }
+    void SetLinearVelocity(const glm::vec3& velocity) { m_LinearVelocity = velocity; }
+    void SetAngularVelocity(const glm::vec3& velocity) { m_AngularVelocity = velocity; }
+
+    const glm::vec3& GetPosition() const { return m_Position; }
+    const glm::quat& GetRotation() const { return m_Rotation; }
+    const glm::vec3& GetLinearVelocity() const { return m_LinearVelocity; }
+    const glm::vec3& GetAngularVelocity() const { return m_AngularVelocity; }
+
+    // Physical properties
+    void SetMass(float mass);
+    float GetMass() const { return m_Mass; }
+    float GetInverseMass() const { return m_InverseMass; }
+
+    void SetRestitution(float restitution) { m_Restitution = restitution; }
+    float GetRestitution() const { return m_Restitution; }
+
+    void SetFriction(float friction) { m_Friction = friction; }
+    float GetFriction() const { return m_Friction; }
+
+    // Collider management
+    void SetCollider(std::shared_ptr<Collider> collider) { m_Collider = collider; }
+    std::shared_ptr<Collider> GetCollider() const { return m_Collider; }
+
+    // Forces and impulses
+    void ApplyForce(const glm::vec3& force);
+    void ApplyImpulse(const glm::vec3& impulse);
+    void ApplyTorque(const glm::vec3& torque);
+    void ApplyTorqueImpulse(const glm::vec3& torqueImpulse);
+
+    // Simulation flags
+    void SetKinematic(bool kinematic) { m_IsKinematic = kinematic; }
+    bool IsKinematic() const { return m_IsKinematic; }
+
+    void SetGravityEnabled(bool enabled) { m_UseGravity = enabled; }
+    bool IsGravityEnabled() const { return m_UseGravity; }
+
+private:
+    // Kinematic state
+    glm::vec3 m_Position = glm::vec3(0.0f);
+    glm::quat m_Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec3 m_LinearVelocity = glm::vec3(0.0f);
+    glm::vec3 m_AngularVelocity = glm::vec3(0.0f);
+
+    // Forces
+    glm::vec3 m_AccumulatedForce = glm::vec3(0.0f);
+    glm::vec3 m_AccumulatedTorque = glm::vec3(0.0f);
+
+    // Physical properties
+    float m_Mass = 1.0f;
+    float m_InverseMass = 1.0f;
+    glm::mat3 m_InertiaTensor = glm::mat3(1.0f);
+    glm::mat3 m_InverseInertiaTensor = glm::mat3(1.0f);
+    float m_Restitution = 0.5f;
+    float m_Friction = 0.5f;
+
+    // Collision
+    std::shared_ptr<Collider> m_Collider;
+
+    // Flags
+    bool m_IsKinematic = false;
+    bool m_UseGravity = true;
+
+    // Update inertia tensor based on mass and collider
+    void UpdateInertiaTensor();
+
+    friend class PhysicsSystem;
+};
+
+struct CollisionInfo {
+    std::shared_ptr<RigidBody> bodyA;
+    std::shared_ptr<RigidBody> bodyB;
+    glm::vec3 contactPoint;
+    glm::vec3 normal;
+    float penetrationDepth;
+};
+
+class PhysicsSystem {
+public:
+    PhysicsSystem();
+    ~PhysicsSystem();
+
+    void Initialize();
+    void Shutdown();
+
+    // Update physics simulation
+    void Update(float deltaTime);
+
+    // RigidBody management
+    std::shared_ptr<RigidBody> CreateRigidBody();
+    void DestroyRigidBody(std::shared_ptr<RigidBody> body);
+
+    // World settings
+    void SetGravity(const glm::vec3& gravity) { m_Gravity = gravity; }
+    const glm::vec3& GetGravity() const { return m_Gravity; }
+
+    // Collision detection
+    bool Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance, RaycastHit& hit);
+
+private:
+    std::vector<std::shared_ptr<RigidBody>> m_RigidBodies;
+    glm::vec3 m_Gravity = glm::vec3(0.0f, -9.81f, 0.0f);
+
+    // Simulation steps
+    void IntegrateForces(RigidBody& body, float deltaTime);
+    void IntegrateVelocities(RigidBody& body, float deltaTime);
+
+    // Collision detection and response
+    void DetectCollisions(std::vector<CollisionInfo>& collisions);
+    void ResolveCollisions(std::vector<CollisionInfo>& collisions);
+
+    // Helper functions for collision detection
+    bool CheckCollision(const RigidBody& bodyA, const RigidBody& bodyB, CollisionInfo& info);
+    bool SphereVsSphere(const RigidBody& bodyA, const RigidBody& bodyB, CollisionInfo& info);
+    bool BoxVsBox(const RigidBody& bodyA, const RigidBody& bodyB, CollisionInfo& info);
+    bool SphereVsBox(const RigidBody& bodyA, const RigidBody& bodyB, CollisionInfo& info);
+};
+
+struct RaycastHit {
+    std::shared_ptr<RigidBody> body;
+    glm::vec3 point;
+    glm::vec3 normal;
+    float distance;
+};
+
+} // namespace Physics
+} // namespace Engine
+----
+
+This basic structure provides a foundation for simulating rigid body physics with collision detection and response. In a real implementation, you would likely use a physics library like Bullet, PhysX, or Havok for more advanced features and optimizations.
+
+=== Integrating with the Engine
+
+To integrate our physics system with the rest of our engine, we'll add it to our engine's main class:
+
+[source,cpp]
+----
+// Engine.h
+#include "Physics.h"
+
+namespace Engine {
+
+class Engine {
+public:
+    // ... existing engine code ...
+
+    Physics::PhysicsSystem& GetPhysicsSystem() { return m_PhysicsSystem; }
+
+private:
+    // ... existing engine members ...
+
+    Physics::PhysicsSystem m_PhysicsSystem;
+};
+
+} // namespace Engine
+----
+
+And we'll initialize it during engine startup:
+
+[source,cpp]
+----
+// Engine.cpp
+void Engine::Initialize() {
+    // ... existing initialization code ...
+
+    m_PhysicsSystem.Initialize();
+}
+
+void Engine::Shutdown() {
+    m_PhysicsSystem.Shutdown();
+
+    // ... existing shutdown code ...
+}
+----
+
+=== Basic Implementation of Physics Simulation
+
+To keep the update loop easy to follow, think of a fixed‑timestep frame as six steps:
+
+1) Accumulate forces (e.g., gravity, user forces)
+2) Integrate forces (update velocities with damping)
+3) Detect collisions (broad/narrow checks per pair)
+4) Resolve collisions (impulses + positional correction)
+5) Integrate velocities (update positions and orientations)
+6) Clear forces (prepare for next step)
+
+Let's implement the core physics simulation functions:
+
+[source,cpp]
+----
+// Physics.cpp
+#include "Physics.h"
+
+namespace Engine {
+namespace Physics {
+
+void PhysicsSystem::Update(float deltaTime) {
+    // Fixed timestep for stability
+    const float fixedTimeStep = 1.0f / 60.0f;
+
+    // Accumulate forces (e.g., gravity)
+    for (auto& body : m_RigidBodies) {
+        if (!body->IsKinematic() && body->IsGravityEnabled()) {
+            body->m_AccumulatedForce += m_Gravity * body->m_Mass;
+        }
+    }
+
+    // Integrate forces
+    for (auto& body : m_RigidBodies) {
+        if (!body->IsKinematic()) {
+            IntegrateForces(*body, fixedTimeStep);
+        }
+    }
+
+    // Detect and resolve collisions
+    std::vector<CollisionInfo> collisions;
+    DetectCollisions(collisions);
+    ResolveCollisions(collisions);
+
+    // Integrate velocities
+    for (auto& body : m_RigidBodies) {
+        if (!body->IsKinematic()) {
+            IntegrateVelocities(*body, fixedTimeStep);
+        }
+    }
+
+    // Clear accumulated forces
+    for (auto& body : m_RigidBodies) {
+        body->m_AccumulatedForce = glm::vec3(0.0f);
+        body->m_AccumulatedTorque = glm::vec3(0.0f);
+    }
+}
+
+void PhysicsSystem::IntegrateForces(RigidBody& body, float deltaTime) {
+    // Update linear velocity
+    body.m_LinearVelocity += (body.m_AccumulatedForce * body.m_InverseMass) * deltaTime;
+
+    // Update angular velocity
+    body.m_AngularVelocity += glm::vec3(body.m_InverseInertiaTensor * glm::vec4(body.m_AccumulatedTorque, 0.0f)) * deltaTime;
+
+    // Apply damping
+    const float linearDamping = 0.01f;
+    const float angularDamping = 0.01f;
+    body.m_LinearVelocity *= (1.0f - linearDamping);
+    body.m_AngularVelocity *= (1.0f - angularDamping);
+}
+
+void PhysicsSystem::IntegrateVelocities(RigidBody& body, float deltaTime) {
+    // Update position
+    body.m_Position += body.m_LinearVelocity * deltaTime;
+
+    // Update rotation
+    glm::quat angularVelocityQuat(0.0f, body.m_AngularVelocity.x, body.m_AngularVelocity.y, body.m_AngularVelocity.z);
+    body.m_Rotation += (angularVelocityQuat * body.m_Rotation) * 0.5f * deltaTime;
+    body.m_Rotation = glm::normalize(body.m_Rotation);
+}
+
+void PhysicsSystem::DetectCollisions(std::vector<CollisionInfo>& collisions) {
+    // Simple O(n²) collision detection
+    for (size_t i = 0; i < m_RigidBodies.size(); i++) {
+        for (size_t j = i + 1; j < m_RigidBodies.size(); j++) {
+            auto& bodyA = m_RigidBodies[i];
+            auto& bodyB = m_RigidBodies[j];
+
+            // Skip if both bodies are kinematic
+            if (bodyA->IsKinematic() && bodyB->IsKinematic()) {
+                continue;
+            }
+
+            // Skip if either body doesn't have a collider
+            if (!bodyA->GetCollider() || !bodyB->GetCollider()) {
+                continue;
+            }
+
+            CollisionInfo info;
+            if (CheckCollision(*bodyA, *bodyB, info)) {
+                info.bodyA = bodyA;
+                info.bodyB = bodyB;
+                collisions.push_back(info);
+            }
+        }
+    }
+}
+
+void PhysicsSystem::ResolveCollisions(std::vector<CollisionInfo>& collisions) {
+    for (auto& collision : collisions) {
+        auto bodyA = collision.bodyA;
+        auto bodyB = collision.bodyB;
+
+        // Calculate relative velocity
+        glm::vec3 relativeVelocity = bodyB->m_LinearVelocity - bodyA->m_LinearVelocity;
+
+        // Calculate impulse magnitude
+        float velocityAlongNormal = glm::dot(relativeVelocity, collision.normal);
+
+        // Don't resolve if velocities are separating
+        if (velocityAlongNormal > 0) {
+            continue;
+        }
+
+        // Calculate restitution (bounciness)
+        float restitution = std::min(bodyA->m_Restitution, bodyB->m_Restitution);
+
+        // Calculate impulse scalar
+        float j = -(1.0f + restitution) * velocityAlongNormal;
+        j /= bodyA->m_InverseMass + bodyB->m_InverseMass;
+
+        // Apply impulse
+        glm::vec3 impulse = collision.normal * j;
+
+        if (!bodyA->IsKinematic()) {
+            bodyA->m_LinearVelocity -= impulse * bodyA->m_InverseMass;
+        }
+
+        if (!bodyB->IsKinematic()) {
+            bodyB->m_LinearVelocity += impulse * bodyB->m_InverseMass;
+        }
+
+        // Resolve penetration (position correction)
+        const float percent = 0.2f; // usually 20% to 80%
+        const float slop = 0.01f; // small penetration allowed
+        glm::vec3 correction = std::max(collision.penetrationDepth - slop, 0.0f) * percent * collision.normal / (bodyA->m_InverseMass + bodyB->m_InverseMass);
+
+        if (!bodyA->IsKinematic()) {
+            bodyA->m_Position -= correction * bodyA->m_InverseMass;
+        }
+
+        if (!bodyB->IsKinematic()) {
+            bodyB->m_Position += correction * bodyB->m_InverseMass;
+        }
+    }
+}
+
+bool PhysicsSystem::CheckCollision(const RigidBody& bodyA, const RigidBody& bodyB, CollisionInfo& info) {
+    auto colliderA = bodyA.GetCollider();
+    auto colliderB = bodyB.GetCollider();
+
+    if (colliderA->GetType() == ColliderType::Sphere && colliderB->GetType() == ColliderType::Sphere) {
+        return SphereVsSphere(bodyA, bodyB, info);
+    }
+    else if (colliderA->GetType() == ColliderType::Box && colliderB->GetType() == ColliderType::Box) {
+        return BoxVsBox(bodyA, bodyB, info);
+    }
+    else if (colliderA->GetType() == ColliderType::Sphere && colliderB->GetType() == ColliderType::Box) {
+        return SphereVsBox(bodyA, bodyB, info);
+    }
+    else if (colliderA->GetType() == ColliderType::Box && colliderB->GetType() == ColliderType::Sphere) {
+        bool result = SphereVsBox(bodyB, bodyA, info);
+        if (result) {
+            // Flip normal direction
+            info.normal = -info.normal;
+        }
+        return result;
+    }
+
+    // Unsupported collision types
+    return false;
+}
+
+bool PhysicsSystem::SphereVsSphere(const RigidBody& bodyA, const RigidBody& bodyB, CollisionInfo& info) {
+    auto sphereA = std::static_pointer_cast<SphereCollider>(bodyA.GetCollider());
+    auto sphereB = std::static_pointer_cast<SphereCollider>(bodyB.GetCollider());
+
+    glm::vec3 posA = bodyA.GetPosition() + sphereA->GetOffset();
+    glm::vec3 posB = bodyB.GetPosition() + sphereB->GetOffset();
+
+    float radiusA = sphereA->GetRadius();
+    float radiusB = sphereB->GetRadius();
+
+    glm::vec3 direction = posB - posA;
+    float distance = glm::length(direction);
+    float minDistance = radiusA + radiusB;
+
+    if (distance >= minDistance) {
+        return false;
+    }
+
+    // Normalize direction
+    direction = distance > 0.0001f ? direction / distance : glm::vec3(0, 1, 0);
+
+    info.contactPoint = posA + direction * radiusA;
+    info.normal = direction;
+    info.penetrationDepth = minDistance - distance;
+
+    return true;
+}
+
+// Implementation of BoxVsBox and SphereVsBox collision detection would go here
+// These are more complex and would require additional helper functions
+
+} // namespace Physics
+} // namespace Engine
+----
+
+=== Basic Usage Example
+
+Here's how you might use this physics system in a game:
+
+[source,cpp]
+----
+// Game code
+void Game::Initialize() {
+    // Create a ground plane
+    auto ground = m_Engine.GetPhysicsSystem().CreateRigidBody();
+    ground->SetPosition(glm::vec3(0.0f, -1.0f, 0.0f));
+    ground->SetKinematic(true); // Static object
+    auto groundCollider = std::make_shared<Physics::BoxCollider>(glm::vec3(50.0f, 1.0f, 50.0f));
+    ground->SetCollider(groundCollider);
+
+    // Create a dynamic box
+    auto box = m_Engine.GetPhysicsSystem().CreateRigidBody();
+    box->SetPosition(glm::vec3(0.0f, 5.0f, 0.0f));
+    box->SetMass(1.0f);
+    auto boxCollider = std::make_shared<Physics::BoxCollider>(glm::vec3(0.5f, 0.5f, 0.5f));
+    box->SetCollider(boxCollider);
+
+    // Create a dynamic sphere
+    auto sphere = m_Engine.GetPhysicsSystem().CreateRigidBody();
+    sphere->SetPosition(glm::vec3(1.0f, 10.0f, 0.0f));
+    sphere->SetMass(2.0f);
+    auto sphereCollider = std::make_shared<Physics::SphereCollider>(0.7f);
+    sphere->SetCollider(sphereCollider);
+
+    // Store references to our objects
+    m_PhysicsObjects.push_back(ground);
+    m_PhysicsObjects.push_back(box);
+    m_PhysicsObjects.push_back(sphere);
+}
+
+void Game::Update(float deltaTime) {
+    // Update physics
+    m_Engine.GetPhysicsSystem().Update(deltaTime);
+
+    // Update visual representations of physics objects
+    for (auto& physicsObject : m_PhysicsObjects) {
+        auto visualObject = m_PhysicsToVisualMap[physicsObject];
+        if (visualObject) {
+            visualObject->SetPosition(physicsObject->GetPosition());
+            visualObject->SetRotation(physicsObject->GetRotation());
+        }
+    }
+}
+
+void Game::OnExplosion(const glm::vec3& position, float force) {
+    // Apply radial impulse to nearby objects
+    for (auto& physicsObject : m_PhysicsObjects) {
+        if (!physicsObject->IsKinematic()) {
+            glm::vec3 direction = physicsObject->GetPosition() - position;
+            float distance = glm::length(direction);
+
+            if (distance < 10.0f) {
+                direction = glm::normalize(direction);
+                float impulseMagnitude = force * (1.0f - distance / 10.0f);
+                physicsObject->ApplyImpulse(direction * impulseMagnitude);
+            }
+        }
+    }
+}
+----
+
+=== Limitations of Basic Physics Systems
+
+While this basic physics system provides the essential functionality for simulating rigid bodies in a game, it has several limitations:
+
+1. *Performance*: The O(n²) collision detection becomes a bottleneck with many objects.
+2. *Limited Collision Shapes*: We've only implemented basic shapes like boxes and spheres.
+3. *Stability Issues*: Simple integrators and collision resolution can lead to instability.
+4. *No Continuous Collision Detection*: Fast-moving objects might tunnel through thin obstacles.
+5. *Limited Constraints*: We haven't implemented joints, springs, or other constraints.
+6. *CPU-Bound Processing*: All calculations are performed on the CPU, limiting scalability.
+
+In the next section, we'll explore how Vulkan compute shaders can address these limitations by offloading physics calculations to the GPU, particularly for large-scale simulations with many objects.
+
+link:03_vulkan_audio.adoc[Previous: Vulkan for Audio Processing] | link:05_vulkan_physics.adoc[Next: Vulkan for Physics Simulation]

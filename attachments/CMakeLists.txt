@@ -56,46 +56,48 @@ find_program (GLSLANG_VALIDATOR "glslangValidator" HINTS $ENV{VULKAN_SDK}/bin RE
 set_property (TARGET glslang::validator PROPERTY IMPORTED_LOCATION "${GLSLANG_VALIDATOR}")
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
-function (add_shaders_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
-  set (SHADERS_DIR ${SHADER_CHAPTER_NAME}/shaders)
-  add_custom_command (
-    OUTPUT ${SHADERS_DIR}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
-    )
-  add_custom_command (
-    OUTPUT ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv
-    COMMAND glslang::validator
-    ARGS --target-env vulkan1.0 ${SHADER_SOURCES} --quiet
-    WORKING_DIRECTORY ${SHADERS_DIR}
-    DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
-    COMMENT "Compiling Shaders"
-    VERBATIM
-    )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv)
-endfunction ()
+function(add_shaders_target TARGET)
+  cmake_parse_arguments(SHADER "" "CHAPTER_NAME" "SOURCES" ${ARGN})
 
-function (add_slang_shader_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
-  set (SHADERS_DIR ${SHADER_CHAPTER_NAME}/shaders)
+  set(SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/shaders)
+  message(STATUS "${TARGET} Shaders will be output to: ${SHADERS_DIR}")
+
+  # Ensure the shaders directory exists
+  file(MAKE_DIRECTORY ${SHADERS_DIR})
+
+  add_custom_target(${TARGET}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+    COMMAND glslang::validator --target-env vulkan1.0 ${SHADER_SOURCES} --quiet
+            WORKING_DIRECTORY ${SHADERS_DIR}
+    COMMENT "Compiling Shaders for ${TARGET}"
+    VERBATIM
+  )
+endfunction()
+
+function(add_slang_shader_target TARGET)
+  cmake_parse_arguments(SHADER "" "CHAPTER_NAME" "SOURCES" ${ARGN})
+
+  set(SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/shaders)
+  message(STATUS "${TARGET} Slang shaders will be output to: ${SHADERS_DIR}")
+  # Ensure the shaders directory exists
+  file(MAKE_DIRECTORY ${SHADERS_DIR})
+
+  set(ENTRY_POINTS -entry vertMain -entry fragMain)
   file(GLOB HAS_COMPUTE ${CHAPTER_SHADER}.comp)
-  set (ENTRY_POINTS -entry vertMain -entry fragMain)
   if(HAS_COMPUTE)
     list(APPEND ENTRY_POINTS -entry compMain)
   endif()
-  add_custom_command (
-          OUTPUT ${SHADERS_DIR}
-          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+
+  add_custom_target(${TARGET}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+    COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES}
+            -target spirv -profile spirv_1_4 -emit-spirv-directly
+            -fvk-use-entrypoint-name ${ENTRY_POINTS}
+            -o slang.spv
+            WORKING_DIRECTORY ${SHADERS_DIR}
+    COMMENT "Compiling Slang Shaders for ${TARGET}"
+    VERBATIM
   )
-  add_custom_command (
-          OUTPUT  ${SHADERS_DIR}/slang.spv
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
-          WORKING_DIRECTORY ${SHADERS_DIR}
-          DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
-          COMMENT "Compiling Slang Shaders"
-          VERBATIM
-  )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
 endfunction()
 
 function (add_chapter CHAPTER_NAME)
@@ -133,8 +135,58 @@ function (add_chapter CHAPTER_NAME)
     file (COPY assets/${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
   endif ()
   if (DEFINED CHAPTER_TEXTURES)
-    file (COPY assets/${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
+    file (COPY assets/${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures) 
   endif ()
+
+  if(WIN32)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+      set(EXECUTABLE_DIR $<TARGET_FILE_DIR:${CHAPTER_NAME}>)
+
+      add_custom_target(${CHAPTER_NAME}_postbuild ALL
+        COMMENT "${CHAPTER_NAME}: Post-build asset sync"
+      )
+
+      if(DEFINED CHAPTER_SHADER)
+        add_custom_command(TARGET ${CHAPTER_NAME}_postbuild POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${EXECUTABLE_DIR}/shaders
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${EXECUTABLE_DIR}/shaders
+          COMMAND ${CMAKE_COMMAND} -E copy_directory
+                  ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders
+                  ${EXECUTABLE_DIR}/shaders
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders
+          COMMENT "${CHAPTER_NAME}: Copying shaders to executable directory (Visual Studio)"
+        )
+        add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})
+        
+      endif()
+      if(DEFINED CHAPTER_MODELS)
+        add_custom_command(TARGET ${CHAPTER_NAME}_postbuild POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${EXECUTABLE_DIR}/models
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${EXECUTABLE_DIR}/models
+          COMMAND ${CMAKE_COMMAND} -E copy_directory
+                  ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models
+                  ${EXECUTABLE_DIR}/models
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models
+          COMMENT "${CHAPTER_NAME}: Copying models to executable directory (Visual Studio)"
+        )
+        add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})
+        
+      endif()
+      if(DEFINED CHAPTER_TEXTURES)
+        add_custom_command(TARGET ${CHAPTER_NAME}_postbuild POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${EXECUTABLE_DIR}/textures
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${EXECUTABLE_DIR}/textures
+          COMMAND ${CMAKE_COMMAND} -E copy_directory
+                  ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures
+                  ${EXECUTABLE_DIR}/textures
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures
+          COMMENT "${CHAPTER_NAME}: Copying textures to executable directory (Visual Studio)"
+        )
+        add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})
+        
+      endif()
+    endif()
+  endif()
 endfunction ()
 
 add_chapter (00_base_code)

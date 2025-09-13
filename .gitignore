@@ -11,4 +11,5 @@ ebook/*.epub
 
 convert.py
 
-attachments/build/
+**/build/*
+**/vcpkg_installed/*

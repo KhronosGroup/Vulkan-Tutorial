@@ -279,7 +279,7 @@ image::../../../images/38_TASK10_alphacut_shadows.png[]
 With everything set in place to support transparency in shadows, implementing other effects like reflections is very straightforward!
 
 === Navigation
-- Previous: link:04_TLAS_animation.adoc[TLAS animation]
-- Next: link:06_Reflections.adoc[Reflections]
+- Previous: xref:./04_TLAS_animation.adoc[TLAS animation]
+- Next: xref:./06_Reflections.adoc[Reflections]
 
 

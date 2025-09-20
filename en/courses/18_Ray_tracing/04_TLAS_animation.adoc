@@ -278,5 +278,5 @@ float4 fragMain(VSOutput vertIn) : SV_TARGET {
 NOTE: Ray Query vs Ray Tracing Pipeline: Notice how we added a ray tracing effect (shadows) directly in the fragment shader. We did not need a separate ray generation shader or any new pipeline. This is the power of ray queries (also known as inline ray tracing): we integrate ray traversal into our existing rendering pipeline. This keeps the shader logic unified and avoids extra GPU shader launches. On many mobile GPUs, this approach is not only more convenient but necessary: as mentioned, current mobile devices mostly support ray queries and not the full ray pipeline, and they run ray queries efficiently in fragment shaders. This is a key reason we focus on ray queries in this lab.
 
 === Navigation
-- Previous: link:03_Ray_query_shadows.adoc[Ray query shadows]
-- Next: link:05_Shadow_transparency.adoc[Shadow transparency]
+- Previous: xref:./03_Ray_query_shadows.adoc[Ray query shadows]
+- Next: xref:./05_Shadow_transparency.adoc[Shadow transparency]

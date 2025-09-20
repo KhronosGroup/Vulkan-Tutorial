@@ -103,5 +103,5 @@ image::../../../images/38_TASK06_shadows_static.gif[]
 The object is rotating, but the shadows are static. This is because we have not yet updated the TLAS to account for the object's animation. The TLAS needs to be rebuilt whenever the object moves or animates, so let's implement that next.
 
 === Navigation
-- Previous: link:02_Acceleration_structures.adoc[Acceleration structures]
-- Next: link:04_TLAS_animation.adoc[TLAS animation]
+- Previous: xref:./02_Acceleration_structures.adoc[Acceleration structures]
+- Next: xref:./04_TLAS_animation.adoc[TLAS animation]

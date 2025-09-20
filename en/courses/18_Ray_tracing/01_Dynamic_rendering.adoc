@@ -110,5 +110,5 @@ NOTE: Dynamic rendering reduces CPU overhead and, with the `VK_KHR_dynamic_rende
 After this step, you should be comfortable that dynamic rendering is set up correctly. We can now move on to ray tracing features.
 
 === Navigation
-- Previous: link:00_Overview.adoc[Overview]
-- Next: link:02_Acceleration_structures.adoc[Acceleration structures]
+- Previous: xref:./00_Overview.adoc[Overview]
+- Next: xref:./02_Acceleration_structures.adoc[Acceleration structures]

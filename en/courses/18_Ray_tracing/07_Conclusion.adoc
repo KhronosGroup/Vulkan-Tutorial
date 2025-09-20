@@ -28,4 +28,4 @@ The 3D assets were provided by Poly Haven and combined using Blender:
 - https://polyhaven.com/a/wooden_picnic_table
 
 === Navigation
-- Previous: link:06_Reflections.adoc[Reflections]
+- Previous: xref:./06_Reflections.adoc[Reflections]

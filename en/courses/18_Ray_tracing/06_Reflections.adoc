@@ -159,5 +159,5 @@ image::../../../images/38_TASK11_alphacut_reflections.png[]
 
 
 === Navigation
-- Previous: link:05_Shadow_transparency.adoc[Shadow transparency]
-- Next: link:07_Conclusion.adoc[Conclusion]
+- Previous: xref:./05_Shadow_transparency.adoc[Shadow transparency]
+- Next: xref:./07_Conclusion.adoc[Conclusion]

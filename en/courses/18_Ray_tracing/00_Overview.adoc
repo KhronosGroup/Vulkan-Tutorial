@@ -4,7 +4,7 @@
 
 Welcome! In this series, we enhance a Vulkan renderer with ray tracing features to implement real-time pixel-perfect shadows (with and without transparency) and a bonus reflection effect. You will work with provided scaffolded code (based on the Vulkan Tutorial) and fill in key shader functions following step-by-step instructions.
 
-Slides available link:Vulkan%20Ray%20Tracing%20With%20Dynamic%20Rendering.pdf[here].
+Slides available link:/attachments/Vulkan%20Ray%20Tracing%20With%20Dynamic%20Rendering.pdf[here].
 
 By the end, you'll learn how to:
 
@@ -25,9 +25,9 @@ This series targets intermediate Vulkan programmers. We assume you have complete
 *Provided Code*:
 The provided code is a Vulkan renderer that already implements a basic graphics pipeline with dynamic rendering. It is based on the Vulkan Tutorial and it is self-contained in a single C++ source file and a Slang shader file:
 
-- link:../../../attachments/38_ray_tracing.cpp[38_ray_tracing.cpp]
-- link:../../../attachments/38_ray_tracing.slang[38_ray_tracing.slang]
-- If you get stuck on shader tasks, you can refer to the provided reference solution: link:../../../attachments/38_ray_tracing_complete.slang[38_ray_tracing_complete.slang]
+- link:/attachments/38_ray_tracing.cpp[38_ray_tracing.cpp]
+- link:/attachments/38_ray_tracing.slang[38_ray_tracing.slang]
+- If you get stuck on shader tasks, you can refer to the provided reference solution: link:/attachments/38_ray_tracing_complete.slang[38_ray_tracing_complete.slang]
 
 The source code is structured to guide you through the steps, with hints and boilerplate provided. It also sets up all the required extensions and features, including `VK_KHR_acceleration_structure` and `VK_KHR_ray_query`.
 You will find sections of code marked with `// TASKxx` which we reference in each chapter.
@@ -43,14 +43,14 @@ At certain intervals, you will be instructed to update this variable and re-buil
 
 === Chapters in this series
 
-- link:00_Overview.adoc[Overview]
-- link:01_Dynamic_rendering.adoc[Dynamic rendering]
-- link:02_Acceleration_structures.adoc[Acceleration structures]
-- link:03_Ray_query_shadows.adoc[Ray query shadows]
-- link:04_TLAS_animation.adoc[TLAS animation]
-- link:05_Shadow_transparency.adoc[Shadow transparency]
-- link:06_Reflections.adoc[Reflections]
-- link:07_Conclusion.adoc[Conclusion]
+- xref:./00_Overview.adoc[Overview]
+- xref:./01_Dynamic_rendering.adoc[Dynamic rendering]
+- xref:./02_Acceleration_structures.adoc[Acceleration structures]
+- xref:./03_Ray_query_shadows.adoc[Ray query shadows]
+- xref:./04_TLAS_animation.adoc[TLAS animation]
+- xref:./05_Shadow_transparency.adoc[Shadow transparency]
+- xref:./06_Reflections.adoc[Reflections]
+- xref:./07_Conclusion.adoc[Conclusion]
 
 === Build and run
 
@@ -64,4 +64,4 @@ cmake --build build --target 38_ray_tracing --parallel; start .\build\38_ray_tra
 Note that the above hasn't changed from the base tutorial, and you may continue to build on other platforms as you have for the rest of the tutorial.
 
 === Navigation
-- Next: link:01_Dynamic_rendering.adoc[Dynamic rendering]
+- Next: xref:./01_Dynamic_rendering.adoc[Dynamic rendering]

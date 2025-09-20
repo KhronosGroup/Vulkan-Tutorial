@@ -302,5 +302,5 @@ Re-build and run using:
 You will see no visual difference, but rest assured, your Acceleration Structures are now set up and ready to be used in the fragment shader.
 
 === Navigation
-- Previous: link:01_Dynamic_rendering.adoc[Dynamic rendering]
-- Next: link:03_Ray_query_shadows.adoc[Ray query shadows]
+- Previous: xref:./01_Dynamic_rendering.adoc[Dynamic rendering]
+- Next: xref:./03_Ray_query_shadows.adoc[Ray query shadows]

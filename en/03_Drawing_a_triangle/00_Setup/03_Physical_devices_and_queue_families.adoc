@@ -30,7 +30,7 @@ VkPhysicalDevice handle added as a new class member.
 
 [,c++]
 ----
-vk::raii::PhysicalDevice physicalDevice;
+vk::raii::PhysicalDevice physicalDevice = nullptr;
 ----
 
 Listing the graphics cards is very similar to listing extensions and starts with
@@ -189,7 +189,6 @@ void pickPhysicalDevice() {
                 found = found &&  extensionIter != extensions.end();
             }
             isSuitable = isSuitable && found;
-            printf("\n");
             if (isSuitable) {
                 physicalDevice = device;
             }

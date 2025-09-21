@@ -1,6 +1,6 @@
-== SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering
+= SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering
 
-=== Overview
+== Overview
 
 Welcome! In this series, we enhance a Vulkan renderer with ray tracing features to implement real-time pixel-perfect shadows (with and without transparency) and a bonus reflection effect. You will work with provided scaffolded code (based on the Vulkan Tutorial) and fill in key shader functions following step-by-step instructions.
 
@@ -41,7 +41,7 @@ At the top of the C++ file, note the following variable:
 
 At certain intervals, you will be instructed to update this variable and re-build to verify the effect of key changes, no need to write new code.
 
-=== Chapters in this series
+== Chapters in this series
 
 - xref:./00_Overview.adoc[Overview]
 - xref:./01_Dynamic_rendering.adoc[Dynamic rendering]
@@ -52,7 +52,7 @@ At certain intervals, you will be instructed to update this variable and re-buil
 - xref:./06_Reflections.adoc[Reflections]
 - xref:./07_Conclusion.adoc[Conclusion]
 
-=== Build and run
+== Build and run
 
 You can build and run the provided sample either from Visual Studio (set 38_ray_tracing as the start-up project) or via command line:
 
@@ -63,5 +63,5 @@ cmake --build build --target 38_ray_tracing --parallel; start .\build\38_ray_tra
 
 Note that the above hasn't changed from the base tutorial, and you may continue to build on other platforms as you have for the rest of the tutorial.
 
-=== Navigation
+== Navigation
 - Next: xref:./01_Dynamic_rendering.adoc[Dynamic rendering]

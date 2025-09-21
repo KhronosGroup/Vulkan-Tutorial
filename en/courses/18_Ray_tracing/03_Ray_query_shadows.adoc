@@ -1,10 +1,10 @@
-== Ray Query Shadows (Opaque Geometry)
+= Ray Query Shadows (Opaque Geometry)
 
 *Objective*: Add a simple shadow test in the fragment shader using a ray query. We will cast a ray from each fragment point toward the light and darken the fragment if something is hit (hard shadow).
 
 Congratulations: you have a valid TLAS/BLAS for the scene! Now, let's use it to cast some rays.
 
-=== Task 5: Implement ray query shadows
+== Task 5: Implement ray query shadows
 
 In the fragment shader, we will use a ray query to cast a shadow ray from the fragment position towards the light source. If the ray hits any geometry before reaching the light, we will darken the fragment color:
 
@@ -102,6 +102,6 @@ image::../../../images/38_TASK06_shadows_static.gif[]
 
 The object is rotating, but the shadows are static. This is because we have not yet updated the TLAS to account for the object's animation. The TLAS needs to be rebuilt whenever the object moves or animates, so let's implement that next.
 
-=== Navigation
+== Navigation
 - Previous: xref:./02_Acceleration_structures.adoc[Acceleration structures]
 - Next: xref:./04_TLAS_animation.adoc[TLAS animation]

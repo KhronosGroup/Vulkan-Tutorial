@@ -65,11 +65,10 @@ contains the libraries.
 Lastly, there's the `include` directory that contains the Vulkan headers.
 Feel free to explore the other files, but we won't need them for this tutorial.
 
-To automatically set the environment variables up that VulkanSDK will use to
-make life easier with the CMake project configuration and various other
-tooling, We recommend using the `setup-env` script. This can be added to
-your auto-start for your terminal and IDE setup such that those environment
-variables work everywhere.
+To automatically set the environment variables that VulkanSDK will use to
+simplify CMake project configuration and other tooling, we recommend using
+the `setup-env` script on Linux. You can add this script to your terminal's auto-start
+or IDE setup to ensure these environment variables are available in all your sessions.
 
 If you receive an error message, then ensure that your drivers are up to date,
 include the Vulkan runtime and that your graphics card is supported. See the

@@ -327,7 +327,7 @@ private:
         pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
 
         vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
-          { .stageCount = 2,
+          {.stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,

@@ -701,8 +701,10 @@ private:
 
         pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
 
-        vk::GraphicsPipelineCreateInfo pipelineInfo{
-            .stageCount = 2,
+        // Configure pipeline based on whether we're using the KHR roadmap 2022 profile
+        // With the KHR roadmap 2022 profile, we can use dynamic rendering
+        vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+          {.stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
@@ -712,35 +714,22 @@ private:
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = *pipelineLayout
+            .layout = pipelineLayout,
+            .renderPass = nullptr },
+          {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format, .depthAttachmentFormat = findDepthFormat() }
         };
 
-        // Configure pipeline based on whether we're using the KHR roadmap 2022 profile
         if (appInfo.profileSupported) {
-            // With the KHR roadmap 2022 profile, we can use dynamic rendering
-            vk::Format colorFormat = swapChainSurfaceFormat.format;
-            vk::Format depthFormat = findDepthFormat();
-
-            vk::PipelineRenderingCreateInfo renderingInfo{
-                .colorAttachmentCount = 1,
-                .pColorAttachmentFormats = &colorFormat,
-                .depthAttachmentFormat = depthFormat
-            };
-
-            pipelineInfo.pNext = &renderingInfo;
-            pipelineInfo.renderPass = nullptr;
-
-            std::cout << "Creating pipeline with dynamic rendering (KHR roadmap 2022 profile)" << std::endl;
-        } else {
-            // Without the profile, use traditional render pass if dynamic rendering is not available
-            pipelineInfo.pNext = nullptr;
-            pipelineInfo.renderPass = *renderPass;
-            pipelineInfo.subpass = 0;
-
-            std::cout << "Creating pipeline with traditional render pass (fallback)" << std::endl;
+          std::cout << "Creating pipeline with dynamic rendering (KHR roadmap 2022 profile)" << std::endl;
+        }
+        else
+        {
+          std::cout << "Creating pipeline with traditional render pass (fallback)" << std::endl;
+          pipelineCreateInfoChain.unlink<vk::PipelineRenderingCreateInfo>();
+          pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>().renderPass = *renderPass;
         }
 
-        graphicsPipeline = device.createGraphicsPipeline(nullptr, pipelineInfo);
+        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
     }
 
     void createFramebuffers() {

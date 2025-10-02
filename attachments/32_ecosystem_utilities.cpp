@@ -1270,7 +1270,7 @@ private:
     void recordCommandBuffer(uint32_t imageIndex) {
         commandBuffers[currentFrame].begin({});
 
-        vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+        vk::ClearValue clearColor = { .color = vk::ClearColorValue{ std::array<float, 4> {0.0f, 0.0f, 0.0f, 1.0f} } };
         vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
         std::array<vk::ClearValue, 2> clearValues = { clearColor, clearDepth };
 

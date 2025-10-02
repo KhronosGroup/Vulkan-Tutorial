@@ -227,7 +227,7 @@ First, we transition the image layout to `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIM
 
 [,c++]
 ----
-vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+vk::ClearValue clearColor = { .color = vk::ClearColorValue{ std::array<float, 4> {0.0f, 0.0f, 0.0f, 1.0f} } };
 vk::RenderingAttachmentInfo attachmentInfo = {
     .imageView = swapChainImageViews[imageIndex],
     .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,

@@ -375,7 +375,7 @@ private:
             vk::PipelineStageFlagBits2::eTopOfPipe,                   // srcStage
             vk::PipelineStageFlagBits2::eColorAttachmentOutput        // dstStage
         );
-        vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+        vk::ClearValue clearColor = { .color = vk::ClearColorValue{ std::array<float, 4> {0.0f, 0.0f, 0.0f, 1.0f} } };
         vk::RenderingAttachmentInfo attachmentInfo = {
             .imageView = swapChainImageViews[imageIndex],
             .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,

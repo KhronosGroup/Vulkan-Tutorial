@@ -1599,7 +1599,7 @@ private:
         };
         commandBuffers[currentFrame].pipelineBarrier2(depthDependencyInfo);
 
-        vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+        vk::ClearValue clearColor = { .color = vk::ClearColorValue{ std::array<float, 4> {0.0f, 0.0f, 0.0f, 1.0f} } };
         vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
 
         /* TASK01: Check the setup for dynamic rendering

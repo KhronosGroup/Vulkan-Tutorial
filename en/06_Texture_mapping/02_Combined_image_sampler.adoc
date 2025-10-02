@@ -223,7 +223,7 @@ You can also manipulate the texture colors using the vertex colors:
 ----
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
-   return vec4(vertIn.fragColor * texture.Sample(vertIn.fragTexCoord).rgb, 1.0);
+   return float4(vertIn.fragColor * texture.Sample(vertIn.fragTexCoord).rgb, 1.0);
 }
 ----
 

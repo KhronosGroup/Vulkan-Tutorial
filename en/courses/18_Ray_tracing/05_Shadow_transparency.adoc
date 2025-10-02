@@ -1,4 +1,4 @@
-== Implementing Transparency in Shadows
+= Implementing Transparency in Shadows
 
 *Objective*: Add support for transparent objects in the scene. We will implement a simple alpha test to discard fragments with low alpha values, and replicate this in their corresponding ray traced shadows.
 
@@ -6,7 +6,7 @@ So far we have treated every geometry as opaque. Note however that the leaves ar
 
 image::../../../images/38_TASK08_alphacut_before.png[]
 
-=== Task 7: Alpha-cut transparency
+== Task 7: Alpha-cut transparency
 
 To implement alpha-cut transparency, we will discard fragments with low alpha values in the fragment shader. This is a common technique to handle transparent textures without needing complex blending or sorting:
 
@@ -43,7 +43,7 @@ You will see that the shadows for the leaves are now completely missing! This is
 
 Before we do that, let's first inspect the acceleration structures we have built so far, to understand how they are structured and what information is available for each triangle.
 
-=== Task 8: Inspect the acceleration structures with NVIDIA Nsight Graphics
+== Task 8: Inspect the acceleration structures with NVIDIA Nsight Graphics
 
 RenderDoc does not yet support inspecting Vulkan acceleration structures, but we can use *Nsight Graphics* to verify that our BLAS/TLAS are built correctly. This helps catch mistakes (e.g. wrong geometry counts, offsets) before we rely on them in shaders.
 
@@ -79,7 +79,7 @@ In the new window, you can see the TLAS and its instances:
 
 image::../../../images/38_TASK04_nsight_inspector.png[]
 
-=== Task 9: Bindless resources and instance look-up table
+== Task 9: Bindless resources and instance look-up table
 
 Until now, we did not need to know what triangle our ray intersected, we only cared about whether it hit something or not. But to implement transparency, we need to know the alpha value of the texture used to shade the point on the triangle we hit. This way we can determine if we hit a transparent pixel and we need to continue the traversal, in case we hit some other opaque triangle behind it on the way towards the light.
 
@@ -169,7 +169,7 @@ StructuredBuffer<InstanceLUT> instanceLUTBuffer;
 
 Now we will see how we can use these resources with ray query to handle transparent intersections.
 
-=== Task 10: Ray query with alpha test
+== Task 10: Ray query with alpha test
 
 Remember how `Proceed()` advances the state of the `RayQuery` object to the next intersection candidate along the ray? This is where we will implement our alpha test logic. We will check the alpha value of the texture used for shading the triangle we hit, and if it is below a certain threshold, we will continue the traversal to find the next opaque triangle. Once we find it, we 'commit' it, and the traversal will end.
 
@@ -278,7 +278,7 @@ image::../../../images/38_TASK10_alphacut_shadows.png[]
 
 With everything set in place to support transparency in shadows, implementing other effects like reflections is very straightforward!
 
-=== Navigation
+== Navigation
 - Previous: xref:./04_TLAS_animation.adoc[TLAS animation]
 - Next: xref:./06_Reflections.adoc[Reflections]
 

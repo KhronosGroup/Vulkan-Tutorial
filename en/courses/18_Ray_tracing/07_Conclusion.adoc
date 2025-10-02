@@ -1,4 +1,4 @@
-== Conclusion
+= Conclusion
 
 In this course, you've implemented ray traced effects into a Vulkan rasterization pipeline using dynamic rendering and ray queries. Let's summarize the key points:
 
@@ -12,7 +12,7 @@ In this course, you've implemented ray traced effects into a Vulkan rasterizatio
 
 We hope this lab gave you a hands-on taste of hybrid rendering with Vulkan's latest features. Happy rendering with Vulkan, and enjoy creating more advanced ray traced effects in your applications!
 
-=== References
+== References
 
 - Complete the full Vulkan Tutorial at https://github.com/KhronosGroup/Vulkan-Tutorial
 - Find more Vulkan documentation and resources at https://www.khronos.org/vulkan
@@ -27,5 +27,5 @@ The 3D assets were provided by Poly Haven and combined using Blender:
 - https://polyhaven.com/a/potted_plant_02
 - https://polyhaven.com/a/wooden_picnic_table
 
-=== Navigation
+== Navigation
 - Previous: xref:./06_Reflections.adoc[Reflections]

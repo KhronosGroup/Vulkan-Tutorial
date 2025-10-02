@@ -1,10 +1,10 @@
-== Ray Query Reflections
+= Ray Query Reflections
 
 *Objective*: We will cast a ray in the mirror-reflection direction from the fragment to see what it hits, simulating reflective materials (like a mirror or shiny surface).
 
 Reflections are implemented similarly to shadow rays, but we cast a ray from the shaded point along the mirror direction and sample the hit surface color.
 
-=== Task 11: Implement ray query reflections
+== Task 11: Implement ray query reflections
 
 First, we will use push constants to pass the reflective material flag to the fragment shader. This will allow us to determine if the current material is reflective or not.
 
@@ -158,6 +158,6 @@ With all this in place, you should now see some shiny reflections on the table:
 image::../../../images/38_TASK11_alphacut_reflections.png[]
 
 
-=== Navigation
+== Navigation
 - Previous: xref:./05_Shadow_transparency.adoc[Shadow transparency]
 - Next: xref:./07_Conclusion.adoc[Conclusion]

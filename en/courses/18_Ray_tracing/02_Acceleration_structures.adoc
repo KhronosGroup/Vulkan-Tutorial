@@ -1,4 +1,4 @@
-== Acceleration Structures (BLAS/TLAS)
+= Acceleration Structures (BLAS/TLAS)
 
 *Objective*: Create *Bottom-Level Acceleration Structures* (BLAS) for the model's geometry, and a *Top-Level Acceleration Structure* (TLAS) to instance those BLASes.
 Bind the TLAS to the shader so we can use Ray Queries.
@@ -17,7 +17,7 @@ We'll create one BLAS per distinct mesh/material and one TLAS that references th
 The ray query will use the TLAS.
 In Vulkan, building an AS involves a few steps: describe geometry, query build sizes, allocate buffers, create the AS handle, then issue a build command.
 
-=== Task 2: Create a BLAS for each submesh
+== Task 2: Create a BLAS for each submesh
 
 Go to the definition of `createAccelerationStructures`. Here we will first create the BLASes for each submesh in the model. The code already has a loop iterating over `submeshes`, which contains the geometry data.
 
@@ -125,7 +125,7 @@ image::../../../images/38_TASK02_blas_build.png[]
 
 Now you have a BLAS for each model in the scene. Next we need to put them all together into a single TLAS which will then be consumed by our fragment shader.
 
-=== Task 3: Create a TLAS with instances of the BLASes
+== Task 3: Create a TLAS with instances of the BLASes
 
 Now that we have the BLASes, we need to create a TLAS that references them. The TLAS will hold instances of the BLASes, allowing us to place them in the scene with transformations (position, rotation, scale).
 
@@ -239,7 +239,7 @@ endSingleTimeCommands(*cmd);
 
 Done! You have now created a TLAS that references all the BLASes for the submeshes in the model. The TLAS is ready to be used in ray queries in the fragment shader.
 
-=== Task 4: Bind the acceleration structure to the shader
+== Task 4: Bind the acceleration structure to the shader
 
 To make the acceleration structure available in the shader, we need to add a descriptor set binding for the TLAS. This is done in the `createDescriptorSetLayout()` function (you may ignore the higher bindings for now):
 
@@ -301,6 +301,6 @@ Re-build and run using:
 
 You will see no visual difference, but rest assured, your Acceleration Structures are now set up and ready to be used in the fragment shader.
 
-=== Navigation
+== Navigation
 - Previous: xref:./01_Dynamic_rendering.adoc[Dynamic rendering]
 - Next: xref:./03_Ray_query_shadows.adoc[Ray query shadows]

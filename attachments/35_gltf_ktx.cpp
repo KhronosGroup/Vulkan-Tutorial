@@ -79,7 +79,6 @@ import vulkan_hpp;
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 // Update paths to use glTF model and KTX2 texture
 const std::string MODEL_PATH = "models/viking_room.glb";
 const std::string TEXTURE_PATH = "textures/viking_room.ktx2";

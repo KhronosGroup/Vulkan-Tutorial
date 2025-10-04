@@ -56,7 +56,7 @@ bool in_shadow(float3 P)
 Next, we will initialize a `RayQuery` object which will be used to perform the ray traversal. Note the choice of flags that we use to make it faster:
 
 - `RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES` since this is a simple scene with triangles only.
-- `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` to end the traversal as soon as the first opaque interesection is found, which is sufficient for shadow testing since we only need to know if anything blocks the light.
+- `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` to end the traversal as soon as the first opaque intersection is found, which is sufficient for shadow testing since we only need to know if anything blocks the light.
 
 [,slang]
 ----
@@ -76,7 +76,7 @@ Then we will start the ray tracing operation which combines our ray description,
     sq.Proceed();
 ----
 
-`Proceed()` advances the state of the `RayQuery` object to the next intersection "candidate" along the ray. Each call to `Proceed()` checks if there is another intesection to process. If so, it updates the query's internal state so that you may access information about the current candidate intersection. This allows you to implmement custom logic for handling intersections, such as skipping transparent surfaces (which we will revisit later in this lab) or stopping at the first opaque hit. It is typically called within a loop to iterate through all potential intersections, but for shadows we only need the first hit:
+`Proceed()` advances the state of the `RayQuery` object to the next intersection "candidate" along the ray. Each call to `Proceed()` checks if there is another intersection to process. If so, it updates the query's internal state so that you may access information about the current candidate intersection. This allows you to implement custom logic for handling intersections, such as skipping transparent surfaces (which we will revisit later in this lab) or stopping at the first opaque hit. It is typically called within a loop to iterate through all potential intersections, but for shadows we only need the first hit:
 
 [,slang]
 ----

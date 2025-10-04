@@ -26,7 +26,7 @@ for (auto & instance : instances) {
 }
 ----
 
-Next, we need to prepare the geometry data for the TLAS build. This is similar to what we did when creating the TLAS, but now we will use the updated instance buffer. We also need to change the build `mode` to `eUpdate`, and define a source TLAS as well as a destination TLAS. This instructs the implementation to update the existing TLAS in-place instead of creating a new one. This is more efficient when only minor changes (like transforms) have occured:
+Next, we need to prepare the geometry data for the TLAS build. This is similar to what we did when creating the TLAS, but now we will use the updated instance buffer. We also need to change the build `mode` to `eUpdate`, and define a source TLAS as well as a destination TLAS. This instructs the implementation to update the existing TLAS in-place instead of creating a new one. This is more efficient when only minor changes (like transforms) have occurred:
 
 [,c{pp}]
 ----

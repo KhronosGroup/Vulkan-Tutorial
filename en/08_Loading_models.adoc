@@ -15,7 +15,7 @@ We _will_ load mesh data from an OBJ model in this chapter, but we'll focus more
 We will use the https://github.com/syoyo/tinyobjloader[tinyobjloader] library to load vertices and faces from an OBJ file.
 It's fast and it's easy to integrate because it's a single file library like stb_image.
 This was mentioned in the link:02_Development_environment.adoc[Development
-Enviornment] chapter and should be part of the dependencies for this portion
+Environment] chapter and should be part of the dependencies for this portion
 of the tutorial.
 
 == Sample mesh

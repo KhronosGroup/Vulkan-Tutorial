@@ -75,7 +75,7 @@ link:https://vulkan.gpuinfo.org/[Vulkan Hardware Database].
 * Experience with C{pp}
 ** Familiarity with RAII, initializer lists
 * A compiler with decent support of C{pp}20 features
-** Visual Studio 2017+, GCC 7+, Or Clang 5+
+** Visual Studio 2017+, GCC 7+, or Clang 5+
 * Some existing experience with realtime 3D computer graphics
 ** E.g., OpenGL or Direct3D
 

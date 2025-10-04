@@ -4,7 +4,6 @@
 #else
 import vulkan_hpp;
 #endif
-#include <vulkan/vk_platform.h>
 #include <GLFW/glfw3.h>
 
 #include <iostream>

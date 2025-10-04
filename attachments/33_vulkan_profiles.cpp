@@ -17,7 +17,6 @@
 #else
 import vulkan_hpp;
 #endif
-#include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_profiles.hpp>
 
 #define GLFW_INCLUDE_VULKAN // REQUIRED only for GLFW CreateWindowSurface.

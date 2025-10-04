@@ -17,7 +17,6 @@
 #else
 import vulkan_hpp;
 #endif
-#include <vulkan/vk_platform.h>
 #if defined(__ANDROID__)
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_android.h>

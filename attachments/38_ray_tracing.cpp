@@ -50,7 +50,7 @@ constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/plant_on_table.obj";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
-const std::vector validationLayers = {
+const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 

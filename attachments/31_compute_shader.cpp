@@ -37,7 +37,7 @@ constexpr uint32_t PARTICLE_COUNT = 8192;
 
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
-const std::vector validationLayers = {
+const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 

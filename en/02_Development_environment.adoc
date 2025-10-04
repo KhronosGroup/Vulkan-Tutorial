@@ -8,6 +8,20 @@ except for the compiler, are compatible with Windows, Linux and macOS, but the
 steps for installing them differ a bit, which is why they're described
 separately here.
 
+== Getting the code
+
+First we need to clone the code for the tutorial from the https://github.com/KhronosGroup/Vulkan-Tutorial[github repository].
+This requires an install of the https://git-scm.com/[git] version control system.
+
+With git installed we can locally clone the repository like this:
+
+[,bash]
+----
+git clone https://github.com/KhronosGroup/Vulkan-Tutorial
+----
+
+This will clone the repository to a new folder (inside the current one) called `Vulkan-Tutorial`. The Source files for the chapters are located in the `attachments` folder.
+
 == Dependency Install Scripts
 
 To make the setup process easier, we've provided dependency install scripts for Windows and Linux:
@@ -270,9 +284,7 @@ everything works.
 I will assume that you already have some basic experience with CMake, like
 how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
-You can now use the link:https://github.com/KhronosGroup/Vulkan-Tutorial/tree/main/attachments[attachments] directory in this tutorial
-as a template for your Vulkan projects. Make a copy, rename it to something like `HelloTriangle`
-and remove all the code in `main.cpp`.
+You can now use the code from any of the following chapters found in the `attachment` folder as a template for your Vulkan projects. Make a copy, rename it to something like `HelloTriangle` and remove all the code in `main.cpp`.
 
 Congratulations, you're all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[playing with Vulkan]!
 

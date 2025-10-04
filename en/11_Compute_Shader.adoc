@@ -623,7 +623,7 @@ We then use these to synchronize the compute buffer submission with the graphics
 ----
 {
     // Compute submission
-    while ( vk::Result::eTimeout == device->waitForFences( **computeInFlightFences[currentFrame], vk::True, FenceTimeout ) )
+    while ( vk::Result::eTimeout == device->waitForFences(**computeInFlightFences[currentFrame], vk::True, UINT64_MAX) )
         ;
 
     updateUniformBuffer(currentFrame);
@@ -636,7 +636,7 @@ We then use these to synchronize the compute buffer submission with the graphics
 }
 {
     // Graphics submission
-    while ( vk::Result::eTimeout == device->waitForFences( **inFlightFences[currentFrame], vk::True, FenceTimeout ) )
+    while ( vk::Result::eTimeout == device->waitForFences(**inFlightFences[currentFrame], vk::True, UINT64_MAX))
 ...
 
     device->resetFences(  **inFlightFences[currentFrame] );

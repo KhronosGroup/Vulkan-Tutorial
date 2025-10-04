@@ -37,7 +37,6 @@ import vulkan_hpp;
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
@@ -1521,7 +1520,7 @@ private:
     }
 
     void drawFrame() {
-        while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, FenceTimeout))
+        while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX))
             ;
         auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore[currentFrame], nullptr);
 

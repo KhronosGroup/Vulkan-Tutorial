@@ -659,15 +659,8 @@ private:
          * This new struct replaces what previously was the render pass in the pipeline creation.
          * Note how this structure is now linked in .pNext below, and .renderPass is not used.
          */
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
-            .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &swapChainImageFormat,
-            .depthAttachmentFormat = depthFormat
-        };
-
-        vk::GraphicsPipelineCreateInfo pipelineInfo{
-            .pNext = &pipelineRenderingCreateInfo,
-            .stageCount = 2,
+        vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+          {.stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
@@ -677,11 +670,12 @@ private:
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = pipelineLayout,
-            .renderPass = nullptr
+            .layout = *pipelineLayout,
+            .renderPass = nullptr },
+          {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat, .depthAttachmentFormat = depthFormat }
         };
 
-        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
     }
 
     void createCommandPool() {

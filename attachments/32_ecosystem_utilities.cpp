@@ -728,8 +728,8 @@ private:
 
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
-        vk::GraphicsPipelineCreateInfo pipelineInfo{
-            .stageCount = 2,
+        vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+          {.stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
@@ -739,27 +739,22 @@ private:
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = pipelineLayout
+            .layout = pipelineLayout,
+            .renderPass = nullptr },
+          {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format, .depthAttachmentFormat = findDepthFormat() }
         };
 
-        // Configure pipeline based on dynamic rendering support
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo;
         if (appInfo.dynamicRenderingSupported) {
-            std::cout << "Configuring pipeline for dynamic rendering\n";
-            pipelineRenderingCreateInfo.colorAttachmentCount = 1;
-            pipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChainSurfaceFormat.format;
-            pipelineRenderingCreateInfo.depthAttachmentFormat = findDepthFormat();
-
-            pipelineInfo.pNext = &pipelineRenderingCreateInfo;
-            pipelineInfo.renderPass = nullptr;
-        } else {
-            std::cout << "Configuring pipeline for traditional render pass\n";
-            pipelineInfo.pNext = nullptr;
-            pipelineInfo.renderPass = *renderPass;
-            pipelineInfo.subpass = 0;
+          std::cout << "Configuring pipeline for dynamic rendering\n";
+        }
+        else
+        {
+          std::cout << "Configuring pipeline for traditional render pass\n";
+          pipelineCreateInfoChain.unlink<vk::PipelineRenderingCreateInfo>();
+          pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>().renderPass = *renderPass;
         }
 
-        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
     }
 
     void createCommandPool() {

@@ -503,13 +503,9 @@ private:
         pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
         vk::Format depthFormat = findDepthFormat();
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{
-            .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &swapChainSurfaceFormat.format,
-            .depthAttachmentFormat = depthFormat
-        };
-        vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
-            .stageCount = 2,
+
+        vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+          {.stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
@@ -520,10 +516,11 @@ private:
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
             .layout = pipelineLayout,
-            .renderPass = nullptr
+            .renderPass = nullptr },
+          {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format, .depthAttachmentFormat = depthFormat }
         };
 
-        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
     }
 
     void createCommandPool() {

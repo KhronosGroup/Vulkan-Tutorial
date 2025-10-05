@@ -65,11 +65,10 @@ contains the libraries.
 Lastly, there's the `include` directory that contains the Vulkan headers.
 Feel free to explore the other files, but we won't need them for this tutorial.
 
-To automatically set the environment variables up that VulkanSDK will use to
-make life easier with the CMake project configuration and various other
-tooling, We recommend using the `setup-env` script. This can be added to
-your auto-start for your terminal and IDE setup such that those environment
-variables work everywhere.
+To automatically set the environment variables that VulkanSDK will use to
+simplify CMake project configuration and other tooling, we recommend using
+the `setup-env` script on Linux. You can add this script to your terminal's auto-start
+or IDE setup to ensure these environment variables are available in all your sessions.
 
 If you receive an error message, then ensure that your drivers are up to date,
 include the Vulkan runtime and that your graphics card is supported. See the
@@ -271,7 +270,7 @@ everything works.
 I will assume that you already have some basic experience with CMake, like
 how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
-You can now use the link:/attachments/[attachments] directory in this tutorial
+You can now use the link:https://github.com/KhronosGroup/Vulkan-Tutorial/tree/main/attachments[attachments] directory in this tutorial
 as a template for your Vulkan projects. Make a copy, rename it to something like `HelloTriangle`
 and remove all the code in `main.cpp`.
 

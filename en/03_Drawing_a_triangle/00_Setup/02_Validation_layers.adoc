@@ -201,7 +201,7 @@ We can now use this function in `createInstance`:
 [,c++]
 ----
 auto extensions = getRequiredExtensions();
-vk::InstanceCreateInfo createInfo({}, &appInfo, enabledLayers, extensions);
+vk::InstanceCreateInfo createInfo({}, &appInfo, requiredLayers, extensions);
 ----
 
 Run the program to make sure you don't receive a

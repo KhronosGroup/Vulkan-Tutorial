@@ -434,6 +434,8 @@ class HelloTriangleApplication
 
 	void createImageViews()
 	{
+		assert(swapChainImageViews.empty());
+
 		vk::ImageViewCreateInfo imageViewCreateInfo{
 		    .viewType         = vk::ImageViewType::e2D,
 		    .format           = swapChainSurfaceFormat.format,

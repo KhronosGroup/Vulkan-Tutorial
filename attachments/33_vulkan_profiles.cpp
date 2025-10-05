@@ -257,6 +257,7 @@ class HelloTriangleApplication
 			imageView = nullptr;
 		}
 
+		swapChainImageViews.clear();
 		swapChain = nullptr;
 	}
 
@@ -524,6 +525,7 @@ class HelloTriangleApplication
 
 	void createImageViews()
 	{
+		assert(swapChainImageViews.empty());
 		swapChainImageViews.reserve(swapChainImages.size());
 
 		for (const auto &image : swapChainImages)

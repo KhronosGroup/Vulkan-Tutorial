@@ -108,7 +108,7 @@ struct PushConstant {
 #endif // LAB_TASK_LEVEL >= LAB_TASK_REFLECTIONS
 };
 
-class HelloTriangleApplication {
+class VulkanRaytracingApplication {
 public:
     void run() {
         initWindow();
@@ -238,7 +238,7 @@ private:
     }
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-        auto app = static_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        auto app = static_cast<VulkanRaytracingApplication*>(glfwGetWindowUserPointer(window));
         app->framebufferResized = true;
     }
 
@@ -305,7 +305,7 @@ private:
     }
 
     void createInstance() {
-        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
+        constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Vulkan Tutorial Ray Tracing",
                     .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
                     .pEngineName        = "No Engine",
                     .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
@@ -1960,7 +1960,7 @@ private:
 
 int main() {
     try {
-        HelloTriangleApplication app;
+        VulkanRaytracingApplication app;
         app.run();
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;

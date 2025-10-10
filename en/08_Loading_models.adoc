@@ -15,7 +15,7 @@ We _will_ load mesh data from an OBJ model in this chapter, but we'll focus more
 We will use the https://github.com/syoyo/tinyobjloader[tinyobjloader] library to load vertices and faces from an OBJ file.
 It's fast and it's easy to integrate because it's a single file library like stb_image.
 This was mentioned in the link:02_Development_environment.adoc[Development
-Enviornment] chapter and should be part of the dependencies for this portion
+Environment] chapter and should be part of the dependencies for this portion
 of the tutorial.
 
 == Sample mesh
@@ -40,7 +40,6 @@ Put two new configuration variables in your program to define the model and text
 ----
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 ----

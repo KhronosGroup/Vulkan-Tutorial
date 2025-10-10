@@ -11,7 +11,7 @@
 #include <chrono>
 #include <assert.h>
 
-#ifdef __INTELLISENSE__
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
 import vulkan_hpp;
@@ -37,7 +37,6 @@ import vulkan_hpp;
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
@@ -414,6 +413,8 @@ private:
     }
 
     void createImageViews() {
+        assert(swapChainImageViews.empty());
+
         vk::ImageViewCreateInfo imageViewCreateInfo{
             .viewType = vk::ImageViewType::e2D,
             .format = swapChainSurfaceFormat.format,

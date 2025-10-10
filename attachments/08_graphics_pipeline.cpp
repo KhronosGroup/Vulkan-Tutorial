@@ -8,7 +8,7 @@
 #include <limits>
 #include <assert.h>
 
-#ifdef __INTELLISENSE__
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
 import vulkan_hpp;
@@ -268,7 +268,7 @@ private:
     }
 
     void createImageViews() {
-        swapChainImageViews.clear();
+        assert(swapChainImageViews.empty());
 
         vk::ImageViewCreateInfo imageViewCreateInfo{ .viewType = vk::ImageViewType::e2D, .format = swapChainSurfaceFormat.format,
           .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };

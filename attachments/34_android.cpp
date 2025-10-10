@@ -12,7 +12,7 @@
 #include <optional>
 #include <assert.h>
 
-#ifdef __INTELLISENSE__
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
 import vulkan_hpp;
@@ -86,7 +86,6 @@ import vulkan_hpp;
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
@@ -612,6 +611,7 @@ private:
 
     // Create image views
     void createImageViews() {
+        assert(swapChainImageViews.empty());
         swapChainImageViews.reserve(swapChainImages.size());
 
         for (const auto& image : swapChainImages) {
@@ -1202,6 +1202,7 @@ private:
             imageView = nullptr;
         }
 
+        swapChainImageViews.clear();
         swapChain = nullptr;
     }
 
@@ -1254,11 +1255,11 @@ private:
 
     // Draw frame
     void drawFrame() {
-        static_cast<void>(device.waitForFences({*inFlightFences[currentFrame]}, VK_TRUE, FenceTimeout));
+        static_cast<void>(device.waitForFences({*inFlightFences[currentFrame]}, VK_TRUE, UINT64_MAX));
 
         uint32_t imageIndex;
         try {
-            auto [result, idx] = swapChain.acquireNextImage(FenceTimeout, *imageAvailableSemaphores[currentFrame]);
+            auto [result, idx] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
             imageIndex = idx;
         } catch (vk::OutOfDateKHRError&) {
             recreateSwapChain();

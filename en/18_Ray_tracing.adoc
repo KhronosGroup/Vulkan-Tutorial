@@ -1,0 +1,3 @@
+== SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering
+
+Find the course link:courses/18_Ray_tracing/00_Overview.adoc[here]

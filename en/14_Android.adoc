@@ -312,7 +312,7 @@ include_directories(${ANDROID_NDK}/sources/android/game-activity/include)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Add the Vulkan C++ module
+# (Optional) Add the Vulkan C++ module when ENABLE_CPP20_MODULE=ON
 add_library(VulkanCppModule SHARED)
 target_compile_definitions(VulkanCppModule
     PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
@@ -388,7 +388,7 @@ Key points:
 
 * We find the Vulkan package and include the game-activity library instead of native_app_glue.
 * We set up shader compilation tools and define a function to compile shaders.
-* We set the C{pp} standard to C{pp}20 and create a Vulkan C{pp}  module.
+* We set the C{pp} standard to C{pp}20 and optionally create a Vulkan C{pp} module (recommended) when modules are enabled.
 * We set up shader compilation for the 34_android chapter, copying shader source files from the main project.
 * We add the main native library, which uses the 34_android.cpp file from the main project and a bridge file to connect with GameActivity.
 * We link against the necessary libraries, including game-activity.

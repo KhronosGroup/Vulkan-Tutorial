@@ -115,16 +115,27 @@ for an example of a working project.
 
 Vulkan has support for C{pp} modules which became available with c{pp}20. A
 large advantage of C{pp} modules is they give all the benefits of C{pp} without
-the overhead long compile times. To do this, the .cppm file must be compiled
-for your target device. This tutorial serves as an example of taking
-advantage of C{pp} modules. The CMakeLists.txt in our tutorial has all the
-instructions needed for building the module automatically:
+the overhead of long compile times. To do this, the .cppm file must be compiled
+for your target device. This tutorial demonstrates how to take advantage of C{pp}
+modules. However, to maximize compatibility across compilers and IDEs, the
+attachments template has C{pp}20 module support disabled by default, but it is
+recommended to enable it if your toolchain supports it.
+
+To enable the Vulkan C{pp}20 module in the attachments template, configure CMake with:
+
+[,bash]
+----
+cmake -DENABLE_CPP20_MODULE=ON ..
+----
+
+When enabled, the CMakeLists.txt contains all the instructions needed for building the
+module automatically. The relevant snippet looks like this:
 
 [,cmake]
 ----
 find_package (Vulkan REQUIRED)
 
-# set up Vulkan C++ module
+# set up Vulkan C++ module (enabled when ENABLE_CPP20_MODULE=ON)
 add_library(VulkanCppModule)
 add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
@@ -132,37 +143,34 @@ target_compile_definitions(VulkanCppModule PUBLIC
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 )
-target_include_directories(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}"
-)
-target_link_libraries(VulkanCppModule
-        PUBLIC
-        Vulkan::Vulkan
-)
+
+target_include_directories(VulkanCppModule PRIVATE "${Vulkan_INCLUDE_DIR}")
+
+target_link_libraries(VulkanCppModule PUBLIC Vulkan::Vulkan)
 
 set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
 
 target_sources(VulkanCppModule
         PUBLIC
         FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
-        FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+        BASE_DIRS "${Vulkan_INCLUDE_DIR}"
+        FILES "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
 )
 ----
 
 The VulkanCppModule target only needs to be defined once, then add it to the
-dependency of your consuming project, and it will be built automatically, and
-you won't need to also add Vulkan::Vulkan to your project.
+dependencies of your consuming project, and it will be built automatically. You
+won't need to also add Vulkan::Vulkan to your project.
 
 [,cmake]
 ----
 target_link_libraries (${PROJECT_NAME} Vulkan::cppm)
 ----
 
-That is all that is required to add Vulkan to any project.
+If you choose to keep modules disabled (the default), you can continue to use the
+traditional header-based includes (e.g., `#include <vulkan/vulkan_raii.hpp>`). The
+sample code in the attachments is written to compile either way and will import the
+module only when `ENABLE_CPP20_MODULE=ON` (which defines `USE_CPP20_MODULES`).
 
 === Window Management
 

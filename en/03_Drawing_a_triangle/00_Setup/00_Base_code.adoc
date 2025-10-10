@@ -10,7 +10,11 @@ from scratch with the following code:
 
 [,c++]
 ----
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
+#include <vulkan/vulkan_raii.hpp>
+#else
 import vulkan_hpp;
+#endif
 #include <GLFW/glfw3.h>
 
 #include <iostream>
@@ -53,10 +57,12 @@ int main() {
 }
 ----
 
-We first include the Vulkan module from the LunarG SDK, which provides the
-functions, structures and enumerations. The `stdexcept` and `iostream` headers
-are included for reporting and propagating errors. The `cstdlib`
-header provides the `EXIT_SUCCESS` and `EXIT_FAILURE` macros.
+We first include the Vulkan-Hpp RAII header by default, which provides the
+functions, structures and enumerations. If you enable C{pp}20 modules
+(`-DENABLE_CPP20_MODULE=ON`), the code will `import vulkan_hpp;` instead via the
+`USE_CPP20_MODULES` define set by CMake. The `stdexcept` and `iostream` headers
+are included for reporting and propagating errors. The `cstdlib` header
+provides the `EXIT_SUCCESS` and `EXIT_FAILURE` macros.
 
 The program itself is wrapped into a class where we'll store the Vulkan objects
 as private class members and add functions to initiate each of them, which will

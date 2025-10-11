@@ -230,9 +230,9 @@ Create the function and move the image object creation and memory allocation to 
 ----
 void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) {
     vk::ImageCreateInfo imageInfo{ .imageType = vk::ImageType::e2D, .format = format,
-                                    .extent = {width, height, 1}, .mipLevels = 1, .arrayLayers = 1,
-                                    .samples = vk::SampleCountFlagBits::e1, .tiling = tiling,
-                                    .usage = usage, .sharingMode = vk::SharingMode::eExclusive };
+        .extent = {width, height, 1}, .mipLevels = 1, .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1, .tiling = tiling,
+        .usage = usage, .sharingMode = vk::SharingMode::eExclusive };
 
     image = vk::raii::Image( device, imageInfo );
 

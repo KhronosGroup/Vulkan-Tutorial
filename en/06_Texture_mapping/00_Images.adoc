@@ -153,7 +153,9 @@ The parameters for an image are specified in a `VkImageCreateInfo` struct:
 
 [,c++]
 ----
-vk::ImageCreateInfo imageInfo( {}, vk::ImageType::e2D, format, {width, height, 1}, 1, 1, vk::SampleCountFlagBits::e1, tiling, usage, vk::SharingMode::eExclusive, 0);
+vk::ImageCreateInfo imageInfo{ .imageType = vk::ImageType::e2D, .format = format,
+    .extent = {width, height, 1}, .mipLevels = 1, .arrayLayers = 1, .samples = vk::SampleCountFlagBits::e1,
+    .tiling = tiling, .usage = usage, .sharingMode = vk::SharingMode::eExclusive};
 ----
 
 The image type, specified in the `imageType` field, tells Vulkan with what kind of coordinate system the texels in the image are going to be addressed.
@@ -227,12 +229,16 @@ Create the function and move the image object creation and memory allocation to 
 [,c++]
 ----
 void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) {
-    vk::ImageCreateInfo imageInfo( {}, vk::ImageType::e2D, format, {width, height, 1}, 1, 1, vk::SampleCountFlagBits::e1, tiling, usage, vk::SharingMode::eExclusive, 0);
+    vk::ImageCreateInfo imageInfo{ .imageType = vk::ImageType::e2D, .format = format,
+                                    .extent = {width, height, 1}, .mipLevels = 1, .arrayLayers = 1,
+                                    .samples = vk::SampleCountFlagBits::e1, .tiling = tiling,
+                                    .usage = usage, .sharingMode = vk::SharingMode::eExclusive };
 
     image = vk::raii::Image( device, imageInfo );
 
     vk::MemoryRequirements memRequirements = image.getMemoryRequirements();
-    vk::MemoryAllocateInfo allocInfo( memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, properties) );
+    vk::MemoryAllocateInfo allocInfo{ .allocationSize = memRequirements.size,
+                                        .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties) };
     imageMemory = vk::raii::DeviceMemory( device, allocInfo );
     image.bindMemory(imageMemory, 0);
 }

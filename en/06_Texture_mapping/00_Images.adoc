@@ -292,10 +292,10 @@ The function we're going to write now involves recording and executing a command
 [,c++]
 ----
 vk::raii::CommandBuffer beginSingleTimeCommands() {
-    vk::CommandBufferAllocateInfo allocInfo(commandPool, vk::CommandBufferLevel::ePrimary, 1);
+    vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1 };
     vk::raii::CommandBuffer commandBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
 
-    vk::CommandBufferBeginInfo beginInfo( vk::CommandBufferUsageFlagBits::eOneTimeSubmit );
+    vk::CommandBufferBeginInfo beginInfo{ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
     commandBuffer.begin(beginInfo);
 
     return commandBuffer;
@@ -304,7 +304,7 @@ vk::raii::CommandBuffer beginSingleTimeCommands() {
 void endSingleTimeCommands(vk::raii::CommandBuffer& commandBuffer) {
     commandBuffer.end();
 
-    vk::SubmitInfo submitInfo( {}, {}, {*commandBuffer});
+    vk::SubmitInfo submitInfo{ .commandBufferCount = 1, .pCommandBuffers = &*commandBuffer };
     graphicsQueue.submit(submitInfo, nullptr);
     graphicsQueue.waitIdle();
 }
@@ -340,13 +340,12 @@ There is an equivalent _buffer memory barrier_ to do this for buffers.
 
 [,c++]
 ----
-vk::ImageMemoryBarrier barrier( {}, {}, oldLayout, newLayout, {}, {}, image, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } );
+vk::ImageMemoryBarrier barrier{ .oldLayout = oldLayout, .newLayout = newLayout, .image = image, .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
 ----
-
-The first two fields specify layout transition.
+`oldLayout` and `newLayout` specify the the layout transition.
 It is possible to use `VK_IMAGE_LAYOUT_UNDEFINED` as `oldLayout` if you don't care about the existing contents of the image.
 
-If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families.
+If you are using the barrier to transfer queue family ownership, then `oldLayout` and `newLayout` fields should be the indices of the queue families.
 They must be set to `VK_QUEUE_FAMILY_IGNORED` if you don't want to do this (not the default value!).
 
 The `image` and `subresourceRange` specify the image that is affected and the specific part of the image.
@@ -394,7 +393,8 @@ This happens through `VkBufferImageCopy` structs:
 
 [,c++]
 ----
-vk::BufferImageCopy region( 0, 0, 0, { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {0, 0, 0}, {width, height, 1});
+vk::BufferImageCopy region{ .bufferOffset = 0, .bufferRowLength = 0, .bufferImageHeight = 0, 
+    .imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, .imageOffset = {0, 0, 0}, .imageExtent = {width, height, 1} };
 ----
 
 Most of these fields are self-explanatory.

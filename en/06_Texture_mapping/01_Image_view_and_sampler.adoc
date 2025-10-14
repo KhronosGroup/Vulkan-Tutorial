@@ -38,7 +38,7 @@ The only two changes you have to make are the `format` and the `image`:
 
 [,c++]
 ----
-vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+vk::ImageViewCreateInfo viewInfo{ .image = image, .viewType = vk::ImageViewType::e2D, .format = format, .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }};
 ----
 
 I've left out the explicit `viewInfo.components` initialization, because `VK_COMPONENT_SWIZZLE_IDENTITY` is defined as `0` anyway.
@@ -54,7 +54,8 @@ Because so much of the logic is duplicated from `createImageViews`, you may wish
 [,c++]
 ----
 vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format) {
-    vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+    vk::ImageViewCreateInfo viewInfo{ .image = image, .viewType = vk::ImageViewType::e2D,
+        .format = format, .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
     return vk::raii::ImageView( device, viewInfo );
 }
 ----
@@ -134,7 +135,7 @@ Samplers are configured through a `VkSamplerCreateInfo` structure, which specifi
 
 [,c++]
 ----
-vk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear);
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear};
 ----
 
 The `magFilter` and `minFilter` fields specify how to interpolate texels that are magnified or minified.
@@ -143,8 +144,8 @@ The choices are `VK_FILTER_NEAREST` and `VK_FILTER_LINEAR`, corresponding to the
 
 [,c++]
 ----
-vk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
-                                    vk::SamplerAddressMode::eRepeat);
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat };
 ----
 
 The addressing mode can be specified per axis using the `addressMode` fields.
@@ -165,11 +166,12 @@ However, the repeat mode is probably the most common mode, because it can be use
 [,c++]
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
-        vk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
-                                            vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0);
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
+    .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy};
 ----
 
-These two fields specify if anisotropic filtering should be used.
+The `anisotropyEnable` field specifies if anisotropic filtering should be used.
 There is no reason not to use this unless performance is a concern.
 The `maxAnisotropy` field limits the number of texel samples that can be used to calculate the final color.
 A lower value results in better performance, but lower quality results.
@@ -187,9 +189,10 @@ If we want to go for maximum quality, we can simply use that value directly:
 [,c++]
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
-vk::SamplerCreateInfo samplerInfo( {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
-                                    vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, 1,
-                                    properties.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways);
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
+    .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+    .compareEnable = vk::False, .compareOp = vk::CompareOp::eAlways};
 ----
 
 You can either query the properties at the beginning of your program and pass them around to the functions that need them, or query them in the `createTextureSampler` function itself.
@@ -267,8 +270,11 @@ We need to update the `createLogicalDevice` function to request it:
 
 [,c++]
 ----
-vk::PhysicalDeviceFeatures deviceFeatures;
-deviceFeatures.samplerAnisotropy = vk::True;
+vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+    {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
+    {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
+    {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+};
 ----
 
 And even though it is very unlikely that a modern graphics card will not support it, we should update `isDeviceSuitable` to check if it is available:

@@ -17,7 +17,7 @@
 #include <future>
 #include <assert.h>
 
-#ifdef __INTELLISENSE__
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
 import vulkan_hpp;
@@ -33,11 +33,8 @@ import vulkan_hpp;
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 constexpr uint32_t PARTICLE_COUNT = 8192;
-
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
-
 
 struct UniformBufferObject {
     float deltaTime = 1.0f;
@@ -638,6 +635,8 @@ private:
     }
 
     void createImageViews() {
+        assert(swapChainImageViews.empty());
+
         vk::ImageViewCreateInfo imageViewCreateInfo{
             .viewType = vk::ImageViewType::e2D,
             .format = swapChainSurfaceFormat.format,

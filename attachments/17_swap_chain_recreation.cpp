@@ -9,7 +9,7 @@
 #include <limits>
 #include <assert.h>
 
-#ifdef __INTELLISENSE__
+#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
 import vulkan_hpp;
@@ -240,8 +240,12 @@ private:
                                                                  { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                                    } );
 
-            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2,
+                                                         vk::PhysicalDeviceVulkan11Features,
+                                                         vk::PhysicalDeviceVulkan13Features,
+                                                         vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+                                            features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
                                             features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                             features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
@@ -276,12 +280,16 @@ private:
             throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
         }
 
-        // query for required features (Vulkan 1.1 and 1.3)
-        vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+        // query for Vulkan 1.3 features
+        vk::StructureChain<vk::PhysicalDeviceFeatures2,
+                           vk::PhysicalDeviceVulkan11Features,
+                           vk::PhysicalDeviceVulkan13Features,
+                           vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+          featureChain = {
             {},                                                     // vk::PhysicalDeviceFeatures2
-            { .shaderDrawParameters = true },                       // vk::PhysicalDeviceVulkan11Features
-            { .synchronization2 = true, .dynamicRendering = true }, // vk::PhysicalDeviceVulkan13Features
-            { .extendedDynamicState = true }                        // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+            {.shaderDrawParameters = true },                        // vk::PhysicalDeviceVulkan11Features
+            {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
+            {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
         };
 
         // create a Device
@@ -319,7 +327,7 @@ private:
     }
 
     void createImageViews() {
-        swapChainImageViews.clear();
+        assert(swapChainImageViews.empty());
 
         vk::ImageViewCreateInfo imageViewCreateInfo{ .viewType = vk::ImageViewType::e2D, .format = swapChainSurfaceFormat.format,
           .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };

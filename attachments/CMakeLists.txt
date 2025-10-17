@@ -1,11 +1,16 @@
 cmake_minimum_required (VERSION 3.29)
 
-# Enable C++ module dependency scanning
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-
 project (VulkanTutorial)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
+
+# Add option to enable/disable C++ 20 module
+option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan" OFF)
+
+# Enable C++ module dependency scanning only if C++ 20 module is enabled
+if(ENABLE_CPP20_MODULE)
+  set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+endif()
 
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
@@ -14,39 +19,61 @@ find_package (tinyobjloader REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 
-# set up Vulkan C++ module
-add_library(VulkanCppModule)
-add_library(Vulkan::cppm ALIAS VulkanCppModule)
+# set up Vulkan C++ module only if enabled
+if(ENABLE_CPP20_MODULE)
+  add_library(VulkanCppModule)
+  add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
-target_compile_definitions(VulkanCppModule
-        PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
-)
-target_include_directories(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}"
-)
-target_link_libraries(VulkanCppModule
-        PUBLIC
-        Vulkan::Vulkan
-)
+  target_compile_definitions(VulkanCppModule
+          PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+  )
+  target_include_directories(VulkanCppModule
+          PUBLIC
+          "${Vulkan_INCLUDE_DIR}"
+  )
+  target_link_libraries(VulkanCppModule
+          PUBLIC
+          Vulkan::Vulkan
+  )
 
-set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
+  set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
 
-target_sources(VulkanCppModule
-        PUBLIC
-        FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
-        FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-)
+  # Add MSVC-specific compiler options for proper C++ module support
+  if(MSVC)
+    target_compile_options(VulkanCppModule PRIVATE
+      /std:c++latest      # Use latest C++ standard for better module support
+      /permissive-        # Standards conformance mode
+      /Zc:__cplusplus     # Enable correct __cplusplus macro
+      /EHsc               # Enable C++ exception handling
+      /Zc:preprocessor    # Use conforming preprocessor
+      /translateInclude   # Automatically translate #include to import for standard library
+    )
+  endif()
+
+  target_sources(VulkanCppModule
+          PUBLIC
+          FILE_SET cxx_modules TYPE CXX_MODULES
+          BASE_DIRS
+          "${Vulkan_INCLUDE_DIR}"
+          FILES
+          "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+  )
 
 
-# Add the vulkan.cppm file directly as a source file
-target_sources(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-)
+  # Add the vulkan.cppm file directly as a source file
+  target_sources(VulkanCppModule
+          PRIVATE
+          "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+  )
+else()
+  # Create a dummy interface library when C++ 20 module is disabled
+  add_library(VulkanCppModule INTERFACE)
+  add_library(Vulkan::cppm ALIAS VulkanCppModule)
+  target_link_libraries(VulkanCppModule INTERFACE Vulkan::Vulkan)
+  target_compile_definitions(VulkanCppModule
+          INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+  )
+endif()
 
 find_package(stb REQUIRED)
 set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
@@ -89,7 +116,7 @@ function (add_slang_shader_target TARGET)
   )
   add_custom_command (
           OUTPUT  ${SHADERS_DIR}/slang.spv
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4+spvRayQueryKHR -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
           WORKING_DIRECTORY ${SHADERS_DIR}
           DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
           COMMENT "Compiling Slang Shaders"
@@ -106,6 +133,11 @@ function (add_chapter CHAPTER_NAME)
   set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
   target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
   target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
+
+  # Add compile definition if C++ 20 module is enabled
+  if(ENABLE_CPP20_MODULE)
+    target_compile_definitions(${CHAPTER_NAME} PRIVATE USE_CPP20_MODULES=1)
+  endif()
 
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
@@ -130,10 +162,12 @@ function (add_chapter CHAPTER_NAME)
     target_link_libraries (${CHAPTER_NAME} ${CHAPTER_LIBS})
   endif ()
   if (DEFINED CHAPTER_MODELS)
-    file (COPY assets/${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
+    list(TRANSFORM CHAPTER_MODELS PREPEND "${CMAKE_SOURCE_DIR}/assets/")
+    file (COPY ${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
   endif ()
   if (DEFINED CHAPTER_TEXTURES)
-    file (COPY assets/${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
+    list(TRANSFORM CHAPTER_TEXTURES PREPEND "${CMAKE_SOURCE_DIR}/assets/")
+    file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
   endif ()
 endfunction ()
 
@@ -275,3 +309,13 @@ add_chapter (36_multiple_objects
 add_chapter (37_multithreading
   SHADER 37_shader_compute
   LIBS glm::glm)
+
+add_chapter (38_ray_tracing
+  SHADER 38_ray_tracing
+  MODELS plant_on_table.obj
+  MODELS plant_on_table.mtl
+  TEXTURES plant_on_table_textures/nettle_plant_diff_4k.png
+  TEXTURES plant_on_table_textures/potted_plant_02_pot_diff_1k.png
+  TEXTURES plant_on_table_textures/wooden_picnic_table_bottom_diff_1k.png
+  TEXTURES plant_on_table_textures/wooden_picnic_table_top_diff_1k.png
+  LIBS glm::glm tinyobjloader::tinyobjloader)

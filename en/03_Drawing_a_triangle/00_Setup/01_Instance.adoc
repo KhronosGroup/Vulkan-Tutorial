@@ -170,10 +170,9 @@ https://vulkan.lunarg.com/doc/sdk/1.3.216.0/mac/getting_started.html[Getting Sta
 Beginning with the 1.3.216 Vulkan SDK, the `VK_KHR_PORTABILITY_subset`
 extension is mandatory.
 
-To get over this error, first add the
- `vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR` bit
+To get over this error, first add the `vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR` bit
 to `VkInstanceCreateInfo` struct flags, then add
-`vk::KHRPortabilityEnumerationExtensionName`to instance enabled
+`vk::KHRPortabilityEnumerationExtensionName` to instance enabled
 extension list.
 
 Typically, the code could be like this:
@@ -209,7 +208,7 @@ ignore for now.
 
 [,c++]
 ----
-auto extension = context.enumerateInstanceLayerProperties()
+auto extension = context.enumerateInstanceExtensionProperties();
 ----
 
 Each `VkExtensionProperties` struct contains the name and version of an

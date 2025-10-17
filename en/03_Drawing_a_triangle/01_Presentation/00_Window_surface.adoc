@@ -37,9 +37,16 @@ works in this tutorial.
 
 Start by adding a `surface` class member right below the debug callback.
 
-[,c++]
+[source,multilang,c++,c]
+.Surface member
 ----
+// START c++
 vk::raii::SurfaceKHR surface = nullptr;
+// END c++
+
+// START c
+VkSurfaceKHR surface = VK_NULL_HANDLE;
+// END c
 ----
 
 Although the `VkSurfaceKHR` object and its usage is platform-agnostic, its
@@ -72,10 +79,20 @@ Because a window surface is a Vulkan object, it comes with a
 important parameters: `hwnd` and `hinstance`. These are the handles to the
 window and the process.
 
-[,c++]
+[source,multilang,c++,c]
+.Win32 surface create info
 ----
+// START c++
 vk::Win32SurfaceCreateInfoKHR createInfo{.hinstance = GetModuleHandle(nullptr),
                                          .hwnd      = glfwGetWin32Window(window)};
+// END c++
+
+// START c
+VkWin32SurfaceCreateInfoKHR createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+createInfo.hwnd = glfwGetWin32Window(window);
+createInfo.hinstance = GetModuleHandle(nullptr);
+// END c
 ----
 
 The `glfwGetWin32Window` function is used to get the raw `HWND` from the GLFW
@@ -88,9 +105,18 @@ Technically, this is a WSI extension function, but it is so commonly used
 that the standard Vulkan loader includes it, so unlike other extensions, you
 don't need to explicitly load it.
 
-[,c++]
+[source,multilang,c++,c]
+.Create the Win32 surface
 ----
+// START c++
 surface = instance.createWin32SurfaceKHR(createInfo);
+// END c++
+
+// START c
+if (vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &surface) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create window surface!");
+}
+// END c
 ----
 
 The process is similar for other platforms like Linux, where
@@ -120,15 +146,26 @@ void createSurface() {
 The GLFW call takes simple parameters instead of a struct which makes the
 implementation of the function very straightforward:
 
-[,c++]
+[source,multilang,c++,c]
+.GLFW window surface creation
 ----
+// START c++
 void createSurface() {
-    VkSurfaceKHR       _surface;
+    VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
         throw std::runtime_error("failed to create window surface!");
     }
     surface = vk::raii::SurfaceKHR(instance, _surface);
 }
+// END c++
+
+// START c
+void createSurface() {
+    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create window surface!");
+    }
+}
+// END c
 ----
 
 However, as you see in the above, GLFW only deals with the Vulkan C API.
@@ -159,8 +196,10 @@ graphics operations, and presenting to our window surface. The function to check
 support is `vk::raii::PhysicalDevice::getSurfaceSupportKHR`, which takes the queue family
 index and the surface as parameters:
 
-[,c++]
+[source,multilang,c++,c]
+.Presentation support query
 ----
+// START c++
 uint32_t queueIndex = ~0;
 for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
 {
@@ -176,6 +215,26 @@ if (queueIndex == ~0)
 {
   throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
 }
+// END c++
+
+// START c
+uint32_t queueIndex = ~0;
+for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyCount; qfpIndex++)
+{
+  VkBool32 presentSupport = VK_FALSE;
+  vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, qfpIndex, surface, &presentSupport);
+  if ((queueFamilyProperties[qfpIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
+  {
+    // found a queue family that supports both graphics and present
+    queueIndex = qfpIndex;
+    break;
+  }
+}
+if (queueIndex == ~0)
+{
+  throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+}
+// END c
 ----
 
 == Creating the presentation queue

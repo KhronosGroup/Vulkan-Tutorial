@@ -275,10 +275,28 @@ program, you should refer back to this chapter.
 This chapter concludes with a short overview of how the Vulkan API is
 structured at a lower level.
 
-For example, object creation generally follows this pattern:
+For example, object creation generally follows this pattern in both the C API and the C++ RAII wrapper:
 
-[,c++]
+[source,multilang,c++,c]
+.Object creation pattern
 ----
+// START c
+VkXXXCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_XXX_CREATE_INFO;
+createInfo.pNext = nullptr;
+createInfo.foo = ...;
+createInfo.bar = ...;
+
+VkXXX object;
+
+
+if (vkCreateXXX(&createInfo, nullptr, &object) != VK_SUCCESS) {
+    std::cerr << "failed to create object" << std::endl;
+    return false;
+}
+// END c
+
+// START c++
 vk::XXXCreateInfo createInfo{};
 createInfo.sType = vk::StructureType::eXXXCreateInfo;
 createInfo.pNext = nullptr;
@@ -294,6 +312,7 @@ try {
     std::cerr << "Failed to create object: " << err.what() << std::endl;
     return false;
 }
+// END c++
 ----
 
 Many structures in Vulkan require you to explicitly specify the type of

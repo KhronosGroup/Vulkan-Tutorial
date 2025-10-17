@@ -289,6 +289,7 @@ private:
     // Core Vulkan GPU resources for texture representation
     vk::Image image;              // GPU image object containing pixel data
     vk::DeviceMemory memory;      // GPU memory allocation backing the image
+    vk::DeviceSize offset;        // Offset within the memory allocation for this texture
     vk::ImageView imageView;      // Shader-accessible view into the image
     vk::Sampler sampler;          // Sampling configuration (filtering, wrapping, etc.)
 
@@ -343,7 +344,7 @@ The temporary nature of the CPU-side image data reflects the typical texture loa
 
 === Texture Resource: GPU Resource Cleanup and Memory Management
 
-Then, we implement comprehensive resource cleanup that ensures all GPU resources are properly released when the texture is no longer needed, preventing memory leaks in long-running applications.
+Then, we implement comprehensive resource cleanup that ensures all GPU resources are properly released when the texture is no longer needed, preventing memory leaks in long-running applications.  Please note that if you have vk::raii objects, the destructor of the vk::raii objects will automatically handle the cleanup of the GPU resources.  If, however, you have a vk::Device object, you must manually destroy the GPU resources to prevent memory leaks.  Additionally, you need to have initialized the defaultDispatcher for the vk::Device object types.  In the event that you are using vk::Device objects, the Unload function below details explicit releasing of the objects.
 
 [source,cpp]
 ----
@@ -443,11 +444,13 @@ private:
     // Vertex data management - stores per-vertex attributes like position, normal, UV coordinates
     vk::Buffer vertexBuffer;                // GPU buffer containing vertex attribute data
     vk::DeviceMemory vertexBufferMemory;    // GPU memory backing the vertex buffer
+    vk::DeviceSize vertexBufferOffset;      // Offset within the memory allocation for vertex buffer
     uint32_t vertexCount = 0;               // Number of vertices in this mesh
 
     // Index data management - defines triangle connectivity using vertex indices
     vk::Buffer indexBuffer;                 // GPU buffer containing triangle index data
     vk::DeviceMemory indexBufferMemory;     // GPU memory backing the index buffer
+    vk::DeviceSize indexBufferOffset;       // Offset within the memory allocation for index buffer
     uint32_t indexCount = 0;                // Number of indices in this mesh (typically 3 per triangle)
 
 public:
@@ -499,9 +502,9 @@ The temporary CPU-side storage approach enables validation and processing of geo
 
 The metadata caching strategy stores frequently accessed information locally to avoid expensive GPU queries during rendering. These counts are essential for draw calls, where the GPU needs to know exactly how many vertices to process and how many triangles to render, making local storage much more efficient than querying the GPU buffers repeatedly.
 
-=== Mesh Resource — Then: GPU Resource Cleanup and Memory Reclamation
+=== Mesh Resource: GPU Resource Cleanup and Memory Reclamation
 
-Then, we implement comprehensive cleanup that properly releases all GPU resources and memory allocations when the mesh is no longer needed, ensuring robust memory management in long-running applications.
+Then, we implement comprehensive cleanup that properly releases all GPU resources and memory allocations when the mesh is no longer needed, ensuring robust memory management in long-running applications.  As mentioned above, if you have vk::raii objects, the destructor of the vk::raii objects will automatically handle the cleanup of the GPU resources.  If, however, you have a vk::Device object, you must manually destroy the GPU resources to prevent memory leaks.  Additionally, you need to have initialized the defaultDispatcher for the vk::Device object types.  In the event that you are using vk::Device objects, the Unload function below details explicit releasing of the objects.
 
 [source,cpp]
 ----
@@ -594,6 +597,13 @@ The buffer creation methods represent some of the most performance-critical code
 
 The device access pattern illustrates a common architectural challenge in resource management systems: balancing convenience with loose coupling. While direct access to global singletons can simplify implementation, production systems typically use dependency injection or service locator patterns to maintain testability and flexibility while providing access to core engine services.
 
+=== Shader Resource Implementation
+
+The Shader resource represents the programmable stages of the graphics pipeline, managing compilation, loading, and runtime management of shader programs.
+This implementation demonstrates how to handle SPIR-V shader modules while providing clean interfaces for shader stage management and hot reloading support during development.
+
+[source,cpp]
+----
 // Shader resource
 class Shader : public Resource {
 private:

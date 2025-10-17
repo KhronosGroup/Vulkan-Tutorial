@@ -223,7 +223,7 @@ ImGuiVulkanUtil::ImGuiVulkanUtil(vk::raii::Device& device, vk::raii::PhysicalDev
     // Set up dynamic rendering info
     renderingInfo.colorAttachmentCount = 1;
     vk::Format formats[] = { colorFormat };
-    renderingInfo.pColorAttachmentFormats = formats;
+    renderingInfo.pColorAttachmentFormats = &colorFormat;
 }
 
 ImGuiVulkanUtil::~ImGuiVulkanUtil() {

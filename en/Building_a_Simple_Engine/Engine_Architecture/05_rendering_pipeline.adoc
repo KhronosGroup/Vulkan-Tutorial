@@ -105,7 +105,7 @@ public:
 
 Modern rendering techniques often require multiple passes, each with a specific purpose. A render pass manager helps organize these passes and their dependencies.
 
-In this tutorial, we use Vulkan's dynamic rendering feature with vk::raii instead of traditional render passes. Dynamic rendering simplifies the rendering process by allowing us to begin and end rendering operations with a single command, without explicitly creating VkRenderPass and VkFramebuffer objects. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Additionally, our engine uses C++20 modules for better code organization, faster compilation times, and improved encapsulation.
+In this tutorial, we use Vulkan's dynamic rendering feature with vk::raii instead of traditional render passes. Dynamic rendering simplifies the rendering process by allowing us to begin and end rendering operations with a single command, without explicitly creating VkRenderPass and VkFramebuffer objects.
 
 === Rendergraphs and Synchronization
 
@@ -131,8 +131,8 @@ First, we need to  establish the fundamental data structures that represent rend
 class Rendergraph {
 private:
     // Resource description and management structure
-    // Represents any GPU resource used during rendering (textures, render targets, buffers)
-    struct Resource {
+    // Represents Image resource used during rendering (textures)
+    struct ImageResource {
         std::string name;                     // Human-readable identifier for debugging and referencing
         vk::Format format;                    // Pixel format (RGBA8, Depth24Stencil8, etc.)
         vk::Extent2D extent;                  // Dimensions in pixels for 2D resources

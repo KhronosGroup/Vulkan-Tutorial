@@ -102,13 +102,6 @@ public:
     T* AddComponent(Args&&... args) {
         static_assert(std::is_base_of<Component, T>::value, "T must derive from Component");
 
-        // Check if component of this type already exists
-        for (auto& component : components) {
-            if (dynamic_cast<T*>(component.get())) {
-                return dynamic_cast<T*>(component.get());
-            }
-        }
-
         // Create new component
         auto component = std::make_unique<T>(std::forward<Args>(args)...);
         T* componentPtr = component.get();

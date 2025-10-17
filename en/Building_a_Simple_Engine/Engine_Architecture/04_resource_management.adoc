@@ -95,14 +95,19 @@ public:
     bool IsLoaded() const { return loaded; }
 
     // Virtual interface for resource-specific loading and unloading behavior
-    virtual bool Load() {
-        loaded = true;
-        return true;
+    bool Load() {
+        loaded = doLoad();
+        return loaded;
     }
 
-    virtual void Unload() {
+    void Unload() {
+        doUnload();
         loaded = false;
     }
+
+    protected:
+        virtual bool doLoad() = 0;
+        virtual bool doUnload() = 0;
 };
 ----
 
@@ -124,9 +129,14 @@ private:
     std::unordered_map<std::type_index,
                        std::unordered_map<std::string, std::shared_ptr<Resource>>> resources;
 
-    // Reference counting system for automatic resource lifecycle management
-    // Maps resource IDs to their current usage count for garbage collection
-    std::unordered_map<std::string, int> refCounts;
+    // Two-level reference counting system for automatic resource lifecycle management
+    // First level maps resource type, second level maps resource IDs to their data
+    struct ResourceData {
+        std::shared_ptr<Resource> resource;  // The actual resource
+        int refCount;                        // Reference count for this resource
+    };
+    std::unordered_map<std::type_index,
+                       std::unordered_map<std::string, ResourceData>> refCounts;
 ----
 
 The storage architecture uses a sophisticated two-level mapping system that solves several critical problems in resource management. The outer map keyed by `std::type_index` ensures complete type separation, preventing name collisions between different resource types. For example, you could have both a texture named "stone" and a sound effect named "stone" without conflicts, as they're stored in separate type-specific containers.
@@ -201,8 +211,8 @@ After that, we provide the interface for safely accessing cached resources with 
     template<typename T>
     bool HasResource(const std::string& resourceId) {
         // Efficient existence check without resource access overhead
-        auto& typeResources = resources[std::type_index(typeid(T))];
-        return typeResources.find(resourceId) != typeResources.end();
+        auto resourceIt = resources.find(std::type_index(typeid(T)));
+        return resourceIt != resources.end();
     }
 ----
 

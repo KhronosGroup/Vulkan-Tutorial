@@ -69,15 +69,13 @@ std::array<UboBuffer, maxConcurrentFrames> uniformBuffers;
 
 void createUniformBuffers() {
     vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
-
+    // Create the buffer
+    vk::BufferCreateInfo bufferInfo{
+        .size = bufferSize,
+        .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+        .sharingMode = vk::SharingMode::eExclusive
+    };
     for (size_t i = 0; i < maxConcurrentFrames; i++) {
-        // Create the buffer
-        vk::BufferCreateInfo bufferInfo{
-            .size = bufferSize,
-            .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-            .sharingMode = vk::SharingMode::eExclusive
-        };
-
         uniformBuffers[i].buffer = vk::raii::Buffer(device, bufferInfo);
 
         // Allocate and bind memory

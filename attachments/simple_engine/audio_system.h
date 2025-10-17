@@ -11,6 +11,7 @@
 #include <queue>
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vk_platform.h>
+#include <stdexcept>
 
 /**
  * @brief Class representing an audio source.
@@ -147,6 +148,13 @@ public:
      * @brief Default constructor.
      */
     AudioSystem() = default;
+
+    // Constructor-based initialization to replace separate Initialize() calls
+    AudioSystem(Engine* engine, Renderer* renderer) {
+        if (!Initialize(engine, renderer)) {
+            throw std::runtime_error("AudioSystem: initialization failed");
+        }
+    }
 
     /**
      * @brief Flush audio output: clears pending processing and device buffers so playback restarts cleanly.

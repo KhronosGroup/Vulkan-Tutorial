@@ -17,7 +17,7 @@ class ModelLoader;
  * @param rotation The rotation to apply to the model.
  * @param scale The scale to apply to the model.
  */
-void LoadGLTFModel(Engine* engine, const std::string& modelPath,
+bool LoadGLTFModel(Engine* engine, const std::string& modelPath,
                    const glm::vec3& position, const glm::vec3& rotation, const glm::vec3& scale);
 
 /**

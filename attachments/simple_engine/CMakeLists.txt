@@ -44,11 +44,6 @@ target_sources(VulkanCppModule
 )
 
 
-# Add the vulkan.cppm file directly as a source file
-target_sources(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-)
 
 # Platform-specific settings
 if(ANDROID)
@@ -119,6 +114,7 @@ set(SOURCES
     pipeline.cpp
     descriptor_manager.cpp
     renderdoc_debug_system.cpp
+    mikktspace.c
 )
 
 # Create executable

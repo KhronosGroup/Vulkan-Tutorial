@@ -151,11 +151,25 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
         return false;
     }
 
+    if (!createOrResizeLightStorageBuffers(1)) {
+        std::cerr << "Failed to create initial light storage buffers" << std::endl;
+        return false;
+    }
+
+    if (!createOpaqueSceneColorResources()) {
+        return false;
+    }
+
+    createTransparentDescriptorSets();
+
     // Create default texture resources
     if (!createDefaultTextureResources()) {
         std::cerr << "Failed to create default texture resources" << std::endl;
         return false;
     }
+
+    // Create fallback transparent descriptor sets (must occur after default textures exist)
+    createTransparentFallbackDescriptorSets();
 
     // Create shared default PBR textures (to avoid creating hundreds of identical textures)
     if (!createSharedDefaultPBRTextures()) {
@@ -213,8 +227,11 @@ void Renderer::ensureThreadLocalVulkanInit() const {
 // Clean up renderer resources
 void Renderer::Cleanup() {
     // Ensure background workers are stopped before tearing down Vulkan resources
-    if (threadPool) {
-        threadPool.reset();
+    {
+        std::unique_lock<std::shared_mutex> lock(threadPoolMutex);
+        if (threadPool) {
+            threadPool.reset();
+        }
     }
     if (initialized) {
         std::cout << "Starting renderer cleanup..." << std::endl;
@@ -229,6 +246,11 @@ void Renderer::Cleanup() {
             resources.uniformBufferAllocations.clear();
             resources.uniformBuffersMapped.clear();
         }
+        // Also clear global descriptor sets that are allocated from descriptorPool, so they are
+        // destroyed while the pool is still valid (avoid vkFreeDescriptorSets invalid pool errors)
+        transparentDescriptorSets.clear();
+        transparentFallbackDescriptorSets.clear();
+        computeDescriptorSets.clear();
         std::cout << "Renderer cleanup completed." << std::endl;
         initialized = false;
     }
@@ -462,14 +484,30 @@ void Renderer::addSupportedOptionalExtensions() {
         // Get available extensions
         auto availableExtensions = physicalDevice.enumerateDeviceExtensionProperties();
 
-        // Check which optional extensions are supported and add them to deviceExtensions
+        // Build a set of available extension names for quick lookup
+        std::set<std::string> avail;
+        for (const auto& e : availableExtensions) { avail.insert(e.extensionName); }
+
+        // First, handle dependency: VK_EXT_attachment_feedback_loop_dynamic_state requires VK_EXT_attachment_feedback_loop_layout
+        const char* dynState = VK_EXT_ATTACHMENT_FEEDBACK_LOOP_DYNAMIC_STATE_EXTENSION_NAME;
+        const char* layoutReq = "VK_EXT_attachment_feedback_loop_layout";
+        bool dynSupported = avail.count(dynState) > 0;
+        bool layoutSupported = avail.count(layoutReq) > 0;
         for (const auto& optionalExt : optionalDeviceExtensions) {
-            for (const auto& availableExt : availableExtensions) {
-                if (strcmp(availableExt.extensionName, optionalExt) == 0) {
-                    deviceExtensions.push_back(optionalExt);
-                    std::cout << "Adding optional extension: " << optionalExt << std::endl;
-                    break;
+            if (std::strcmp(optionalExt, dynState) == 0) {
+                if (dynSupported && layoutSupported) {
+                    deviceExtensions.push_back(dynState);
+                    deviceExtensions.push_back(layoutReq);
+                    std::cout << "Adding optional extension: " << dynState << std::endl;
+                    std::cout << "Adding required-by-optional extension: " << layoutReq << std::endl;
+                } else if (dynSupported && !layoutSupported) {
+                    std::cout << "Skipping extension due to missing dependency: " << dynState << " requires " << layoutReq << std::endl;
                 }
+                continue; // handled
+            }
+            if (avail.count(optionalExt)) {
+                deviceExtensions.push_back(optionalExt);
+                std::cout << "Adding optional extension: " << optionalExt << std::endl;
             }
         }
     } catch (const std::exception& e) {
@@ -502,6 +540,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
         // Enable required features
         auto features = physicalDevice.getFeatures2();
         features.features.samplerAnisotropy = vk::True;
+        features.features.depthBiasClamp = vk::True;
 
         // Explicitly configure device features to prevent validation layer warnings
         // These features are required by extensions or other features, so we enable them explicitly
@@ -569,7 +608,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
         };
         vk::SemaphoreCreateInfo timelineCreateInfo{ .pNext = &typeInfo };
         uploadsTimeline = vk::raii::Semaphore(device, timelineCreateInfo);
-        uploadTimelineValue.store(0, std::memory_order_relaxed);
+        uploadTimelineLastSubmitted.store(0, std::memory_order_relaxed);
 
         return true;
     } catch (const std::exception& e) {

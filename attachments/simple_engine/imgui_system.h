@@ -5,6 +5,7 @@
 #include <memory>
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vk_platform.h>
+#include <stdexcept>
 
 // Forward declarations
 class Renderer;
@@ -24,6 +25,13 @@ public:
      * @brief Default constructor.
      */
     ImGuiSystem();
+
+    // Constructor-based initialization to replace separate Initialize() calls
+    ImGuiSystem(Renderer* renderer, uint32_t width, uint32_t height) {
+        if (!Initialize(renderer, width, height)) {
+            throw std::runtime_error("ImGuiSystem: initialization failed");
+        }
+    }
 
     /**
      * @brief Destructor for proper cleanup.

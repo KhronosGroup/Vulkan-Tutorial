@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <vulkan/vulkan_raii.hpp>
 #include <mutex>
+#include <stdexcept>
 
 class Entity;
 class Renderer;
@@ -196,6 +197,15 @@ public:
      */
     PhysicsSystem() = default;
 
+    // Constructor-based initialization replacing separate Initialize/Set* calls
+    explicit PhysicsSystem(Renderer* _renderer, bool enableGPU = true) {
+        SetRenderer(_renderer);
+        SetGPUAccelerationEnabled(enableGPU);
+        if (!Initialize()) {
+            throw std::runtime_error("PhysicsSystem: initialization failed");
+        }
+    }
+
     /**
      * @brief Destructor for proper cleanup.
      */
@@ -315,6 +325,7 @@ private:
     std::vector<PendingCreation> pendingCreations;
 
     // Rigid bodies
+    mutable std::mutex rigidBodiesMutex;  // Protect concurrent access to rigidBodies
     std::vector<std::unique_ptr<RigidBody>> rigidBodies;
 
     // Gravity

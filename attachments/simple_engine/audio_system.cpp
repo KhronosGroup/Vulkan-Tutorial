@@ -12,6 +12,7 @@
 #include <mutex>
 #include <utility>
 #include <unordered_map>
+#include <algorithm>
 
 // OpenAL headers
 #ifdef __APPLE__

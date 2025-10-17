@@ -38,7 +38,7 @@ bool Renderer::createSwapChain() {
             .imageColorSpace = surfaceFormat.colorSpace,
             .imageExtent = extent,
             .imageArrayLayers = 1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
             .preTransform = swapChainSupport.capabilities.currentTransform,
             .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
             .presentMode = presentMode,
@@ -81,6 +81,9 @@ bool Renderer::createSwapChain() {
 // Create image views
 bool Renderer::createImageViews() {
     try {
+        opaqueSceneColorImage.clear();
+        opaqueSceneColorImageView.clear();
+        opaqueSceneColorSampler.clear();
         // Resize image views vector
         swapChainImageViews.clear();
         swapChainImageViews.reserve(swapChainImages.size());
@@ -253,8 +256,8 @@ void Renderer::cleanupSwapChain() {
     // Clean up swap chain image views
     swapChainImageViews.clear();
 
-    // Clean up descriptor pool (this will automatically clean up descriptor sets)
-    descriptorPool = nullptr;
+    // Note: Keep descriptor pool alive here to ensure descriptor sets remain valid during swapchain recreation.
+    // descriptorPool is preserved; it will be managed during full renderer teardown.
 
     // Clean up pipelines
     graphicsPipeline = nullptr;
@@ -295,6 +298,7 @@ void Renderer::recreateSwapChain() {
     // Recreate swap chain and related resources
     createSwapChain();
     createImageViews();
+    setupDynamicRendering();
     createDepthResources();
 
     // Recreate sync objects with correct sizing for new swap chain
@@ -302,6 +306,11 @@ void Renderer::recreateSwapChain() {
 
     // Recreate descriptor pool and pipelines
     createDescriptorPool();
+
+    // Recreate off-screen opaque scene color and descriptor sets needed by transparent pass
+    createOpaqueSceneColorResources();
+    createTransparentDescriptorSets();
+    createTransparentFallbackDescriptorSets();
 
     // Wait for all command buffers to complete before clearing resources
     for (const auto& fence : inFlightFences) {
@@ -317,6 +326,11 @@ void Renderer::recreateSwapChain() {
     createGraphicsPipeline();
     createPBRPipeline();
     createLightingPipeline();
+
+    // Re-create command buffers to ensure fresh recording against new swapchain state
+    commandBuffers.clear();
+    createCommandBuffers();
+    currentFrame = 0;
 
     // Recreate descriptor sets for all entities after swapchain/pipeline rebuild
     for (auto& [entity, resources] : entityResources) {
@@ -496,10 +510,17 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity
     ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);
 
     // Set PBR parameters (use member variables for UI control)
-    ubo.exposure = this->exposure;
+    // Clamp exposure to a sane range to avoid washout
+    ubo.exposure = std::clamp(this->exposure, 0.2f, 2.0f);
     ubo.gamma = this->gamma;
     ubo.prefilteredCubeMipLevels = 0.0f;
-    ubo.scaleIBLAmbient = 0.5f;
+    ubo.scaleIBLAmbient = 0.25f;
+    ubo.screenDimensions = glm::vec2(swapChainExtent.width, swapChainExtent.height);
+
+    // Signal to the shader whether swapchain is sRGB (1) or not (0) using padding0
+    int outputIsSRGB = (swapChainImageFormat == vk::Format::eR8G8B8A8Srgb ||
+                        swapChainImageFormat == vk::Format::eB8G8R8A8Srgb) ? 1 : 0;
+    ubo.padding0 = outputIsSRGB;
 
     // Copy to uniform buffer
     std::memcpy(entityIt->second.uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -507,586 +528,421 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity
 
 // Render the scene
 void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
-    // Mark rendering as active (informational flag for systems that care)
-    if (memoryPool) {
-        memoryPool->setRenderingActive(true);
-    }
+    if (memoryPool) memoryPool->setRenderingActive(true);
+    struct RenderingStateGuard { MemoryPool* pool; explicit RenderingStateGuard(MemoryPool* p) : pool(p) {} ~RenderingStateGuard() { if (pool) pool->setRenderingActive(false); } } guard(memoryPool.get());
 
-    // Use RAII to ensure rendering state is always reset, even if an exception occurs
-    struct RenderingStateGuard {
-        MemoryPool* pool;
-        explicit RenderingStateGuard(MemoryPool* p) : pool(p) {}
-        ~RenderingStateGuard() {
-            if (pool) {
-                pool->setRenderingActive(false);
-            }
-        }
-    } guard(memoryPool.get());
-
-    // Wait for the previous frame to finish
     if (device.waitForFences(*inFlightFences[currentFrame], VK_TRUE, UINT64_MAX) != vk::Result::eSuccess) {}
 
-    // Acquire the next image from the swap chain
     uint32_t imageIndex;
-    // Use currentFrame for consistent semaphore indexing throughout acquire/submit/present chain
     auto result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
     imageIndex = result.second;
 
-    // Check if the swap chain needs to be recreated
-    if (result.first == vk::Result::eErrorOutOfDateKHR || result.first == vk::Result::eSuboptimalKHR || framebufferResized) {
-        framebufferResized = false;
-
-        // If ImGui has started a frame, we need to end it properly before returning
-        if (imguiSystem) {
-            ImGui::EndFrame();
-        }
-
+    if (result.first == vk::Result::eErrorOutOfDateKHR || result.first == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+        framebufferResized.store(false, std::memory_order_relaxed);
+        if (imguiSystem) ImGui::EndFrame();
         recreateSwapChain();
         return;
     }
-    if (result.first != vk::Result::eSuccess) {
-        throw std::runtime_error("Failed to acquire swap chain image");
-    }
+    if (result.first != vk::Result::eSuccess) { throw std::runtime_error("Failed to acquire swap chain image"); }
 
-    // Reset the fence for the current frame
     device.resetFences(*inFlightFences[currentFrame]);
+    if (framebufferResized.load(std::memory_order_relaxed)) { recreateSwapChain(); return; }
 
-    // Reset the command buffer
     commandBuffers[currentFrame].reset();
-
-    // Record the command buffer
     commandBuffers[currentFrame].begin(vk::CommandBufferBeginInfo());
+    if (framebufferResized.load(std::memory_order_relaxed)) { commandBuffers[currentFrame].end(); recreateSwapChain(); return; }
 
-    // Update dynamic rendering attachments
-    colorAttachments[0].setImageView(*swapChainImageViews[imageIndex]);
-    depthAttachment.setImageView(*depthImageView);
-
-    // Update rendering area
-    renderingInfo.setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
-
-    // Transition swapchain image layout for rendering
-    vk::ImageMemoryBarrier renderBarrier{
-        .srcAccessMask = vk::AccessFlagBits::eNone,
-        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-        .oldLayout = vk::ImageLayout::eUndefined,
-        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = swapChainImages[imageIndex],
-        .subresourceRange = {
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
-        }
-    };
-
-    commandBuffers[currentFrame].pipelineBarrier(
-        vk::PipelineStageFlagBits::eTopOfPipe,
-        vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        vk::DependencyFlags{},
-        {},
-        {},
-        renderBarrier
-    );
-
-    // Begin dynamic rendering with vk::raii
-    commandBuffers[currentFrame].beginRendering(renderingInfo);
-
-    // Set the viewport
-    vk::Viewport viewport(0.0f, 0.0f,
-                         static_cast<float>(swapChainExtent.width),
-                         static_cast<float>(swapChainExtent.height),
-                         0.0f, 1.0f);
-    commandBuffers[currentFrame].setViewport(0, viewport);
-
-    // Set the scissor
-    vk::Rect2D scissor(vk::Offset2D(0, 0), swapChainExtent);
-    commandBuffers[currentFrame].setScissor(0, scissor);
-
-    // Track current pipeline to avoid unnecessary bindings
     vk::raii::Pipeline* currentPipeline = nullptr;
     vk::raii::PipelineLayout* currentLayout = nullptr;
     std::vector<Entity*> blendedQueue;
+    std::unordered_set<Entity*> blendedSet;
 
-    // If loading, skip drawing scene entities (only clear and allow overlay)
     bool blockScene = false;
     if (imguiSystem) {
-        // Prefer renderer flag when available
         blockScene = IsLoading() || (GetTextureTasksScheduled() > 0 && GetTextureTasksCompleted() < GetTextureTasksScheduled());
     }
 
-    // Render each entity (skip while loading)
-    if (!blockScene)
-    for (auto const& uptr : entities) {
-        Entity* entity = uptr.get();
-        if (!entity || !entity->IsActive()) {
-            continue;
-        }
-        // Check if ball-only rendering is enabled and filter entities accordingly
-        if (imguiSystem && imguiSystem->IsBallOnlyRenderingEnabled()) {
-            // Only render entities whose names contain "Ball_"
-            if (entity->GetName().find("Ball_") == std::string::npos) {
-                continue; // Skip non-ball entities
-            }
-        }
-
-        // Skip camera entities - they should not be rendered
-        if (entity->GetName() == "Camera") {
-            continue;
-        }
-
-        // Get the mesh component
-        auto meshComponent = entity->GetComponent<MeshComponent>();
-        if (!meshComponent) {
-            continue;
-        }
-
-        // Get the transform component
-        auto transformComponent = entity->GetComponent<TransformComponent>();
-        if (!transformComponent) {
-            continue;
-        }
-
-        // Determine which pipeline to use - now defaults to BRDF/PBR instead of Phong
-        // Use basic pipeline only when PBR is explicitly disabled via ImGui
-        bool useBasic = imguiSystem && !imguiSystem->IsPBREnabled();
-        bool usePBR = !useBasic; // BRDF/PBR is now the default lighting model
-
-        // Choose PBR pipeline variant per material (BLEND -> blended pipeline)
-        vk::raii::Pipeline* selectedPipeline = nullptr;
-        vk::raii::PipelineLayout* selectedLayout = nullptr;
-        if (usePBR) {
+    if (!blockScene) {
+        for (const auto& uptr : entities) {
+            Entity* entity = uptr.get();
+            if (!entity || !entity->IsActive()) continue;
+            auto meshComponent = entity->GetComponent<MeshComponent>();
+            if (!meshComponent) continue;
             bool useBlended = false;
             if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
                 std::string entityName = entity->GetName();
                 size_t tagPos = entityName.find("_Material_");
                 if (tagPos != std::string::npos) {
                     size_t afterTag = tagPos + std::string("_Material_").size();
-                    size_t sep = entityName.find('_', afterTag);
-                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
-                        std::string materialName = entityName.substr(sep + 1);
-                        Material* material = modelLoader->GetMaterial(materialName);
-                        if (material) {
-                            if (material->alphaMode == "BLEND") {
-                                useBlended = true;
-                            } else if (material->alphaMode != "MASK" && material->transmissionFactor > 0.001f) {
-                                // Use blended pipeline for transmissive materials
-                                useBlended = true;
-                            } else if (material->useSpecularGlossiness && material->alpha < 0.999f) {
-                                // SpecGloss glass with alpha < 1 should blend
+                    if (afterTag < entityName.length()) {
+                        // Entity name format: "modelName_Material_<index>_<materialName>"
+                        // Find the next underscore after the material index to get the actual material name
+                        std::string remainder = entityName.substr(afterTag);
+                        size_t nextUnderscore = remainder.find('_');
+                        if (nextUnderscore != std::string::npos && nextUnderscore + 1 < remainder.length()) {
+                            std::string materialName = remainder.substr(nextUnderscore + 1);
+                            Material* material = modelLoader->GetMaterial(materialName);
+                            if (material && (material->alphaMode == "BLEND" || material->transmissionFactor > 0.001f)) {
                                 useBlended = true;
                             }
                         }
                     }
                 }
             }
-            // Defer blended/transmissive materials to a second pass
             if (useBlended) {
                 blendedQueue.push_back(entity);
-                continue;
+                blendedSet.insert(entity);
             }
-            // Opaques use the non-blended PBR pipeline in this first pass
-            selectedPipeline = &pbrGraphicsPipeline;
-            selectedLayout = &pbrPipelineLayout;
-        } else {
-            selectedPipeline = &graphicsPipeline;
-            selectedLayout = &pipelineLayout;
         }
-
-        // Get the mesh resources - they should already exist from pre-allocation
-        auto meshIt = meshResources.find(meshComponent);
-        if (meshIt == meshResources.end()) {
-            std::cerr << "ERROR: Mesh resources not found for entity " << entity->GetName()
-                      << " - resources should have been pre-allocated during scene loading!" << std::endl;
-            continue;
-        }
-
-        // Get the entity resources - they should already exist from pre-allocation
-        auto entityIt = entityResources.find(entity);
-        if (entityIt == entityResources.end()) {
-            std::cerr << "ERROR: Entity resources not found for entity " << entity->GetName()
-                      << " - resources should have been pre-allocated during scene loading!" << std::endl;
-            continue;
-        }
-
-        // Bind pipeline if it changed
-        if (currentPipeline != selectedPipeline) {
-            commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
-            currentPipeline = selectedPipeline;
-            currentLayout = selectedLayout;
-        }
-
-        // Always bind both vertex and instance buffers since shaders expect instance data
-        // The instancing toggle controls the rendering behavior, not the buffer binding
-        std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
-        std::array<vk::DeviceSize, 2> offsets = {0, 0};
-        commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
-
-        // Always set UBO.model from the entity's transform; shaders combine it with instance matrices
-        updateUniformBuffer(currentFrame, entity, camera);
-
-        // Bind the index buffer
-        commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
-
-        // Bind the descriptor set using the appropriate pipeline layout
-        auto& selectedDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
-
-        // Check if descriptor sets exist for the current pipeline type
-        if (selectedDescriptorSets.empty()) {
-            std::cerr << "Error: No descriptor sets available for entity " << entity->GetName()
-                      << " (pipeline: " << (usePBR ? "PBR" : "basic") << ")" << std::endl;
-            continue; // Skip this entity
-        }
-
-        if (currentFrame >= selectedDescriptorSets.size()) {
-            std::cerr << "Error: Invalid frame index " << currentFrame
-                      << " for entity " << entity->GetName()
-                      << " (descriptor sets size: " << selectedDescriptorSets.size() << ")" << std::endl;
-            continue; // Skip this entity
-        }
-
-        commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, **currentLayout, 0, {*selectedDescriptorSets[currentFrame]}, {});
-
-
-        // Set PBR material properties using push constants
-        if (usePBR) {
-            MaterialProperties pushConstants{};
-
-            // Try to get material properties for this specific entity
-            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
-                // Extract material name from entity name for any GLTF model entities
-                std::string entityName = entity->GetName();
-                size_t tagPos = entityName.find("_Material_");
-                if (tagPos != std::string::npos) {
-                    size_t afterTag = tagPos + std::string("_Material_").size();
-                    // After the tag, there should be a numeric material index, then an underscore, then the material name
-                    size_t sep = entityName.find('_', afterTag);
-                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
-                        std::string materialName = entityName.substr(sep + 1);
-                        Material* material = modelLoader->GetMaterial(materialName);
-                        if (material) {
-                            // Use actual PBR properties from the GLTF material
-                            pushConstants.baseColorFactor = glm::vec4(material->albedo, material->alpha);
-                            pushConstants.metallicFactor = material->metallic;
-                            pushConstants.roughnessFactor = material->roughness;
-                            pushConstants.emissiveFactor = material->emissive;  // Set emissive factor for HDR emissive sources
-                            pushConstants.emissiveStrength = material->emissiveStrength;  // Set emissive strength from KHR_materials_emissive_strength extension
-                            pushConstants.transmissionFactor = material->transmissionFactor;  // KHR_materials_transmission
-                            // SpecGloss workflow push constants
-                            if (material->useSpecularGlossiness) {
-                                pushConstants.useSpecGlossWorkflow = 1;
-                                pushConstants.specularFactor = material->specularFactor;
-                                pushConstants.glossinessFactor = material->glossinessFactor;
-                                // If no SpecGloss texture, signal shader to use factors-only path
-                                pushConstants.physicalDescriptorTextureSet = material->specGlossTexturePath.empty() ? -1 : 0;
-                            } else {
-                                pushConstants.useSpecGlossWorkflow = 0;
-                                pushConstants.specularFactor = glm::vec3(0.04f);
-                                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
-                                pushConstants.physicalDescriptorTextureSet = 0;
-                            }
-                        } else {
-                            // Default PBR material properties
-                            pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-                            pushConstants.metallicFactor = 0.1f;
-                            pushConstants.roughnessFactor = 0.7f;
-                            pushConstants.emissiveFactor = glm::vec3(0.0f);
-                            pushConstants.emissiveStrength = 1.0f;
-                        }
-                    }
-                }
-            } else {
-                // Default PBR material properties for non-GLTF entities
-                pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-                pushConstants.metallicFactor = 0.1f;
-                pushConstants.roughnessFactor = 0.7f;
-                pushConstants.emissiveFactor = glm::vec3(0.0f);
-                pushConstants.emissiveStrength = 0.0f;
-                pushConstants.transmissionFactor = 0.0f;
-                // Default to MR workflow
-                pushConstants.useSpecGlossWorkflow = 0;
-                pushConstants.specularFactor = glm::vec3(0.04f);
-                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
-            }
-
-            // Set texture binding indices
-            pushConstants.baseColorTextureSet = 0;
-            pushConstants.physicalDescriptorTextureSet = 0;
-            pushConstants.normalTextureSet = 0;
-            pushConstants.occlusionTextureSet = 0;
-            // For emissive: indicate absence with -1 so shader uses factor-only emissive
-            int emissiveSet = -1;
-            if (meshComponent && !meshComponent->GetEmissiveTexturePath().empty()) {
-                emissiveSet = 0;
-            }
-            pushConstants.emissiveTextureSet = emissiveSet;
-            // Alpha mask from glTF material
-            pushConstants.alphaMask = 0.0f;
-            pushConstants.alphaMaskCutoff = 0.5f;
-            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
-                std::string entityName = entity->GetName();
-                size_t tagPos = entityName.find("_Material_");
-                if (tagPos != std::string::npos) {
-                    size_t afterTag = tagPos + std::string("_Material_").size();
-                    size_t sep = entityName.find('_', afterTag);
-                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
-                        std::string materialName = entityName.substr(sep + 1);
-                        Material* material = modelLoader->GetMaterial(materialName);
-                        if (material) {
-                            if (material->alphaMode == "MASK") {
-                                pushConstants.alphaMask = 1.0f;
-                                pushConstants.alphaMaskCutoff = material->alphaCutoff;
-                            } else {
-                                pushConstants.alphaMask = 0.0f; // OPAQUE or BLEND not handled here
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Push constants to the shader
-            commandBuffers[currentFrame].pushConstants(
-                **currentLayout,
-                vk::ShaderStageFlagBits::eFragment,
-                0,
-                vk::ArrayProxy<const uint8_t>(sizeof(MaterialProperties), reinterpret_cast<const uint8_t*>(&pushConstants))
-            );
-        }
-
-        uint32_t instanceCount = static_cast<uint32_t>(std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount())));
-        commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
     }
 
-    // Second pass: render blended/transmissive materials after opaque
+    // Sort transparent entities back-to-front for correct blending of nested glass/liquids
     if (!blendedQueue.empty()) {
-        for (Entity* entity : blendedQueue) {
-            if (!entity || !entity->IsActive()) { continue; }
-
-            auto meshComponent = entity->GetComponent<MeshComponent>();
-            if (!meshComponent) { continue; }
-            auto transformComponent = entity->GetComponent<TransformComponent>();
-            if (!transformComponent) { continue; }
-
-            // Mesh & entity resources
-            auto meshIt = meshResources.find(meshComponent);
-            if (meshIt == meshResources.end()) {
-                std::cerr << "ERROR: Mesh resources not found for blended entity " << entity->GetName() << std::endl;
-                continue;
+        // Sort by view-space depth using the camera's view matrix for robust back-to-front order
+        glm::mat4 V = camera ? camera->GetViewMatrix() : glm::mat4(1.0f);
+        std::sort(blendedQueue.begin(), blendedQueue.end(), [V](Entity* a, Entity* b) {
+            auto* ta = (a ? a->GetComponent<TransformComponent>() : nullptr);
+            auto* tb = (b ? b->GetComponent<TransformComponent>() : nullptr);
+            glm::vec3 pa = ta ? ta->GetPosition() : glm::vec3(0.0f);
+            glm::vec3 pb = tb ? tb->GetPosition() : glm::vec3(0.0f);
+            float za = (V * glm::vec4(pa, 1.0f)).z;
+            float zb = (V * glm::vec4(pb, 1.0f)).z;
+            if (za != zb) {
+                // In view space (looking down -Z), farther objects have more negative z. Sort ascending: farther first.
+                return za < zb;
             }
-            auto entityIt = entityResources.find(entity);
-            if (entityIt == entityResources.end()) {
-                std::cerr << "ERROR: Entity resources not found for blended entity " << entity->GetName() << std::endl;
-                continue;
-            }
+            // Fallback to stable ordering
+            return a < b;
+        });
+    }
 
-            // Use blended PBR pipeline
-            vk::raii::Pipeline* selectedPipeline = &pbrBlendGraphicsPipeline;
-            vk::raii::PipelineLayout* selectedLayout = &pbrPipelineLayout;
-            if (currentPipeline != selectedPipeline) {
-                commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
-                currentPipeline = selectedPipeline;
-                currentLayout = selectedLayout;
-            }
+    // PASS 1: RENDER OPAQUE OBJECTS TO OFF-SCREEN TEXTURE
+    {
+        vk::ImageMemoryBarrier barrier{ .srcAccessMask = vk::AccessFlagBits::eNone, .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite, .oldLayout = vk::ImageLayout::eUndefined, .newLayout = vk::ImageLayout::eColorAttachmentOptimal, .image = *opaqueSceneColorImage, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} };
+        commandBuffers[currentFrame].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, {}, {}, barrier);
+        vk::RenderingAttachmentInfo colorAttachment{ .imageView = *opaqueSceneColorImageView, .imageLayout = vk::ImageLayout::eColorAttachmentOptimal, .loadOp = vk::AttachmentLoadOp::eClear, .storeOp = vk::AttachmentStoreOp::eStore, .clearValue = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}) };
+        depthAttachment.imageView = *depthImageView;
+        depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+        vk::RenderingInfo passInfo{ .renderArea = vk::Rect2D({0, 0}, swapChainExtent), .layerCount = 1, .colorAttachmentCount = 1, .pColorAttachments = &colorAttachment, .pDepthAttachment = &depthAttachment };
+        commandBuffers[currentFrame].beginRendering(passInfo);
+        vk::Viewport viewport(0.0f, 0.0f, (float)swapChainExtent.width, (float)swapChainExtent.height, 0.0f, 1.0f);
+        commandBuffers[currentFrame].setViewport(0, viewport);
+        vk::Rect2D scissor({0, 0}, swapChainExtent);
+        commandBuffers[currentFrame].setScissor(0, scissor);
+        if (!blockScene) {
+            for (const auto& uptr : entities) {
+                Entity* entity = uptr.get();
+                if (!entity || !entity->IsActive() || blendedSet.count(entity)) continue;
+                auto meshComponent = entity->GetComponent<MeshComponent>();
+                if (!meshComponent) continue;
+                bool useBasic = imguiSystem && !imguiSystem->IsPBREnabled();
+                vk::raii::Pipeline* selectedPipeline = useBasic ? &graphicsPipeline : &pbrGraphicsPipeline;
+                vk::raii::PipelineLayout* selectedLayout = useBasic ? &pipelineLayout : &pbrPipelineLayout;
+                if (currentPipeline != selectedPipeline) {
+                    commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **selectedPipeline);
+                    currentPipeline = selectedPipeline;
+                    currentLayout = selectedLayout;
+                }
+                auto meshIt = meshResources.find(meshComponent);
+                auto entityIt = entityResources.find(entity);
+                if (meshIt == meshResources.end() || entityIt == entityResources.end()) continue;
+                std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+                std::array<vk::DeviceSize, 2> offsets = {0, 0};
+                commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
+                commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
+                updateUniformBuffer(currentFrame, entity, camera);
+                auto& descSets = useBasic ? entityIt->second.basicDescriptorSets : entityIt->second.pbrDescriptorSets;
+                if (descSets.empty() || currentFrame >= descSets.size()) continue;
+                if (useBasic) {
+                    // Basic pipeline expects only set 0
+                    commandBuffers[currentFrame].bindDescriptorSets(
+                        vk::PipelineBindPoint::eGraphics,
+                        **currentLayout,
+                        0,
+                        { *descSets[currentFrame] },
+                        {}
+                    );
+                } else {
+                    // Opaque PBR pipeline: bind set 0 (PBR) and a valid set 1 (fallback scene color)
+                    vk::DescriptorSet set1Opaque = *transparentFallbackDescriptorSets[currentFrame];
+                    commandBuffers[currentFrame].bindDescriptorSets(
+                        vk::PipelineBindPoint::eGraphics,
+                        **currentLayout,
+                        0,
+                        { *descSets[currentFrame], set1Opaque },
+                        {}
+                    );
+                }
+                if (!useBasic) {
+                    MaterialProperties pushConstants{};
+                    // Sensible defaults for entities without explicit material
+                    pushConstants.baseColorFactor = glm::vec4(1.0f);
+                    pushConstants.metallicFactor = 0.0f;
+                    pushConstants.roughnessFactor = 1.0f;
+                    pushConstants.baseColorTextureSet = 0; // sample bound baseColor (falls back to shared default if none)
+                    pushConstants.physicalDescriptorTextureSet = 0; // default to sampling metallic-roughness on binding 2
+                    pushConstants.normalTextureSet = -1;
+                    pushConstants.occlusionTextureSet = -1;
+                    pushConstants.emissiveTextureSet = -1;
+                    pushConstants.alphaMask = 0.0f;
+                    pushConstants.alphaMaskCutoff = 0.5f;
+                    pushConstants.emissiveFactor = glm::vec3(0.0f);
+                    pushConstants.emissiveStrength = 1.0f;
+                    pushConstants.hasEmissiveStrengthExtension = false; // Default entities don't have emissive strength extension
+                    pushConstants.transmissionFactor = 0.0f;
+                    pushConstants.useSpecGlossWorkflow = 0;
+                    pushConstants.glossinessFactor = 0.0f;
+                    pushConstants.specularFactor = glm::vec3(1.0f);
+                    // pushConstants.ior already 1.5f default
+                    if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                        std::string entityName = entity->GetName();
+                        size_t tagPos = entityName.find("_Material_");
+                        if (tagPos != std::string::npos) {
+                            size_t afterTag = tagPos + std::string("_Material_").size();
+                            if (afterTag < entityName.length()) {
+                                // Entity name format: "modelName_Material_<index>_<materialName>"
+                                // Find the next underscore after the material index to get the actual material name
+                                std::string remainder = entityName.substr(afterTag);
+                                size_t nextUnderscore = remainder.find('_');
+                                if (nextUnderscore != std::string::npos && nextUnderscore + 1 < remainder.length()) {
+                                    std::string materialName = remainder.substr(nextUnderscore + 1);
+                                    Material* material = modelLoader->GetMaterial(materialName);
+                                    if (material) {
+                                        // Base factors
+                                        pushConstants.baseColorFactor = glm::vec4(material->albedo, material->alpha);
+                                        pushConstants.metallicFactor = material->metallic;
+                                        pushConstants.roughnessFactor = material->roughness;
 
-            // Bind vertex + instance buffers
-            std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
-            std::array<vk::DeviceSize, 2> offsets = {0, 0};
-            commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
+                                        // Texture set flags (-1 = no texture)
+                                        pushConstants.baseColorTextureSet = material->albedoTexturePath.empty() ? -1 : 0;
+                                        // physical descriptor: MR or SpecGloss
+                                        if (material->useSpecularGlossiness) {
+                                            pushConstants.useSpecGlossWorkflow = 1;
+                                            pushConstants.physicalDescriptorTextureSet = material->specGlossTexturePath.empty() ? -1 : 0;
+                                            pushConstants.glossinessFactor = material->glossinessFactor;
+                                            pushConstants.specularFactor = material->specularFactor;
+                                        } else {
+                                            pushConstants.useSpecGlossWorkflow = 0;
+                                            pushConstants.physicalDescriptorTextureSet = material->metallicRoughnessTexturePath.empty() ? -1 : 0;
+                                        }
+                                        pushConstants.normalTextureSet = material->normalTexturePath.empty() ? -1 : 0;
+                                        pushConstants.occlusionTextureSet = material->occlusionTexturePath.empty() ? -1 : 0;
+                                        pushConstants.emissiveTextureSet = material->emissiveTexturePath.empty() ? -1 : 0;
 
-            // Update UBO for this entity
-            updateUniformBuffer(currentFrame, entity, camera);
+                                        // Emissive and transmission/IOR
+                                        pushConstants.emissiveFactor = material->emissive;
+                                        pushConstants.emissiveStrength = material->emissiveStrength;
+                                        pushConstants.hasEmissiveStrengthExtension = false; // Material has emissive strength data
+                                        pushConstants.transmissionFactor = material->transmissionFactor;
+                                        pushConstants.ior = material->ior;
 
-            // Bind index buffer
-            commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
-
-            // Bind descriptor set (PBR)
-            auto& selectedDescriptorSets = entityIt->second.pbrDescriptorSets;
-            if (selectedDescriptorSets.empty() || currentFrame >= selectedDescriptorSets.size()) {
-                std::cerr << "Error: No valid PBR descriptor set for blended entity " << entity->GetName() << std::endl;
-                continue;
-            }
-            commandBuffers[currentFrame].bindDescriptorSets(
-                vk::PipelineBindPoint::eGraphics, **currentLayout, 0, {*selectedDescriptorSets[currentFrame]}, {}
-            );
-
-            // Push PBR material properties (same as first pass)
-            MaterialProperties pushConstants{};
-            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
-                std::string entityName = entity->GetName();
-                size_t tagPos = entityName.find("_Material_");
-                if (tagPos != std::string::npos) {
-                    size_t afterTag = tagPos + std::string("_Material_").size();
-                    size_t sep = entityName.find('_', afterTag);
-                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
-                        std::string materialName = entityName.substr(sep + 1);
-                        Material* material = modelLoader->GetMaterial(materialName);
-                        if (material) {
-                            pushConstants.baseColorFactor = glm::vec4(material->albedo, material->alpha);
-                            pushConstants.metallicFactor = material->metallic;
-                            pushConstants.roughnessFactor = material->roughness;
-                            pushConstants.emissiveFactor = material->emissive;
-                            pushConstants.emissiveStrength = material->emissiveStrength;
-                            pushConstants.transmissionFactor = material->transmissionFactor;
-                            if (material->useSpecularGlossiness) {
-                                pushConstants.useSpecGlossWorkflow = 1;
-                                pushConstants.specularFactor = material->specularFactor;
-                                pushConstants.glossinessFactor = material->glossinessFactor;
-                                pushConstants.physicalDescriptorTextureSet = material->specGlossTexturePath.empty() ? -1 : 0;
+                                        // Alpha mask handling
+                                        pushConstants.alphaMask = (material->alphaMode == "MASK") ? 1.0f : 0.0f;
+                                        pushConstants.alphaMaskCutoff = material->alphaCutoff;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // If no explicit MASK from a material, infer it from the baseColor texture's alpha usage
+                    if (pushConstants.alphaMask < 0.5f) {
+                        std::string baseColorPath;
+                        if (meshComponent) {
+                            if (!meshComponent->GetBaseColorTexturePath().empty()) {
+                                baseColorPath = meshComponent->GetBaseColorTexturePath();
+                            } else if (!meshComponent->GetTexturePath().empty()) {
+                                baseColorPath = meshComponent->GetTexturePath();
                             } else {
-                                pushConstants.useSpecGlossWorkflow = 0;
-                                pushConstants.specularFactor = glm::vec3(0.04f);
-                                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
-                                pushConstants.physicalDescriptorTextureSet = 0;
+                                baseColorPath = SHARED_DEFAULT_ALBEDO_ID;
                             }
                         } else {
-                            pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-                            pushConstants.metallicFactor = 0.1f;
-                            pushConstants.roughnessFactor = 0.7f;
-                            pushConstants.emissiveFactor = glm::vec3(0.0f);
-                            pushConstants.emissiveStrength = 1.0f;
+                            baseColorPath = SHARED_DEFAULT_ALBEDO_ID;
+                        }
+                        // Avoid inferring MASK from the shared default albedo (semi-transparent placeholder)
+                        if (baseColorPath != SHARED_DEFAULT_ALBEDO_ID) {
+                            const std::string resolvedBase = ResolveTextureId(baseColorPath);
+                            std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+                            auto itTex = textureResources.find(resolvedBase);
+                            if (itTex != textureResources.end() && itTex->second.alphaMaskedHint) {
+                                pushConstants.alphaMask = 1.0f;
+                                pushConstants.alphaMaskCutoff = 0.5f;
+                            }
                         }
                     }
+                    commandBuffers[currentFrame].pushConstants<MaterialProperties>(**currentLayout, vk::ShaderStageFlagBits::eFragment, 0, { pushConstants });
                 }
-            } else {
-                pushConstants.baseColorFactor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-                pushConstants.metallicFactor = 0.1f;
-                pushConstants.roughnessFactor = 0.7f;
+                uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
+                commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
+            }
+        }
+        commandBuffers[currentFrame].endRendering();
+    }
+    // BARRIER AND COPY
+    {
+        vk::ImageMemoryBarrier opaqueSrcBarrier{ .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite, .dstAccessMask = vk::AccessFlagBits::eTransferRead, .oldLayout = vk::ImageLayout::eColorAttachmentOptimal, .newLayout = vk::ImageLayout::eTransferSrcOptimal, .image = *opaqueSceneColorImage, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} };
+        commandBuffers[currentFrame].pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, opaqueSrcBarrier);
+        vk::ImageMemoryBarrier swapchainDstBarrier{ .srcAccessMask = vk::AccessFlagBits::eNone, .dstAccessMask = vk::AccessFlagBits::eTransferWrite, .oldLayout = vk::ImageLayout::eUndefined, .newLayout = vk::ImageLayout::eTransferDstOptimal, .image = swapChainImages[imageIndex], .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} };
+        commandBuffers[currentFrame].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, swapchainDstBarrier);
+        vk::ImageCopy copyRegion{ .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1}, .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1}, .extent = {swapChainExtent.width, swapChainExtent.height, 1} };
+        commandBuffers[currentFrame].copyImage(*opaqueSceneColorImage, vk::ImageLayout::eTransferSrcOptimal, swapChainImages[imageIndex], vk::ImageLayout::eTransferDstOptimal, copyRegion);
+        vk::ImageMemoryBarrier opaqueShaderBarrier{ .srcAccessMask = vk::AccessFlagBits::eTransferRead, .dstAccessMask = vk::AccessFlagBits::eShaderRead, .oldLayout = vk::ImageLayout::eTransferSrcOptimal, .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal, .image = *opaqueSceneColorImage, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} };
+        commandBuffers[currentFrame].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, opaqueShaderBarrier);
+        vk::ImageMemoryBarrier swapchainTargetBarrier{ .srcAccessMask = vk::AccessFlagBits::eTransferWrite, .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite, .oldLayout = vk::ImageLayout::eTransferDstOptimal, .newLayout = vk::ImageLayout::eColorAttachmentOptimal, .image = swapChainImages[imageIndex], .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} };
+        commandBuffers[currentFrame].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, {}, {}, swapchainTargetBarrier);
+    }
+    // PASS 2: RENDER TRANSPARENT OBJECTS TO THE SWAPCHAIN
+    {
+        colorAttachments[0].imageView = *swapChainImageViews[imageIndex];
+        colorAttachments[0].loadOp = vk::AttachmentLoadOp::eLoad;
+        depthAttachment.loadOp = vk::AttachmentLoadOp::eLoad;
+        renderingInfo.renderArea = vk::Rect2D({0, 0}, swapChainExtent);
+        commandBuffers[currentFrame].beginRendering(renderingInfo);
+        vk::Viewport viewport(0.0f, 0.0f, (float)swapChainExtent.width, (float)swapChainExtent.height, 0.0f, 1.0f);
+        commandBuffers[currentFrame].setViewport(0, viewport);
+        vk::Rect2D scissor({0, 0}, swapChainExtent);
+        commandBuffers[currentFrame].setScissor(0, scissor);
+
+        if (!blendedQueue.empty()) {
+            commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *pbrBlendGraphicsPipeline);
+            currentLayout = &pbrTransparentPipelineLayout;
+
+            for (Entity* entity : blendedQueue) {
+                auto meshComponent = entity->GetComponent<MeshComponent>();
+                auto entityIt = entityResources.find(entity);
+                auto meshIt = meshResources.find(meshComponent);
+                if (!meshComponent || entityIt == entityResources.end() || meshIt == meshResources.end()) continue;
+
+                std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+                std::array<vk::DeviceSize, 2> offsets = {0, 0};
+                commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
+                commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
+                updateUniformBuffer(currentFrame, entity, camera);
+
+                auto& pbrDescSets = entityIt->second.pbrDescriptorSets;
+                if (pbrDescSets.empty() || currentFrame >= pbrDescSets.size()) continue;
+
+                // Bind PBR (set 0) and scene color (set 1). If primary set 1 is unavailable, use fallback.
+                vk::DescriptorSet set1 = transparentDescriptorSets.empty()
+                    ? *transparentFallbackDescriptorSets[currentFrame]
+                    : *transparentDescriptorSets[currentFrame];
+                commandBuffers[currentFrame].bindDescriptorSets(
+                    vk::PipelineBindPoint::eGraphics,
+                    **currentLayout,
+                    0,
+                    { *pbrDescSets[currentFrame], set1 },
+                    {}
+                );
+
+                MaterialProperties pushConstants{};
+                // Sensible defaults for entities without explicit material
+                pushConstants.baseColorFactor = glm::vec4(1.0f);
+                pushConstants.metallicFactor = 0.0f;
+                pushConstants.roughnessFactor = 1.0f;
+                pushConstants.baseColorTextureSet = 0; // sample bound baseColor (falls back to shared default if none)
+                pushConstants.physicalDescriptorTextureSet = 0; // default to sampling metallic-roughness on binding 2
+                pushConstants.normalTextureSet = -1;
+                pushConstants.occlusionTextureSet = -1;
+                pushConstants.emissiveTextureSet = -1;
+                pushConstants.alphaMask = 0.0f;
+                pushConstants.alphaMaskCutoff = 0.5f;
                 pushConstants.emissiveFactor = glm::vec3(0.0f);
-                pushConstants.emissiveStrength = 0.0f;
+                pushConstants.emissiveStrength = 1.0f;
+                pushConstants.hasEmissiveStrengthExtension = false;
                 pushConstants.transmissionFactor = 0.0f;
                 pushConstants.useSpecGlossWorkflow = 0;
-                pushConstants.specularFactor = glm::vec3(0.04f);
-                pushConstants.glossinessFactor = 1.0f - pushConstants.roughnessFactor;
-            }
-            pushConstants.baseColorTextureSet = 0;
-            pushConstants.physicalDescriptorTextureSet = 0;
-            pushConstants.normalTextureSet = 0;
-            pushConstants.occlusionTextureSet = 0;
-            int emissiveSet = -1;
-            if (meshComponent && !meshComponent->GetEmissiveTexturePath().empty()) { emissiveSet = 0; }
-            pushConstants.emissiveTextureSet = emissiveSet;
-            pushConstants.alphaMask = 0.0f;
-            pushConstants.alphaMaskCutoff = 0.5f;
-            if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
-                std::string entityName = entity->GetName();
-                size_t tagPos = entityName.find("_Material_");
-                if (tagPos != std::string::npos) {
-                    size_t afterTag = tagPos + std::string("_Material_").size();
-                    size_t sep = entityName.find('_', afterTag);
-                    if (sep != std::string::npos && sep + 1 < entityName.length()) {
-                        std::string materialName = entityName.substr(sep + 1);
-                        Material* material = modelLoader->GetMaterial(materialName);
-                        if (material && material->alphaMode == "MASK") {
-                            pushConstants.alphaMask = 1.0f;
-                            pushConstants.alphaMaskCutoff = material->alphaCutoff;
+                pushConstants.glossinessFactor = 0.0f;
+                pushConstants.specularFactor = glm::vec3(1.0f);
+                // pushConstants.ior already 1.5f default
+                if (modelLoader && entity->GetName().find("_Material_") != std::string::npos) {
+                    std::string entityName = entity->GetName();
+                    size_t tagPos = entityName.find("_Material_");
+                    if (tagPos != std::string::npos) {
+                        size_t afterTag = tagPos + std::string("_Material_").size();
+                        if (afterTag < entityName.length()) {
+                            // Entity name format: "modelName_Material_<index>_<materialName>"
+                            // Find the next underscore after the material index to get the actual material name
+                            std::string remainder = entityName.substr(afterTag);
+                            size_t nextUnderscore = remainder.find('_');
+                            if (nextUnderscore != std::string::npos && nextUnderscore + 1 < remainder.length()) {
+                                std::string materialName = remainder.substr(nextUnderscore + 1);
+                                Material* material = modelLoader->GetMaterial(materialName);
+                                if (material) {
+                                    // Base factors
+                                    pushConstants.baseColorFactor = glm::vec4(material->albedo, material->alpha);
+                                    pushConstants.metallicFactor = material->metallic;
+                                    pushConstants.roughnessFactor = material->roughness;
+
+                                    // Texture set flags (-1 = no texture)
+                                    pushConstants.baseColorTextureSet = material->albedoTexturePath.empty() ? -1 : 0;
+                                    if (material->useSpecularGlossiness) {
+                                        pushConstants.useSpecGlossWorkflow = 1;
+                                        pushConstants.physicalDescriptorTextureSet = material->specGlossTexturePath.empty() ? -1 : 0;
+                                        pushConstants.glossinessFactor = material->glossinessFactor;
+                                        pushConstants.specularFactor = material->specularFactor;
+                                    } else {
+                                        pushConstants.useSpecGlossWorkflow = 0;
+                                        pushConstants.physicalDescriptorTextureSet = material->metallicRoughnessTexturePath.empty() ? -1 : 0;
+                                    }
+                                    pushConstants.normalTextureSet = material->normalTexturePath.empty() ? -1 : 0;
+                                    pushConstants.occlusionTextureSet = material->occlusionTexturePath.empty() ? -1 : 0;
+                                    pushConstants.emissiveTextureSet = material->emissiveTexturePath.empty() ? -1 : 0;
+
+                                    // Emissive and transmission/IOR
+                                    pushConstants.emissiveFactor = material->emissive;
+                                    pushConstants.emissiveStrength = material->emissiveStrength;
+                                    pushConstants.hasEmissiveStrengthExtension = false; // Material has emissive strength data
+                                    pushConstants.transmissionFactor = material->transmissionFactor;
+                                    pushConstants.ior = material->ior;
+
+                                    // Alpha mask handling
+                                    pushConstants.alphaMask = (material->alphaMode == "MASK") ? 1.0f : 0.0f;
+                                    pushConstants.alphaMaskCutoff = material->alphaCutoff;
+                                }
+                            }
                         }
                     }
                 }
+                commandBuffers[currentFrame].pushConstants<MaterialProperties>(**currentLayout, vk::ShaderStageFlagBits::eFragment, 0, { pushConstants });
+                uint32_t instanceCountT = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
+                commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCountT, 0, 0, 0);
             }
-
-            commandBuffers[currentFrame].pushConstants(
-                **currentLayout,
-                vk::ShaderStageFlagBits::eFragment,
-                0,
-                vk::ArrayProxy<const uint8_t>(sizeof(MaterialProperties), reinterpret_cast<const uint8_t*>(&pushConstants))
-            );
-
-            uint32_t instanceCount = static_cast<uint32_t>(std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount())));
-            commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
         }
+
+        if (imguiSystem) {
+            imguiSystem->Render(commandBuffers[currentFrame], currentFrame);
+        }
+        commandBuffers[currentFrame].endRendering();
     }
 
-    // Render ImGui if provided
-    if (imguiSystem) {
-        imguiSystem->Render(commandBuffers[currentFrame], currentFrame);
-    }
-
-    // End dynamic rendering
-    commandBuffers[currentFrame].endRendering();
-
-    // Transition swapchain image layout for presentation
-    vk::ImageMemoryBarrier imageBarrier{
-        .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-        .dstAccessMask = vk::AccessFlagBits::eNone,
-        .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .newLayout = vk::ImageLayout::ePresentSrcKHR,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = swapChainImages[imageIndex],
-        .subresourceRange = {
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
-        }
-    };
-
-    commandBuffers[currentFrame].pipelineBarrier(
-        vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits::eBottomOfPipe,
-        vk::DependencyFlags{},
-        {},
-        {},
-        imageBarrier
-    );
-
-    // End command buffer
+    // ... (final barrier, submit, and present logic is the same) ...
+    vk::ImageMemoryBarrier presentBarrier{ .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite, .dstAccessMask = vk::AccessFlagBits::eNone, .oldLayout = vk::ImageLayout::eColorAttachmentOptimal, .newLayout = vk::ImageLayout::ePresentSrcKHR, .image = swapChainImages[imageIndex], .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} };
+    commandBuffers[currentFrame].pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {}, presentBarrier);
     commandBuffers[currentFrame].end();
-
-    // Submit command buffer
-    // Wait for both image availability (binary) and all completed texture uploads (timeline)
     std::array<vk::Semaphore, 2> waitSems = { *imageAvailableSemaphores[currentFrame], *uploadsTimeline };
     std::array<vk::PipelineStageFlags, 2> waitStages = { vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eFragmentShader };
-    uint64_t uploadsValueToWait = uploadTimelineValue.load(std::memory_order_relaxed);
+    uint64_t uploadsValueToWait = uploadTimelineLastSubmitted.load(std::memory_order_relaxed);
     std::array<uint64_t, 2> waitValues = { 0ull, uploadsValueToWait };
-    vk::TimelineSemaphoreSubmitInfo timelineWaitInfo{
-        .waitSemaphoreValueCount = static_cast<uint32_t>(waitValues.size()),
-        .pWaitSemaphoreValues = waitValues.data()
-    };
-    vk::SubmitInfo submitInfo{
-        .pNext = &timelineWaitInfo,
-        .waitSemaphoreCount = static_cast<uint32_t>(waitSems.size()),
-        .pWaitSemaphores = waitSems.data(),
-        .pWaitDstStageMask = waitStages.data(),
-        .commandBufferCount = 1,
-        .pCommandBuffers = &*commandBuffers[currentFrame],
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]
-    };
-
-    // Use mutex to ensure thread-safe access to graphics queue
-    {
-        std::lock_guard<std::mutex> lock(queueMutex);
-        graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
+    vk::TimelineSemaphoreSubmitInfo timelineWaitInfo{ .waitSemaphoreValueCount = (uint32_t)waitValues.size(), .pWaitSemaphoreValues = waitValues.data() };
+    vk::SubmitInfo submitInfo{ .pNext = &timelineWaitInfo, .waitSemaphoreCount = (uint32_t)waitSems.size(), .pWaitSemaphores = waitSems.data(), .pWaitDstStageMask = waitStages.data(), .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame], .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex] };
+    if (framebufferResized.load(std::memory_order_relaxed)) {
+        vk::SubmitInfo emptySubmit{};
+        { std::lock_guard<std::mutex> lock(queueMutex); graphicsQueue.submit(emptySubmit, *inFlightFences[currentFrame]); }
+        recreateSwapChain();
+        return;
     }
-
-    // Present the image
-    vk::PresentInfoKHR presentInfo{
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex],
-        .swapchainCount = 1,
-        .pSwapchains = &*swapChain,
-        .pImageIndices = &imageIndex
-    };
-
-    // Use mutex to ensure thread-safe access to present queue
+    { std::lock_guard<std::mutex> lock(queueMutex); graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]); }
+    vk::PresentInfoKHR presentInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex };
     try {
         std::lock_guard<std::mutex> lock(queueMutex);
         result.first = presentQueue.presentKHR(presentInfo);
     } catch (const vk::OutOfDateKHRError&) {
-        framebufferResized = true;
+        framebufferResized.store(true, std::memory_order_relaxed);
     }
-
-    if (result.first == vk::Result::eErrorOutOfDateKHR || result.first == vk::Result::eSuboptimalKHR || framebufferResized) {
-        framebufferResized = false;
+    if (result.first == vk::Result::eErrorOutOfDateKHR || result.first == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+        framebufferResized.store(false, std::memory_order_relaxed);
         recreateSwapChain();
     } else if (result.first != vk::Result::eSuccess) {
         throw std::runtime_error("Failed to present swap chain image");
     }
-
-    // Advance to the next frame
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }

@@ -31,6 +31,7 @@ struct MaterialProperties {
     alignas(4) int useSpecGlossWorkflow;   // 1 if using KHR_materials_pbrSpecularGlossiness
     alignas(4) float glossinessFactor;     // SpecGloss glossiness scalar
     alignas(16) glm::vec3 specularFactor;  // SpecGloss specular color factor
+    alignas(4) float ior;                  // Index of refraction for transmission
 };
 
 /**

@@ -113,6 +113,14 @@ bool Renderer::createPBRDescriptorSetLayout() {
 
         pbrDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
 
+        // Binding 7: transparent passes input
+        // Layout for Set 1: Just the scene color texture
+        vk::DescriptorSetLayoutBinding sceneColorBinding{
+            .binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment
+        };
+        vk::DescriptorSetLayoutCreateInfo transparentLayoutInfo{ .bindingCount = 1, .pBindings = &sceneColorBinding };
+        transparentDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, transparentLayoutInfo);
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to create PBR descriptor set layout: " << e.what() << std::endl;
@@ -187,7 +195,7 @@ bool Renderer::createGraphicsPipeline() {
             .depthClampEnable = VK_FALSE,
             .rasterizerDiscardEnable = VK_FALSE,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack,
+            .cullMode = vk::CullModeFlagBits::eNone,
             .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = VK_FALSE,
             .lineWidth = 1.0f
@@ -258,6 +266,9 @@ bool Renderer::createGraphicsPipeline() {
         };
 
         // Create the graphics pipeline
+        vk::PipelineRasterizationStateCreateInfo rasterizerBack = rasterizer;
+        rasterizerBack.cullMode = vk::CullModeFlagBits::eBack;
+
         vk::GraphicsPipelineCreateInfo pipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &mainPipelineRenderingCreateInfo,
@@ -267,7 +278,7 @@ bool Renderer::createGraphicsPipeline() {
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
             .pViewportState = &viewportState,
-            .pRasterizationState = &rasterizer,
+            .pRasterizationState = &rasterizerBack,
             .pMultisampleState = &multisampling,
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
@@ -359,7 +370,7 @@ bool Renderer::createPBRPipeline() {
             .depthClampEnable = VK_FALSE,
             .rasterizerDiscardEnable = VK_FALSE,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack,
+            .cullMode = vk::CullModeFlagBits::eNone,
             .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = VK_FALSE,
             .lineWidth = 1.0f
@@ -412,15 +423,22 @@ bool Renderer::createPBRPipeline() {
             .size = sizeof(MaterialProperties)
         };
 
-        // Create a pipeline layout using the PBR descriptor set layout
+        std::array<vk::DescriptorSetLayout, 2> transparentSetLayouts = {*pbrDescriptorSetLayout, *transparentDescriptorSetLayout};
+        // Create a pipeline layout for opaque PBR with only the PBR descriptor set (set 0)
+        std::array<vk::DescriptorSetLayout, 1> pbrOnlySetLayouts = {*pbrDescriptorSetLayout};
+        // Create BOTH pipeline layouts with two descriptor sets (PBR set 0 + scene color set 1)
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
-            .setLayoutCount = 1,
-            .pSetLayouts = &*pbrDescriptorSetLayout,
+            .setLayoutCount = static_cast<uint32_t>(transparentSetLayouts.size()),
+            .pSetLayouts = transparentSetLayouts.data(),
             .pushConstantRangeCount = 1,
             .pPushConstantRanges = &pushConstantRange
         };
 
         pbrPipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+
+        // Transparent PBR layout uses the same two-set layout
+        vk::PipelineLayoutCreateInfo transparentPipelineLayoutInfo{ .setLayoutCount = static_cast<uint32_t>(transparentSetLayouts.size()), .pSetLayouts = transparentSetLayouts.data(), .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
+        pbrTransparentPipelineLayout = vk::raii::PipelineLayout(device, transparentPipelineLayoutInfo);
 
         // Create pipeline rendering info
         vk::Format depthFormat = findDepthFormat();
@@ -447,6 +465,9 @@ bool Renderer::createPBRPipeline() {
         vk::PipelineDepthStencilStateCreateInfo depthStencilOpaque = depthStencil;
         depthStencilOpaque.depthWriteEnable = VK_TRUE;
 
+        vk::PipelineRasterizationStateCreateInfo rasterizerBack = rasterizer;
+        rasterizerBack.cullMode = vk::CullModeFlagBits::eBack;
+
         vk::GraphicsPipelineCreateInfo opaquePipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &pbrPipelineRenderingCreateInfo,
@@ -456,7 +477,7 @@ bool Renderer::createPBRPipeline() {
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
             .pViewportState = &viewportState,
-            .pRasterizationState = &rasterizer,
+            .pRasterizationState = &rasterizerBack,
             .pMultisampleState = &multisampling,
             .pDepthStencilState = &depthStencilOpaque,
             .pColorBlendState = &colorBlendingOpaque,
@@ -474,18 +495,12 @@ bool Renderer::createPBRPipeline() {
         blendedAttachment.blendEnable = VK_TRUE;
         blendedAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
         blendedAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-        blendedAttachment.colorBlendOp = vk::BlendOp::eAdd;
         blendedAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
         blendedAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-        blendedAttachment.alphaBlendOp = vk::BlendOp::eAdd;
-        vk::PipelineColorBlendStateCreateInfo colorBlendingBlended{
-            .logicOpEnable = VK_FALSE,
-            .logicOp = vk::LogicOp::eCopy,
-            .attachmentCount = 1,
-            .pAttachments = &blendedAttachment
-        };
+        vk::PipelineColorBlendStateCreateInfo colorBlendingBlended{ .attachmentCount = 1, .pAttachments = &blendedAttachment };
         vk::PipelineDepthStencilStateCreateInfo depthStencilBlended = depthStencil;
         depthStencilBlended.depthWriteEnable = VK_FALSE;
+        depthStencilBlended.depthCompareOp = vk::CompareOp::eLessOrEqual;
 
         vk::GraphicsPipelineCreateInfo blendedPipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
@@ -501,7 +516,7 @@ bool Renderer::createPBRPipeline() {
             .pDepthStencilState = &depthStencilBlended,
             .pColorBlendState = &colorBlendingBlended,
             .pDynamicState = &dynamicState,
-            .layout = *pbrPipelineLayout,
+            .layout = *pbrTransparentPipelineLayout,
             .renderPass = nullptr,
             .subpass = 0,
             .basePipelineHandle = nullptr,
@@ -568,7 +583,7 @@ bool Renderer::createLightingPipeline() {
             .depthClampEnable = VK_FALSE,
             .rasterizerDiscardEnable = VK_FALSE,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack,
+            .cullMode = vk::CullModeFlagBits::eNone,
             .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = VK_FALSE,
             .lineWidth = 1.0f
@@ -651,6 +666,9 @@ bool Renderer::createLightingPipeline() {
         };
 
         // Create a graphics pipeline
+        vk::PipelineRasterizationStateCreateInfo rasterizerBack = rasterizer;
+        rasterizerBack.cullMode = vk::CullModeFlagBits::eBack;
+
         vk::GraphicsPipelineCreateInfo pipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &lightingPipelineRenderingCreateInfo,
@@ -660,7 +678,7 @@ bool Renderer::createLightingPipeline() {
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
             .pViewportState = &viewportState,
-            .pRasterizationState = &rasterizer,
+            .pRasterizationState = &rasterizerBack,
             .pMultisampleState = &multisampling,
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,

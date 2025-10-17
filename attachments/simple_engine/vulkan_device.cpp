@@ -73,10 +73,15 @@ bool VulkanDevice::pickPhysicalDevice() {
                 }
 
                 // Check for required features
-                auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features>();
+                auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>();
                 bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
                 if (!supportsRequiredFeatures) {
                     std::cout << "  - Does not support required features (dynamicRendering)" << std::endl;
+                }
+
+                supportsRequiredFeatures &= features.template get<vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>().attachmentFeedbackLoopLayout;
+                if (!supportsRequiredFeatures) {
+                    std::cout << "  - Does not support required feature (attachmentFeedbackLoopLayout)" << std::endl;
                 }
 
                 return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && swapChainAdequate && supportsRequiredFeatures;
@@ -124,12 +129,18 @@ bool VulkanDevice::createLogicalDevice(bool enableValidationLayers, const std::v
         // Enable required features
         auto features = physicalDevice.getFeatures2();
         features.features.samplerAnisotropy = vk::True;
+        features.features.depthClamp = vk::True;
 
         // Enable Vulkan 1.3 features
         vk::PhysicalDeviceVulkan13Features vulkan13Features;
         vulkan13Features.dynamicRendering = vk::True;
         vulkan13Features.synchronization2 = vk::True;
         features.pNext = &vulkan13Features;
+
+        vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT feedbackLoopFeatures{};
+        feedbackLoopFeatures.attachmentFeedbackLoopLayout = vk::True;
+
+        vulkan13Features.pNext = &feedbackLoopFeatures;
 
         // Create device
         vk::DeviceCreateInfo createInfo{

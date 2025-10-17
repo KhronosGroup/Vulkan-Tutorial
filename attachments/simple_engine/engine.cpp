@@ -13,11 +13,7 @@
 // @see en/Building_a_Simple_Engine/Engine_Architecture/02_architectural_patterns.adoc
 
 Engine::Engine()
-    : resourceManager(std::make_unique<ResourceManager>()),
-      modelLoader(std::make_unique<ModelLoader>()),
-      audioSystem(std::make_unique<AudioSystem>()),
-      physicsSystem(std::make_unique<PhysicsSystem>()),
-      imguiSystem(std::make_unique<ImGuiSystem>()) {
+    : resourceManager(std::make_unique<ResourceManager>()) {
 }
 
 Engine::~Engine() {
@@ -64,36 +60,24 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
         return false;
     }
 
-    // Initialize model loader
-    if (!modelLoader->Initialize(renderer.get())) {
+    try {
+        // Model loader via constructor; also wire into renderer
+        modelLoader = std::make_unique<ModelLoader>(renderer.get());
+        renderer->SetModelLoader(modelLoader.get());
+
+        // Audio system via constructor
+        audioSystem = std::make_unique<AudioSystem>(this, renderer.get());
+
+        // Physics system via constructor (GPU enabled)
+        physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
+
+        // ImGui via constructor, then connect audio system
+        imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
+        imguiSystem->SetAudioSystem(audioSystem.get());
+    } catch (const std::exception& e) {
+        std::cerr << "Subsystem initialization failed: " << e.what() << std::endl;
         return false;
     }
-
-    // Connect model loader to renderer for light extraction
-    renderer->SetModelLoader(modelLoader.get());
-
-    // Initialize audio system
-    if (!audioSystem->Initialize(this, renderer.get())) {
-        return false;
-    }
-
-    // Initialize a physics system
-    physicsSystem->SetRenderer(renderer.get());
-
-    // Enable GPU acceleration for physics calculations to drastically speed up computations
-    physicsSystem->SetGPUAccelerationEnabled(true);
-
-    if (!physicsSystem->Initialize()) {
-        return false;
-    }
-
-    // Initialize ImGui system
-    if (!imguiSystem->Initialize(renderer.get(), width, height)) {
-        return false;
-    }
-
-    // Connect ImGui system to an audio system for UI controls
-    imguiSystem->SetAudioSystem(audioSystem.get());
 
     // Generate ball material properties once at load time
     GenerateBallMaterial();
@@ -132,9 +116,15 @@ void Engine::Run() {
         // Update window title with FPS and frame time every second
         if (fpsUpdateTimer >= 1.0f) {
             uint64_t framesSinceLastUpdate = frameCount - lastFPSUpdateFrame;
-            currentFPS = framesSinceLastUpdate / fpsUpdateTimer;
-            // Average frame time in milliseconds over the last interval
-            double avgMs = (fpsUpdateTimer / static_cast<double>(framesSinceLastUpdate)) * 1000.0;
+            double avgMs = 0.0;
+            if (framesSinceLastUpdate > 0 && fpsUpdateTimer > 0.0f) {
+                currentFPS = static_cast<float>(static_cast<double>(framesSinceLastUpdate) / static_cast<double>(fpsUpdateTimer));
+                avgMs = (fpsUpdateTimer / static_cast<double>(framesSinceLastUpdate)) * 1000.0;
+            } else {
+                // Avoid divide-by-zero; keep previous FPS and estimate avgMs from last delta
+                currentFPS = std::max(currentFPS, 1.0f);
+                avgMs = static_cast<double>(deltaTimeMs.count());
+            }
 
             // Update window title with frame count, FPS, and frame time
             std::string title = "Simple Engine - Frame: " + std::to_string(frameCount) +
@@ -402,15 +392,19 @@ void Engine::Update(TimeDelta deltaTime) {
         UpdateCameraControls(deltaTime);
     }
 
-    // Update all entities
+    // Update all entities (guard against null unique_ptrs)
     for (auto& entity : entities) {
-        if (entity->IsActive()) {
-            entity->Update(deltaTime);
-        }
+        if (!entity) { continue; }
+        if (!entity->IsActive()) { continue; }
+        entity->Update(deltaTime);
     }
 }
 
 void Engine::Render() {
+    // Ensure renderer is ready
+    if (!renderer || !renderer->IsInitialized()) {
+        return;
+    }
 
     // Check if we have an active camera
     if (!activeCamera) {

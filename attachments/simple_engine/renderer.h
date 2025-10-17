@@ -75,14 +75,11 @@ struct UniformBufferObject {
     alignas(4) float gamma;
     alignas(4) float prefilteredCubeMipLevels;
     alignas(4) float scaleIBLAmbient;
-    alignas(4) int lightCount;                 // Number of active lights (dynamic)
-    alignas(4) int padding0;                   // Padding for alignment (shadows removed)
-    alignas(4) float padding1;                 // Padding for alignment
-    alignas(4) float padding2;                 // Padding for alignment
-
-    // Additional padding to ensure the structure size is aligned to 64 bytes (device nonCoherentAtomSize)
-    // Adjusted padding to maintain 256 bytes total size
-    alignas(4) float padding3[2];              // Add remaining bytes to reach 256 bytes total
+    alignas(4) int lightCount;
+    alignas(4) int padding0;    // match shader UBO layout
+    alignas(4) float padding1;  // match shader UBO layout
+    alignas(4) float padding2;  // match shader UBO layout
+    alignas(8) glm::vec2 screenDimensions;
 };
 
 
@@ -107,6 +104,8 @@ struct MaterialProperties {
     alignas(4) int useSpecGlossWorkflow;   // 1 if using KHR_materials_pbrSpecularGlossiness
     alignas(4) float glossinessFactor;     // SpecGloss glossiness scalar
     alignas(16) glm::vec3 specularFactor;  // SpecGloss specular color factor
+    alignas(4) float ior = 1.5f; // index of refraction
+    alignas(4) bool hasEmissiveStrengthExtension;
 };
 
 /**
@@ -203,7 +202,7 @@ public:
 
     // Expose uploads timeline semaphore and last value for external waits
     vk::Semaphore GetUploadsTimelineSemaphore() const { return *uploadsTimeline; }
-    uint64_t GetUploadsTimelineValue() const { return uploadTimelineValue.load(std::memory_order_relaxed); }
+    uint64_t GetUploadsTimelineValue() const { return uploadTimelineLastSubmitted.load(std::memory_order_relaxed); }
 
     /**
      * @brief Get the compute queue.
@@ -396,7 +395,7 @@ public:
      * This should be called when the window is resized to trigger swap chain recreation.
      */
     void SetFramebufferResized() {
-        framebufferResized = true;
+        framebufferResized.store(true, std::memory_order_relaxed);
     }
 
     /**
@@ -490,7 +489,7 @@ private:
 
     // PBR rendering parameters
     float gamma = 2.2f;     // Gamma correction value
-    float exposure = 3.0f;  // HDR exposure value (higher for emissive lighting)
+    float exposure = 1.2f;  // HDR exposure value (default tuned to avoid washout)
 
     // Sun control (UI-driven)
     float sunPosition = 0.5f;    // 0..1, extremes are night, 0.5 is noon
@@ -570,7 +569,8 @@ private:
 
     // Upload timeline semaphore for transfer -> graphics handoff (signaled per upload)
     vk::raii::Semaphore uploadsTimeline = nullptr;
-    std::atomic<uint64_t> uploadTimelineValue{0};
+    // Tracks last timeline value that has been submitted for signaling on uploadsTimeline
+    std::atomic<uint64_t> uploadTimelineLastSubmitted{0};
 
     // Depth buffer
     vk::raii::Image depthImage = nullptr;
@@ -580,6 +580,20 @@ private:
     // Descriptor set layouts (declared before pools and sets)
     vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
     vk::raii::DescriptorSetLayout pbrDescriptorSetLayout = nullptr;
+    vk::raii::DescriptorSetLayout transparentDescriptorSetLayout = nullptr;
+    vk::raii::PipelineLayout pbrTransparentPipelineLayout = nullptr;
+
+    // The texture that will hold a snapshot of the opaque scene
+    vk::raii::Image opaqueSceneColorImage{nullptr};
+    vk::raii::DeviceMemory opaqueSceneColorImageMemory{nullptr}; // <-- Standard Vulkan memory
+    vk::raii::ImageView opaqueSceneColorImageView{nullptr};
+    vk::raii::Sampler opaqueSceneColorSampler{nullptr};
+
+    // A descriptor set for the opaque scene color texture. We will have one for each frame in flight
+    // to match the swapchain images.
+    std::vector<vk::raii::DescriptorSet> transparentDescriptorSets;
+    // Fallback descriptor sets for opaque pass (binds a default SHADER_READ_ONLY texture as Set 1)
+    std::vector<vk::raii::DescriptorSet> transparentFallbackDescriptorSets;
 
     // Mesh resources
     struct MeshResources {
@@ -599,6 +613,8 @@ private:
         vk::raii::Sampler textureSampler = nullptr;
         vk::Format format = vk::Format::eR8G8B8A8Srgb; // Store texture format for proper color space handling
         uint32_t mipLevels = 1; // Store number of mipmap levels
+        // Hint: true if source texture appears to use alpha masking (any alpha < ~1.0)
+        bool alphaMaskedHint = false;
     };
     std::unordered_map<std::string, TextureResources> textureResources;
     // Protect concurrent access to textureResources
@@ -617,6 +633,8 @@ private:
 
     // Thread pool for background background tasks (textures, etc.)
     std::unique_ptr<ThreadPool> threadPool;
+    // Mutex to protect threadPool access during initialization/cleanup
+    mutable std::shared_mutex threadPoolMutex;
 
     // Texture loading progress (for UI)
     std::atomic<uint32_t> textureTasksScheduled{0};
@@ -680,7 +698,8 @@ private:
     const std::vector<const char*> optionalDeviceExtensions = {
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-        VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME
+        VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
+        VK_EXT_ATTACHMENT_FEEDBACK_LOOP_DYNAMIC_STATE_EXTENSION_NAME
     };
 
     // All device extensions (required + optional)
@@ -689,8 +708,8 @@ private:
     // Initialization flag
     bool initialized = false;
 
-    // Framebuffer resized flag
-    bool framebufferResized = false;
+    // Framebuffer resized flag (atomic to handle platform callback vs. render thread)
+    std::atomic<bool> framebufferResized{false};
 
     // Maximum number of frames in flight
     const uint32_t MAX_FRAMES_IN_FLIGHT = 2u;
@@ -755,6 +774,9 @@ private:
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const;
 
     std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
+    bool createOpaqueSceneColorResources();
+    void createTransparentDescriptorSets();
+    void createTransparentFallbackDescriptorSets();
     std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> createBufferPooled(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
     void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 

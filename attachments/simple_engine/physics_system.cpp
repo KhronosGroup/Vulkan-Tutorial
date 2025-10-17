@@ -212,7 +212,13 @@ void PhysicsSystem::Update(std::chrono::milliseconds deltaTime) {
     }
     for (const auto& pc : toCreate) {
         if (!pc.entity) continue;
-        if (rigidBodies.size() >= maxGPUObjects) break; // avoid oversubscription
+        
+        // Check size limit with proper locking (CreateRigidBody will acquire the lock again, but that's safe)
+        {
+            std::lock_guard<std::mutex> lock(rigidBodiesMutex);
+            if (rigidBodies.size() >= maxGPUObjects) break; // avoid oversubscription
+        }
+        
         RigidBody* rb = CreateRigidBody(pc.entity, pc.shape, pc.mass);
         if (rb) {
             rb->SetKinematic(pc.kinematic);
@@ -224,7 +230,13 @@ void PhysicsSystem::Update(std::chrono::milliseconds deltaTime) {
     // GPU-ONLY physics - NO CPU fallback available
 
     // Check if GPU physics is properly initialized and available
-    if (initialized && gpuAccelerationEnabled && renderer && rigidBodies.size() <= maxGPUObjects) {
+    bool canUseGPUPhysics = false;
+    {
+        std::lock_guard<std::mutex> lock(rigidBodiesMutex);
+        canUseGPUPhysics = (rigidBodies.size() <= maxGPUObjects);
+    }
+    
+    if (initialized && gpuAccelerationEnabled && renderer && canUseGPUPhysics) {
         // Debug: Log that we're using GPU physics
         static bool gpuPhysicsLogged = false;
         if (!gpuPhysicsLogged) {
@@ -260,13 +272,16 @@ RigidBody* PhysicsSystem::CreateRigidBody(Entity* entity, CollisionShape shape, 
     // Create a new rigid body
     auto rigidBody = std::make_unique<ConcreteRigidBody>(entity, shape, mass);
 
-    // Store the rigid body
+    // Store the rigid body with thread-safe access
+    std::lock_guard<std::mutex> lock(rigidBodiesMutex);
     rigidBodies.push_back(std::move(rigidBody));
 
     return rigidBodies.back().get();
 }
 
 bool PhysicsSystem::RemoveRigidBody(RigidBody* rigidBody) {
+    std::lock_guard<std::mutex> lock(rigidBodiesMutex);
+    
     // Find the rigid body in the vector
     auto it = std::ranges::find_if(rigidBodies,
                                    [rigidBody](const std::unique_ptr<RigidBody>& rb) {
@@ -304,6 +319,9 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction,
     glm::vec3 closestHitNormal;
     Entity* closestHitEntity = nullptr;
 
+    // Protect access to rigidBodies vector during iteration
+    std::lock_guard<std::mutex> lock(rigidBodiesMutex);
+    
     // Check each rigid body for intersection
     for (const auto& rigidBody : rigidBodies) {
         auto concreteRigidBody = dynamic_cast<ConcreteRigidBody*>(rigidBody.get());

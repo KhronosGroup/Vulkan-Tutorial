@@ -36,13 +36,23 @@ void MeshComponent::CreateSphere(float radius, const glm::vec3& color, int segme
                 static_cast<float>(lat) / static_cast<float>(segments)
             };
 
-            // Calculate tangent (derivative with respect to longitude)
+            // Calculate tangent (derivative with respect to longitude). Handle poles robustly.
             glm::vec3 tangent = {
                 -sinTheta * sinPhi,
                 0.0f,
                 sinTheta * cosPhi
             };
-            tangent = glm::normalize(tangent);
+            float len2 = glm::dot(tangent, tangent);
+            if (len2 < 1e-12f) {
+                // At poles sinTheta ~ 0 -> fallback tangent orthogonal to normal
+                glm::vec3 t = glm::cross(normal, glm::vec3(0.0f, 0.0f, 1.0f));
+                if (glm::length(t) < 1e-12f) {
+                    t = glm::cross(normal, glm::vec3(1.0f, 0.0f, 0.0f));
+                }
+                tangent = glm::normalize(t);
+            } else {
+                tangent = glm::normalize(tangent);
+            }
 
             vertices.push_back({
                 position,

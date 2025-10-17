@@ -2,10 +2,66 @@
 #include "renderer.h"
 #include "mesh_component.h"
 #include <iostream>
-#include <fstream>
 #include <filesystem>
 #include <set>
 #include <tiny_gltf.h>
+
+#include "mikktspace.h"
+
+// This struct acts as a bridge between the C-style MikkTSpace callbacks
+// and our C++ MaterialMesh vertex data. It's passed via the m_pUserData pointer.
+struct MikkTSpaceInterface {
+    std::vector<Vertex>* vertices;
+    std::vector<uint32_t>* indices;
+};
+
+// These static callback functions are required by the MikkTSpace library.
+// They are defined here at file-scope so they are not part of the ModelLoader class.
+static int getNumFaces(const SMikkTSpaceContext* pContext) {
+    auto* userData = static_cast<MikkTSpaceInterface*>(pContext->m_pUserData);
+    return static_cast<int>(userData->indices->size() / 3);
+}
+
+static int getNumVerticesOfFace(const SMikkTSpaceContext* pContext, const int iFace) {
+    return 3;
+}
+
+static void getPosition(const SMikkTSpaceContext* pContext, float fvPosOut[], const int iFace, const int iVert) {
+    auto* userData = static_cast<MikkTSpaceInterface*>(pContext->m_pUserData);
+    uint32_t index = (*userData->indices)[iFace * 3 + iVert];
+    const glm::vec3& pos = (*userData->vertices)[index].position;
+    fvPosOut[0] = pos.x;
+    fvPosOut[1] = pos.y;
+    fvPosOut[2] = pos.z;
+}
+
+static void getNormal(const SMikkTSpaceContext* pContext, float fvNormOut[], const int iFace, const int iVert) {
+    auto* userData = static_cast<MikkTSpaceInterface*>(pContext->m_pUserData);
+    uint32_t index = (*userData->indices)[iFace * 3 + iVert];
+    const glm::vec3& norm = (*userData->vertices)[index].normal;
+    fvNormOut[0] = norm.x;
+    fvNormOut[1] = norm.y;
+    fvNormOut[2] = norm.z;
+}
+
+static void getTexCoord(const SMikkTSpaceContext* pContext, float fvTexcOut[], const int iFace, const int iVert) {
+    auto* userData = static_cast<MikkTSpaceInterface*>(pContext->m_pUserData);
+    uint32_t index = (*userData->indices)[iFace * 3 + iVert];
+    const glm::vec2& uv = (*userData->vertices)[index].texCoord;
+    fvTexcOut[0] = uv.x;
+    fvTexcOut[1] = uv.y;
+}
+
+static void setTSpaceBasic(const SMikkTSpaceContext* pContext, const float fvTangent[], const float fSign, const int iFace, const int iVert) {
+    auto* userData = static_cast<MikkTSpaceInterface*>(pContext->m_pUserData);
+    uint32_t index = (*userData->indices)[iFace * 3 + iVert];
+    Vertex& vert = (*userData->vertices)[index];
+    vert.tangent.x = fvTangent[0];
+    vert.tangent.y = fvTangent[1];
+    vert.tangent.z = fvTangent[2];
+    // Clamp handedness to +/-1 to avoid tiny floating deviations
+    vert.tangent.w = (fSign >= 0.0f) ? 1.0f : -1.0f;
+}
 
 // KTX2 decoding for GLTF images
 #include <ktx.h>
@@ -216,18 +272,19 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 gltfMaterial.emissiveFactor[1],
                 gltfMaterial.emissiveFactor[2]
             );
+            material->emissive *= light_scale;
         }
 
         // Parse KHR_materials_emissive_strength extension
         auto extensionIt = gltfMaterial.extensions.find("KHR_materials_emissive_strength");
         if (extensionIt != gltfMaterial.extensions.end()) {
+            hasEmissiveStrengthExtension = true;
             const tinygltf::Value& extension = extensionIt->second;
             if (extension.Has("emissiveStrength") && extension.Get("emissiveStrength").IsNumber()) {
                 material->emissiveStrength = static_cast<float>(extension.Get("emissiveStrength").Get<double>()) * light_scale;
             }
         } else {
-            // Default emissive strength is 1.0, according to GLTF spec, scaled for engine units
-            material->emissiveStrength = 1.0f * light_scale;
+            material->emissiveStrength = 0.0f;
         }
 
         // Alpha mode / cutoff
@@ -885,108 +942,152 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             MaterialMesh& materialMesh = geometryMaterialMeshMap[geometryHash];
 
             // Only process geometry if this MaterialMesh is empty (first time processing this geometry)
-            if (materialMesh.vertices.empty()) {
+if (materialMesh.vertices.empty()) {
 
-            auto vertexOffsetInMaterialMesh = static_cast<uint32_t>(materialMesh.vertices.size());
+    auto vertexOffsetInMaterialMesh = static_cast<uint32_t>(materialMesh.vertices.size());
 
-            // Get indices for this primitive
-            if (primitive.indices >= 0) {
-                const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
-                const tinygltf::BufferView& indexBufferView = gltfModel.bufferViews[indexAccessor.bufferView];
-                const tinygltf::Buffer& indexBuffer = gltfModel.buffers[indexBufferView.buffer];
-
-                const void* indexData = &indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset];
-
-                // Handle different index types with proper vertex offset adjustment
-                if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                    const auto* buf = static_cast<const uint16_t*>(indexData);
-                    for (size_t i = 0; i < indexAccessor.count; ++i) {
-                        // FIXED: Add vertex offset to prevent index sharing between primitives
-                        materialMesh.indices.push_back(buf[i] + vertexOffsetInMaterialMesh);
-                    }
-                } else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                    const auto* buf = static_cast<const uint32_t*>(indexData);
-                    for (size_t i = 0; i < indexAccessor.count; ++i) {
-                        // FIXED: Add vertex offset to prevent index sharing between primitives
-                        materialMesh.indices.push_back(buf[i] + vertexOffsetInMaterialMesh);
-                    }
-                }
+    // Get indices for this primitive (your existing code is correct)
+    if (primitive.indices >= 0) {
+        const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
+        const tinygltf::BufferView& indexBufferView = gltfModel.bufferViews[indexAccessor.bufferView];
+        const tinygltf::Buffer& indexBuffer = gltfModel.buffers[indexBufferView.buffer];
+        const void* indexData = &indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset];
+        if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+            const auto* buf = static_cast<const uint16_t*>(indexData);
+            for (size_t i = 0; i < indexAccessor.count; ++i) {
+                materialMesh.indices.push_back(buf[i] + vertexOffsetInMaterialMesh);
             }
-
-            // Get vertex positions
-            auto posIt = primitive.attributes.find("POSITION");
-            if (posIt == primitive.attributes.end()) {
-                std::cerr << "No POSITION attribute found in primitive" << std::endl;
-                continue;
+        } else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+            const auto* buf = static_cast<const uint32_t*>(indexData);
+            for (size_t i = 0; i < indexAccessor.count; ++i) {
+                materialMesh.indices.push_back(buf[i] + vertexOffsetInMaterialMesh);
             }
+        }
+    }
 
-            const tinygltf::Accessor& posAccessor = gltfModel.accessors[posIt->second];
-            const tinygltf::BufferView& posBufferView = gltfModel.bufferViews[posAccessor.bufferView];
-            const tinygltf::Buffer& posBuffer = gltfModel.buffers[posBufferView.buffer];
+    // --- START: FINAL SAFE AND CORRECT VERTEX LOADING ---
 
-            const auto* positions = reinterpret_cast<const float*>(
-                &posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset]);
+    // Get the position accessor, which defines the vertex count.
+    auto posIt = primitive.attributes.find("POSITION");
+    if (posIt == primitive.attributes.end()) continue;
+    const tinygltf::Accessor& posAccessor = gltfModel.accessors[posIt->second];
 
-            // Get texture coordinates (if available)
-            const float* texCoords = nullptr;
-            auto texCoordIt = primitive.attributes.find("TEXCOORD_0");
-            if (texCoordIt != primitive.attributes.end()) {
-                const tinygltf::Accessor& texCoordAccessor = gltfModel.accessors[texCoordIt->second];
-                const tinygltf::BufferView& texCoordBufferView = gltfModel.bufferViews[texCoordAccessor.bufferView];
-                const tinygltf::Buffer& texCoordBuffer = gltfModel.buffers[texCoordBufferView.buffer];
-                texCoords = reinterpret_cast<const float*>(
-                    &texCoordBuffer.data[texCoordBufferView.byteOffset + texCoordAccessor.byteOffset]);
+    // Get data pointers and strides for all available attributes ONCE before the loop.
+    const tinygltf::BufferView& posBufferView = gltfModel.bufferViews[posAccessor.bufferView];
+    const tinygltf::Buffer& buffer = gltfModel.buffers[posBufferView.buffer];
+    const unsigned char* pPositions = &buffer.data[posBufferView.byteOffset + posAccessor.byteOffset];
+    const size_t posByteStride = posBufferView.byteStride == 0 ? sizeof(glm::vec3) : posBufferView.byteStride;
+
+    const unsigned char* pNormals = nullptr;
+    size_t normalByteStride = 0;
+    auto normalIt = primitive.attributes.find("NORMAL");
+    if (normalIt != primitive.attributes.end()) {
+        const tinygltf::Accessor& normalAccessor = gltfModel.accessors[normalIt->second];
+        const tinygltf::BufferView& normalBufferView = gltfModel.bufferViews[normalAccessor.bufferView];
+        pNormals = &gltfModel.buffers[normalBufferView.buffer].data[normalBufferView.byteOffset + normalAccessor.byteOffset];
+        normalByteStride = normalBufferView.byteStride == 0 ? sizeof(glm::vec3) : normalBufferView.byteStride;
+    }
+
+    const unsigned char* pTexCoords = nullptr;
+    size_t texCoordByteStride = 0;
+    auto texCoordIt = primitive.attributes.find("TEXCOORD_0");
+    if (texCoordIt != primitive.attributes.end()) {
+        const tinygltf::Accessor& texCoordAccessor = gltfModel.accessors[texCoordIt->second];
+        const tinygltf::BufferView& texCoordBufferView = gltfModel.bufferViews[texCoordAccessor.bufferView];
+        pTexCoords = &gltfModel.buffers[texCoordBufferView.buffer].data[texCoordBufferView.byteOffset + texCoordAccessor.byteOffset];
+        texCoordByteStride = texCoordBufferView.byteStride == 0 ? sizeof(glm::vec2) : texCoordBufferView.byteStride;
+    }
+
+    const unsigned char* pTangents = nullptr;
+    size_t tangentByteStride = 0;
+    auto tangentIt = primitive.attributes.find("TANGENT");
+    bool hasTangents = (tangentIt != primitive.attributes.end());
+    if (hasTangents) {
+        const tinygltf::Accessor& tangentAccessor = gltfModel.accessors[tangentIt->second];
+        const tinygltf::BufferView& tangentBufferView = gltfModel.bufferViews[tangentAccessor.bufferView];
+        pTangents = &gltfModel.buffers[tangentBufferView.buffer].data[tangentBufferView.byteOffset + tangentAccessor.byteOffset];
+        tangentByteStride = tangentBufferView.byteStride == 0 ? sizeof(glm::vec4) : tangentBufferView.byteStride;
+    }
+
+    // Append vertices for this primitive preserving prior vertices
+    size_t baseVertex = materialMesh.vertices.size();
+    materialMesh.vertices.resize(baseVertex + posAccessor.count);
+
+    // Use a SINGLE, SAFE loop to load all vertex data.
+    for (size_t i = 0; i < posAccessor.count; ++i) {
+        Vertex& vertex = materialMesh.vertices[baseVertex + i];
+
+        vertex.position = *reinterpret_cast<const glm::vec3*>(pPositions + i * posByteStride);
+
+        if (pNormals) {
+            vertex.normal = *reinterpret_cast<const glm::vec3*>(pNormals + i * normalByteStride);
+        } else {
+            vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+        // Normalize normals to ensure consistent magnitude
+        if (glm::dot(vertex.normal, vertex.normal) > 0.0f) {
+            vertex.normal = glm::normalize(vertex.normal);
+        } else {
+            vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+
+        if (pTexCoords) {
+            vertex.texCoord = *reinterpret_cast<const glm::vec2*>(pTexCoords + i * texCoordByteStride);
+        } else {
+            vertex.texCoord = glm::vec2(0.0f, 0.0f);
+        }
+
+        if (hasTangents && pTangents) {
+            // Load glTF tangent and ensure it is normalized and orthogonal to the normal.
+            glm::vec4 t4 = *reinterpret_cast<const glm::vec4*>(pTangents + i * tangentByteStride);
+            glm::vec3 T = glm::vec3(t4);
+            // Normalize tangent and make it orthogonal to normal to avoid skewed TBN
+            if (glm::dot(T, T) > 0.0f) {
+                T = glm::normalize(T);
+                T = glm::normalize(T - vertex.normal * glm::dot(vertex.normal, T));
+            } else {
+                T = glm::vec3(1.0f, 0.0f, 0.0f);
             }
+            float w = (t4.w >= 0.0f) ? 1.0f : -1.0f; // clamp handedness to +/-1
+            vertex.tangent = glm::vec4(T, w);
+        } else {
+            // No tangents in source: use a safe default tangent (T=+X, handedness=+1)
+            vertex.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+    }
 
-            // Get normals (if available)
-            const float* normals = nullptr;
-            auto normalIt = primitive.attributes.find("NORMAL");
-            if (normalIt != primitive.attributes.end()) {
-                const tinygltf::Accessor& normalAccessor = gltfModel.accessors[normalIt->second];
-                const tinygltf::BufferView& normalBufferView = gltfModel.bufferViews[normalAccessor.bufferView];
-                const tinygltf::Buffer& normalBuffer = gltfModel.buffers[normalBufferView.buffer];
-                normals = reinterpret_cast<const float*>(
-                    &normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset]);
+    // AFTER the mesh is fully built, generate tangents via MikkTSpace ONLY if the source mesh lacks glTF tangents.
+    if (!hasTangents) {
+        if (pNormals && pTexCoords && !materialMesh.indices.empty()) {
+            MikkTSpaceInterface mikkInterface;
+            mikkInterface.vertices = &materialMesh.vertices;
+            mikkInterface.indices = &materialMesh.indices;
+
+            SMikkTSpaceInterface sm_interface{};
+            sm_interface.m_getNumFaces = getNumFaces;
+            sm_interface.m_getNumVerticesOfFace = getNumVerticesOfFace;
+            sm_interface.m_getPosition = getPosition;
+            sm_interface.m_getNormal = getNormal;
+            sm_interface.m_getTexCoord = getTexCoord;
+            sm_interface.m_setTSpaceBasic = setTSpaceBasic;
+
+            SMikkTSpaceContext mikk_context{};
+            mikk_context.m_pInterface = &sm_interface;
+            mikk_context.m_pUserData = &mikkInterface;
+
+            if (genTangSpaceDefault(&mikk_context)) {
+                std::cout << "      Generated tangents (MikkTSpace) for material: " << materialMesh.materialName << std::endl;
+            } else {
+                std::cerr << "      Failed to generate tangents for material: " << materialMesh.materialName << std::endl;
             }
-
-            // Create vertices in their original coordinate system (no transformation applied here)
-            for (size_t i = 0; i < posAccessor.count; ++i) {
-                Vertex vertex{};
-
-                // Position (keep in an original coordinate system)
-                vertex.position = glm::vec3(
-                    positions[i * 3 + 0],
-                    positions[i * 3 + 1],
-                    positions[i * 3 + 2]
-                );
-
-                // Normal (keep in an original coordinate system)
-                if (normals) {
-                    vertex.normal = glm::vec3(
-                        normals[i * 3 + 0],
-                        normals[i * 3 + 1],
-                        normals[i * 3 + 2]
-                    );
-                } else {
-                    vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Default forward normal
-                }
-
-                // Texture coordinates
-                if (texCoords) {
-                    vertex.texCoord = glm::vec2(
-                        texCoords[i * 2 + 0],
-                        texCoords[i * 2 + 1]
-                    );
-                } else {
-                    vertex.texCoord = glm::vec2(0.0f, 0.0f);
-                }
-
-                // Tangent (default right tangent for now, could be extracted from GLTF if available)
-                vertex.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
-
-                materialMesh.vertices.push_back(vertex);
-            }
-            } // End of isFirstTimeProcessing block
+        } else {
+            std::cout << "      Skipping tangent generation (missing normals, UVs, or indices) for material: " << materialMesh.materialName << std::endl;
+        }
+    } else {
+        std::cout << "      Using glTF-provided tangents for material: " << materialMesh.materialName << std::endl;
+    }
+    // --- END: FINAL SAFE AND CORRECT VERTEX LOADING ---
+}
 
             // Add all instances to this MaterialMesh (both new and existing geometry)
             for (const glm::mat4& instanceTransform : instances) {
@@ -1380,7 +1481,7 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
                             emissiveLight.type = ExtractedLight::Type::Emissive;
                             emissiveLight.position = worldCenter;
                             emissiveLight.color = material->emissive;
-                            emissiveLight.intensity = material->emissiveStrength;
+                            emissiveLight.intensity = (hasEmissiveStrengthExtension)?material->emissiveStrength:1.0f;
                             emissiveLight.range = 1.0f; // Default range for emissive lights
                             emissiveLight.sourceMaterial = material->GetName();
                             emissiveLight.direction = worldNormal;
@@ -1397,7 +1498,7 @@ std::vector<ExtractedLight> ModelLoader::GetExtractedLights(const std::string& m
                         emissiveLight.type = ExtractedLight::Type::Emissive;
                         emissiveLight.position = center;
                         emissiveLight.color = material->emissive;
-                        emissiveLight.intensity = material->emissiveStrength;
+                        emissiveLight.intensity = hasEmissiveStrengthExtension?material->emissiveStrength:1.0f;
                         emissiveLight.range = 1.0f; // Default range for emissive lights
                         emissiveLight.sourceMaterial = material->GetName();
                         emissiveLight.direction = avgNormal;

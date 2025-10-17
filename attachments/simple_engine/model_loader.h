@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include "mesh_component.h"
+#include <stdexcept>
 
 class Renderer;
 class Mesh;
@@ -31,6 +32,7 @@ class Material {
         float roughness = 1.0f;
         float ao = 1.0f;
         glm::vec3 emissive = glm::vec3(0.0f);
+        float ior = 1.5f;  // Index of refraction
         float emissiveStrength = 1.0f;  // KHR_materials_emissive_strength extension
         float alpha = 1.0f;             // Base color alpha (from MR baseColorFactor or SpecGloss diffuseFactor)
         float transmissionFactor = 0.0f; // KHR_materials_transmission: 0=opaque, 1=fully transmissive
@@ -172,8 +174,6 @@ public:
     // Camera data access methods
     [[nodiscard]] const std::vector<CameraData>& GetCameras() const { return cameras; }
 
-public:
-    // Public access to cameras for model loader
     std::vector<CameraData> cameras;
 
 private:
@@ -192,6 +192,12 @@ public:
      * @brief Default constructor.
      */
     ModelLoader() = default;
+    // Constructor-based initialization to replace separate Initialize() calls
+    explicit ModelLoader(Renderer* _renderer) {
+        if (!Initialize(_renderer)) {
+            throw std::runtime_error("ModelLoader: initialization failed");
+        }
+    }
 
     /**
      * @brief Destructor for proper cleanup.
@@ -259,6 +265,8 @@ private:
 
     // Material meshes per model
     std::unordered_map<std::string, std::vector<MaterialMesh>> materialMeshes;
+
+    bool hasEmissiveStrengthExtension = false;
 
     float light_scale = 1.0f;
 

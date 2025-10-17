@@ -4,10 +4,7 @@
 #include "mesh_component.h"
 #include "camera_component.h"
 #include <iostream>
-#include <set>
-#include <map>
 #include <filesystem>
-#include <algorithm>
 #include <glm/gtx/matrix_decompose.hpp>
 
 /**
@@ -33,13 +30,14 @@ glm::vec3 CalculateBoundingBoxSize(const MaterialMesh& materialMesh) {
 
 /**
  * @brief Load a GLTF model synchronously on the main thread.
+ * @return success or fail on loading the GLTF model.
  * @param engine The engine to create entities in.
  * @param modelPath The path to the GLTF model file.
  * @param position The position to place the model (default: origin with slight Y offset).
  * @param rotation The rotation to apply to the model (default: no rotation).
  * @param scale The scale to apply to the model (default: unit scale).
  */
-void LoadGLTFModel(Engine* engine, const std::string& modelPath,
+bool LoadGLTFModel(Engine* engine, const std::string& modelPath,
                    const glm::vec3& position, const glm::vec3& rotation, const glm::vec3& scale) {
     // Get the model loader and renderer
     ModelLoader* modelLoader = engine->GetModelLoader();
@@ -48,10 +46,10 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
     if (!modelLoader || !renderer) {
         std::cerr << "Error: ModelLoader or Renderer is null" << std::endl;
         if (renderer) { renderer->SetLoading(false); }
-        return;
+        return false;
     }
     // Ensure loading flag is cleared on any exit from this function
-    struct LoadingGuard { Renderer* r; ~LoadingGuard(){ if (r) r->SetLoading(false); } } loadingGuard{renderer};
+    struct LoadingGuard { Renderer* r; ~LoadingGuard(){ r->SetLoading(false); } } loadingGuard{renderer};
 
     // Extract model name from file path for entity naming
     std::filesystem::path modelFilePath(modelPath);
@@ -62,7 +60,7 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         Model* loadedModel = modelLoader->LoadGLTF(modelPath);
         if (!loadedModel) {
             std::cerr << "Failed to load GLTF model: " << modelPath << std::endl;
-            return;
+            return false;
         }
 
         std::cout << "Successfully loaded GLTF model with all textures and lighting: " << modelPath << std::endl;
@@ -79,12 +77,11 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         transformMatrix = glm::scale(transformMatrix, scale);
 
         // Transform all light positions from local model space to world space
+        // Also transform the light direction (for directional lights)
+        glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(transformMatrix)));
         for (auto& light : extractedLights) {
             glm::vec4 worldPos = transformMatrix * glm::vec4(light.position, 1.0f);
             light.position = glm::vec3(worldPos);
-
-            // Also transform the light direction (for directional lights)
-            glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(transformMatrix)));
             light.direction = glm::normalize(normalMatrix * light.direction);
         }
 
@@ -146,10 +143,9 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
         const std::vector<MaterialMesh>& materialMeshes = modelLoader->GetMaterialMeshes(modelPath);
         if (materialMeshes.empty()) {
             std::cerr << "No material meshes found in loaded model: " << modelPath << std::endl;
-            return;
+            return false;
         }
 
-        int entitiesCreated = 0;
         for (const auto& materialMesh : materialMeshes) {
             // Create an entity name based on model and material
             std::string entityName = modelName + "_Material_" + std::to_string(materialMesh.materialIndex) +
@@ -249,14 +245,15 @@ void LoadGLTFModel(Engine* engine, const std::string& modelPath,
                     }
                 }
 
-                entitiesCreated++;
             } else {
                 std::cerr << "Failed to create entity for material " << materialMesh.materialName << std::endl;
             }
         }
     } catch (const std::exception& e) {
         std::cerr << "Error loading GLTF model: " << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 
 /**

@@ -218,7 +218,7 @@ void ImGuiSystem::NewFrame() {
         }
 
         // Exposure slider
-        static float exposure = 3.0f; // Higher default for emissive lighting
+        static float exposure = 1.2f; // Default tuned to avoid washout
         if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f, "%.2f")) {
             // Update exposure in renderer
             if (renderer) {
@@ -228,7 +228,7 @@ void ImGuiSystem::NewFrame() {
         }
         ImGui::SameLine();
         if (ImGui::Button("Reset##Exposure")) {
-            exposure = 3.0f; // Reset to higher value for emissive lighting
+            exposure = 1.2f; // Reset to a sane default to avoid washout
             if (renderer) {
                 renderer->SetExposure(exposure);
             }

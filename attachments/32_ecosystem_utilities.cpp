@@ -480,7 +480,7 @@ private:
         features.pNext = pNext;
 
         // create a Device
-        float queuePriority = 0.0f;
+        float queuePriority = 1.0f;
         vk::DeviceQueueCreateInfo deviceQueueCreateInfo{ .queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
         vk::DeviceCreateInfo deviceCreateInfo{
             .pNext = &features,

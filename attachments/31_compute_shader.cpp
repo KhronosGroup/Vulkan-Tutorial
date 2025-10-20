@@ -462,9 +462,8 @@ private:
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
         pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
 
-        vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format };
-        vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
-            .stageCount = 2,
+        vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+          {.stageCount = 2,
             .pStages = shaderStages,
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
@@ -473,11 +472,12 @@ private:
             .pMultisampleState = &multisampling,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = *pipelineLayout,
-            .subpass = 0
+            .layout = pipelineLayout,
+            .renderPass = nullptr },
+          {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format }
         };
 
-        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+        graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
     }
 
     void createComputePipeline() {

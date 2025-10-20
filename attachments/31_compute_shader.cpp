@@ -133,6 +133,7 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
@@ -860,12 +861,21 @@ private:
                 .pImageIndices = &imageIndex
             };
 
-            result = queue.presentKHR(presentInfo);
-            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
-                framebufferResized = false;
-                recreateSwapChain();
-            } else if (result != vk::Result::eSuccess) {
-                throw std::runtime_error("failed to present swap chain image!");
+            try {
+                result = queue.presentKHR(presentInfo);
+                if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+                    framebufferResized = false;
+                    recreateSwapChain();
+                } else if (result != vk::Result::eSuccess) {
+                    throw std::runtime_error("failed to present swap chain image!");
+                }
+            } catch (const vk::SystemError& e) {
+                if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
+                    recreateSwapChain();
+                    return;
+                } else {
+                    throw;
+                }
             }
         }
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

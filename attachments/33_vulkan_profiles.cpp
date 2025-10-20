@@ -160,6 +160,8 @@ private:
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan Profiles Demo", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
@@ -219,18 +221,11 @@ private:
     }
 
     void cleanupSwapChain() {
-        colorImageView = nullptr;
-        colorImage = nullptr;
-        colorImageMemory = nullptr;
+        swapChainFramebuffers.clear();
+        swapChainImageViews.clear();
 
-        depthImageView = nullptr;
-        depthImage = nullptr;
-        depthImageMemory = nullptr;
-
-        for (auto& framebuffer : swapChainFramebuffers) {
-            framebuffer = nullptr;
-        }
-
+        // Semaphores tied to swapchain image indices need to be rebuilt on resize
+        presentCompleteSemaphore.clear();
         for (auto& imageView : swapChainImageViews) {
             imageView = nullptr;
         }
@@ -267,6 +262,13 @@ private:
 
         createColorResources();
         createDepthResources();
+
+        // Recreate per-swapchain-image present semaphores after resize
+        presentCompleteSemaphore.reserve(swapChainImages.size());
+        vk::SemaphoreCreateInfo semaphoreInfo{};
+        for (size_t i = 0; i < swapChainImages.size(); ++i) {
+            presentCompleteSemaphore.push_back(device.createSemaphore(semaphoreInfo));
+        }
     }
 
     void createInstance() {
@@ -1327,8 +1329,45 @@ private:
     void recordCommandBuffer(uint32_t imageIndex) {
         commandBuffers[currentFrame].begin({});
 
-        // Transition the swapchain image to the correct layout for rendering
-        vk::ImageMemoryBarrier imageBarrier{
+        // Transition the attachments to the correct layouts for dynamic rendering
+        // 1) Multisampled color attachment image -> ColorAttachmentOptimal
+        vk::ImageMemoryBarrier colorAttachmentBarrier{
+            .srcAccessMask = vk::AccessFlagBits::eNone,
+            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = *colorImage,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+
+        // 2) Depth attachment image -> DepthStencilAttachmentOptimal
+        vk::ImageMemoryBarrier depthAttachmentBarrier{
+            .srcAccessMask = vk::AccessFlagBits::eNone,
+            .dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = *depthImage,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eDepth,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+
+        // 3) Resolve (swapchain) image -> ColorAttachmentOptimal
+        vk::ImageMemoryBarrier swapchainResolveBarrier{
             .srcAccessMask = vk::AccessFlagBits::eNone,
             .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
             .oldLayout = vk::ImageLayout::eUndefined,
@@ -1347,11 +1386,11 @@ private:
 
         commandBuffers[currentFrame].pipelineBarrier(
             vk::PipelineStageFlagBits::eTopOfPipe,
-            vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
             vk::DependencyFlagBits::eByRegion,
             std::array<vk::MemoryBarrier, 0>{},
             std::array<vk::BufferMemoryBarrier, 0>{},
-            std::array<vk::ImageMemoryBarrier, 1>{imageBarrier}
+            std::array<vk::ImageMemoryBarrier, 3>{colorAttachmentBarrier, depthAttachmentBarrier, swapchainResolveBarrier}
         );
 
         // Clear values for color and depth
@@ -1537,28 +1576,29 @@ private:
         };
         queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
-        const vk::PresentInfoKHR presentInfoKHR{
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &*presentCompleteSemaphore[imageIndex],
-            .swapchainCount = 1,
-            .pSwapchains = &*swapChain,
-            .pImageIndices = &imageIndex
-        };
-
-        vk::Result result;
         try {
-            result = queue.presentKHR(presentInfoKHR);
-        } catch (vk::OutOfDateKHRError&) {
-            result = vk::Result::eErrorOutOfDateKHR;
+            const vk::PresentInfoKHR presentInfoKHR{
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &*presentCompleteSemaphore[imageIndex],
+                .swapchainCount = 1,
+                .pSwapchains = &*swapChain,
+                .pImageIndices = &imageIndex
+            };
+            auto result = queue.presentKHR(presentInfoKHR);
+            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+                framebufferResized = false;
+                recreateSwapChain();
+            } else if (result != vk::Result::eSuccess) {
+                throw std::runtime_error("failed to present swap chain image!");
+            }
+        } catch (const vk::SystemError& e) {
+            if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
+                recreateSwapChain();
+                return;
+            } else {
+                throw;
+            }
         }
-
-        if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
-            framebufferResized = false;
-            recreateSwapChain();
-        } else if (result != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to present swap chain image!");
-        }
-
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 

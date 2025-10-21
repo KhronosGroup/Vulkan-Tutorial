@@ -476,22 +476,34 @@ One of the key platform-specific differences in our Vulkan implementation is how
 
 Here's how we create a Vulkan surface on Android:
 
-[source,cpp]
+[source,multilang,c++,c]
+.Creating the Vulkan Surface on Android
 ----
+// START c++
 void createSurface() {
-    VkSurfaceKHR _surface;
-    VkResult result = VK_SUCCESS;
+    // RAII approach using Vulkan-Hpp
+    vk::AndroidSurfaceCreateInfoKHR createInfo{
+        .window = androidApp->window
+    };
+    surface = vk::raii::SurfaceKHR(instance, createInfo);
+}
+// END c++
 
-    // Create Android surface
-    result = vkCreateAndroidSurfaceKHR(
+// START c
+void createSurface() {
+    VkSurfaceKHR _surface = VK_NULL_HANDLE;
+
+    VkAndroidSurfaceCreateInfoKHR createInfo = {
+        .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+        .pNext = NULL,
+        .flags = 0,
+        .window = androidApp->window
+    };
+
+    VkResult result = vkCreateAndroidSurfaceKHR(
         *instance,
-        &(VkAndroidSurfaceCreateInfoKHR{
-            .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
-            .pNext = nullptr,
-            .flags = 0,
-            .window = androidApp->window
-        }),
-        nullptr,
+        &createInfo,
+        NULL,
         &_surface
     );
 
@@ -501,6 +513,7 @@ void createSurface() {
 
     surface = vk::raii::SurfaceKHR(instance, _surface);
 }
+// END c
 ----
 
 === Handling Android Events

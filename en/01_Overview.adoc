@@ -28,7 +28,7 @@ with the existing APIs somehow. This resulted in less than ideal abstractions
 Aside from these new features, the past decade also saw an influx of mobile
 and embedded devices with powerful graphics hardware. These mobile GPUs have
  different architectures based on their energy and space requirements.
-One such example is https://en.wikipedia.org/wiki/Tiled_rendering[tiled rendering], 
+One such example is https://en.wikipedia.org/wiki/Tiled_rendering[tiled rendering],
 which would benefit from improved performance by offering the
 programmer more control over this functionality.
 Another limitation originating from the age of these APIs is limited
@@ -261,10 +261,12 @@ developed by LunarG. We'll look into installing this SDK in the next chapter.
 Functions have a lower case `vk` prefix, types like enumerations and structs
  have a `Vk` prefix and enumeration values have a `VK_` prefix.
 The API heavily uses structs to provide parameters to functions.
-For example, object creation generally follows this pattern:
+For example, object creation generally follows this pattern in both the C API and the C++ RAII wrapper:
 
-[,c++]
+[source,multilang,c++,c]
+.Object creation pattern
 ----
+// START c
 VkXXXCreateInfo createInfo{};
 createInfo.sType = VK_STRUCTURE_TYPE_XXX_CREATE_INFO;
 createInfo.pNext = nullptr;
@@ -276,6 +278,12 @@ if (vkCreateXXX(&createInfo, nullptr, &object) != VK_SUCCESS) {
     std::cerr << "failed to create object" << std::endl;
     return false;
 }
+// END c
+
+// START c++
+auto createInfo = vk::xxx();
+auto object = vk::raii::XXX(context, createInfo);
+// END c++
 ----
 
 Many structures in Vulkan require you to explicitly specify the type of
@@ -290,15 +298,6 @@ Almost all functions return a VkResult that is either `VK_SUCCESS` or an
 error code.
 The specification describes which error codes each function can return and
 what they mean.
-
-To help illustrate the utility of using the RAII C++ Vulkan abstraction; this
-is the same code written with our modern API:
-
-[,c++]
-----
-auto createInfo = vk::xxx();
-auto object = vk::raii::XXX(context, createInfo);
-----
 
 Failure of such calls is reported by C++ exceptions. The exception will
 respond with more information about the error including the aforementioned

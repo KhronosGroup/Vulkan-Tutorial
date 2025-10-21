@@ -39,9 +39,20 @@ void createVertexBuffer() {
 
 Creating a buffer requires us to fill a `VkBufferCreateInfo` structure.
 
-[,c++]
+[source,multilang,c++,c]
+.Buffer create info
 ----
+// START c++
 vk::BufferCreateInfo bufferInfo({}, sizeof(vertices[0]) * vertices.size(), vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive);
+// END c++
+
+// START c
+VkBufferCreateInfo bufferInfo{};
+bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+// END c
 ----
 
 The first field of the constructor is the flags, used to configure sparse buffer memory, which is not relevant right now.
@@ -63,8 +74,10 @@ We'll leave it at the default value of `0`.
 We can now create the buffer with `vkCreateBuffer`.
 Define a class member to hold the buffer handle and call it `vertexBuffer`.
 
-[,c++]
+[source,multilang,c++,c]
+.Vertex buffer handle and creation
 ----
+// START c++
 vk::raii::Buffer vertexBuffer = nullptr;
 
 ...
@@ -73,6 +86,27 @@ void createVertexBuffer() {
     vk::BufferCreateInfo bufferInfo{ .size = sizeof(vertices[0]) * vertices.size(), .usage = vk::BufferUsageFlagBits::eVertexBuffer, .sharingMode = vk::SharingMode::eExclusive };
     vertexBuffer = vk::raii::Buffer(device, bufferInfo);
 }
+// END c++
+
+// START c
+VkBuffer vertexBuffer = VK_NULL_HANDLE;
+
+void createVertexBuffer() {
+    VkBufferCreateInfo bufferInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .size = sizeof(vertices[0]) * vertices.size(),
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = NULL
+    };
+    if (vkCreateBuffer(device, &bufferInfo, NULL, &vertexBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create vertex buffer!");
+    }
+}
+// END c
 ----
 
 The buffer should be available for use in rendering commands until the end of
@@ -83,9 +117,17 @@ The buffer should be available for use in rendering commands until the end of
 The buffer has been created, but it doesn't have any memory assigned to it yet.
 The first step of allocating memory for the buffer is to query its memory requirements using the aptly named `vkGetBufferMemoryRequirements` function.
 
-[,c++]
+[source,multilang,c++,c]
+.Memory requirements query
 ----
+// START c++
 vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
+// END c++
+
+// START c
+VkMemoryRequirements memRequirements;
+vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+// END c
 ----
 
 The `VkMemoryRequirements` struct has three fields:
@@ -99,18 +141,35 @@ Each type of memory varies in terms of allowed operations and performance charac
 We need to combine the requirements of the buffer and our own application requirements to find the right type of memory to use.
 Let's create a new function `findMemoryType` for this purpose.
 
-[,c++]
+[source,multilang,c++,c]
+.findMemoryType signature
 ----
+// START c++
 uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) {
 
 }
+// END c++
+
+// START c
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+
+}
+// END c
 ----
 
 First we need to query info about the available types of memory using `vkGetPhysicalDeviceMemoryProperties`.
 
-[,c++]
+[source,multilang,c++,c]
+.Device memory properties query
 ----
+// START c++
 vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice->getMemoryProperties();
+// END c++
+
+// START c
+VkPhysicalDeviceMemoryProperties memProperties;
+vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+// END c
 ----
 
 The `VkPhysicalDeviceMemoryProperties` structure has two arrays `memoryTypes` and `memoryHeaps`.
@@ -120,8 +179,10 @@ Right now we'll only concern ourselves with the type of memory and not the heap 
 
 Let's first find a memory type that is suitable for the buffer itself:
 
-[,c++]
+[source,multilang,c++,c]
+.Find any suitable memory type
 ----
+// START c++
 for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
     if ((typeFilter & (1 << i))) {
         return i;
@@ -129,6 +190,17 @@ for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
 }
 
 throw std::runtime_error("failed to find suitable memory type!");
+// END c++
+
+// START c
+for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+    if ((typeFilter & (1 << i))) {
+        return i;
+    }
+}
+
+throw std::runtime_error("failed to find suitable memory type!");
+// END c
 ----
 
 The `typeFilter` parameter will be used to specify the bit field of memory types that are suitable.
@@ -144,13 +216,24 @@ We'll see why when we map the memory.
 
 We can now modify the loop to also check for the support of this property:
 
-[,c++]
+[source,multilang,c++,c]
+.Memory type with required properties
 ----
+// START c++
 for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
     if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
         return i;
     }
 }
+// END c++
+
+// START c
+for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+    if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+        return i;
+    }
+}
+// END c
 ----
 
 We may have more than one desirable property, so we should check if the result of the bitwise AND is not just non-zero, but equal to the desired properties bit field.
@@ -160,29 +243,61 @@ If there is a memory type suitable for the buffer that also has all the properti
 
 We now have a way to determine the right memory type, so we can actually allocate the memory by filling in the `VkMemoryAllocateInfo` structure.
 
-[,c++]
+[source,multilang,c++,c]
+.Memory allocation info
 ----
+// START c++
 vk::MemoryAllocateInfo memoryAllocateInfo( memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) );
+// END c++
+
+// START c
+VkMemoryAllocateInfo memoryAllocateInfo = {
+    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    .pNext = NULL,
+    .allocationSize = memRequirements.size,
+    .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+};
+// END c
 ----
 
 Memory allocation is now as simple as specifying the size and type, both of which are derived from the memory requirements of the vertex buffer and the desired property.
 Create a class member to store the handle to the memory and allocate it with `vkAllocateMemory`.
 
-[,c++]
+[source,multilang,c++,c]
+.Allocate device memory for vertex buffer
 ----
+// START c++
 vk::raii::Buffer vertexBuffer = nullptr;
 vk::raii::DeviceMemory vertexBufferMemory = nullptr;
 
 ...
 
 vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
+// END c++
+
+// START c
+VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+
+...
+
+if (vkAllocateMemory(device, &memoryAllocateInfo, NULL, &vertexBufferMemory) != VK_SUCCESS) {
+    throw std::runtime_error("failed to allocate vertex buffer memory!");
+}
+// END c
 ----
 
 If memory allocation was successful, then we can now associate this memory with the buffer using `vkBindBufferMemory`:
 
-[,c++]
+[source,multilang,c++,c]
+.Bind buffer to memory
 ----
+// START c++
 vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
+// END c++
+
+// START c
+vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+// END c
 ----
 
 The first three parameters are self-explanatory, and the fourth parameter is the offset within the region of memory.
@@ -194,19 +309,41 @@ If the offset is non-zero, then it is required to be divisible by `memRequiremen
 It is now time to copy the vertex data to the buffer.
 This is done by https://en.wikipedia.org/wiki/Memory-mapped_I/O[mapping the buffer memory] into CPU accessible memory with `vkMapMemory`.
 
-[,c++]
+[source,multilang,c++,c]
+.Map vertex buffer memory
 ----
+// START c++
 void* data = vertexBufferMemory.mapMemory(0, bufferInfo.size);
+// END c++
+
+// START c
+void* data = NULL;
+if (vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data) != VK_SUCCESS) {
+    throw std::runtime_error("failed to map vertex buffer memory!");
+}
+// END c
 ----
 
 This function allows us to access a region of the specified memory resource defined by an offset and size.
 The offset and size here are `0` and `bufferInfo.size`, respectively.
 
-[,c++]
+[source,multilang,c++,c]
+.Copy and unmap
 ----
+// START c++
 void* data = vertexBufferMemory.mapMemory(0, bufferInfo.size);
 memcpy(data, vertices.data(), bufferInfo.size);
 vertexBufferMemory.unmapMemory();
+// END c++
+
+// START c
+void* data = NULL;
+if (vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data) != VK_SUCCESS) {
+    throw std::runtime_error("failed to map vertex buffer memory!");
+}
+memcpy(data, vertices.data(), bufferInfo.size);
+vkUnmapMemory(device, vertexBufferMemory);
+// END c
 ----
 
 You can now simply `memcpy` the vertex data to the mapped memory and unmap it again using `vkUnmapMemory`.

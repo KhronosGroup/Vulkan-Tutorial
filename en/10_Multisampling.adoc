@@ -33,11 +33,20 @@ Let's start off by determining how many samples our hardware can use.
 Most modern GPUs support at least eight samples, but this number is not guaranteed to be the same everywhere.
 We'll keep track of it by adding a new class member:
 
-[,c++]
+[source,multilang,c++,c]
+.MSAA sample count member
 ----
+// START c++
 ...
 vk::SampleCountFlagBits msaaSamples = vk::SampleCountFlagBits::e1;
 ...
+// END c++
+
+// START c
+...
+VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+...
+// END c
 ----
 
 By default, we'll be using only one sample per pixel which is equivalent to no multisampling, in which case the final image will remain unchanged.
@@ -46,8 +55,10 @@ We're using a depth buffer, so we have to take into account the sample count for
 The highest sample count that both support (and) will be the maximum we can support.
 Add a function that will fetch this information for us:
 
-[,c++]
+[source,multilang,c++,c]
+.getMaxUsableSampleCount helper
 ----
+// START c++
 vk::SampleCountFlagBits getMaxUsableSampleCount() {
     vk::PhysicalDeviceProperties physicalDeviceProperties = physicalDevice->getProperties();
 
@@ -61,6 +72,24 @@ vk::SampleCountFlagBits getMaxUsableSampleCount() {
 
     return vk::SampleCountFlagBits::e1;
 }
+// END c++
+
+// START c
+VkSampleCountFlagBits getMaxUsableSampleCount() {
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+    VkSampleCountFlags counts = properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
+    if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
+    if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
+    if (counts & VK_SAMPLE_COUNT_8_BIT)  { return VK_SAMPLE_COUNT_8_BIT; }
+    if (counts & VK_SAMPLE_COUNT_4_BIT)  { return VK_SAMPLE_COUNT_4_BIT; }
+    if (counts & VK_SAMPLE_COUNT_2_BIT)  { return VK_SAMPLE_COUNT_2_BIT; }
+
+    return VK_SAMPLE_COUNT_1_BIT;
+}
+// END c
 ----
 
 We will now use this function to set the `msaaSamples` variable during the physical device selection process.
@@ -90,13 +119,24 @@ This is why we have to create an additional render target and modify our current
 We only need one render target since only one drawing operation is active at a time, just like with the depth buffer.
 Add the following class members:
 
-[,c++]
+[source,multilang,c++,c]
+.Color image resources
 ----
+// START c++
 ...
 vk::raii::Image colorImage = nullptr;
 vk::raii::DeviceMemory colorImageMemory = nullptr;
 vk::raii::ImageView colorImageView = nullptr;
 ...
+// END c++
+
+// START c
+...
+VkImage colorImage = VK_NULL_HANDLE;
+VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
+VkImageView colorImageView = VK_NULL_HANDLE;
+...
+// END c
 ----
 
 This new image will have to store the desired number of samples per pixel, so we need to pass this number to `VkImageCreateInfo` during the image creation process.

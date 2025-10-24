@@ -858,10 +858,10 @@ private:
             imageIndex,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eColorAttachmentOptimal,
-            {},                                                     // srcAccessMask (no need to wait for previous operations)
-            vk::AccessFlagBits2::eColorAttachmentWrite,                // dstAccessMask
-            vk::PipelineStageFlagBits2::eTopOfPipe,                   // srcStage
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput        // dstStage
+            {},                                                         // srcAccessMask (no need to wait for previous operations)
+            vk::AccessFlagBits2::eColorAttachmentWrite,                 // dstAccessMask
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,         // srcStage
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput          // dstStage
         );
         // Transition depth image to depth attachment optimal layout
         vk::ImageMemoryBarrier2 depthBarrier = {

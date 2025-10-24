@@ -375,10 +375,10 @@ private:
             imageIndex,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eColorAttachmentOptimal,
-            {},                                                     // srcAccessMask (no need to wait for previous operations)
-            vk::AccessFlagBits2::eColorAttachmentWrite,                // dstAccessMask
-            vk::PipelineStageFlagBits2::eTopOfPipe,                   // srcStage
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput        // dstStage
+            {},                                                         // srcAccessMask (no need to wait for previous operations)
+            vk::AccessFlagBits2::eColorAttachmentWrite,                 // dstAccessMask
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,         // srcStage
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput          // dstStage
         );
         vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
         vk::RenderingAttachmentInfo attachmentInfo = {
@@ -407,9 +407,9 @@ private:
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::ePresentSrcKHR,
             vk::AccessFlagBits2::eColorAttachmentWrite,                 // srcAccessMask
-            {},                                                      // dstAccessMask
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
-            vk::PipelineStageFlagBits2::eBottomOfPipe                  // dstStage
+            {},                                                         // dstAccessMask
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,         // srcStage
+            vk::PipelineStageFlagBits2::eBottomOfPipe                   // dstStage
         );
         commandBuffer.end();
     }

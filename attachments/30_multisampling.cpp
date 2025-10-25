@@ -1017,7 +1017,7 @@ private:
         );
         // Transition the depth image to DEPTH_ATTACHMENT_OPTIMAL
         transition_image_layout(
-            depthImage,
+            *depthImage,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eDepthAttachmentOptimal,
             vk::AccessFlagBits2::eDepthStencilAttachmentWrite,

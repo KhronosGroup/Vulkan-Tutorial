@@ -41,10 +41,42 @@ structs again, of which the first one will be `VkDeviceQueueCreateInfo`. This
 structure describes the number of queues we want for a single queue family.
 Right now we're only interested in a queue with graphics capabilities.
 
+=== Finding the graphics queue family index
+
+Before we can create a queue, we need to find which queue family supports graphics operations. Let's add code to find the graphics queue family index:
+
 [,c++]
 ----
+// Get all queue family properties from the physical device
 std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
+// Find the first queue family that supports graphics operations
+auto graphicsQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, []( auto const & qfp )
+                { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); } );
+assert(graphicsQueueFamilyProperty != queueFamilyProperties.end() && "No graphics queue family found!");
+
+// Calculate the index of the graphics queue family
+auto graphicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
+----
+
+Let's break down this code to understand what it's doing:
+
+1. First, we get all queue family properties from the physical device using `getQueueFamilyProperties()`.
+
+2. Then, we use `std::ranges::find_if` to find the first queue family that supports graphics operations:
+   - `std::ranges::find_if` takes a collection and a predicate function (the lambda), and returns an iterator to the first element that satisfies the predicate.
+   - The lambda function `[]( auto const & qfp ) { ... }` checks if a queue family has graphics capabilities.
+   - Inside the lambda, we use a bitwise AND operation `&` to check if the `queueFlags` include the `eGraphics` flag.
+   - The comparison `!= static_cast<vk::QueueFlags>(0)` ensures the result is non-zero, meaning the graphics flag is set.
+
+3. We use `assert` to verify that we found a queue family with graphics support.
+
+4. Finally, we calculate the index of the graphics queue family using `std::distance`, which gives us the position of the iterator in the collection.
+
+Now that we have the graphics queue family index, we can use it to create our queue:
+
+[,c++]
+----
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex };
 ----
 

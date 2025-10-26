@@ -1006,7 +1006,7 @@ private:
         );
         // Transition the multisampled color image to COLOR_ATTACHMENT_OPTIMAL
         transition_image_layout(
-            colorImage,
+            *colorImage,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::AccessFlagBits2::eColorAttachmentWrite,

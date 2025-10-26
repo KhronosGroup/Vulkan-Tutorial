@@ -20,12 +20,13 @@ We'll simply put it in the binding after the uniform buffer:
 
 [,c++]
 ----
-std::array bindings = {
+std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
     vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
     vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr)
 };
 
-vk::DescriptorSetLayoutCreateInfo layoutInfo({}, bindings.size(), bindings.data());
+vk::DescriptorSetLayoutCreateInfo layoutInfo { .bindingCount = static_cast<uint32_t>(bindings.size()),
+                                               .pBindings = bindings.data() };
 ----
 
 Make sure to set the `stageFlags` to indicate that we intend to use the combined image sampler descriptor in the fragment shader.
@@ -37,11 +38,15 @@ Go to the `createDescriptorPool` function and modify it to include a `VkDescript
 
 [,c++]
 ----
-std::array poolSize {
+std::array<vk::DescriptorPoolSize, 2> poolSize {
     vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
     vk::DescriptorPoolSize(  vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT)
 };
-vk::DescriptorPoolCreateInfo poolInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, MAX_FRAMES_IN_FLIGHT, poolSize);
+
+vk::DescriptorPoolCreateInfo poolInfo { .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+		                        .maxSets = MAX_FRAMES_IN_FLIGHT,
+		                        .poolSizeCount = static_cast<uint32_t>(poolSize.size()),
+		                        .pPoolSizes = poolSize.data() };
 ----
 
 Inadequate descriptor pools are a good example of a problem that the validation layers will not catch: As of Vulkan 1.1, `vkAllocateDescriptorSets` may fail with the error code `VK_ERROR_POOL_OUT_OF_MEMORY` if the pool is not sufficiently large, but the driver may also try to solve the problem internally.
@@ -70,9 +75,9 @@ This is where the objects from the previous chapter come together.
 
 [,c++]
 ----
-std::array descriptorWrites{
+std::array<vk::WriteDescriptorSet, 2> descriptorWrites {
     vk::WriteDescriptorSet( descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo ),
-    vk::WriteDescriptorSet( descriptorSets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &imageInfo)
+    vk::WriteDescriptorSet( descriptorSets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &imageInfo )
 };
 device.updateDescriptorSets(descriptorWrites, {});
 ----

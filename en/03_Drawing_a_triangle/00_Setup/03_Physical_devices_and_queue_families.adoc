@@ -59,7 +59,7 @@ add to that function.
 [,c++]
 ----
 for (const auto& device : devices) {
-    physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(device);
+    physicalDevice = device;
     break;
 }
 ----
@@ -98,7 +98,7 @@ bool isDeviceSuitable(VkPhysicalDevice device) {
     auto deviceFeatures = device.getFeatures();
     if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu &&
            deviceFeatures.geometryShader) {
-        physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(device);
+        physicalDevice = device;
         break;
    }
 }
@@ -146,7 +146,7 @@ void pickPhysicalDevice() {
 
     // Check if the best candidate is suitable at all
     if (candidates.rbegin()->first > 0) {
-        physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(candidates.rbegin()->second);
+        physicalDevice = candidates.rbegin()->second;
     } else {
         throw std::runtime_error("failed to find a suitable GPU!");
     }

@@ -103,7 +103,7 @@ In many Vulkan applications, validation layers are enabled programmatically duri
 [,c++]
 ----
 // Define validation layers
-const std::vector validationLayers = {
+const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 

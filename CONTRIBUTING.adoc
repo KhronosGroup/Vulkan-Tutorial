@@ -34,3 +34,8 @@ Any change or fix needs to consider this and make sure that it follows Antora's 
 The content's of the tutorial are written in Asciidoc (adoc file extension). New content or changes to existing content need comply with this format. If you are new to Asciidoc, the link:https://docs.antora.org/antora/latest/asciidoc/asciidoc/[Antora's Asciidoc primer] is a good starting point.
 
 Similar to other markdown languages, most development environments support live preview for Asciidoc. For Visual Studio Code, link:https://marketplace.visualstudio.com/items?itemName=asciidoctor.asciidoctor-vscode[this extension] is recommended. It's advised to set the `asciidoc.preview.useEditorStyle` extension setting to `false` to get a preview look similar to the Antora site and also enable the extension's `asciidoc.antora.enableAntoraSupport` option.
+
+
+=== ClangFormat
+
+To ensure a consistent code style, we use a link:https://clang.llvm.org/docs/ClangFormat.html[ClangFormat] definition file. If you make changes to source code, make sure that file is used by your IDE or manually apply ClangFormat to the files you have changed.

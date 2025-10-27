@@ -1,26 +1,28 @@
-#include <iostream>
+#include <algorithm>
+#include <array>
+#include <assert.h>
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
-#include <cstring>
-#include <cstdlib>
-#include <memory>
-#include <algorithm>
-#include <limits>
-#include <array>
-#include <chrono>
-#include <optional>
-#include <assert.h>
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #	include <vulkan/vulkan_raii.hpp>
 #else
 import vulkan_hpp;
 #endif
+//clang-format off
 #if defined(__ANDROID__)
 #	include <vulkan/vulkan_core.h>
 #	include <vulkan/vulkan_android.h>
 #endif
+//clang-format on
 #include <vulkan/vulkan_profiles.hpp>
 
 #if defined(__ANDROID__)

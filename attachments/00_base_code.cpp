@@ -6,9 +6,9 @@ import vulkan_hpp;
 #endif
 #include <GLFW/glfw3.h>
 
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
-#include <cstdlib>
 
 const uint32_t WIDTH  = 800;
 const uint32_t HEIGHT = 600;

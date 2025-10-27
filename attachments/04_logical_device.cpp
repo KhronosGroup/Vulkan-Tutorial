@@ -1,11 +1,11 @@
+#include <algorithm>
 #include <assert.h>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <vector>
-#include <cstring>
-#include <cstdlib>
-#include <memory>
-#include <algorithm>
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #	include <vulkan/vulkan_raii.hpp>

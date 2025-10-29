@@ -63,7 +63,7 @@ private:
     vk::raii::CommandBuffer commandBuffer = nullptr;
 
     vk::raii::Semaphore presentCompleteSemaphore = nullptr;
-    std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
+    vk::raii::Semaphore renderFinishedSemaphore = nullptr;
     vk::raii::Fence drawFence = nullptr;
 
     std::vector<const char*> requiredDeviceExtension = {
@@ -106,6 +106,7 @@ private:
 
     void cleanup() {
         glfwDestroyWindow(window);
+
         glfwTerminate();
     }
 
@@ -449,36 +450,28 @@ private:
 
     void createSyncObjects() {
         presentCompleteSemaphore =vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-        for (size_t i = 0; i < swapChainImages.size(); i++)
-        {
-          renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
-        }
+        renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
         drawFence = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
     }
 
     void drawFrame() {
-        while (vk::Result::eTimeout == device.waitForFences(*drawFence, vk::True, UINT64_MAX))
-          ;
-        device.resetFences(*drawFence);
+        queue.waitIdle();   // NOTE: for simplicity, wait for the queue to be idle before starting the frame
+                            // In the next chapter you see how to use multiple frames in flight and fences to sync
 
         auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr );
         recordCommandBuffer(imageIndex);
 
+        device.resetFences(  *drawFence );
         vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-        const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1,
-                                         .pWaitSemaphores = &*presentCompleteSemaphore,
-                                         .pWaitDstStageMask = &waitDestinationStageMask,
-                                         .commandBufferCount = 1,
-                                         .pCommandBuffers = &*commandBuffer,
-                                         .signalSemaphoreCount = 1,
-                                         .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
+        const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore,
+                            .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffer,
+                            .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore };
         queue.submit(submitInfo, *drawFence);
+        while ( vk::Result::eTimeout == device.waitForFences( *drawFence, vk::True, UINT64_MAX ) )
+            ;
 
-        const vk::PresentInfoKHR presentInfoKHR{ .waitSemaphoreCount = 1,
-                                                 .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex],
-                                                 .swapchainCount = 1,
-                                                 .pSwapchains = &*swapChain,
-                                                 .pImageIndices = &imageIndex };
+        const vk::PresentInfoKHR presentInfoKHR{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore,
+                                                .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex };
         result = queue.presentKHR( presentInfoKHR );
         switch ( result )
         {

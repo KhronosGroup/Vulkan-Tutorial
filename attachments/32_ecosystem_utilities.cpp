@@ -1273,8 +1273,8 @@ private:
             if (appInfo.synchronization2Supported) {
                 // Use Synchronization2 API for image transitions
                 vk::ImageMemoryBarrier2 colorBarrier{
-                    .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
-                    .srcAccessMask = vk::AccessFlagBits2::eNone,
+                    .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                    .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
                     .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
                     .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
                     .oldLayout = vk::ImageLayout::eUndefined,
@@ -1285,7 +1285,7 @@ private:
 
                 vk::ImageMemoryBarrier2 depthBarrier{
                     .srcStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
-                    .srcAccessMask = vk::AccessFlagBits2::eNone,
+                    .srcAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
                     .dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
                     .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
                     .oldLayout = vk::ImageLayout::eUndefined,
@@ -1295,7 +1295,7 @@ private:
                 };
 
                 vk::ImageMemoryBarrier2 swapchainBarrier{
-                    .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+                    .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
                     .srcAccessMask = vk::AccessFlagBits2::eNone,
                     .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
                     .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,

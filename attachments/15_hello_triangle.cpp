@@ -101,8 +101,7 @@ private:
             glfwPollEvents();
             drawFrame();
         }
-
-        device.waitIdle();
+        device.waitIdle();    // wait for device to finish operations before destroying resources
     }
 
     void cleanup() {
@@ -456,7 +455,8 @@ private:
     }
 
     void drawFrame() {
-        queue.waitIdle();
+        queue.waitIdle();   // NOTE: for simplicity, wait for the queue to be idle before starting the frame
+                            // In the next chapter you see how to use multiple frames in flight and fences to sync
 
         auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr );
         recordCommandBuffer(imageIndex);

@@ -15,7 +15,7 @@ Start by adding a new class member to store the logical device handle in.
 
 [,c++]
 ----
-vk::raii::Device device;
+vk::raii::Device device = nullptr;
 ----
 
 Next, add a `createLogicalDevice` function that is called from `initVulkan`.
@@ -44,7 +44,7 @@ Right now we're only interested in a queue with graphics capabilities.
 [,c++]
 ----
 std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
-
+uint32_t graphicsIndex = findQueueFamilies(m_physicalDevice);
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex };
 ----
 

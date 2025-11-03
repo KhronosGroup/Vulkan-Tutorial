@@ -993,41 +993,40 @@ private:
 
     void recordCommandBuffer(uint32_t imageIndex) {
         commandBuffers[currentFrame].begin({});
-        // Before starting rendering, transition the images to the appropriate layouts
-        // Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+        // Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
         transition_image_layout(
-            imageIndex,
+            swapChainImages[imageIndex],
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eColorAttachmentOptimal,
-            {},                                                     // srcAccessMask (no need to wait for previous operations)
-            vk::AccessFlagBits2::eColorAttachmentWrite,                // dstAccessMask
-            vk::PipelineStageFlagBits2::eTopOfPipe,                   // srcStage
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput        // dstStage
+            {},                                                         // srcAccessMask (no need to wait for previous operations)
+            vk::AccessFlagBits2::eColorAttachmentWrite,                 // dstAccessMask
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,         // srcStage
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,         // dstStage
+            vk::ImageAspectFlagBits::eColor
         );
-
         // Transition the multisampled color image to COLOR_ATTACHMENT_OPTIMAL
-        transition_image_layout_custom(
-            colorImage,
+        transition_image_layout(
+            *colorImage,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eColorAttachmentOptimal,
-            {},
             vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput,
             vk::ImageAspectFlagBits::eColor
         );
-
         // Transition the depth image to DEPTH_ATTACHMENT_OPTIMAL
-        transition_image_layout_custom(
-            depthImage,
+        transition_image_layout(
+            *depthImage,
             vk::ImageLayout::eUndefined,
             vk::ImageLayout::eDepthAttachmentOptimal,
-            {},
             vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eEarlyFragmentTests,
+            vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
             vk::ImageAspectFlagBits::eDepth
         );
+
         vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
         vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
 
@@ -1068,66 +1067,30 @@ private:
         commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
         commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
         commandBuffers[currentFrame].endRendering();
-        // After rendering, transition the images to appropriate layouts
-
-        // Transition the swapchain image to PRESENT_SRC
+        // After rendering, transition the swapchain image to PRESENT_SRC
         transition_image_layout(
-            imageIndex,
+            swapChainImages[imageIndex],
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::ePresentSrcKHR,
             vk::AccessFlagBits2::eColorAttachmentWrite,                 // srcAccessMask
-            {},                                                      // dstAccessMask
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
-            vk::PipelineStageFlagBits2::eBottomOfPipe                  // dstStage
+            {},                                                         // dstAccessMask
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,         // srcStage
+            vk::PipelineStageFlagBits2::eBottomOfPipe,                  // dstStage
+            vk::ImageAspectFlagBits::eColor
         );
         commandBuffers[currentFrame].end();
     }
 
     void transition_image_layout(
-        uint32_t imageIndex,
-        vk::ImageLayout old_layout,
-        vk::ImageLayout new_layout,
-        vk::AccessFlags2 src_access_mask,
-        vk::AccessFlags2 dst_access_mask,
-        vk::PipelineStageFlags2 src_stage_mask,
-        vk::PipelineStageFlags2 dst_stage_mask
-        ) {
-        vk::ImageMemoryBarrier2 barrier = {
-            .srcStageMask = src_stage_mask,
-            .srcAccessMask = src_access_mask,
-            .dstStageMask = dst_stage_mask,
-            .dstAccessMask = dst_access_mask,
-            .oldLayout = old_layout,
-            .newLayout = new_layout,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = swapChainImages[imageIndex],
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        vk::DependencyInfo dependency_info = {
-            .dependencyFlags = {},
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &barrier
-        };
-        commandBuffers[currentFrame].pipelineBarrier2(dependency_info);
-    }
-
-    void transition_image_layout_custom(
-        vk::raii::Image& image,
+        vk::Image image,
         vk::ImageLayout old_layout,
         vk::ImageLayout new_layout,
         vk::AccessFlags2 src_access_mask,
         vk::AccessFlags2 dst_access_mask,
         vk::PipelineStageFlags2 src_stage_mask,
         vk::PipelineStageFlags2 dst_stage_mask,
-        vk::ImageAspectFlags aspect_mask
-        ) {
+        vk::ImageAspectFlags image_aspect_flags
+    ) {
         vk::ImageMemoryBarrier2 barrier = {
             .srcStageMask = src_stage_mask,
             .srcAccessMask = src_access_mask,
@@ -1139,7 +1102,7 @@ private:
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = image,
             .subresourceRange = {
-                .aspectMask = aspect_mask,
+                .aspectMask = image_aspect_flags,
                 .baseMipLevel = 0,
                 .levelCount = 1,
                 .baseArrayLayer = 0,

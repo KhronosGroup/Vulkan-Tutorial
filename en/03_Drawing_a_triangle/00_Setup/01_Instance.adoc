@@ -189,7 +189,7 @@ vk::InstanceCreateInfo createInfo{
     .pApplicationInfo = &appInfo,
     .ppEnabledExtensionNames = { vk::KHRPortabilityEnumerationExtensionName }
 };
-instance = std::make_unique<vk::raii::Instance>(context, createInfo);
+instance = vk::raii::Instance(m_context, createInfo);
 ----
 
 == Checking for extension support

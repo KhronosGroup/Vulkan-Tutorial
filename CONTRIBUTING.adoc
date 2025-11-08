@@ -39,3 +39,11 @@ Similar to other markdown languages, most development environments support live 
 === ClangFormat
 
 To ensure a consistent code style, we use a link:https://clang.llvm.org/docs/ClangFormat.html[ClangFormat] definition file. If you make changes to source code, make sure that file is used by your IDE or manually apply ClangFormat to the files you have changed.
+
+Example:
+
+[,bash]
+----
+cd attachments
+clang-format -i -- 15_hello_triangle.*
+----

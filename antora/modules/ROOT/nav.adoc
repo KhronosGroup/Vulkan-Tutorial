@@ -62,3 +62,4 @@
 ** xref:courses/18_Ray_tracing/06_Reflections.adoc[Reflections]
 ** xref:courses/18_Ray_tracing/07_Conclusion.adoc[Conclusion]
 * xref:90_FAQ.adoc[FAQ]
+* link:https://github.com/KhronosGroup/Vulkan-Tutorial[GitHub Repository, window=_blank]

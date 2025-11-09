@@ -1,0 +1,41 @@
+name: Quality Checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+env:
+  TARGET_BRANCH: main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang_format:
+    name: Clang Format Check
+    container: ghcr.io/khronosgroupactions/clang-tools:15.0.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory /__w/Vulkan-Tutorial/Vulkan-Tutorial
+      - run: git fetch origin $TARGET_BRANCH:$TARGET_BRANCH
+      - name: Run Clang Format diff
+        id: clang-diff
+        run: |
+          echo "changes=$(echo $(git diff -- '***.cpp' '***.h' -U0 --no-color $TARGET_BRANCH | python3 /usr/share/clang/clang-format-diff.py -p1 -v -sort-include))" >> $GITHUB_OUTPUT
+          echo "$(echo $(git diff -- '***.cpp' '***.h' -U0 --no-color $TARGET_BRANCH | python3 /usr/share/clang/clang-format-diff.py -p1 -v -sort-include))" >> clang-issues.diff
+      - name: Count Diff Lines
+        continue-on-error: true
+        id: count-diff
+        run: echo "line-count=$(echo "${{ steps.clang-diff.outputs.changes }}" | grep -c +++)" >> $GITHUB_OUTPUT
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-issues.diff
+          path: clang-issues.diff
+          retention-days: 3
+      - name: Assert
+        run: if test ${{ steps.count-diff.outputs.line-count }} -gt 0; then echo "${{ steps.clang-diff.outputs.changes }}"; exit 1; fi
+

@@ -24,8 +24,8 @@ jobs:
       - name: Run Clang Format diff
         id: clang-diff
         run: |
-          echo "changes=$(echo $(git diff -- '***.cpp' `***.h' -U0 --no-color $TARGET_BRANCH | python3 /usr/share/clang/clang-format-diff.py -p1 -v -sort-include))" >> $GITHUB_OUTPUT
-          echo "$(echo $(git diff -- '***.cpp' `***.h' -U0 --no-color $TARGET_BRANCH | python3 /usr/share/clang/clang-format-diff.py -p1 -v -sort-include))" >> clang-issues.diff
+          echo "changes=$(echo $(git diff -- '***.cpp' '***.h' -U0 --no-color $TARGET_BRANCH | python3 /usr/share/clang/clang-format-diff.py -p1 -v -sort-include))" >> $GITHUB_OUTPUT
+          echo "$(echo $(git diff -- '***.cpp' '***.h' -U0 --no-color $TARGET_BRANCH | python3 /usr/share/clang/clang-format-diff.py -p1 -v -sort-include))" >> clang-issues.diff
       - name: Count Diff Lines
         continue-on-error: true
         id: count-diff

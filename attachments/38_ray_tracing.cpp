@@ -506,7 +506,7 @@ class VulkanRaytracingApplication
 		    };
 
 		// create a Device
-		float                     queuePriority = 0.0f;
+		float                     queuePriority = 0.5f;
 		vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
 		vk::DeviceCreateInfo      deviceCreateInfo{.pNext                   = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
 		                                           .queueCreateInfoCount    = 1,

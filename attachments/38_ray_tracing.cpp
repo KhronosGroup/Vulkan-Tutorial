@@ -216,11 +216,10 @@ class VulkanRaytracingApplication
 	std::vector<vk::raii::CommandBuffer> commandBuffers;
 	uint32_t                             graphicsIndex = 0;
 
-	std::vector<vk::raii::Semaphore> presentCompleteSemaphore;
-	std::vector<vk::raii::Semaphore> renderFinishedSemaphore;
+	std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
+	std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
 	std::vector<vk::raii::Fence>     inFlightFences;
-	uint32_t                         semaphoreIndex = 0;
-	uint32_t                         currentFrame   = 0;
+	uint32_t                         frameIndex = 0;
 
 	bool framebufferResized = false;
 
@@ -1558,7 +1557,8 @@ class VulkanRaytracingApplication
 
 	void recordCommandBuffer(uint32_t imageIndex)
 	{
-		commandBuffers[currentFrame].begin({});
+		auto &commandBuffer = commandBuffers[frameIndex];
+		commandBuffer.begin({});
 		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
 		transition_image_layout(
 		    swapChainImages[imageIndex],
@@ -1614,15 +1614,15 @@ class VulkanRaytracingApplication
 		    .pDepthAttachment     = &depthAttachmentInfo};
 
 		// Note: .beginRendering replaces the previous .beginRenderPass call.
-		commandBuffers[currentFrame].beginRendering(renderingInfo);
+		commandBuffer.beginRendering(renderingInfo);
 
-		commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffers[currentFrame].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-		commandBuffers[currentFrame].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
-		commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
-		commandBuffers[currentFrame].bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
-		commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *globalDescriptorSets[currentFrame], nullptr);
-		commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 1, *materialDescriptorSets[0], nullptr);
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
+		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *globalDescriptorSets[frameIndex], nullptr);
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 1, *materialDescriptorSets[0], nullptr);
 
 		for (auto &sub : submeshes)
 		{
@@ -1633,12 +1633,12 @@ class VulkanRaytracingApplication
 			    .reflective = sub.reflective
 #endif        // LAB_TASK_LEVEL >= LAB_TASK_REFLECTIONS
 			};
-			commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
+			commandBuffer.pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
 
-			commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
+			commandBuffer.drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
 		}
 
-		commandBuffers[currentFrame].endRendering();
+		commandBuffer.endRendering();
 
 		// After rendering, transition the swapchain image to PRESENT_SRC
 		transition_image_layout(
@@ -1651,7 +1651,7 @@ class VulkanRaytracingApplication
 		    vk::PipelineStageFlagBits2::eBottomOfPipe,                 // dstStage
 		    vk::ImageAspectFlagBits::eColor);
 
-		commandBuffers[currentFrame].end();
+		commandBuffer.end();
 	}
 
 	void transition_image_layout(
@@ -1684,23 +1684,21 @@ class VulkanRaytracingApplication
 		    .dependencyFlags         = {},
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers    = &barrier};
-		commandBuffers[currentFrame].pipelineBarrier2(dependency_info);
+		commandBuffers[frameIndex].pipelineBarrier2(dependency_info);
 	}
 
 	void createSyncObjects()
 	{
-		presentCompleteSemaphore.clear();
-		renderFinishedSemaphore.clear();
-		inFlightFences.clear();
+		assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
 
 		for (size_t i = 0; i < swapChainImages.size(); i++)
 		{
-			presentCompleteSemaphore.emplace_back(device, vk::SemaphoreCreateInfo());
-			renderFinishedSemaphore.emplace_back(device, vk::SemaphoreCreateInfo());
+			renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
 		}
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
+			presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
 			inFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
 		}
 	}
@@ -1825,9 +1823,13 @@ class VulkanRaytracingApplication
 
 	void drawFrame()
 	{
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX))
+		// Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex,
+		//       while renderFinishedSemaphores is indexed by imageIndex
+		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
 			;
-		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore[semaphoreIndex], nullptr);
+		device.resetFences(*inFlightFences[frameIndex]);
+
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
 		if (result == vk::Result::eErrorOutOfDateKHR)
 		{
@@ -1838,21 +1840,30 @@ class VulkanRaytracingApplication
 		{
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
-		updateUniformBuffer(currentFrame);
+		updateUniformBuffer(frameIndex);
 #if LAB_TASK_LEVEL >= LAB_TASK_AS_ANIMATION
 		// TASK06: Update the TLAS with the current model matrix
 		updateTopLevelAS(ubo.model);
 #endif        // LAB_TASK_LEVEL >= LAB_TASK_AS_ANIMATION
 
-		device.resetFences(*inFlightFences[currentFrame]);
-		commandBuffers[currentFrame].reset();
+		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 
 		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
-		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore[semaphoreIndex], .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame], .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore[imageIndex]};
-		graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
+		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+		                                  .pWaitSemaphores      = &*presentCompleteSemaphores[frameIndex],
+		                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+		                                  .commandBufferCount   = 1,
+		                                  .pCommandBuffers      = &*commandBuffers[frameIndex],
+		                                  .signalSemaphoreCount = 1,
+		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
+		graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
 
-		const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
+		const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
+		                                        .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
+		                                        .swapchainCount     = 1,
+		                                        .pSwapchains        = &*swapChain,
+		                                        .pImageIndices      = &imageIndex};
 		result = presentQueue.presentKHR(presentInfoKHR);
 		if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
 		{
@@ -1863,8 +1874,7 @@ class VulkanRaytracingApplication
 		{
 			throw std::runtime_error("failed to present swap chain image!");
 		}
-		semaphoreIndex = (semaphoreIndex + 1) % presentCompleteSemaphore.size();
-		currentFrame   = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char> &code) const

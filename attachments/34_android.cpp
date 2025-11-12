@@ -329,24 +329,27 @@ class HelloTriangleApplication
 	bool framebufferResized = false;
 
 	// Vulkan objects
-	vk::raii::Context                context;
-	vk::raii::Instance               instance       = nullptr;
-	vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
-	vk::raii::SurfaceKHR             surface        = nullptr;
-	vk::raii::PhysicalDevice         physicalDevice = nullptr;
-	vk::raii::Device                 device         = nullptr;
-	uint32_t                         queueIndex     = ~0;
-	vk::raii::Queue                  queue          = nullptr;
-	vk::raii::SwapchainKHR           swapChain      = nullptr;
-	std::vector<vk::Image>           swapChainImages;
-	vk::SurfaceFormatKHR             swapChainSurfaceFormat;
-	vk::Extent2D                     swapChainExtent;
-	std::vector<vk::raii::ImageView> swapChainImageViews;
-
+	vk::raii::Context                    context;
+	vk::raii::Instance                   instance       = nullptr;
+	vk::raii::DebugUtilsMessengerEXT     debugMessenger = nullptr;
+	vk::raii::SurfaceKHR                 surface        = nullptr;
+	vk::raii::PhysicalDevice             physicalDevice = nullptr;
+	vk::raii::Device                     device         = nullptr;
+	uint32_t                             queueIndex     = ~0;
+	vk::raii::Queue                      queue          = nullptr;
+	vk::raii::SwapchainKHR               swapChain      = nullptr;
+	std::vector<vk::Image>               swapChainImages;
+	vk::SurfaceFormatKHR                 swapChainSurfaceFormat;
+	vk::Extent2D                         swapChainExtent;
+	std::vector<vk::raii::ImageView>     swapChainImageViews;
 	vk::raii::RenderPass                 renderPass          = nullptr;
 	vk::raii::DescriptorSetLayout        descriptorSetLayout = nullptr;
 	vk::raii::PipelineLayout             pipelineLayout      = nullptr;
 	vk::raii::Pipeline                   graphicsPipeline    = nullptr;
+	vk::Format                           depthFormat;
+	vk::raii::Image                      depthImage       = nullptr;
+	vk::raii::DeviceMemory               depthImageMemory = nullptr;
+	vk::raii::ImageView                  depthImageView   = nullptr;
 	std::vector<vk::raii::Framebuffer>   swapChainFramebuffers;
 	vk::raii::CommandPool                commandPool = nullptr;
 	std::vector<vk::raii::CommandBuffer> commandBuffers;
@@ -396,6 +399,7 @@ class HelloTriangleApplication
 		createLogicalDevice();
 		createSwapChain();
 		createImageViews();
+		createDepthResources();
 		createRenderPass();
 		createDescriptorSetLayout();
 		createGraphicsPipeline();
@@ -694,22 +698,42 @@ class HelloTriangleApplication
 		    .attachment = 0,
 		    .layout     = vk::ImageLayout::eColorAttachmentOptimal};
 
-		vk::SubpassDescription subpass{
-		    .pipelineBindPoint    = vk::PipelineBindPoint::eGraphics,
-		    .colorAttachmentCount = 1,
-		    .pColorAttachments    = &colorAttachmentRef};
+		vk::AttachmentDescription depthAttachment{
+		    .format         = depthFormat,
+		    .samples        = vk::SampleCountFlagBits::e1,
+		    .loadOp         = vk::AttachmentLoadOp::eClear,
+		    .storeOp        = vk::AttachmentStoreOp::eStore,
+		    .stencilLoadOp  = vk::AttachmentLoadOp::eDontCare,
+		    .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+		    .initialLayout  = vk::ImageLayout::eUndefined,
+		    .finalLayout    = vk::ImageLayout::eDepthStencilAttachmentOptimal};
 
+		vk::AttachmentReference depthAttachmentRef{
+		    .attachment = 1,
+		    .layout     = vk::ImageLayout::eDepthStencilAttachmentOptimal};
+
+		vk::SubpassDescription subpass{
+		    .pipelineBindPoint       = vk::PipelineBindPoint::eGraphics,
+		    .colorAttachmentCount    = 1,
+		    .pColorAttachments       = &colorAttachmentRef,
+		    .pDepthStencilAttachment = &depthAttachmentRef};
+
+		// @todo: barrier for deoth
 		vk::SubpassDependency dependency{
 		    .srcSubpass    = VK_SUBPASS_EXTERNAL,
 		    .dstSubpass    = 0,
-		    .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-		    .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-		    .srcAccessMask = vk::AccessFlagBits::eNone,
-		    .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite};
+		    .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests,
+		    .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests,
+		    .srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+		    .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite};
+
+		vk::AttachmentDescription attachments[] = {
+		    colorAttachment,
+		    depthAttachment};
 
 		vk::RenderPassCreateInfo renderPassInfo{
-		    .attachmentCount = 1,
-		    .pAttachments    = &colorAttachment,
+		    .attachmentCount = 2,
+		    .pAttachments    = attachments,
 		    .subpassCount    = 1,
 		    .pSubpasses      = &subpass,
 		    .dependencyCount = 1,
@@ -809,6 +833,12 @@ class HelloTriangleApplication
 		    .depthBiasEnable         = VK_FALSE,
 		    .lineWidth               = 1.0f};
 
+		// Depth/Stencil
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{
+		    .depthTestEnable  = vk::True,
+		    .depthWriteEnable = vk::True,
+		    .depthCompareOp   = vk::CompareOp::eLessOrEqual};
+
 		// Multisampling
 		vk::PipelineMultisampleStateCreateInfo multisampling{
 		    .rasterizationSamples = vk::SampleCountFlagBits::e1,
@@ -850,7 +880,7 @@ class HelloTriangleApplication
 		    .pViewportState      = &viewportState,
 		    .pRasterizationState = &rasterizer,
 		    .pMultisampleState   = &multisampling,
-		    .pDepthStencilState  = nullptr,
+		    .pDepthStencilState  = &depthStencil,
 		    .pColorBlendState    = &colorBlending,
 		    .pDynamicState       = &dynamicState,
 		    .layout              = *pipelineLayout,
@@ -869,11 +899,12 @@ class HelloTriangleApplication
 		for (size_t i = 0; i < swapChainImageViews.size(); i++)
 		{
 			vk::ImageView attachments[] = {
-			    *swapChainImageViews[i]};
+			    *swapChainImageViews[i],
+			    *depthImageView};
 
 			vk::FramebufferCreateInfo framebufferInfo{
 			    .renderPass      = *renderPass,
-			    .attachmentCount = 1,
+			    .attachmentCount = 2,
 			    .pAttachments    = attachments,
 			    .width           = swapChainExtent.width,
 			    .height          = swapChainExtent.height,
@@ -891,6 +922,35 @@ class HelloTriangleApplication
 		    .queueFamilyIndex = queueIndex};
 
 		commandPool = device.createCommandPool(poolInfo);
+	}
+
+	vk::Format findSupportedFormat(const std::vector<vk::Format> &candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features) const
+	{
+		for (const auto format : candidates)
+		{
+			vk::FormatProperties props = physicalDevice.getFormatProperties(format);
+
+			if (tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & features) == features)
+			{
+				return format;
+			}
+			if (tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & features) == features)
+			{
+				return format;
+			}
+		}
+
+		throw std::runtime_error("failed to find supported format!");
+	}
+
+	void createDepthResources()
+	{
+		depthFormat = findSupportedFormat({vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
+		                                  vk::ImageTiling::eOptimal,
+		                                  vk::FormatFeatureFlagBits::eDepthStencilAttachment);
+
+		createImage(swapChainExtent.width, swapChainExtent.height, 1, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage, depthImageMemory);
+		depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
 	}
 
 	// Create texture image
@@ -941,32 +1001,7 @@ class HelloTriangleApplication
 		}
 
 		// Create image
-		vk::ImageCreateInfo imageInfo{
-		    .imageType = vk::ImageType::e2D,
-		    .format    = vk::Format::eR8G8B8A8Srgb,
-		    .extent    = {
-		           .width  = static_cast<uint32_t>(texWidth),
-		           .height = static_cast<uint32_t>(texHeight),
-		           .depth  = 1},
-		    .mipLevels     = 1,
-		    .arrayLayers   = 1,
-		    .samples       = vk::SampleCountFlagBits::e1,
-		    .tiling        = vk::ImageTiling::eOptimal,
-		    .usage         = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-		    .sharingMode   = vk::SharingMode::eExclusive,
-		    .initialLayout = vk::ImageLayout::eUndefined};
-
-		textureImage = device.createImage(imageInfo);
-
-		// Allocate memory for the image
-		vk::MemoryRequirements memRequirements = textureImage.getMemoryRequirements();
-
-		vk::MemoryAllocateInfo allocInfo{
-		    .allocationSize  = memRequirements.size,
-		    .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)};
-
-		textureImageMemory = device.allocateMemory(allocInfo);
-		textureImage.bindMemory(*textureImageMemory, 0);
+		createImage(texWidth, texHeight, 1, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, textureImage, textureImageMemory);
 
 		// Transition image layout and copy buffer to image
 		transitionImageLayout(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
@@ -977,7 +1012,7 @@ class HelloTriangleApplication
 	// Create texture image view
 	void createTextureImageView()
 	{
-		textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb);
+		textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, 1);
 	}
 
 	// Create texture sampler
@@ -1238,17 +1273,18 @@ class HelloTriangleApplication
 		vk::CommandBufferBeginInfo beginInfo{};
 		commandBuffer.begin(beginInfo);
 
+		vk::ClearValue clearValues[]{
+		    vk::ClearValue{vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f)},
+		    vk::ClearValue{vk::ClearDepthStencilValue(1.0f, 0)}};
+
 		vk::RenderPassBeginInfo renderPassInfo{
 		    .renderPass  = *renderPass,
 		    .framebuffer = *swapChainFramebuffers[imageIndex],
 		    .renderArea  = {
 		         .offset = {0, 0},
-		         .extent = swapChainExtent}};
-
-		vk::ClearValue clearColor;
-		clearColor.color.float32       = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
-		renderPassInfo.clearValueCount = 1;
-		renderPassInfo.pClearValues    = &clearColor;
+		         .extent = swapChainExtent},
+		    .clearValueCount = 2,
+		    .pClearValues    = clearValues};
 
 		commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
@@ -1374,6 +1410,7 @@ class HelloTriangleApplication
 		// Create new swap chain and dependent resources
 		createSwapChain();
 		createImageViews();
+		createDepthResources();
 		createFramebuffers();
 
 		// Recreate per-swapchain-image present semaphores for presenting
@@ -1563,20 +1600,37 @@ class HelloTriangleApplication
 	}
 
 	// Create image view
-	vk::raii::ImageView createImageView(vk::raii::Image &image, vk::Format format)
+	[[nodiscard]] vk::raii::ImageView createImageView(const vk::raii::Image &image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels) const
 	{
 		vk::ImageViewCreateInfo viewInfo{
-		    .image            = *image,
+		    .image            = image,
 		    .viewType         = vk::ImageViewType::e2D,
 		    .format           = format,
-		    .subresourceRange = {
-		        .aspectMask     = vk::ImageAspectFlagBits::eColor,
-		        .baseMipLevel   = 0,
-		        .levelCount     = 1,
-		        .baseArrayLayer = 0,
-		        .layerCount     = 1}};
+		    .subresourceRange = {aspectFlags, 0, mipLevels, 0, 1}};
+		return vk::raii::ImageView(device, viewInfo);
+	}
 
-		return device.createImageView(viewInfo);
+	void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory)
+	{
+		vk::ImageCreateInfo imageInfo{
+		    .imageType     = vk::ImageType::e2D,
+		    .format        = format,
+		    .extent        = {width, height, 1},
+		    .mipLevels     = mipLevels,
+		    .arrayLayers   = 1,
+		    .samples       = vk::SampleCountFlagBits::e1,
+		    .tiling        = tiling,
+		    .usage         = usage,
+		    .sharingMode   = vk::SharingMode::eExclusive,
+		    .initialLayout = vk::ImageLayout::eUndefined};
+		image = vk::raii::Image(device, imageInfo);
+
+		vk::MemoryRequirements memRequirements = image.getMemoryRequirements();
+		vk::MemoryAllocateInfo allocInfo{
+		    .allocationSize  = memRequirements.size,
+		    .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)};
+		imageMemory = vk::raii::DeviceMemory(device, allocInfo);
+		image.bindMemory(imageMemory, 0);
 	}
 
 	// Transition image layout

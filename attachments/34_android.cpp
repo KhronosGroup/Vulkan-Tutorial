@@ -1603,7 +1603,7 @@ class HelloTriangleApplication
 	[[nodiscard]] vk::raii::ImageView createImageView(const vk::raii::Image &image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels) const
 	{
 		vk::ImageViewCreateInfo viewInfo{
-		    .image            = image,
+		    .image            = *image,
 		    .viewType         = vk::ImageViewType::e2D,
 		    .format           = format,
 		    .subresourceRange = {aspectFlags, 0, mipLevels, 0, 1}};

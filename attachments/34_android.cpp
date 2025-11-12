@@ -1630,7 +1630,7 @@ class HelloTriangleApplication
 		    .allocationSize  = memRequirements.size,
 		    .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)};
 		imageMemory = vk::raii::DeviceMemory(device, allocInfo);
-		image.bindMemory(imageMemory, 0);
+		image.bindMemory(*imageMemory, 0);
 	}
 
 	// Transition image layout

@@ -115,6 +115,8 @@ Let's compare traditional image formats with KTX2:
 
 == Migrating from tinyobjloader to tinygltf
 
+For loading glTF models (instead of obj) we'll be using the open source link:https://github.com/syoyo/tinygltf[headery only C{pp} tiny glTF library].
+
 === Setting Up tinygltf
 
 First, we need to include the tinygltf library instead of tinyobjloader:
@@ -260,6 +262,8 @@ While our basic implementation only extracts geometry and texture coordinates, g
 For a complete application, you would typically process these additional features to take full advantage of glTF.
 
 == Migrating from stb_image to KTX
+
+For loading KTX files (instead of formats like png or jpeg) we'll be using the open source link:https://github.com/KhronosGroup/KTX-Software[KTX (Khronos Texture) Library and Tools].
 
 === Setting Up KTX
 

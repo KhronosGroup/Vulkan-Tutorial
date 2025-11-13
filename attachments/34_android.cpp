@@ -365,7 +365,7 @@ class HelloTriangleApplication
 	std::vector<vk::raii::Semaphore>     imageAvailableSemaphores;
 	std::vector<vk::raii::Semaphore>     renderFinishedSemaphores;
 	std::vector<vk::raii::Fence>         inFlightFences;
-	uint32_t                             currentFrame = 0;
+	uint32_t                             frameIndex = 0;
 
 	// Application info
 	AppInfo appInfo;
@@ -1269,7 +1269,7 @@ class HelloTriangleApplication
 
 		commandBuffer.bindVertexBuffers(0, {*vertexBuffer}, {0});
 		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
-		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*descriptorSets[currentFrame]}, nullptr);
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*descriptorSets[frameIndex]}, nullptr);
 		commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 		commandBuffer.endRenderPass();
@@ -1279,12 +1279,12 @@ class HelloTriangleApplication
 	// Draw frame
 	void drawFrame()
 	{
-		static_cast<void>(device.waitForFences({*inFlightFences[currentFrame]}, VK_TRUE, UINT64_MAX));
+		static_cast<void>(device.waitForFences({*inFlightFences[frameIndex]}, VK_TRUE, UINT64_MAX));
 
 		uint32_t imageIndex;
 		try
 		{
-			auto [result, idx] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
+			auto [result, idx] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[frameIndex]);
 			imageIndex         = idx;
 		}
 		catch (vk::OutOfDateKHRError &)
@@ -1294,23 +1294,23 @@ class HelloTriangleApplication
 		}
 
 		// Update uniform buffer with current transformation
-		updateUniformBuffer(currentFrame);
+		updateUniformBuffer(frameIndex);
 
-		device.resetFences({*inFlightFences[currentFrame]});
+		device.resetFences({*inFlightFences[frameIndex]});
 
-		commandBuffers[currentFrame].reset();
-		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+		commandBuffers[frameIndex].reset();
+		recordCommandBuffer(commandBuffers[frameIndex], imageIndex);
 
 		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 		const vk::SubmitInfo   submitInfo{
 		      .waitSemaphoreCount   = 1,
-		      .pWaitSemaphores      = &*imageAvailableSemaphores[currentFrame],
+		      .pWaitSemaphores      = &*imageAvailableSemaphores[frameIndex],
 		      .pWaitDstStageMask    = &waitDestinationStageMask,
 		      .commandBufferCount   = 1,
-		      .pCommandBuffers      = &*commandBuffers[currentFrame],
+		      .pCommandBuffers      = &*commandBuffers[frameIndex],
 		      .signalSemaphoreCount = 1,
 		      .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
-		queue.submit(submitInfo, *inFlightFences[currentFrame]);
+		queue.submit(submitInfo, *inFlightFences[frameIndex]);
 
 		try
 		{
@@ -1346,7 +1346,7 @@ class HelloTriangleApplication
 			}
 		}
 
-		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	// Recreate swap chain

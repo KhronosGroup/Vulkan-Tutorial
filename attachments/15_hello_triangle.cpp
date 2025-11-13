@@ -417,7 +417,7 @@ class HelloTriangleApplication
 	}
 
 	void transition_image_layout(
-	    uint32_t                currentFrame,
+	    uint32_t                imageIndex,
 	    vk::ImageLayout         old_layout,
 	    vk::ImageLayout         new_layout,
 	    vk::AccessFlags2        src_access_mask,
@@ -434,7 +434,7 @@ class HelloTriangleApplication
 		    .newLayout           = new_layout,
 		    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		    .image               = swapChainImages[currentFrame],
+		    .image               = swapChainImages[imageIndex],
 		    .subresourceRange    = {
 		           .aspectMask     = vk::ImageAspectFlagBits::eColor,
 		           .baseMipLevel   = 0,

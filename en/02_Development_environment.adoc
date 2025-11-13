@@ -64,9 +64,9 @@ Go to the directory where you installed the SDK, open the `bin` directory and
  run the `vkcube` demo.
 
 There is another program in this directory that will be useful for
-development. The `glslangValidator` and `glslc` programs will be
+development. The `slangc` command line program will be
 used to compile shaders from the human-readable
-https://en.wikipedia.org/wiki/OpenGL_Shading_Language[GLSL] to bytecode.
+https://shader-slang.org/slang/user-guide/[Slang Shading Language] to bytecode.
 We'll cover this in depth in the
 xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/01_Shader_modules.adoc[shader modules]
  chapter. The `bin` directory also contains the binaries of

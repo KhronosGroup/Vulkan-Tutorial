@@ -56,10 +56,7 @@ The most important part you'll need for developing Vulkan applications is the SD
 It includes headers, standard validation layers, debugging tools and a loader for the Vulkan functions.
 The loader looks up the functions in the driver at runtime, similarly to GLEW for OpenGL—if you're familiar with that.
 
-The SDK can be downloaded from https://vulkan.lunarg.com/[the LunarG website] using the buttons at the bottom of the page.
-You don't have to create an account, but it will give you access to some additional documentation that may be useful to you.
-
-image::/images/vulkan_sdk_download_buttons.png[]
+The SDK can be downloaded from https://vulkan.lunarg.com/sdk/home[the LunarG website].
 
 Proceed through the installation and pay attention to the installation location of the SDK.
 The first thing we'll do is verify that your graphics card and driver properly support Vulkan.

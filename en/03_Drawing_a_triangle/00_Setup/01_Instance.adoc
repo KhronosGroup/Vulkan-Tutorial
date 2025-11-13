@@ -185,7 +185,7 @@ constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
             .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
             .apiVersion         = vk::ApiVersion14 };
 vk::InstanceCreateInfo createInfo{
-    .flas = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
+    .flags = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
     .pApplicationInfo = &appInfo,
     .ppEnabledExtensionNames = { vk::KHRPortabilityEnumerationExtensionName }
 };

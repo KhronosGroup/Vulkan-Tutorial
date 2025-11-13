@@ -143,31 +143,26 @@ can be directly replaced by this:
 
 [,c++]
 ----
-vk::raii::Context context;
-constexpr auto appInfo = vk::ApplicationInfo("Hello Triangle", 1, "No Engine", 1, vk::ApiVersion11);
-vk::InstanceCreateInfo createInfo({}, &appInfo, {}, {});
-vk::raii::instance = std::make_unique<vk::raii::Instance>(context, createInfo);
-----
-
-As this can be a little hard to read when we look at the structures.  We have
- opted to turn on VULKAN_HPP_NO_STRUCT_CONSTRUCTORS.  This option means that
- the above code will look like this throughout the tutorial:
-
-[,c++]
-----
 constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
     .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
     .pEngineName        = "No Engine",
     .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
     .apiVersion         = vk::ApiVersion14 };
+
 vk::InstanceCreateInfo createInfo{
     .pApplicationInfo = &appInfo
 };
+
 instance = vk::raii::Instance(context, createInfo);
 ----
 
-This provides a better meaning towards what each option relates to in the
-structures that we're depending upon.
+NOTE: We use Vulkan-hpp with designated initializers introduced with C++ 20. By default,
+Vulkan-hpp uses a different way of initializing and we need to explicitly enable this
+by using the `VULKAN_HPP_NO_STRUCT_CONSTRUCTORS` define. This provides a better meaning
+towards what each option relates to in the structures that we're depending upon.
+For this tutorial, said define is declared in the xref:../../02_Development_environment.adoc#cmake[CMake build setup].
+If you use a different build setup, you need to manually define this before including
+Vulkan-hpp.
 
 == Integrating GLFW
 

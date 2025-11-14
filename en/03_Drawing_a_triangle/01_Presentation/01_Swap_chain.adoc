@@ -64,7 +64,7 @@ Alternatively, we can do this at the construction and keep this very succinct:
 [,c++]
 ----
 std::vector deviceExtensions = { vk::KHRSwapchainExtensionName };
-float                     queuePriority = 0.0f;
+float                     queuePriority = 0.5f;
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo( {}, graphicsIndex, 1, &queuePriority );
 vk::DeviceCreateInfo      deviceCreateInfo( {}, deviceQueueCreateInfo, {}, deviceExtensions );
 ----

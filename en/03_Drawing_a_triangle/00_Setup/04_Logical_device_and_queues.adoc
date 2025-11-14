@@ -59,7 +59,7 @@ This is required even if there is only a single queue:
 
 [,c++]
 ----
-float queuePriority = 0.0f;
+float queuePriority = 0.5f;
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
 ----
 

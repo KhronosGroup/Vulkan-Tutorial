@@ -133,16 +133,33 @@ Because there could be many different images in the swap chain, we'll
 preemptively create an image view and framebuffer for each of them and
 select the right one at draw time.
 
-=== Step 5 - Render passes
+=== Step 5 - Dynamic rendering
 
-Render passes in Vulkan describe the type of images that are used during
-rendering operations, how they will be used, and how their contents should
-be treated.
-In our initial triangle rendering application, we'll tell Vulkan that we
-will use a single image as a color target and that we want it to be cleared to
- a solid color right before the drawing operation.
-Whereas a render pass only describes the type of images, a VkFramebuffer
-actually binds specific images to these slots.
+In earlier versions of Vulkan, render passes were used to define how rendering
+to framebuffers happens.
+A render pass describes the types of images used during
+rendering operations (such as color and depth attachments),
+how those images will be used, and how their contents should
+be treated (e.g., cleared, loaded, or stored).
+
+Since the release of Vulkan 1.3, a more modern and flexible paradigm called
+dynamic rendering has been introduced (also available via the `VK_KHR_dynamic_rendering` extension).
+
+With dynamic rendering, there's no need to predefine render passes or framebuffers.
+Instead, you specify the rendering attachments at command recording time,
+making the API easier to use and more adaptable to dynamic rendering scenarios.
+
+The original render pass model relied on creating a VkRenderPass
+to define subpasses and attachment usage,
+and a VkFramebuffer to bind specific image views.
+In contrast, dynamic rendering allows
+you to define all of this directly when you begin rendering
+— using vkCmdBeginRendering
+and passing attachment information in structs like VkRenderingInfo.
+
+In our initial triangle rendering application,
+we'll use dynamic rendering to specify
+a single image as a color target and instruct Vulkan to clear it to a solid color right before drawing.
 
 === Step 6 - Graphics pipeline
 

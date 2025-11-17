@@ -447,7 +447,7 @@ class HelloTriangleApplication
 			throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
 		}
 
-		float                     queuePriority = 1.0f;
+		float                     queuePriority = 0.5f;
 		vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
 
 		if (appInfo.profileSupported)

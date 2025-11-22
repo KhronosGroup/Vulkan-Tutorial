@@ -683,8 +683,8 @@ class VulkanApplication
 		    .polygonMode             = vk::PolygonMode::eFill,
 		    .cullMode                = vk::CullModeFlagBits::eBack,        // Re-enabled culling for better performance
 		    .frontFace               = vk::FrontFace::eClockwise,          // Keeping Clockwise for glTF
-		    .depthBiasEnable         = vk::False};
-		rasterizer.lineWidth = 1.0f;
+		    .depthBiasEnable         = vk::False,
+		    .lineWidth               = 1.0f};
 		vk::PipelineMultisampleStateCreateInfo multisampling{
 		    .rasterizationSamples = vk::SampleCountFlagBits::e1,
 		    .sampleShadingEnable  = vk::False};

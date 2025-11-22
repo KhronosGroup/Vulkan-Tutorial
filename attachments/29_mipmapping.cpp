@@ -473,8 +473,8 @@ class HelloTriangleApplication
 		    .polygonMode             = vk::PolygonMode::eFill,
 		    .cullMode                = vk::CullModeFlagBits::eBack,
 		    .frontFace               = vk::FrontFace::eCounterClockwise,
-		    .depthBiasEnable         = vk::False};
-		rasterizer.lineWidth = 1.0f;
+		    .depthBiasEnable         = vk::False,
+		    .lineWidth               = 1.0f};
 		vk::PipelineMultisampleStateCreateInfo multisampling{
 		    .rasterizationSamples = vk::SampleCountFlagBits::e1,
 		    .sampleShadingEnable  = vk::False};

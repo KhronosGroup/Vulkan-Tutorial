@@ -625,8 +625,9 @@ class VulkanRaytracingApplication
 		    .depthBoundsTestEnable = vk::False,
 		    .stencilTestEnable     = vk::False};
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-		colorBlendAttachment.blendEnable    = vk::False;
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+			.blendEnable    = vk::False,	    
+			.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 
 		vk::PipelineColorBlendStateCreateInfo colorBlending{
 		    .logicOpEnable   = vk::False,

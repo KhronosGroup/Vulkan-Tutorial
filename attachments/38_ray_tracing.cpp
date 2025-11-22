@@ -624,17 +624,14 @@ class VulkanRaytracingApplication
 		    .depthCompareOp        = vk::CompareOp::eLess,
 		    .depthBoundsTestEnable = vk::False,
 		    .stencilTestEnable     = vk::False};
-		vk::PipelineColorBlendAttachmentState colorBlendAttachment;
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{
 			.blendEnable    = vk::False,	    
 			.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-
 		vk::PipelineColorBlendStateCreateInfo colorBlending{
 		    .logicOpEnable   = vk::False,
 		    .logicOp         = vk::LogicOp::eCopy,
 		    .attachmentCount = 1,
 		    .pAttachments    = &colorBlendAttachment};
-
 		std::vector dynamicStates = {
 		    vk::DynamicState::eViewport,
 		    vk::DynamicState::eScissor};

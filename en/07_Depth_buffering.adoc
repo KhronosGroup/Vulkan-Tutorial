@@ -33,12 +33,14 @@ struct Vertex {
 };
 ----
 
-Next, update the vertex shader to accept and transform 3D coordinates as input.
-Remember to recompile it afterward!
+Next, update the vertex shader to accept and transform 3D coordinates as input by changing the type for `inPosition` from `float2` to `float3`:
 
 [,glsl]
 ----
-float3 inPosition;
+struct VSInput {
+    float3 inPosition;
+    ...
+};
 
 ...
 
@@ -51,6 +53,8 @@ VSOutput vertMain(VSInput input) {
     return output;
 }
 ----
+
+Remember to recompile the shader afterwards!
 
 Lastly, update the `vertices` container to include Z coordinates:
 
@@ -454,14 +458,12 @@ void recreateSwapChain() {
         glfwWaitEvents();
     }
 
-    vkDeviceWaitIdle(device);
+    device.waitIdle(device);
 
     cleanupSwapChain();
-
     createSwapChain();
     createImageViews();
     createDepthResources();
-    createFramebuffers();
 }
 ----
 

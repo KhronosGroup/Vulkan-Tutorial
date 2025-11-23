@@ -184,7 +184,7 @@ vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::Im
 ----
 
 The support of a format depends on the tiling mode and usage, so we must also include these as parameters.
-The support of a format can be queried using the `vkGetPhysicalDeviceFormatProperties` function:
+The support of a format can be queried using the `physicalDevice.getFormatProperties` function:
 
 [,c++]
 ----

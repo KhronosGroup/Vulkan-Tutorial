@@ -138,7 +138,7 @@ Verify that the function is called in `drawFrame()` after the model matrix is up
 
 [,c{pp}]
 ----
-        updateUniformBuffer(currentFrame);
+        updateUniformBuffer(frameIndex);
         // TASK06: Update the TLAS with the current model matrix
         updateTopLevelAS(ubo.model);
 ----

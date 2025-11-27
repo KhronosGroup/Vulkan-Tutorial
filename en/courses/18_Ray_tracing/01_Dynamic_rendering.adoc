@@ -78,7 +78,7 @@ vk::RenderingInfo renderingInfo = {
 };
 
 // Note: .beginRendering replaces the previous .beginRenderPass call.
-commandBuffers[currentFrame].beginRendering(renderingInfo);
+commandBuffers[frameIndex].beginRendering(renderingInfo);
 ----
 
 For more context, refer to the previous tutorial link:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/03_Render_passes.adoc[chapter].

@@ -71,7 +71,7 @@ Remember to also change the `vkCmdBindIndexBuffer` parameter:
 
 [,c++]
 ----
-commandBuffers[currentFrame]->bindIndexBuffer( **indexBuffer, 0, vk::IndexType::eUint32 );
+commandBuffers[frameIndex]->bindIndexBuffer( **indexBuffer, 0, vk::IndexType::eUint32 );
 ----
 
 The tinyobjloader library is included in the same way as STB libraries.

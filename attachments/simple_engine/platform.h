@@ -301,7 +301,7 @@ public:
 /**
  * @brief Desktop implementation of the Platform interface.
  */
-class DesktopPlatform : public Platform {
+class DesktopPlatform final : public Platform {
 private:
     GLFWwindow* window = nullptr;
     int width = 0;

@@ -10,7 +10,7 @@
 /**
  * @brief Base class for all resources.
  */
-class Resource {
+class Resource final {
 protected:
     std::string resourceId;
     bool loaded = false;
@@ -118,7 +118,7 @@ public:
  * This class implements the resource management system as described in the Engine_Architecture chapter:
  * @see en/Building_a_Simple_Engine/Engine_Architecture/04_resource_management.adoc
  */
-class ResourceManager {
+class ResourceManager final {
 private:
     std::unordered_map<std::type_index, std::unordered_map<std::string, std::unique_ptr<Resource>>> resources;
 
@@ -203,7 +203,7 @@ public:
         }
 
         auto& typeResources = typeIt->second;
-        return typeResources.find(id) != typeResources.end();
+        return typeResources.contains(id);
     }
 
     /**

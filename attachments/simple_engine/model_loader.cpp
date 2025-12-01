@@ -4,6 +4,8 @@
 #include <iostream>
 #include <filesystem>
 #include <set>
+#include <algorithm>
+#include <cctype>
 #include <tiny_gltf.h>
 
 #include "mikktspace.h"
@@ -235,15 +237,23 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         return false;
     }
 
+    light_scale = 1.0f;
     // Test if generator is blender and apply the blender factor see the issue here: https://github.com/KhronosGroup/glTF/issues/2473
     if (gltfModel.asset.generator.find("blender") != std::string::npos) {
         std::cout << "Blender generator detected, applying blender factor" << std::endl;
         light_scale = EMISSIVE_SCALE_FACTOR;
     }
-    light_scale = EMISSIVE_SCALE_FACTOR;
 
     // Track loaded textures to prevent loading the same texture multiple times
     std::set<std::string> loadedTextures;
+
+    // Helper: lowercase a std::string (ASCII only)
+    auto toLower = [](const std::string& s) {
+        std::string out = s;
+        std::ranges::transform(out, out.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return out;
+    };
 
     // Process materials first
     for (size_t i = 0; i < gltfModel.materials.size(); ++i) {
@@ -281,10 +291,10 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             hasEmissiveStrengthExtension = true;
             const tinygltf::Value& extension = extensionIt->second;
             if (extension.Has("emissiveStrength") && extension.Get("emissiveStrength").IsNumber()) {
-                material->emissiveStrength = static_cast<float>(extension.Get("emissiveStrength").Get<double>()) * light_scale;
+                material->emissiveStrength = static_cast<float>(extension.Get("emissiveStrength").Get<double>());
             }
         } else {
-            material->emissiveStrength = 0.0f;
+            material->emissiveStrength = 0.00058f;
         }
 
         // Alpha mode / cutoff
@@ -297,6 +307,40 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             const tinygltf::Value& ext = transIt->second;
             if (ext.Has("transmissionFactor") && ext.Get("transmissionFactor").IsNumber()) {
                 material->transmissionFactor = static_cast<float>(ext.Get("transmissionFactor").Get<double>());
+            }
+        }
+
+        // Classify obvious architectural glass and liquid materials for
+        // specialized rendering. This is a heuristic based primarily on
+        // material name.
+        {
+            std::string lowerName = toLower(material->GetName());
+            bool nameSuggestsGlass =
+                (lowerName.find("glass")  != std::string::npos) ||
+                (lowerName.find("window") != std::string::npos);
+
+            bool probablyLiquid =
+                (lowerName.find("beer")   != std::string::npos) ||
+                (lowerName.find("wine")   != std::string::npos) ||
+                (lowerName.find("liquid") != std::string::npos);
+
+            if (nameSuggestsGlass && !probablyLiquid) {
+                material->isGlass = true;
+            }
+
+            if (probablyLiquid) {
+                material->isLiquid = true;
+
+                // Slightly boost liquid visibility.
+                material->albedo *= 1.4f;
+                material->albedo = glm::clamp(material->albedo, glm::vec3(0.0f), glm::vec3(4.0f));
+
+                // Slightly reduce roughness so specular highlights from
+                // lights help liquids stand out.
+                material->roughness = glm::clamp(material->roughness * 0.8f, 0.0f, 1.0f);
+
+                // Ensure the liquid is not fully transparent by default.
+                material->alpha = glm::clamp(material->alpha * 1.2f, 0.15f, 1.0f);
             }
         }
 
@@ -381,17 +425,17 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             std::string textureId = "gltf_specGloss_" + std::to_string(texIndex);
                             const auto& image = gltfModel.images[texture.source];
                             if (!image.image.empty()) {
-                                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+                                // Embedded image data (already decoded by tinygltf image loader)
+                                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, false);
                                 material->specGlossTexturePath = textureId;
                                 material->metallicRoughnessTexturePath = textureId; // reuse binding 2
                             } else if (!image.uri.empty()) {
-                                std::vector<uint8_t> data; int w=0,h=0,c=0;
+                                // External KTX2 file: offload libktx decode + upload to renderer worker threads
                                 std::string filePath = baseTexturePath + image.uri;
-                                if (LoadKTX2FileToRGBA(filePath, data, w, h, c)) {
-                                    renderer->LoadTextureFromMemoryAsync(textureId, data.data(), w, h, c);
-                                    material->specGlossTexturePath = textureId;
-                                    material->metallicRoughnessTexturePath = textureId; // reuse binding 2
-                                }
+                                renderer->RegisterTextureAlias(textureId, filePath);
+                                renderer->LoadTextureAsync(filePath);
+                                material->specGlossTexturePath = textureId;
+                                material->metallicRoughnessTexturePath = textureId; // reuse binding 2
                             }
                         }
                     }
@@ -428,14 +472,14 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                     std::cout << "    Image data size: " << image.image.size() << ", URI: " << image.uri << std::endl;
                     if (!image.image.empty()) {
                         // Always use memory-based upload (KTX2 already decoded by SetImageLoader)
-                        renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+                        renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true);
                         material->albedoTexturePath = textureId;
                         std::cout << "    Scheduled base color texture upload from memory: " << textureId << std::endl;
                     } else if (!image.uri.empty()) {
                         // Offload KTX2 file reading/upload to renderer thread pool
                         std::string filePath = baseTexturePath + image.uri;
                         renderer->RegisterTextureAlias(textureId, filePath);
-                        renderer->LoadTextureAsync(filePath);
+                        renderer->LoadTextureAsync(filePath, true);
                         material->albedoTexturePath = textureId;
                         std::cout << "    Scheduled base color KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
                     } else {
@@ -614,18 +658,15 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                             std::string texIdOrPath;
                             if (!image.uri.empty()) {
                                 texIdOrPath = baseTexturePath + image.uri;
-                                // Try loading from a KTX2 file on disk first
-                                std::vector<uint8_t> data; int w=0,h=0,c=0;
-                                if (LoadKTX2FileToRGBA(texIdOrPath, data, w, h, c)) {
-                                    renderer->LoadTextureFromMemoryAsync(texIdOrPath, data.data(), w, h, c);
-                                    mat->albedoTexturePath = texIdOrPath;
-                                    std::cout << "    Scheduled base color KTX2 file upload (KHR_specGloss): " << texIdOrPath << std::endl;
-                                }
+                                // Schedule async load; libktx decoding will occur on renderer worker threads
+                                renderer->LoadTextureAsync(texIdOrPath, true);
+                                mat->albedoTexturePath = texIdOrPath;
+                                std::cout << "    Scheduled base color KTX2 file load (KHR_specGloss): " << texIdOrPath << std::endl;
                             }
                             if (mat->albedoTexturePath.empty() && !image.image.empty()) {
                                 // Upload embedded image data (already decoded via our image loader when KTX2)
                                 texIdOrPath = "gltf_baseColor_" + std::to_string(texIndex);
-                                renderer->LoadTextureFromMemoryAsync(texIdOrPath, image.image.data(), image.width, image.height, image.component);
+                                renderer->LoadTextureFromMemoryAsync(texIdOrPath, image.image.data(), image.width, image.height, image.component, true);
                                     mat->albedoTexturePath = texIdOrPath;
                                     std::cout << "    Scheduled base color texture upload from memory (KHR_specGloss): " << texIdOrPath << std::endl;
                             }
@@ -664,26 +705,23 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
                 cand.replace(pos, normalLower[pos]=='_' && normalLower.compare(pos, 5, "_ddna")==0 ? 5 : 2, suf);
                 // Ensure the file exists before attempting to load
                 if (std::filesystem::exists(cand)) {
-                    // Load KTX2 (or KTX) file via libktx then upload from memory
-                    std::vector<uint8_t> data; int w=0,h=0,c=0;
-                    if (LoadKTX2FileToRGBA(cand, data, w, h, c)) {
-                        renderer->LoadTextureFromMemoryAsync(cand, data.data(), w, h, c);
-                            mat->albedoTexturePath = cand;
-                            std::cout << "    Scheduled derived base color upload from normal sibling: " << cand << std::endl;
-                            break;
-                    }
+                    // Schedule async load; libktx decoding will occur on renderer worker threads
+                    renderer->LoadTextureAsync(cand, true);
+                    mat->albedoTexturePath = cand;
+                    std::cout << "    Scheduled derived base color KTX2 load from normal sibling: " << cand << std::endl;
+                    break;
                 }
             }
         }
     }
 
     // Secondary heuristic: scan glTF images for base color by material-name match when still missing
-    for (auto &entry : materials) {
-        Material* mat = entry.second.get();
+    for (auto & [materialName, materialPtr] : materials) {
+        Material* mat = materialPtr.get();
         if (!mat) continue;
         if (!mat->albedoTexturePath.empty()) continue; // already resolved
         // Try to find an image URI that looks like the base color for this material
-        std::string materialNameLower = entry.first;
+        std::string materialNameLower = materialName;
         std::ranges::transform(materialNameLower, materialNameLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
         for (const auto &image : gltfModel.images) {
             if (image.uri.empty()) continue;
@@ -889,8 +927,8 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             hash += "_idx_" + std::to_string(primitive.indices);
         }
 
-        for (const auto& attr : primitive.attributes) {
-            hash += "_" + attr.first + "_" + std::to_string(attr.second);
+        for (const auto& [attrName, type] : primitive.attributes) {
+            hash += "_" + attrName + "_" + std::to_string(type);
         }
 
         return hash;
@@ -1015,26 +1053,26 @@ if (materialMesh.vertices.empty()) {
 
     // Use a SINGLE, SAFE loop to load all vertex data.
     for (size_t i = 0; i < posAccessor.count; ++i) {
-        Vertex& vertex = materialMesh.vertices[baseVertex + i];
+        auto& [position, normal, texCoord, tangent] = materialMesh.vertices[baseVertex + i];
 
-        vertex.position = *reinterpret_cast<const glm::vec3*>(pPositions + i * posByteStride);
+        position = *reinterpret_cast<const glm::vec3*>(pPositions + i * posByteStride);
 
         if (pNormals) {
-            vertex.normal = *reinterpret_cast<const glm::vec3*>(pNormals + i * normalByteStride);
+            normal = *reinterpret_cast<const glm::vec3*>(pNormals + i * normalByteStride);
         } else {
-            vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+            normal = glm::vec3(0.0f, 0.0f, 1.0f);
         }
         // Normalize normals to ensure consistent magnitude
-        if (glm::dot(vertex.normal, vertex.normal) > 0.0f) {
-            vertex.normal = glm::normalize(vertex.normal);
+        if (glm::dot(normal, normal) > 0.0f) {
+            normal = glm::normalize(normal);
         } else {
-            vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+            normal = glm::vec3(0.0f, 0.0f, 1.0f);
         }
 
         if (pTexCoords) {
-            vertex.texCoord = *reinterpret_cast<const glm::vec2*>(pTexCoords + i * texCoordByteStride);
+            texCoord = *reinterpret_cast<const glm::vec2*>(pTexCoords + i * texCoordByteStride);
         } else {
-            vertex.texCoord = glm::vec2(0.0f, 0.0f);
+            texCoord = glm::vec2(0.0f, 0.0f);
         }
 
         if (hasTangents && pTangents) {
@@ -1044,15 +1082,15 @@ if (materialMesh.vertices.empty()) {
             // Normalize tangent and make it orthogonal to normal to avoid skewed TBN
             if (glm::dot(T, T) > 0.0f) {
                 T = glm::normalize(T);
-                T = glm::normalize(T - vertex.normal * glm::dot(vertex.normal, T));
+                T = glm::normalize(T - normal * glm::dot(normal, T));
             } else {
                 T = glm::vec3(1.0f, 0.0f, 0.0f);
             }
             float w = (t4.w >= 0.0f) ? 1.0f : -1.0f; // clamp handedness to +/-1
-            vertex.tangent = glm::vec4(T, w);
+            tangent = glm::vec4(T, w);
         } else {
             // No tangents in source: use a safe default tangent (T=+X, handedness=+1)
-            vertex.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+            tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
         }
     }
 
@@ -1143,7 +1181,7 @@ if (materialMesh.vertices.empty()) {
                         const auto& image = gltfModel.images[imageIndex];
                         if (!image.image.empty()) {
                             if (!loadedTextures.contains(textureId)) {
-                                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+                                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true);
                                 loadedTextures.insert(textureId);
                                 std::cout << "      Scheduled baseColor texture upload: " << textureId
                                           << " (" << image.width << "x" << image.height << ")" << std::endl;
@@ -1185,16 +1223,11 @@ if (materialMesh.vertices.empty()) {
                                 materialMesh.texturePath = textureId;
                                 std::cout << "      Scheduled baseColor upload from memory (heuristic): " << textureId << std::endl;
                             } else {
-                                // Fallback: load KTX2 from the file path and upload into memory
-                                std::vector<uint8_t> data; int w=0,h=0,c=0;
-                                if (LoadKTX2FileToRGBA(textureId, data, w, h, c) &&
-                                    renderer->LoadTextureFromMemory(textureId, data.data(), w, h, c)) {
-                                    materialMesh.baseColorTexturePath = textureId;
-                                    materialMesh.texturePath = textureId;
-                                    std::cout << "      Loaded baseColor KTX2 from file (heuristic): " << textureId << std::endl;
-                                } else {
-                                    std::cerr << "      Warning: Heuristic baseColor image has no decoded bytes and KTX2 fallback failed: " << imageUri << std::endl;
-                                }
+                                // Fallback: offload KTX2 file load to renderer worker threads
+                                renderer->LoadTextureAsync(textureId, true);
+                                materialMesh.baseColorTexturePath = textureId;
+                                materialMesh.texturePath = textureId;
+                                std::cout << "      Scheduled baseColor KTX2 load from file (heuristic): " << textureId << std::endl;
                             }
                             break;
                         }
@@ -1219,16 +1252,12 @@ if (materialMesh.vertices.empty()) {
                             std::cout << "      Scheduled embedded normal texture: " << textureId
                                       << " (" << image.width << "x" << image.height << ")" << std::endl;
                         } else if (!image.uri.empty()) {
-                            // Fallback: load KTX2 from a file and upload to memory
-                            std::vector<uint8_t> data; int w=0,h=0,c=0;
+                            // Fallback: offload KTX2 normal map load to renderer worker threads
                             std::string filePath = baseTexturePath + image.uri;
-                            if (LoadKTX2FileToRGBA(filePath, data, w, h, c)) {
-                                renderer->LoadTextureFromMemoryAsync(textureId, data.data(), w, h, c);
-                                materialMesh.normalTexturePath = textureId;
-                                std::cout << "    Scheduled normal KTX2 upload: " << filePath << std::endl;
-                                } else {
-                                    std::cerr << "    Failed to decode normal KTX2 file: " << filePath << std::endl;
-                                }
+                            renderer->RegisterTextureAlias(textureId, filePath);
+                            renderer->LoadTextureAsync(filePath);
+                            materialMesh.normalTexturePath = textureId;
+                            std::cout << "    Scheduled normal KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
                         } else {
                             std::cerr << "    Warning: No decoded bytes for normal texture index " << texIndex << std::endl;
                         }

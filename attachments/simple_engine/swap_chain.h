@@ -44,7 +44,7 @@ public:
 
     /**
      * @brief Recreate the swap chain.
-     * @return True if the swap chain was recreated successfully, false otherwise.
+     * @return True, if the swap chain was recreated successfully, false otherwise.
      */
     bool recreate();
 

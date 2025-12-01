@@ -146,6 +146,10 @@ bool LoadGLTFModel(Engine* engine, const std::string& modelPath,
             return false;
         }
 
+        // Collect all geometry entities so we can batch Vulkan uploads for their meshes
+        std::vector<Entity*> geometryEntities;
+        geometryEntities.reserve(materialMeshes.size());
+
         for (const auto& materialMesh : materialMeshes) {
             // Create an entity name based on model and material
             std::string entityName = modelName + "_Material_" + std::to_string(materialMesh.materialIndex) +
@@ -217,29 +221,92 @@ bool LoadGLTFModel(Engine* engine, const std::string& modelPath,
                     }
                 }
 
-                // Pre-allocate all Vulkan resources for this entity
-                if (!renderer->preAllocateEntityResources(materialEntity)) {
-                    std::cerr << "Failed to pre-allocate resources for entity: " << entityName << std::endl;
-                    // Continue with other entities even if one fails
+                // Register all effective texture IDs this mesh uses so that when
+                // textures finish streaming in, the renderer can refresh
+                // descriptor sets for the appropriate entities. This must
+                // happen *after* material fallbacks so we see the final IDs.
+                if (renderer) {
+                    auto registerTex = [&](const std::string& texId) {
+                        if (!texId.empty()) {
+                            renderer->RegisterTextureUser(texId, materialEntity);
+                        }
+                    };
+
+                    registerTex(mesh->GetTexturePath());
+                    registerTex(mesh->GetBaseColorTexturePath());
+                    registerTex(mesh->GetNormalTexturePath());
+                    registerTex(mesh->GetMetallicRoughnessTexturePath());
+                    registerTex(mesh->GetOcclusionTexturePath());
+                    registerTex(mesh->GetEmissiveTexturePath());
                 }
 
-                // Create physics body for collision with balls
-                // Use mesh collision shape for accurate geometry interaction
+                // Track this entity for batched Vulkan resource pre-allocation later
+                geometryEntities.push_back(materialEntity);
+
+                // Create physics body for collision with balls, but only for geometry
+                // that is reasonably close to the ground plane. This avoids creating
+                // expensive mesh colliders for high-up roofs and distant details.
                 PhysicsSystem* physicsSystem = engine->GetPhysicsSystem();
                 if (physicsSystem) {
-                    // Only create a physics body if the mesh has valid geometry
                     auto* mc = materialEntity->GetComponent<MeshComponent>();
                     if (mc && !mc->GetVertices().empty() && !mc->GetIndices().empty()) {
-                        // Queue rigid body creation to the main thread to avoid races
-                        physicsSystem->EnqueueRigidBodyCreation(
-                            materialEntity,
-                            CollisionShape::Mesh,
-                            0.0f,            // mass 0 = static
-                            true,            // kinematic
-                            0.15f,           // restitution
-                            0.5f             // friction
-                        );
-                        std::cout << "Queued physics body for geometry entity: " << entityName << std::endl;
+                        // Compute a simple Y-range in WORLD space using the entity transform
+                        // and the mesh's local AABB if available; otherwise approximate from vertices.
+                        glm::vec3 minWS( std::numeric_limits<float>::max());
+                        glm::vec3 maxWS(-std::numeric_limits<float>::max());
+
+                        auto* xform = materialEntity->GetComponent<TransformComponent>();
+                        glm::mat4 model = xform ? xform->GetModelMatrix() : glm::mat4(1.0f);
+
+                        if (mc->HasLocalAABB()) {
+                            glm::vec3 localMin = mc->GetLocalAABBMin();
+                            glm::vec3 localMax = mc->GetLocalAABBMax();
+
+                            // Transform the 8 corners of the local AABB to world space
+                            for (int ix = 0; ix < 2; ++ix) {
+                                for (int iy = 0; iy < 2; ++iy) {
+                                    for (int iz = 0; iz < 2; ++iz) {
+                                        glm::vec3 corner(
+                                            ix ? localMax.x : localMin.x,
+                                            iy ? localMax.y : localMin.y,
+                                            iz ? localMax.z : localMin.z
+                                        );
+                                        glm::vec3 cWS = glm::vec3(model * glm::vec4(corner, 1.0f));
+                                        minWS = glm::min(minWS, cWS);
+                                        maxWS = glm::max(maxWS, cWS);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Fallback: compute bounds directly from vertices in world space
+                            const auto& verts = mc->GetVertices();
+                            for (const auto& v : verts) {
+                                glm::vec3 pWS = glm::vec3(model * glm::vec4(v.position, 1.0f));
+                                minWS = glm::min(minWS, pWS);
+                                maxWS = glm::max(maxWS, pWS);
+                            }
+                        }
+
+                        // If we have a valid Y range and the mesh comes within 6 meters of the ground,
+                        // create a physics body. Otherwise, skip it to save startup time and memory.
+                        const float groundY = 0.0f;
+                        const float maxDistanceFromGround = 6.0f;
+                        bool nearGround = (minWS.y <= groundY + maxDistanceFromGround);
+
+                        if (nearGround) {
+                            physicsSystem->EnqueueRigidBodyCreation(
+                                materialEntity,
+                                CollisionShape::Mesh,
+                                0.0f,            // mass 0 = static
+                                true,            // kinematic
+                                0.15f,           // restitution
+                                0.5f             // friction
+                            );
+                            std::cout << "Queued physics body for near-ground geometry entity: " << entityName << std::endl;
+                        } else {
+                            std::cout << "Skipped physics body for high/remote entity: " << entityName
+                                      << " (minY=" << minWS.y << ")" << std::endl;
+                        }
                     } else {
                         std::cerr << "Skipping physics body for entity (no geometry): " << entityName << std::endl;
                     }
@@ -247,6 +314,14 @@ bool LoadGLTFModel(Engine* engine, const std::string& modelPath,
 
             } else {
                 std::cerr << "Failed to create entity for material " << materialMesh.materialName << std::endl;
+            }
+        }
+
+        // Pre-allocate Vulkan resources for all geometry entities in a single batched pass
+        if (!geometryEntities.empty()) {
+            if (!renderer->preAllocateEntityResourcesBatch(geometryEntities)) {
+                std::cerr << "Failed to pre-allocate resources for one or more geometry entities in batch" << std::endl;
+                // For now, continue; individual entities may still be partially usable
             }
         }
     } catch (const std::exception& e) {

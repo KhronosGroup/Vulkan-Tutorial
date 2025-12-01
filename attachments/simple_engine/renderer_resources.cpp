@@ -14,6 +14,7 @@
 
 // KTX2 support
 #include <ktx.h>
+#include <ranges>
 
 // This file contains resource-related methods from the Renderer class
 
@@ -113,7 +114,7 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
         // Per-texture de-duplication (serialize loads of the same texture ID only)
         {
             std::unique_lock<std::mutex> lk(textureLoadStateMutex);
-            while (texturesLoading.find(textureId) != texturesLoading.end()) {
+            while (texturesLoading.contains(textureId)) {
                 textureLoadStateCv.wait(lk);
             }
         }
@@ -130,7 +131,7 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
             std::lock_guard<std::mutex> lk(textureLoadStateMutex);
             texturesLoading.insert(textureId);
         }
-        auto _loadingGuard = std::unique_ptr<void, std::function<void(void*)>>((void*)1, [this, textureId](void*){
+        auto _loadingGuard = std::unique_ptr<void, std::function<void(void*)>>(reinterpret_cast<void *>(1), [this, textureId](void*){
             std::lock_guard<std::mutex> lk(textureLoadStateMutex);
             texturesLoading.erase(textureId);
             textureLoadStateCv.notify_all();
@@ -290,7 +291,7 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
             // Copy KTX2 texture data for base level only (level 0), regardless of transcode target
             ktx_size_t offset = 0;
             ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offset);
-            const void* levelData = ktxTexture_GetData((ktxTexture*)ktxTex) + offset;
+            const void* levelData = ktxTexture_GetData(reinterpret_cast<ktxTexture *>(ktxTex)) + offset;
             size_t levelSize = ktxTexture_GetImageSize((ktxTexture*)ktxTex, 0);
             memcpy(data, levelData, levelSize);
         } else {
@@ -323,7 +324,7 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
                 if (ktxTex) {
                     ktx_size_t offsetScan = 0;
                     ktxTexture_GetImageOffset((ktxTexture*)ktxTex, 0, 0, 0, &offsetScan);
-                    const uint8_t* rgba = ktxTexture_GetData((ktxTexture*)ktxTex) + offsetScan;
+                    const uint8_t* rgba = ktxTexture_GetData(reinterpret_cast<ktxTexture *>(ktxTex)) + offsetScan;
                     size_t pixelCount = static_cast<size_t>(texWidth) * static_cast<size_t>(texHeight);
                     for (size_t i = 0; i < pixelCount; ++i) {
                         if (rgba[i * 4 + 3] < 250) { alphaMaskedHint = true; break; }
@@ -611,7 +612,7 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
 vk::Format Renderer::determineTextureFormat(const std::string& textureId) {
     // Determine sRGB vs Linear in a case-insensitive way
     std::string idLower = textureId;
-    std::transform(idLower.begin(), idLower.end(), idLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    std::ranges::transform(idLower, idLower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
 
     // BaseColor/Albedo/Diffuse & SpecGloss RGB should be sRGB for proper gamma correction
     if (idLower.find("basecolor") != std::string::npos ||
@@ -664,7 +665,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
     // Per-texture de-duplication (serialize loads of the same texture ID only)
     {
         std::unique_lock<std::mutex> lk(textureLoadStateMutex);
-        while (texturesLoading.find(resolvedId) != texturesLoading.end()) {
+        while (texturesLoading.contains(resolvedId)) {
             textureLoadStateCv.wait(lk);
         }
     }
@@ -681,7 +682,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
         std::lock_guard<std::mutex> lk(textureLoadStateMutex);
         texturesLoading.insert(resolvedId);
     }
-    auto _loadingGuard = std::unique_ptr<void, std::function<void(void*)>>((void*)1, [this, resolvedId](void*){
+    auto _loadingGuard = std::unique_ptr<void, std::function<void(void*)>>(reinterpret_cast<void *>(1), [this, resolvedId](void*){
         std::lock_guard<std::mutex> lk(textureLoadStateMutex);
         texturesLoading.erase(resolvedId);
         textureLoadStateCv.notify_all();
@@ -814,10 +815,10 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId, const unsigne
 }
 
 // Create mesh resources
-bool Renderer::createMeshResources(MeshComponent* meshComponent) {
+bool Renderer::createMeshResources(MeshComponent* meshComponent, bool deferUpload) {
     ensureThreadLocalVulkanInit();
     try {
-        // Check if mesh resources already exist
+        // If resources already exist, no need to recreate them.
         auto it = meshResources.find(meshComponent);
         if (it != meshResources.end()) {
             return true;
@@ -832,7 +833,7 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
             return false;
         }
 
-        // Create vertex buffer
+        // --- 1. Create and fill per-mesh staging buffers on the host ---
         vk::DeviceSize vertexBufferSize = sizeof(vertices[0]) * vertices.size();
         auto [stagingVertexBuffer, stagingVertexBufferMemory] = createBuffer(
             vertexBufferSize,
@@ -840,22 +841,10 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
-        // Copy vertex data to staging buffer
         void* vertexData = stagingVertexBufferMemory.mapMemory(0, vertexBufferSize);
-        memcpy(vertexData, vertices.data(), static_cast<size_t>(vertexBufferSize));
+        std::memcpy(vertexData, vertices.data(), static_cast<size_t>(vertexBufferSize));
         stagingVertexBufferMemory.unmapMemory();
 
-        // Create vertex buffer on device using memory pool
-        auto [vertexBuffer, vertexBufferAllocation] = createBufferPooled(
-            vertexBufferSize,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal
-        );
-
-        // Copy from staging buffer to device buffer
-        copyBuffer(stagingVertexBuffer, vertexBuffer, vertexBufferSize);
-
-        // Create index buffer
         vk::DeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
         auto [stagingIndexBuffer, stagingIndexBufferMemory] = createBuffer(
             indexBufferSize,
@@ -863,28 +852,48 @@ bool Renderer::createMeshResources(MeshComponent* meshComponent) {
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
         );
 
-        // Copy index data to staging buffer
         void* indexData = stagingIndexBufferMemory.mapMemory(0, indexBufferSize);
-        memcpy(indexData, indices.data(), static_cast<size_t>(indexBufferSize));
+        std::memcpy(indexData, indices.data(), static_cast<size_t>(indexBufferSize));
         stagingIndexBufferMemory.unmapMemory();
 
-        // Create index buffer on device using memory pool
+        // --- 2. Create device-local vertex and index buffers via the memory pool ---
+        auto [vertexBuffer, vertexBufferAllocation] = createBufferPooled(
+            vertexBufferSize,
+            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal
+        );
+
         auto [indexBuffer, indexBufferAllocation] = createBufferPooled(
             indexBufferSize,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal
         );
 
-        // Copy from staging buffer to device buffer
-        copyBuffer(stagingIndexBuffer, indexBuffer, indexBufferSize);
-
-        // Create mesh resources
+        // --- 3. Either copy now (legacy path) or defer copies for batched submission ---
         MeshResources resources;
         resources.vertexBuffer = std::move(vertexBuffer);
         resources.vertexBufferAllocation = std::move(vertexBufferAllocation);
         resources.indexBuffer = std::move(indexBuffer);
         resources.indexBufferAllocation = std::move(indexBufferAllocation);
         resources.indexCount = static_cast<uint32_t>(indices.size());
+
+        if (deferUpload) {
+            // Keep staging buffers alive and record their sizes; copies will be
+            // performed later by preAllocateEntityResourcesBatch().
+            resources.stagingVertexBuffer = std::move(stagingVertexBuffer);
+            resources.stagingVertexBufferMemory = std::move(stagingVertexBufferMemory);
+            resources.vertexBufferSizeBytes = vertexBufferSize;
+
+            resources.stagingIndexBuffer = std::move(stagingIndexBuffer);
+            resources.stagingIndexBufferMemory = std::move(stagingIndexBufferMemory);
+            resources.indexBufferSizeBytes = indexBufferSize;
+        } else {
+            // Immediate upload path used by preAllocateEntityResources() and other
+            // small-object callers. This preserves existing behaviour.
+            copyBuffer(stagingVertexBuffer, resources.vertexBuffer, vertexBufferSize);
+            copyBuffer(stagingIndexBuffer, resources.indexBuffer, indexBufferSize);
+            // staging* buffers are RAII objects and will be destroyed on scope exit.
+        }
 
         // Add to mesh resources map
         meshResources[meshComponent] = std::move(resources);
@@ -1164,6 +1173,166 @@ bool Renderer::preAllocateEntityResources(Entity* entity) {
     }
 }
 
+// Pre-allocate Vulkan resources for a batch of entities, batching mesh uploads
+bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity*>& entities) {
+    ensureThreadLocalVulkanInit();
+    try {
+        // --- 1. For all entities, create mesh resources with deferred uploads ---
+        std::vector<MeshComponent*> meshesNeedingUpload;
+        meshesNeedingUpload.reserve(entities.size());
+
+        for (Entity* entity : entities) {
+            if (!entity) {
+                continue;
+            }
+
+            auto meshComponent = entity->GetComponent<MeshComponent>();
+            if (!meshComponent) {
+                continue;
+            }
+
+            if (!createMeshResources(meshComponent, true)) {
+                std::cerr << "Failed to create mesh resources for entity (batch): "
+                          << entity->GetName() << std::endl;
+                return false;
+            }
+
+            auto it = meshResources.find(meshComponent);
+            if (it == meshResources.end()) {
+                continue;
+            }
+            MeshResources& res = it->second;
+
+            // Only schedule meshes that still have staged data pending upload
+            if (res.vertexBufferSizeBytes > 0 && res.indexBufferSizeBytes > 0) {
+                meshesNeedingUpload.push_back(meshComponent);
+            }
+        }
+
+        // --- 2. Batch all buffer copies into a single command buffer submission ---
+        if (!meshesNeedingUpload.empty()) {
+            vk::CommandPoolCreateInfo poolInfo{
+                .flags = vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+                .queueFamilyIndex = queueFamilyIndices.transferFamily.value()
+            };
+            vk::raii::CommandPool tempPool(device, poolInfo);
+
+            vk::CommandBufferAllocateInfo allocInfo{
+                .commandPool = *tempPool,
+                .level = vk::CommandBufferLevel::ePrimary,
+                .commandBufferCount = 1
+            };
+            vk::raii::CommandBuffers commandBuffers(device, allocInfo);
+            vk::raii::CommandBuffer& commandBuffer = commandBuffers[0];
+
+            vk::CommandBufferBeginInfo beginInfo{
+                .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+            };
+            commandBuffer.begin(beginInfo);
+
+            for (MeshComponent* meshComponent : meshesNeedingUpload) {
+                auto it = meshResources.find(meshComponent);
+                if (it == meshResources.end()) {
+                    continue;
+                }
+                MeshResources& res = it->second;
+
+                if (res.vertexBufferSizeBytes > 0) {
+                    vk::BufferCopy copyRegion{
+                        .srcOffset = 0,
+                        .dstOffset = 0,
+                        .size = res.vertexBufferSizeBytes
+                    };
+                    commandBuffer.copyBuffer(*res.stagingVertexBuffer, *res.vertexBuffer, copyRegion);
+                }
+
+                if (res.indexBufferSizeBytes > 0) {
+                    vk::BufferCopy copyRegion{
+                        .srcOffset = 0,
+                        .dstOffset = 0,
+                        .size = res.indexBufferSizeBytes
+                    };
+                    commandBuffer.copyBuffer(*res.stagingIndexBuffer, *res.indexBuffer, copyRegion);
+                }
+            }
+
+            commandBuffer.end();
+
+            vk::SubmitInfo submitInfo{
+                .commandBufferCount = 1,
+                .pCommandBuffers = &*commandBuffer
+            };
+
+            vk::raii::Fence fence(device, vk::FenceCreateInfo{});
+            {
+                std::lock_guard<std::mutex> lock(queueMutex);
+                transferQueue.submit(submitInfo, *fence);
+            }
+            [[maybe_unused]] auto fenceResult = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+
+            // After upload, staging buffers can be released (RAII will destroy them)
+            for (MeshComponent* meshComponent : meshesNeedingUpload) {
+                auto it = meshResources.find(meshComponent);
+                if (it == meshResources.end()) {
+                    continue;
+                }
+                MeshResources& res = it->second;
+                res.stagingVertexBuffer = nullptr;
+                res.stagingVertexBufferMemory = nullptr;
+                res.vertexBufferSizeBytes = 0;
+                res.stagingIndexBuffer = nullptr;
+                res.stagingIndexBufferMemory = nullptr;
+                res.indexBufferSizeBytes = 0;
+            }
+        }
+
+        // --- 3. Create uniform buffers and descriptor sets per entity ---
+        for (Entity* entity : entities) {
+            if (!entity) {
+                continue;
+            }
+
+            auto meshComponent = entity->GetComponent<MeshComponent>();
+            if (!meshComponent) {
+                continue;
+            }
+
+            if (!createUniformBuffers(entity)) {
+                std::cerr << "Failed to create uniform buffers for entity (batch): "
+                          << entity->GetName() << std::endl;
+                return false;
+            }
+
+            std::string texturePath = meshComponent->GetTexturePath();
+            // Fallback: if legacy texturePath is empty, use PBR baseColor texture
+            if (texturePath.empty()) {
+                const std::string& baseColor = meshComponent->GetBaseColorTexturePath();
+                if (!baseColor.empty()) {
+                    texturePath = baseColor;
+                }
+            }
+
+            if (!createDescriptorSets(entity, texturePath, false)) {
+                std::cerr << "Failed to create basic descriptor sets for entity (batch): "
+                          << entity->GetName() << std::endl;
+                return false;
+            }
+
+            if (!createDescriptorSets(entity, texturePath, true)) {
+                std::cerr << "Failed to create PBR descriptor sets for entity (batch): "
+                          << entity->GetName() << std::endl;
+                return false;
+            }
+        }
+
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to batch pre-allocate resources for entities: " << e.what() << std::endl;
+        return false;
+    }
+}
+
 // Create buffer using memory pool for efficient allocation
 std::pair<vk::raii::Buffer, std::unique_ptr<MemoryPool::Allocation>> Renderer::createBufferPooled(
     vk::DeviceSize size,
@@ -1385,7 +1554,7 @@ void Renderer::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuff
             std::lock_guard<std::mutex> lock(queueMutex);
             transferQueue.submit(submitInfo, *fence);
         }
-        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+        [[maybe_unused]] auto fenceResult2 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer: " << e.what() << std::endl;
         throw;
@@ -1571,7 +1740,7 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
             nullptr,
             barrier
         );
-        std::cout << "[transitionImageLayout] recorded barrier image=" << (void*)image << " old=" << (int)oldLayout << " new=" << (int)newLayout << std::endl;
+        std::cout << "[transitionImageLayout] recorded barrier image=" << (void*)image << " old=" << static_cast<int>(oldLayout) << " new=" << static_cast<int>(newLayout) << std::endl;
 
         // End command buffer
         commandBuffer.end();
@@ -1588,7 +1757,7 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
             std::lock_guard<std::mutex> lock(queueMutex);
             graphicsQueue.submit(submitInfo, *fence);
         }
-        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+        [[maybe_unused]] auto fenceResult3 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "Failed to transition image layout: " << e.what() << std::endl;
         throw;
@@ -1645,7 +1814,7 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
             std::lock_guard<std::mutex> lock(queueMutex);
             graphicsQueue.submit(submitInfo, *fence);
         }
-        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+        [[maybe_unused]] auto fenceResult4 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "Failed to copy buffer to image: " << e.what() << std::endl;
         throw;
@@ -1674,7 +1843,7 @@ bool Renderer::createOrResizeLightStorageBuffers(size_t lightCount) {
         }
 
         // Calculate new capacity (with some headroom for growth)
-        size_t newCapacity = std::max(lightCount * 2, size_t(64));
+        size_t newCapacity = std::max(lightCount * 2, static_cast<size_t>(64));
         vk::DeviceSize bufferSize = sizeof(LightData) * newCapacity;
 
         // Wait for device to be idle before destroying old buffers to prevent validation errors
@@ -1724,7 +1893,7 @@ bool Renderer::createOrResizeLightStorageBuffers(size_t lightCount) {
 void Renderer::updateAllDescriptorSetsWithNewLightBuffers() {
     try {
         // Iterate through all entity resources and update their PBR descriptor sets
-        for (auto& [entity, resources] : entityResources) {
+        for (auto& resources : entityResources | std::views::values) {
             // Only update PBR descriptor sets (they have light buffer bindings)
             if (!resources.pbrDescriptorSets.empty()) {
                 for (size_t i = 0; i < resources.pbrDescriptorSets.size() && i < lightStorageBuffers.size(); ++i) {
@@ -1838,19 +2007,33 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
 
 
 // Asynchronous texture loading implementations using ThreadPool
-std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath) {
+std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical) {
     if (texturePath.empty()) {
         return std::async(std::launch::deferred, [] { return false; });
     }
-    // Schedule the load without dropping tasks; throttling is handled during GPU upload
+    // Schedule a CPU-light job that enqueues a pending GPU upload to be
+    // processed later on the main thread. This avoids submitting Vulkan
+    // command buffers from worker threads, which can confuse GPU-assisted
+    // validation.
     textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
-    auto task = [this, texturePath]() {
-        bool ok = this->LoadTexture(texturePath);
+    uploadJobsTotal.fetch_add(1, std::memory_order_relaxed);
+    auto task = [this, texturePath, critical]() {
+        PendingTextureJob job;
+        job.type = PendingTextureJob::Type::FromFile;
+        job.priority = critical ? PendingTextureJob::Priority::Critical
+                                : PendingTextureJob::Priority::NonCritical;
+        job.idOrPath = texturePath;
+        {
+            std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
+            pendingTextureJobs.emplace_back(std::move(job));
+        }
+        if (critical) {
+            criticalJobsOutstanding.fetch_add(1, std::memory_order_relaxed);
+        }
         textureTasksCompleted.fetch_add(1, std::memory_order_relaxed);
-        return ok;
+        return true;
     };
-    
-    // Use shared_lock to prevent race condition with threadPool destruction
+
     std::shared_lock<std::shared_mutex> lock(threadPoolMutex);
     if (!threadPool) {
         return std::async(std::launch::async, task);
@@ -1859,7 +2042,7 @@ std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath) {
 }
 
 std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textureId, const unsigned char* imageData,
-                              int width, int height, int channels) {
+                              int width, int height, int channels, bool critical) {
     if (!imageData || textureId.empty() || width <= 0 || height <= 0 || channels <= 0) {
         return std::async(std::launch::deferred, [] { return false; });
     }
@@ -1869,18 +2052,160 @@ std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textur
     std::memcpy(dataCopy.data(), imageData, srcSize);
 
     textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
-    auto task = [this, textureId, data = std::move(dataCopy), width, height, channels]() mutable {
-        bool ok = this->LoadTextureFromMemory(textureId, data.data(), width, height, channels);
+    uploadJobsTotal.fetch_add(1, std::memory_order_relaxed);
+    auto task = [this, textureId, data = std::move(dataCopy), width, height, channels, critical]() mutable {
+        PendingTextureJob job;
+        job.type = PendingTextureJob::Type::FromMemory;
+        job.priority = critical ? PendingTextureJob::Priority::Critical
+                                : PendingTextureJob::Priority::NonCritical;
+        job.idOrPath = textureId;
+        job.data = std::move(data);
+        job.width = width;
+        job.height = height;
+        job.channels = channels;
+        {
+            std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
+            pendingTextureJobs.emplace_back(std::move(job));
+        }
+        if (critical) {
+            criticalJobsOutstanding.fetch_add(1, std::memory_order_relaxed);
+        }
         textureTasksCompleted.fetch_add(1, std::memory_order_relaxed);
-        return ok;
+        return true;
     };
-    
-    // Use shared_lock to prevent race condition with threadPool destruction
+
     std::shared_lock<std::shared_mutex> lock(threadPoolMutex);
     if (!threadPool) {
         return std::async(std::launch::async, std::move(task));
     }
     return threadPool->enqueue(std::move(task));
+}
+
+void Renderer::WaitForAllTextureTasks() {
+    // Simple blocking wait: spin until all scheduled texture tasks have completed.
+    // This is only intended for use during initial scene loading where a short
+    // stall is acceptable to ensure descriptor sets see all real textures.
+    for (;;) {
+        uint32_t scheduled = textureTasksScheduled.load(std::memory_order_relaxed);
+        uint32_t completed = textureTasksCompleted.load(std::memory_order_relaxed);
+        if (scheduled == 0 || completed >= scheduled) {
+            break;
+        }
+        // Sleep briefly to yield CPU while background texture jobs finish
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+void Renderer::RegisterTextureUser(const std::string& textureId, Entity* entity) {
+    if (textureId.empty() || !entity) return;
+
+    // Always register under the canonical resolved ID so that lookups from
+    // descriptor creation and upload completion (which also use
+    // ResolveTextureId) are consistent.
+    std::string canonicalId = ResolveTextureId(textureId);
+    if (canonicalId.empty()) {
+        canonicalId = textureId;
+    }
+
+    std::lock_guard<std::mutex> lk(textureUsersMutex);
+    textureToEntities[canonicalId].push_back(entity);
+}
+
+void Renderer::OnTextureUploaded(const std::string& textureId) {
+    // Resolve alias to canonical ID used for tracking and descriptor
+    // creation. RegisterTextureUser also stores under this canonical ID.
+    std::string canonicalId = ResolveTextureId(textureId);
+    if (canonicalId.empty()) {
+        canonicalId = textureId;
+    }
+
+    std::vector<Entity*> users;
+    {
+        std::lock_guard<std::mutex> lk(textureUsersMutex);
+        auto it = textureToEntities.find(canonicalId);
+        if (it == textureToEntities.end()) {
+            return;
+        }
+        users = it->second;
+    }
+
+    for (Entity* entity : users) {
+        if (!entity) continue;
+        auto meshComponent = entity->GetComponent<MeshComponent>();
+        if (!meshComponent) continue;
+
+        // Choose a primary texture path hint for basic pipeline; PBR
+        // descriptor creation will pull all PBR texture paths directly
+        // from the mesh component.
+        std::string basicTexPath = meshComponent->GetTexturePath();
+        if (basicTexPath.empty()) {
+            basicTexPath = meshComponent->GetBaseColorTexturePath();
+        }
+
+        // Recreate/refresh descriptor sets for this entity so they now
+        // bind the just-uploaded texture instead of the default.
+        createDescriptorSets(entity, basicTexPath, false);
+        createDescriptorSets(entity, basicTexPath, true);
+    }
+}
+
+void Renderer::ProcessPendingTextureJobs(uint32_t maxJobs,
+                                         bool includeCritical,
+                                         bool includeNonCritical) {
+    // Drain the pending job list under lock into a local vector, then
+    // perform a bounded number of texture loads (including Vulkan work)
+    // on this thread. This must be called from the main/render thread.
+    std::vector<PendingTextureJob> jobs;
+    {
+        std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
+        if (pendingTextureJobs.empty()) {
+            return;
+        }
+        jobs.swap(pendingTextureJobs);
+    }
+
+    std::vector<PendingTextureJob> remaining;
+    remaining.reserve(jobs.size());
+
+    uint32_t processed = 0;
+    for (auto& job : jobs) {
+        const bool isCritical = (job.priority == PendingTextureJob::Priority::Critical);
+        if (processed < maxJobs &&
+            ((isCritical && includeCritical) || (!isCritical && includeNonCritical))) {
+            switch (job.type) {
+                case PendingTextureJob::Type::FromFile:
+                    // LoadTexture will resolve aliases and perform full GPU upload
+                    LoadTexture(job.idOrPath);
+                    break;
+                case PendingTextureJob::Type::FromMemory:
+                    // LoadTextureFromMemory will create GPU resources for this ID
+                    LoadTextureFromMemory(job.idOrPath,
+                                          job.data.data(),
+                                          job.width,
+                                          job.height,
+                                          job.channels);
+                    break;
+            }
+            // Refresh descriptors for entities that use this texture so
+            // streaming uploads become visible in the scene.
+            OnTextureUploaded(job.idOrPath);
+            if (isCritical) {
+                criticalJobsOutstanding.fetch_sub(1, std::memory_order_relaxed);
+            }
+            uploadJobsCompleted.fetch_add(1, std::memory_order_relaxed);
+            ++processed;
+        } else {
+            remaining.emplace_back(std::move(job));
+        }
+    }
+
+    if (!remaining.empty()) {
+        std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
+        // Append remaining jobs back to the pending queue
+        pendingTextureJobs.insert(pendingTextureJobs.end(),
+                                  std::make_move_iterator(remaining.begin()),
+                                  std::make_move_iterator(remaining.end()));
+    }
 }
 
 
@@ -1984,7 +2309,7 @@ void Renderer::uploadImageFromStaging(vk::Buffer staging,
 
             graphicsQueue.submit(submit, *fence);
         }
-        device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+        [[maybe_unused]] auto fenceResult5 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
     } catch (const std::exception& e) {
         std::cerr << "uploadImageFromStaging failed: " << e.what() << std::endl;
         throw;

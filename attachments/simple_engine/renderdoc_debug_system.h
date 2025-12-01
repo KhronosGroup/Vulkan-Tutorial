@@ -6,7 +6,7 @@
 // This header intentionally does NOT include <renderdoc_app.h> to avoid a hard dependency.
 // Instead, we declare a minimal interface and dynamically resolve the API if present.
 
-class RenderDocDebugSystem : public DebugSystem {
+class RenderDocDebugSystem final : public DebugSystem {
 public:
     static RenderDocDebugSystem& GetInstance() {
         static RenderDocDebugSystem instance;

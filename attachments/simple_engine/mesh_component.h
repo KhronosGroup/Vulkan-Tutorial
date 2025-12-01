@@ -66,7 +66,7 @@ struct InstanceData {
 
 
     static vk::VertexInputBindingDescription getBindingDescription() {
-        vk::VertexInputBindingDescription bindingDescription(
+        constexpr vk::VertexInputBindingDescription bindingDescription(
             1,                                  // binding (binding 1 for instance data)
             sizeof(InstanceData),               // stride
             vk::VertexInputRate::eInstance      // inputRate
@@ -78,7 +78,7 @@ struct InstanceData {
         constexpr uint32_t modelBase = offsetof(InstanceData, modelMatrix);
         constexpr uint32_t normalBase = offsetof(InstanceData, normalMatrix);
         constexpr uint32_t vec4Size = sizeof(glm::vec4);
-        std::array<vk::VertexInputAttributeDescription, 7> attributeDescriptions = {
+        constexpr std::array<vk::VertexInputAttributeDescription, 7> attributeDescriptions = {
             // Model matrix columns (locations 4-7)
             vk::VertexInputAttributeDescription{
                 .location = 4,
@@ -131,7 +131,7 @@ struct InstanceData {
     static std::array<vk::VertexInputAttributeDescription, 4> getModelMatrixAttributeDescriptions() {
         constexpr uint32_t modelBase = offsetof(InstanceData, modelMatrix);
         constexpr uint32_t vec4Size = sizeof(glm::vec4);
-        std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
+        constexpr std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
             vk::VertexInputAttributeDescription{
                 .location = 4,
                 .binding = 1,
@@ -164,7 +164,7 @@ struct InstanceData {
     static std::array<vk::VertexInputAttributeDescription, 3> getNormalMatrixAttributeDescriptions() {
         constexpr uint32_t normalBase = offsetof(InstanceData, normalMatrix);
         constexpr uint32_t vec4Size = sizeof(glm::vec4);
-        std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions = {
+        constexpr std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions = {
             vk::VertexInputAttributeDescription{
                 .location = 8,
                 .binding = 1,
@@ -205,7 +205,7 @@ struct Vertex {
     }
 
     static vk::VertexInputBindingDescription getBindingDescription() {
-        vk::VertexInputBindingDescription bindingDescription(
+        constexpr vk::VertexInputBindingDescription bindingDescription(
             0,                                  // binding
             sizeof(Vertex),                     // stride
             vk::VertexInputRate::eVertex        // inputRate
@@ -214,7 +214,7 @@ struct Vertex {
     }
 
     static std::array<vk::VertexInputAttributeDescription, 4> getAttributeDescriptions() {
-        std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
+        constexpr std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
             vk::VertexInputAttributeDescription{
                 .location = 0,
                 .binding = 0,
@@ -247,7 +247,7 @@ struct Vertex {
 /**
  * @brief Component that handles the mesh data for rendering.
  */
-class MeshComponent : public Component {
+class MeshComponent final : public Component {
 private:
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;

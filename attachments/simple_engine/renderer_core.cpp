@@ -30,10 +30,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
     return VK_FALSE;
 }
 
-// This implementation corresponds to the Engine_Architecture chapter in the tutorial:
-// @see en/Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.adoc
-
-// Constructor
+// Renderer core implementation for the "Rendering Pipeline" chapter of the tutorial.
 Renderer::Renderer(Platform* platform)
     : platform(platform) {
     // Initialize deviceExtensions with required extensions only
@@ -491,8 +488,8 @@ void Renderer::addSupportedOptionalExtensions() {
         // First, handle dependency: VK_EXT_attachment_feedback_loop_dynamic_state requires VK_EXT_attachment_feedback_loop_layout
         const char* dynState = VK_EXT_ATTACHMENT_FEEDBACK_LOOP_DYNAMIC_STATE_EXTENSION_NAME;
         const char* layoutReq = "VK_EXT_attachment_feedback_loop_layout";
-        bool dynSupported = avail.count(dynState) > 0;
-        bool layoutSupported = avail.count(layoutReq) > 0;
+        bool dynSupported = avail.contains(dynState);
+        bool layoutSupported = avail.contains(layoutReq);
         for (const auto& optionalExt : optionalDeviceExtensions) {
             if (std::strcmp(optionalExt, dynState) == 0) {
                 if (dynSupported && layoutSupported) {
@@ -505,7 +502,7 @@ void Renderer::addSupportedOptionalExtensions() {
                 }
                 continue; // handled
             }
-            if (avail.count(optionalExt)) {
+            if (avail.contains(optionalExt)) {
                 deviceExtensions.push_back(optionalExt);
                 std::cout << "Adding optional extension: " << optionalExt << std::endl;
             }
@@ -574,23 +571,17 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
         storage8BitFeatures.pNext = &vulkan13Features;
         features.pNext = &timelineSemaphoreFeatures;
 
-        // Create a device
+        // Create a device. Device layers are deprecated and ignored, so we
+        // only configure extensions and features here; validation is enabled
+        // via instance layers.
         vk::DeviceCreateInfo createInfo{
             .pNext = &features,
             .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
             .pQueueCreateInfos = queueCreateInfos.data(),
-            .enabledLayerCount = 0,
-            .ppEnabledLayerNames = nullptr,
             .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
             .ppEnabledExtensionNames = deviceExtensions.data(),
             .pEnabledFeatures = nullptr // Using pNext for features
         };
-
-        // Enable validation layers if requested
-        if (enableValidationLayers) {
-            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-            createInfo.ppEnabledLayerNames = validationLayers.data();
-        }
 
         // Create the logical device
         device = vk::raii::Device(physicalDevice, createInfo);

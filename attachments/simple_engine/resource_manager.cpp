@@ -1,5 +1,7 @@
 #include "resource_manager.h"
 
+#include <ranges>
+
 // Most of the ResourceManager class implementation is in the header file
 // This file is mainly for any methods that might need additional implementation
 //
@@ -16,11 +18,11 @@ void Resource::Unload() {
 }
 
 void ResourceManager::UnloadAllResources() {
-    for (auto& typePair : resources) {
-        for (auto& resourcePair : typePair.second) {
-            resourcePair.second->Unload();
+    for (auto& val : resources | std::views::values) {
+        for (auto& loadedResource : val | std::views::values) {
+            loadedResource->Unload();
         }
-        typePair.second.clear();
+        val.clear();
     }
     resources.clear();
 }

@@ -11,14 +11,14 @@ void MeshComponent::CreateSphere(float radius, const glm::vec3& color, int segme
 
     // Generate sphere vertices using parametric equations
     for (int lat = 0; lat <= segments; ++lat) {
-        auto theta = static_cast<float>(lat * M_PI / segments); // Latitude angle (0 to PI)
-        float sinTheta = sinf(theta);
-        float cosTheta = cosf(theta);
+        const auto theta = static_cast<float>(lat * M_PI / segments); // Latitude angle (0 to PI)
+        const float sinTheta = sinf(theta);
+        const float cosTheta = cosf(theta);
 
         for (int lon = 0; lon <= segments; ++lon) {
-            auto phi = static_cast<float>(lon * 2.0 * M_PI / segments); // Longitude angle (0 to 2*PI)
-            float sinPhi = sinf(phi);
-            float cosPhi = cosf(phi);
+            const auto phi = static_cast<float>(lon * 2.0 * M_PI / segments); // Longitude angle (0 to 2*PI)
+            const float sinPhi = sinf(phi);
+            const float cosPhi = cosf(phi);
 
             // Calculate position
             glm::vec3 position = {
@@ -31,7 +31,7 @@ void MeshComponent::CreateSphere(float radius, const glm::vec3& color, int segme
             glm::vec3 normal = glm::normalize(position);
 
             // Texture coordinates
-            glm::vec2 texCoord = {
+            const glm::vec2 texCoord = {
                 static_cast<float>(lon) / static_cast<float>(segments),
                 static_cast<float>(lat) / static_cast<float>(segments)
             };
@@ -66,8 +66,8 @@ void MeshComponent::CreateSphere(float radius, const glm::vec3& color, int segme
     // Generate indices for triangles
     for (int lat = 0; lat < segments; ++lat) {
         for (int lon = 0; lon < segments; ++lon) {
-            int current = lat * (segments + 1) + lon;
-            int next = current + segments + 1;
+            const int current = lat * (segments + 1) + lon;
+            const int next = current + segments + 1;
 
             // Create two triangles for each quad
             indices.push_back(current);

@@ -123,12 +123,14 @@ void ImGuiSystem::NewFrame() {
 
     ImGui::NewFrame();
 
-    // Loading overlay: show only a fullscreen progress bar while model/textures are loading
+    // Loading overlay: show only a fullscreen progress bar while the model
+    // itself is loading. Once the scene is ready and geometry is visible,
+    // we no longer block the view with a full-screen progress bar.
     if (renderer) {
         const uint32_t scheduled = renderer->GetTextureTasksScheduled();
         const uint32_t completed = renderer->GetTextureTasksCompleted();
         const bool modelLoading = renderer->IsLoading();
-        if (modelLoading || (scheduled > 0 && completed < scheduled)) {
+        if (modelLoading) {
             ImGuiIO& io = ImGui::GetIO();
             // Suppress right-click while loading
             if (io.MouseDown[1]) io.MouseDown[1] = false;
@@ -158,17 +160,48 @@ void ImGuiSystem::NewFrame() {
                 ImGui::ProgressBar(frac, ImVec2(barWidth, 0.0f));
                 ImGui::Dummy(ImVec2(0.0f, 10.0f));
                 ImGui::SetCursorPosX(barX);
-                if (modelLoading) {
-                    ImGui::Text("Loading model...");
-                } else {
-                    ImGui::Text("Loading textures: %u / %u", completed, scheduled);
-                }
+                ImGui::Text("Loading scene...");
                 ImGui::EndGroup();
                 ImGui::PopStyleVar();
             }
             ImGui::End();
             // Do not draw the rest of the UI until loading finishes
             return;
+        }
+    }
+
+    // --- Streaming status: small progress indicator in the upper-right ---
+    // Once the scene is visible, textures may continue streaming to the GPU.
+    // Show a compact progress bar in the top-right while there are still
+    // outstanding texture tasks, and hide it once everything is fully loaded.
+    if (renderer) {
+        const uint32_t uploadTotal = renderer->GetUploadJobsTotal();
+        const uint32_t uploadDone  = renderer->GetUploadJobsCompleted();
+        const bool modelLoading = renderer->IsLoading();
+
+        if (!modelLoading && uploadTotal > 0 && uploadDone < uploadTotal) {
+            ImGuiIO& io = ImGui::GetIO();
+            const ImVec2 dispSize = io.DisplaySize;
+
+            const float windowWidth  = std::min(260.0f, dispSize.x * 0.35f);
+            const float windowHeight = 60.0f;
+            const ImVec2 winPos(dispSize.x - windowWidth - 10.0f, 10.0f);
+
+            ImGui::SetNextWindowPos(winPos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight));
+            ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                                     ImGuiWindowFlags_NoResize   |
+                                     ImGuiWindowFlags_NoMove     |
+                                     ImGuiWindowFlags_NoScrollbar|
+                                     ImGuiWindowFlags_NoSavedSettings |
+                                     ImGuiWindowFlags_NoCollapse;
+
+            if (ImGui::Begin("##StreamingTextures", nullptr, flags)) {
+                ImGui::TextUnformatted("Streaming textures to GPU");
+                float frac = (uploadTotal > 0) ? (float)uploadDone / (float)uploadTotal : 0.0f;
+                ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f));
+            }
+            ImGui::End();
         }
     }
 
@@ -239,22 +272,6 @@ void ImGuiSystem::NewFrame() {
         ImGui::Text("Tip: Adjust exposure if scene looks washed out");
     } else {
         ImGui::Text("Note: Quality controls affect BRDF rendering only");
-    }
-
-    ImGui::Separator();
-
-    // Sun position control (punctual light in GLTF)
-    ImGui::Text("Sun Position in Sky:");
-    if (renderer) {
-        float sun = renderer->GetSunPosition();
-        if (ImGui::SliderFloat("Sun Position", &sun, 0.0f, 1.0f, "%.2f")) {
-            renderer->SetSunPosition(sun);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Noon")) { sun = 0.5f; renderer->SetSunPosition(sun); }
-        ImGui::SameLine();
-        if (ImGui::Button("Night")) { sun = 0.0f; renderer->SetSunPosition(sun); }
-        ImGui::Text("Tip: 0/1 = Night, 0.5 = Noon. Warmer tint near horizon simulates evening.");
     }
 
     ImGui::Separator();

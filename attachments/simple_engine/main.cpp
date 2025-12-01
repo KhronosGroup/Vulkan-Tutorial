@@ -39,7 +39,10 @@ void SetupScene(Engine* engine) {
     // Set the camera as the active camera
     engine->SetActiveCamera(camera);
 
-    // Kick off GLTF model loading on a background thread so the main loop can start and render the UI/progress bar
+    // Kick off GLTF model loading on a background thread so the main loop
+    // can start and render the UI/progress bar while the scene is being
+    // constructed. Engine::Update will avoid updating entities while
+    // loading is in progress to prevent data races.
     if (auto* renderer = engine->GetRenderer()) {
         renderer->SetLoading(true);
     }

@@ -150,6 +150,13 @@ bool Renderer::createGraphicsPipeline() {
             .pName = "PSMain"
         };
 
+        // Fragment entry point specialized for architectural glass
+        vk::PipelineShaderStageCreateInfo fragGlassStageInfo{
+            .stage = vk::ShaderStageFlagBits::eFragment,
+            .module = *shaderModule,
+            .pName = "GlassPSMain"
+        };
+
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
         // Create vertex input info with instancing support
@@ -325,6 +332,13 @@ bool Renderer::createPBRPipeline() {
             .pName = "PSMain"
         };
 
+        // Fragment entry point specialized for architectural glass
+        vk::PipelineShaderStageCreateInfo fragGlassStageInfo{
+            .stage = vk::ShaderStageFlagBits::eFragment,
+            .module = *shaderModule,
+            .pName = "GlassPSMain"
+        };
+
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
         // Define vertex and instance binding descriptions
@@ -468,6 +482,13 @@ bool Renderer::createPBRPipeline() {
         vk::PipelineRasterizationStateCreateInfo rasterizerBack = rasterizer;
         rasterizerBack.cullMode = vk::CullModeFlagBits::eBack;
 
+        // For architectural glass we often want to see both the inner and outer
+        // walls of thin shells (e.g., bar glasses viewed from above). Use
+        // no culling for the glass pipeline to render both sides, while
+        // keeping back-face culling for the generic PBR pipelines.
+        vk::PipelineRasterizationStateCreateInfo rasterizerGlass = rasterizer;
+        rasterizerGlass.cullMode = vk::CullModeFlagBits::eNone;
+
         vk::GraphicsPipelineCreateInfo opaquePipelineInfo{
             .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
             .pNext = &pbrPipelineRenderingCreateInfo,
@@ -511,7 +532,11 @@ bool Renderer::createPBRPipeline() {
             .pVertexInputState = &vertexInputInfo,
             .pInputAssemblyState = &inputAssembly,
             .pViewportState = &viewportState,
-            .pRasterizationState = &rasterizer,
+            // Use back-face culling for the blended (glass) pipeline to avoid
+            // rendering both front and back faces of thin glass geometry, which
+            // can cause flickering as the camera rotates due to overlapping
+            // transparent surfaces passing the depth test.
+            .pRasterizationState = &rasterizerBack,
             .pMultisampleState = &multisampling,
             .pDepthStencilState = &depthStencilBlended,
             .pColorBlendState = &colorBlendingBlended,
@@ -523,6 +548,33 @@ bool Renderer::createPBRPipeline() {
             .basePipelineIndex = -1
         };
         pbrBlendGraphicsPipeline = vk::raii::Pipeline(device, nullptr, blendedPipelineInfo);
+
+        // 3) Glass pipeline (architectural glass) - uses the same vertex input and
+        // descriptor layouts, but a dedicated fragment shader entry point
+        // (GlassPSMain) for more stable glass shading.
+        vk::PipelineShaderStageCreateInfo glassStages[] = {vertShaderStageInfo, fragGlassStageInfo};
+
+        vk::GraphicsPipelineCreateInfo glassPipelineInfo{
+            .sType = vk::StructureType::eGraphicsPipelineCreateInfo,
+            .pNext = &pbrPipelineRenderingCreateInfo,
+            .flags = vk::PipelineCreateFlags{},
+            .stageCount = 2,
+            .pStages = glassStages,
+            .pVertexInputState = &vertexInputInfo,
+            .pInputAssemblyState = &inputAssembly,
+            .pViewportState = &viewportState,
+            .pRasterizationState = &rasterizerGlass,
+            .pMultisampleState = &multisampling,
+            .pDepthStencilState = &depthStencilBlended,
+            .pColorBlendState = &colorBlendingBlended,
+            .pDynamicState = &dynamicState,
+            .layout = *pbrTransparentPipelineLayout,
+            .renderPass = nullptr,
+            .subpass = 0,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = -1
+        };
+        glassGraphicsPipeline = vk::raii::Pipeline(device, nullptr, glassPipelineInfo);
 
         return true;
     } catch (const std::exception& e) {

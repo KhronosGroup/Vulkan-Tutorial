@@ -198,20 +198,20 @@ bool Engine::RemoveEntity(Entity* entity) {
     std::string name = entity->GetName();
 
     // Find the entity in the vector
-    auto it = std::find_if(entities.begin(), entities.end(),
-        [entity](const std::unique_ptr<Entity>& e) {
-            return e.get() == entity;
-        });
+    auto it = std::ranges::find_if(entities,
+                                   [entity](const std::unique_ptr<Entity>& e) {
+                                       return e.get() == entity;
+                                   });
 
     if (it != entities.end()) {
         // Remove from the vector (ownership)
         entities.erase(it);
 
         // Update the map: point to another entity with the same name if one exists
-        auto remainingIt = std::find_if(entities.begin(), entities.end(),
-            [&name](const std::unique_ptr<Entity>& e) {
-                return e->GetName() == name;
-            });
+        auto remainingIt = std::ranges::find_if(entities,
+                                                [&name](const std::unique_ptr<Entity>& e) {
+                                                    return e->GetName() == name;
+                                                });
 
         if (remainingIt != entities.end()) {
             entityMap[name] = remainingIt->get();
@@ -357,6 +357,8 @@ void Engine::handleKeyInput(uint32_t key, bool pressed) {
         case GLFW_KEY_PAGE_DOWN:
             cameraControl.moveDown = pressed;
             break;
+        case GLFW_KEY_0:
+            break;
         default: break;
     }
 
@@ -366,12 +368,19 @@ void Engine::handleKeyInput(uint32_t key, bool pressed) {
 }
 
 void Engine::Update(TimeDelta deltaTime) {
-    // Debug: Verify Update method is being called
-    static int updateCallCount = 0;
-    updateCallCount++;
+    // During background scene loading we avoid touching the live entity
+    // list from the main thread. This lets the loading thread construct
+    // entities/components safely while the main thread only drives the
+    // UI/loading overlay.
+    if (renderer && renderer->IsLoading()) {
+        if (imguiSystem) {
+            imguiSystem->NewFrame();
+        }
+        return;
+    }
+
     // Process pending ball creations (outside rendering loop to avoid memory pool constraints)
     ProcessPendingBalls();
-
 
     if (activeCamera) {
         glm::vec3 currentCameraPosition = activeCamera->GetPosition();

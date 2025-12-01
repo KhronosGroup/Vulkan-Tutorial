@@ -142,23 +142,17 @@ bool VulkanDevice::createLogicalDevice(bool enableValidationLayers, const std::v
 
         vulkan13Features.pNext = &feedbackLoopFeatures;
 
-        // Create device
+        // Create device. Device layers are deprecated and ignored, so we
+        // configure only extensions and features; validation is enabled via
+        // instance layers.
         vk::DeviceCreateInfo createInfo{
             .pNext = &features,
             .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
             .pQueueCreateInfos = queueCreateInfos.data(),
-            .enabledLayerCount = 0,
-            .ppEnabledLayerNames = nullptr,
             .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
             .ppEnabledExtensionNames = deviceExtensions.data(),
             .pEnabledFeatures = nullptr // Using pNext for features
         };
-
-        // Enable validation layers if requested
-        if (enableValidationLayers) {
-            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-            createInfo.ppEnabledLayerNames = validationLayers.data();
-        }
 
         // Create the logical device
         device = vk::raii::Device(physicalDevice, createInfo);
@@ -252,7 +246,7 @@ bool VulkanDevice::checkDeviceExtensionSupport(vk::raii::PhysicalDevice& device)
     std::set<std::string> optionalExtensionsSet(optionalExtensions.begin(), optionalExtensions.end());
     std::cout << "Supported optional extensions:" << std::endl;
     for (const auto& extension : availableExtensions) {
-        if (optionalExtensionsSet.find(extension.extensionName) != optionalExtensionsSet.end()) {
+        if (optionalExtensionsSet.contains(extension.extensionName)) {
             std::cout << "  " << extension.extensionName << " (supported)" << std::endl;
         }
     }

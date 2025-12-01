@@ -14,7 +14,7 @@
 
 
 // Concrete implementation of RigidBody
-class ConcreteRigidBody : public RigidBody {
+class ConcreteRigidBody final : public RigidBody {
 public:
     ConcreteRigidBody(Entity* entity, CollisionShape shape, float mass)
         : entity(entity), shape(shape), mass(mass) {

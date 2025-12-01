@@ -202,7 +202,7 @@ bool Renderer::checkDeviceExtensionSupport(vk::raii::PhysicalDevice& device) {
     std::set<std::string> optionalExtensionsSet(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
     std::cout << "Supported optional extensions:" << std::endl;
     for (const auto& extension : availableDeviceExtensions) {
-        if (optionalExtensionsSet.find(extension.extensionName) != optionalExtensionsSet.end()) {
+        if (optionalExtensionsSet.contains(extension.extensionName)) {
             std::cout << "  " << extension.extensionName << " (supported)" << std::endl;
         }
     }

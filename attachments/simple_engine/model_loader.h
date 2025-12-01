@@ -54,6 +54,17 @@ class Material {
         std::string occlusionTexturePath;
         std::string emissiveTexturePath;
 
+        // Hint used by the renderer to select a specialized glass rendering path
+        // for architectural glass (windows, lamp glass, etc.). Set by ModelLoader
+        // based on material name/properties; defaults to false so non-glass
+        // materials continue to use the generic PBR path.
+        bool isGlass = false;
+
+        // Hint used by the renderer to preferentially render inner liquid volumes
+        // before outer glass shells (e.g., beer/wine in bar glasses). Set by
+        // ModelLoader based on material name/properties; defaults to false.
+        bool isLiquid = false;
+
     private:
         std::string name;
 };

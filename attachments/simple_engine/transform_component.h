@@ -12,7 +12,7 @@
  * This class implements the transform system as described in the Camera_Transformations chapter:
  * @see en/Building_a_Simple_Engine/Camera_Transformations/04_transformation_matrices.adoc#model-matrix
  */
-class TransformComponent : public Component {
+class TransformComponent final : public Component {
 private:
     glm::vec3 position = {0.0f, 0.0f, 0.0f};
     glm::vec3 rotation = {0.0f, 0.0f, 0.0f}; // Euler angles in radians
@@ -23,7 +23,7 @@ private:
 
 public:
     /**
-     * @brief Constructor with optional name.
+     * @brief Constructor with an optional name.
      * @param componentName The name of the component.
      */
     explicit TransformComponent(const std::string& componentName = "TransformComponent")

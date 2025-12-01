@@ -8,9 +8,13 @@ struct VSInput {
     [[vk::location(2)]] float2 TexCoord;
     [[vk::location(3)]] float4 Tangent;
 
-    // Per-instance data as true matrices; occupy locations 4..7 and 8..10 respectively
+    // Per-instance data. Model matrix is a true 4x4, while the normal
+    // matrix is provided as three float4 columns that match the CPU
+    // layout (glm::mat3x4: 3 columns of vec4, xyz used, w unused).
     [[vk::location(4)]] column_major float4x4 InstanceModelMatrix;  // binding 1 (consumes 4 locations)
-    [[vk::location(8)]] column_major float4x3 InstanceNormalMatrix; // binding 1 (consumes 3 locations)
+    [[vk::location(8)]] float4 InstanceNormal0;                     // normal matrix column 0
+    [[vk::location(9)]] float4 InstanceNormal1;                     // normal matrix column 1
+    [[vk::location(10)]] float4 InstanceNormal2;                    // normal matrix column 2
 };
 
 // Output from vertex shader / Input to fragment shader
@@ -39,9 +43,10 @@ VSOutput VSMain(VSInput input)
 {
     VSOutput output;
 
-    // Use instance matrices directly (CPU uploads column-major matrices in attributes 4..10)
+    // Use instance matrices directly (CPU uploads column-major model
+    // matrix and three float4 normal-matrix columns in attributes
+    // 4..10)
     float4x4 instanceModelMatrix = input.InstanceModelMatrix;
-    float3x3 normalMatrix3x3 = (float3x3)input.InstanceNormalMatrix;
 
     // Transform position to world space: entity model * instance model
     float4 worldPos = mul(ubo.model, mul(instanceModelMatrix, float4(input.Position, 1.0)));
@@ -49,10 +54,19 @@ VSOutput VSMain(VSInput input)
     // Final clip space position
     output.Position = mul(ubo.proj, mul(ubo.view, worldPos));
 
-    // Pass world position and transformed normal to fragment shader (apply entity model to normals too)
+    // Pass world position and transformed normal to fragment shader
+    // (apply entity model to normals too). Reconstruct the 3x3 normal
+    // matrix from the three uploaded columns and apply it in column
+    // form to avoid any row/column layout ambiguity.
     float3x3 model3x3 = (float3x3)ubo.model;
     output.WorldPos = worldPos.xyz;
-    output.Normal = normalize(mul(model3x3, mul(normalMatrix3x3, input.Normal)));
+
+    float3 instNormal =
+        input.InstanceNormal0.xyz * input.Normal.x +
+        input.InstanceNormal1.xyz * input.Normal.y +
+        input.InstanceNormal2.xyz * input.Normal.z;
+
+    output.Normal = normalize(mul(model3x3, instNormal));
     output.TexCoord = input.TexCoord;
     output.Tangent = input.Tangent; // Pass through tangent (unused in basic rendering)
 

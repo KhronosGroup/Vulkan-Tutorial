@@ -174,15 +174,6 @@ public:
      */
     bool IsInitialized() const { return initialized; }
 
-    /**
-     * @brief Set sun position slider value in [0,1]. 0 and 1 = night, 0.5 = noon.
-     */
-    void SetSunPosition(float s) { sunPosition = std::clamp(s, 0.0f, 1.0f); }
-
-    /**
-     * @brief Get sun position slider value.
-     */
-    float GetSunPosition() const { return sunPosition; }
 
 
     /**
@@ -281,8 +272,12 @@ public:
      */
     bool LoadTexture(const std::string& texturePath);
 
-    // Asynchronous texture loading APIs (thread-pool backed)
-    std::future<bool> LoadTextureAsync(const std::string& texturePath);
+    // Asynchronous texture loading APIs (thread-pool backed).
+    // The 'critical' flag is used to front-load important textures (e.g.,
+    // baseColor/albedo) so the scene looks mostly correct before the loading
+    // screen disappears. Non-critical textures (normals, MR, AO, emissive)
+    // can stream in after geometry is visible.
+    std::future<bool> LoadTextureAsync(const std::string& texturePath, bool critical = false);
 
     /**
      * @brief Load a texture from raw image data in memory.
@@ -298,14 +293,42 @@ public:
 
     // Asynchronous upload from memory (RGBA/RGB/other). Safe for concurrent calls.
     std::future<bool> LoadTextureFromMemoryAsync(const std::string& textureId, const unsigned char* imageData,
-                              int width, int height, int channels);
+                              int width, int height, int channels, bool critical = false);
 
     // Progress query for UI
     uint32_t GetTextureTasksScheduled() const { return textureTasksScheduled.load(); }
     uint32_t GetTextureTasksCompleted() const { return textureTasksCompleted.load(); }
 
-    // Global loading state (model/scene)
-    bool IsLoading() const { return loadingFlag.load(); }
+    // GPU upload progress (per-texture jobs processed on the main thread).
+    uint32_t GetUploadJobsTotal() const { return uploadJobsTotal.load(); }
+    uint32_t GetUploadJobsCompleted() const { return uploadJobsCompleted.load(); }
+
+    // Block until all currently-scheduled texture tasks have completed.
+    // Intended for use during initial scene loading so that descriptor
+    // creation sees the final textureResources instead of fallbacks.
+    void WaitForAllTextureTasks();
+
+    // Process pending texture GPU uploads on the calling thread.
+    // This should be invoked from the main/render thread so that all
+    // Vulkan work happens from a single thread while worker threads
+    // perform only CPU-side decoding.
+    //
+    // Parameters allow us to:
+    //  - limit the number of jobs processed per call (for streaming), and
+    //  - choose whether to include critical and/or non-critical jobs.
+    void ProcessPendingTextureJobs(uint32_t maxJobs = UINT32_MAX,
+                                   bool includeCritical = true,
+                                   bool includeNonCritical = true);
+
+    // Track which entities use a given texture ID so that descriptor sets
+    // can be refreshed when textures finish streaming in.
+    void RegisterTextureUser(const std::string& textureId, Entity* entity);
+    void OnTextureUploaded(const std::string& textureId);
+
+    // Global loading state (model/scene). Consider the scene "loading" while
+    // either the model is being parsed/instantiated OR there are still
+    // outstanding critical texture uploads (e.g., baseColor/albedo).
+    bool IsLoading() const { return loadingFlag.load() || criticalJobsOutstanding.load() > 0; }
     void SetLoading(bool v) { loadingFlag.store(v); }
 
     // Texture aliasing: map canonical IDs to actual loaded keys (e.g., file paths) to avoid duplicates
@@ -465,6 +488,19 @@ public:
      */
     bool preAllocateEntityResources(Entity* entity);
 
+    /**
+     * @brief Pre-allocate Vulkan resources for a batch of entities, batching mesh uploads.
+     *
+     * This variant is optimized for large scene loads (e.g., GLTF Bistro). It will:
+     *  - Create per-mesh GPU buffers as usual, but record all buffer copy commands
+     *    into a single command buffer and submit them in one batch.
+     *  - Then create uniform buffers and descriptor sets per entity.
+     *
+     * Callers that load many geometry entities at once (like GLTF scene loading)
+     * should prefer this over repeated preAllocateEntityResources() calls.
+     */
+    bool preAllocateEntityResourcesBatch(const std::vector<Entity*>& entities);
+
     // Shared default PBR texture identifiers (to avoid creating hundreds of identical textures)
     static const std::string SHARED_DEFAULT_ALBEDO_ID;
     static const std::string SHARED_DEFAULT_NORMAL_ID;
@@ -490,9 +526,6 @@ private:
     // PBR rendering parameters
     float gamma = 2.2f;     // Gamma correction value
     float exposure = 1.2f;  // HDR exposure value (default tuned to avoid washout)
-
-    // Sun control (UI-driven)
-    float sunPosition = 0.5f;    // 0..1, extremes are night, 0.5 is noon
 
     // Vulkan RAII context
     vk::raii::Context context;
@@ -534,6 +567,10 @@ private:
     vk::raii::PipelineLayout pbrPipelineLayout = nullptr;
     vk::raii::Pipeline pbrGraphicsPipeline = nullptr;
     vk::raii::Pipeline pbrBlendGraphicsPipeline = nullptr;
+    // Specialized pipeline for architectural glass (windows, lamp glass, etc.).
+    // Shares descriptor layouts and vertex input with the PBR pipelines but uses
+    // a dedicated fragment shader entry point for more stable glass shading.
+    vk::raii::Pipeline glassGraphicsPipeline = nullptr;
     vk::raii::PipelineLayout lightingPipelineLayout = nullptr;
     vk::raii::Pipeline lightingPipeline = nullptr;
 
@@ -597,11 +634,23 @@ private:
 
     // Mesh resources
     struct MeshResources {
+        // Device-local vertex/index buffers used for rendering
         vk::raii::Buffer vertexBuffer = nullptr;
         std::unique_ptr<MemoryPool::Allocation> vertexBufferAllocation = nullptr;
         vk::raii::Buffer indexBuffer = nullptr;
         std::unique_ptr<MemoryPool::Allocation> indexBufferAllocation = nullptr;
         uint32_t indexCount = 0;
+
+        // Optional per-mesh staging buffers used when uploads are batched.
+        // These are populated when createMeshResources(..., deferUpload=true) is used
+        // and are consumed and cleared by preAllocateEntityResourcesBatch().
+        vk::raii::Buffer stagingVertexBuffer = nullptr;
+        vk::raii::DeviceMemory stagingVertexBufferMemory = nullptr;
+        vk::DeviceSize vertexBufferSizeBytes = 0;
+
+        vk::raii::Buffer stagingIndexBuffer = nullptr;
+        vk::raii::DeviceMemory stagingIndexBufferMemory = nullptr;
+        vk::DeviceSize indexBufferSizeBytes = 0;
     };
     std::unordered_map<MeshComponent*, MeshResources> meshResources;
 
@@ -617,6 +666,35 @@ private:
         bool alphaMaskedHint = false;
     };
     std::unordered_map<std::string, TextureResources> textureResources;
+
+    // Pending texture jobs that require GPU-side work. Worker threads
+    // enqueue these jobs; the main thread drains them and performs the
+    // actual LoadTexture/LoadTextureFromMemory calls.
+    struct PendingTextureJob {
+        enum class Type { FromFile, FromMemory } type;
+        enum class Priority { Critical, NonCritical } priority;
+        std::string idOrPath;
+        std::vector<unsigned char> data; // only used for FromMemory
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+    };
+
+    std::mutex pendingTextureJobsMutex;
+    std::vector<PendingTextureJob> pendingTextureJobs;
+    // Track outstanding critical texture jobs (for IsLoading)
+    std::atomic<uint32_t> criticalJobsOutstanding{0};
+
+    // Track how many texture upload jobs have been scheduled vs completed
+    // on the GPU side. Used only for UI feedback during streaming.
+    std::atomic<uint32_t> uploadJobsTotal{0};
+    std::atomic<uint32_t> uploadJobsCompleted{0};
+
+    // Reverse mapping from texture ID to entities that reference it. Used to
+    // update descriptor sets when a streamed texture finishes uploading.
+    std::mutex textureUsersMutex;
+    std::unordered_map<std::string, std::vector<Entity*>> textureToEntities;
+
     // Protect concurrent access to textureResources
     mutable std::shared_mutex textureResourcesMutex;
 
@@ -649,6 +727,7 @@ private:
 
     // Static lights loaded during model initialization
     std::vector<ExtractedLight> staticLights;
+
 
     // Dynamic lighting system using storage buffers
     struct LightStorageBuffer {
@@ -743,7 +822,7 @@ private:
     bool createTextureSampler(TextureResources& resources);
     bool createDefaultTextureResources();
     bool createSharedDefaultPBRTextures();
-    bool createMeshResources(MeshComponent* meshComponent);
+    bool createMeshResources(MeshComponent* meshComponent, bool deferUpload = false);
     bool createUniformBuffers(Entity* entity);
     bool createDescriptorPool();
     bool createDescriptorSets(Entity* entity, const std::string& texturePath, bool usePBR = false);

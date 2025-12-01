@@ -729,8 +729,8 @@ class HelloTriangleApplication
 		    .polygonMode             = vk::PolygonMode::eFill,
 		    .cullMode                = vk::CullModeFlagBits::eBack,
 		    .frontFace               = vk::FrontFace::eCounterClockwise,
-		    .depthBiasEnable         = vk::False};
-		rasterizer.lineWidth = 1.0f;
+		    .depthBiasEnable         = vk::False,
+		    .lineWidth               = 1.0f};
 		vk::PipelineMultisampleStateCreateInfo multisampling{
 		    .rasterizationSamples = msaaSamples,
 		    .sampleShadingEnable  = vk::False};
@@ -740,21 +740,18 @@ class HelloTriangleApplication
 		    .depthCompareOp        = vk::CompareOp::eLess,
 		    .depthBoundsTestEnable = vk::False,
 		    .stencilTestEnable     = vk::False};
-		vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-		colorBlendAttachment.blendEnable    = vk::False;
-
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+			.blendEnable    = vk::False,	    
+			.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 		vk::PipelineColorBlendStateCreateInfo colorBlending{
 		    .logicOpEnable   = vk::False,
 		    .logicOp         = vk::LogicOp::eCopy,
 		    .attachmentCount = 1,
 		    .pAttachments    = &colorBlendAttachment};
-
 		std::vector dynamicStates = {
 		    vk::DynamicState::eViewport,
 		    vk::DynamicState::eScissor};
 		vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
-
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0};
 
 		pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);

@@ -103,7 +103,7 @@ In many Vulkan applications, validation layers are enabled programmatically duri
 [,c++]
 ----
 // Define validation layers
-const std::vector validationLayers = {
+const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 
@@ -198,7 +198,6 @@ Besides GPUInfo.org, several other tools can help you develop and debug Vulkan a
 * *Vendor-specific Tools*:
 ** NVIDIA Nsight Graphics
 ** AMD Radeon GPU Profiler
-** Intel Graphics Performance Analyzers
 
 == Supporting Older GPUs
 

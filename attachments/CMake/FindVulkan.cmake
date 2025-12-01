@@ -311,6 +311,7 @@ find_path(Vulkan_INCLUDE_DIR
     HINTS
     ${_Vulkan_hint_include_search_paths}
 )
+message(STATUS "vulkan_include_dir ${Vulkan_INCLUDE_DIR} search paths ${_Vulkan_hint_include_search_paths}")
 mark_as_advanced(Vulkan_INCLUDE_DIR)
 
 find_library(Vulkan_LIBRARY
@@ -318,7 +319,7 @@ find_library(Vulkan_LIBRARY
     HINTS
     ${_Vulkan_hint_library_search_paths}
 )
-message(STATUS vulkan_library ${Vulkan_LIBRARY} search paths ${_Vulkan_hint_library_search_paths})
+message(STATUS "vulkan_library ${Vulkan_LIBRARY} search paths ${_Vulkan_hint_library_search_paths}")
 mark_as_advanced(Vulkan_LIBRARY)
 
 find_library(Vulkan_Layer_API_DUMP

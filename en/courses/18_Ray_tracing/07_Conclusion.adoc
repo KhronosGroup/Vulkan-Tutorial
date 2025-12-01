@@ -1,0 +1,31 @@
+= Conclusion
+
+In this course, you've implemented ray traced effects into a Vulkan rasterization pipeline using dynamic rendering and ray queries. Let's summarize the key points:
+
+- *Dynamic rendering*: Simplifies render pass setup and is now the preferred way to start rendering in Vulkan. We verified its usage via RenderDoc. Especially for mobile, it's a boon when combined with extensions for local attachment reads.
+
+- *Acceleration structures*: We created BLASes and a TLAS from a loaded model. Using Nsight Graphics, we confirmed the structures were built correctly.
+
+- *Ray queries for shadows*: We cast shadow rays in the fragment shader. Initially considering only opaque geometry, then we refined it to handle alpha-tested transparency by manually checking texture alpha for intersections.
+
+- *Ray queries for reflections*: As a bonus, we shot reflection rays and used the hit result to modulate the fragment color for reflective materials. This leveraged the same acceleration structure and used similar `Proceed()` loop logic. You can imagine extending this to refractions, ambient occlusion rays, etc.
+
+We hope this lab gave you a hands-on taste of hybrid rendering with Vulkan's latest features. Happy rendering with Vulkan, and enjoy creating more advanced ray traced effects in your applications!
+
+== References
+
+- Complete the full Vulkan Tutorial at https://github.com/KhronosGroup/Vulkan-Tutorial
+- Find more Vulkan documentation and resources at https://www.khronos.org/vulkan
+- Read Arm's Vulkan Best Practice guide at https://developer.arm.com/mobile-graphics-and-gaming/vulkan-api-best-practices-on-arm-gpus
+- Download RenderDoc at https://github.com/baldurk/renderdoc
+- Download NVIDIA Nsight Graphics at https://developer.nvidia.com/nsight-graphics
+- Learn more about the Slang shading language at https://shader-slang.org
+
+The 3D assets were provided by Poly Haven and combined using Blender:
+
+- https://polyhaven.com/a/nettle_plant
+- https://polyhaven.com/a/potted_plant_02
+- https://polyhaven.com/a/wooden_picnic_table
+
+== Navigation
+- Previous: xref:./06_Reflections.adoc[Reflections]

@@ -15,7 +15,7 @@ We _will_ load mesh data from an OBJ model in this chapter, but we'll focus more
 We will use the https://github.com/syoyo/tinyobjloader[tinyobjloader] library to load vertices and faces from an OBJ file.
 It's fast and it's easy to integrate because it's a single file library like stb_image.
 This was mentioned in the link:02_Development_environment.adoc[Development
-Enviornment] chapter and should be part of the dependencies for this portion
+Environment] chapter and should be part of the dependencies for this portion
 of the tutorial.
 
 == Sample mesh
@@ -27,8 +27,8 @@ Many of the models on that site are available in OBJ format with a permissive li
 For this tutorial, I've decided to go with the https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38[Viking room] model by https://sketchfab.com/nigelgoh[nigelgoh] (https://web.archive.org/web/20200428202538/https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38[CC BY 4.0]).
 I tweaked the size and orientation of the model to use it as a drop-in replacement for the current geometry:
 
-* xref:attachment$viking_room.obj[viking_room.obj]
-* xref:attachment$viking_room.png[viking_room.png]
+* xref:attachment$assets/viking_room.obj[viking_room.obj]
+* xref:attachment$assets/viking_room.png[viking_room.png]
 
 Feel free to use your own model, but make sure that it only consists of one material and that is has dimensions of about 1.5 x 1.5 x 1.5 units.
 If it is larger than that, then you'll have to change the view matrix.
@@ -40,7 +40,6 @@ Put two new configuration variables in your program to define the model and text
 ----
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
-constexpr uint64_t FenceTimeout = 100000000;
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
 ----

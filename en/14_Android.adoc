@@ -112,6 +112,7 @@ Every Android application requires a manifest file that declares important infor
 ----
 
 Key points:
+
 * We specify a minimum SDK version of 24 (Android 7.0), which is required for Vulkan support.
 * We declare that our app uses Vulkan with specific version requirements.
 * We set up our main activity (VulkanActivity) as the entry point for our application.
@@ -147,6 +148,7 @@ public class VulkanActivity extends GameActivity {
 ----
 
 Key points:
+
 * We extend GameActivity from the Android Game SDK, which provides a more optimized bridge between Java and native code.
 * GameActivity offers better performance for games and graphics-intensive applications compared to NativeActivity.
 * We load our native library ("vulkan_tutorial_android") which contains our Vulkan implementation.
@@ -252,6 +254,7 @@ dependencies {
 ----
 
 Key points:
+
 * We specify the minimum SDK version as 24 (Android 7.0) for Vulkan support.
 * We configure CMake to build our native code.
 * We include the game-activity dependency for better performance.
@@ -309,7 +312,7 @@ include_directories(${ANDROID_NDK}/sources/android/game-activity/include)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Add the Vulkan C++ module
+# (Optional) Add the Vulkan C++ module when ENABLE_CPP20_MODULE=ON
 add_library(VulkanCppModule SHARED)
 target_compile_definitions(VulkanCppModule
     PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
@@ -382,9 +385,10 @@ target_link_libraries(vulkan_tutorial_android
 ----
 
 Key points:
+
 * We find the Vulkan package and include the game-activity library instead of native_app_glue.
 * We set up shader compilation tools and define a function to compile shaders.
-* We set the C++ standard to C++20 and create a Vulkan C++ module.
+* We set the C{pp} standard to C{pp}20 and optionally create a Vulkan C{pp} module (recommended) when modules are enabled.
 * We set up shader compilation for the 34_android chapter, copying shader source files from the main project.
 * We add the main native library, which uses the 34_android.cpp file from the main project and a bridge file to connect with GameActivity.
 * We link against the necessary libraries, including game-activity.
@@ -442,6 +446,7 @@ extern "C" {
 ----
 
 This bridge code:
+
 1. Creates an android_app structure compatible with our Vulkan code
 2. Sets up the necessary connections between GameActivity and our code
 3. Calls the android_main function in our 34_android.cpp file
@@ -669,6 +674,7 @@ int main() {
 Our cross-platform approach leverages the compiler's built-in platform detection capabilities. Since the `__ANDROID__` macro is automatically defined by the compiler when building for Android, we don't need to explicitly define platform macros in our build system.
 
 This approach has several advantages:
+
 1. *Simplicity*: We don't need to maintain platform-specific compile definitions in our CMake files.
 2. *Reliability*: We rely on standard compiler behavior rather than custom definitions.
 3. *Maintainability*: Less build system configuration means fewer potential points of failure.
@@ -833,3 +839,5 @@ This approach not only makes it easier to maintain and update our application bu
 The complete Android example can be found in the attachments/android directory. Feel free to use it as a template for your own Vulkan projects on Android.
 
 Remember that Vulkan HPP is not included by default in the Android NDK, so you'll need to download it separately from the https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp GitHub repository] or use the version included in the Vulkan SDK.
+
+link:/attachments/34_android.cpp[C{pp} code]

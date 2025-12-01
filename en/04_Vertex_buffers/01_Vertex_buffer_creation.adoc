@@ -41,15 +41,13 @@ Creating a buffer requires us to fill a `VkBufferCreateInfo` structure.
 
 [,c++]
 ----
-vk::BufferCreateInfo bufferInfo({}, sizeof(vertices[0]) * vertices.size(), vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive);
+vk::BufferCreateInfo bufferInfo{ .size = sizeof(vertices[0]) * vertices.size(), .usage = vk::BufferUsageFlagBits::eVertexBuffer, .sharingMode = vk::SharingMode::eExclusive };
 ----
 
-The first field of the constructor is the flags, used to configure sparse buffer memory, which is not relevant right now.
-We'll leave it at the default value of `0`.
-Next is `size`, which specifies the size of the buffer in bytes. Calculating
+The `size` field specifies the size of the buffer in bytes. Calculating
 the byte size of the vertex data is straightforward with `sizeof`.
 
-The third field is `usage`, which indicates for which purposes the data in the
+The `usage` field indicates for which purposes the data in the
 buffer is going to be used. It is possible to specify multiple purposes using
  a bitwise or. Our use case will be a vertex buffer, we'll look at other
  types of usage in future chapters.
@@ -57,8 +55,8 @@ buffer is going to be used. It is possible to specify multiple purposes using
 Just like the images in the swap chain, buffers can also be owned by a specific queue family or be shared between multiple at the same time.
 The buffer will only be used from the graphics queue, so we can stick to exclusive access.
 
-The `flags` parameter is used to configure sparse buffer memory, which is not relevant right now.
-We'll leave it at the default value of `0`.
+There is also a `flags` field, which is used to configure sparse buffer memory. It's not relevant right now, so
+we'll leave it at the default value of `0`.
 
 We can now create the buffer with `vkCreateBuffer`.
 Define a class member to hold the buffer handle and call it `vertexBuffer`.
@@ -110,7 +108,7 @@ First we need to query info about the available types of memory using `vkGetPhys
 
 [,c++]
 ----
-vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice->getMemoryProperties();
+vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
 ----
 
 The `VkPhysicalDeviceMemoryProperties` structure has two arrays `memoryTypes` and `memoryHeaps`.
@@ -162,7 +160,7 @@ We now have a way to determine the right memory type, so we can actually allocat
 
 [,c++]
 ----
-vk::MemoryAllocateInfo memoryAllocateInfo( memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) );
+vk::MemoryAllocateInfo memoryAllocateInfo{  .allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) };
 ----
 
 Memory allocation is now as simple as specifying the size and type, both of which are derived from the memory requirements of the vertex buffer and the desired property.
@@ -185,7 +183,7 @@ If memory allocation was successful, then we can now associate this memory with 
 vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
 ----
 
-The first three parameters are self-explanatory, and the fourth parameter is the offset within the region of memory.
+The first parameter is self-explanatory, and the second parameter is the offset within the region of memory.
 Since this memory is allocated specifically for this the vertex buffer, the offset is simply `0`.
 If the offset is non-zero, then it is required to be divisible by `memRequirements.alignment`.
 
@@ -221,7 +219,7 @@ We went for the first approach, which ensures that the mapped memory always matc
 Do keep in mind that this may lead to slightly worse performance than explicit flushing, but we'll see why that doesn't matter in the next chapter.
 
 Flushing memory ranges or using a coherent memory heap means that the driver will be aware of our writings to the buffer, but it doesn't mean that they are actually visible on the GPU yet.
-The transfer of data to the GPU is an operation that happens in the background, and the specification simply https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-submission-host-writes[tells us] that it is guaranteed to be complete as of the next call to `vkQueueSubmit`.
+The transfer of data to the GPU is an operation that happens in the background, and the specification simply https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-submission-host-writes[tells us] that it is guaranteed to be complete as of the next call to `vkQueueSubmit`.
 
 == Binding the vertex buffer
 

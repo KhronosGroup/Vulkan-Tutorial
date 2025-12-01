@@ -1,0 +1,239 @@
+:pp: {plus}{plus}
+
+= Tooling: CI/CD for Vulkan Projects
+
+== Continuous Integration and Deployment for Vulkan
+
+Continuous Integration (CI) and Continuous Deployment (CD) are essential practices in modern software development. They help ensure code quality, catch issues early, and streamline the release process. For Vulkan applications, which often need to run on multiple platforms with different GPU architectures, a robust CI/CD pipeline is particularly valuable.
+
+=== Setting Up a CI/CD Pipeline
+
+Let's explore how to set up a CI/CD pipeline specifically tailored for Vulkan projects. We'll use GitHub Actions as our example platform, but the concepts apply to other CI/CD systems like GitLab CI, Jenkins, or Azure DevOps.
+
+==== Basic Pipeline Structure
+
+A typical CI/CD pipeline for a Vulkan project might include these stages:
+
+1. *Build*: Compile the application on multiple platforms (Windows, Linux, macOS)
+2. *Test*: Run unit tests and integration tests
+3. *Package*: Create distributable packages for each platform
+4. *Deploy*: Deploy to a staging environment or release to users
+
+Here's a basic GitHub Actions workflow file for a Vulkan project:
+
+[source,yaml]
+----
+name: Vulkan CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Debug, Release]
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Install Vulkan SDK
+      uses: humbletim/install-vulkan-sdk@v1.1.1
+      with:
+        version: latest
+        cache: true
+
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build_type}}
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{matrix.build_type}}
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      run: ctest -C ${{matrix.build_type}}
+
+    - name: Package
+      if: matrix.build_type == 'Release'
+      run: |
+        # Platform-specific packaging commands
+        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          # Linux packaging (e.g., .deb or .AppImage)
+          echo "Packaging for Linux"
+        elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+          # Windows packaging (e.g., .exe installer)
+          echo "Packaging for Windows"
+        elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+          # macOS packaging (e.g., .app bundle or .dmg)
+          echo "Packaging for macOS"
+        fi
+----
+
+==== Vulkan-Specific Considerations
+
+When setting up CI/CD for Vulkan projects, consider these specific challenges:
+
+===== Vulkan SDK Installation
+
+Ensure your CI environment has the Vulkan SDK installed. Many CI platforms don't include it by default. In the example above, we used a GitHub Action to install the SDK.
+
+===== GPU Availability in CI Environments
+
+Most CI environments don't have GPUs available, which can make testing Vulkan applications challenging. Consider these approaches:
+
+* Use software rendering (e.g., SwiftShader) for basic tests
+* Implement a headless testing mode that doesn't require a display
+* Use cloud-based GPU instances for more comprehensive testing
+
+===== Platform-Specific Vulkan Loaders
+
+Different platforms handle Vulkan loading differently. Ensure your build system correctly handles these differences:
+
+* Windows: Vulkan-1.dll is typically loaded at runtime
+* Linux: libvulkan.so.1 is loaded at runtime
+* macOS: MoltenVK provides Vulkan support via Metal
+
+===== Shader Compilation
+
+Shader compilation can be a complex part of the build process. Consider these approaches:
+
+* Pre-compile shaders during the build phase
+* Include shader compilation in your CI pipeline to catch GLSL/SPIR-V errors early
+* Use a shader management system that handles cross-platform differences
+
+=== Automating Testing for Vulkan Applications
+
+Testing Vulkan applications presents unique challenges. Here are some approaches to consider:
+
+==== Unit Testing Vulkan Code
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+// A testable function using vk::raii
+bool create_pipeline(vk::raii::Device& device,
+                     vk::raii::RenderPass& render_pass,
+                     vk::raii::PipelineLayout& layout,
+                     vk::raii::Pipeline& out_pipeline) {
+    try {
+        // Pipeline creation code using RAII
+        return true;
+    } catch (vk::SystemError& err) {
+        std::cerr << "Failed to create pipeline: " << err.what() << std::endl;
+        return false;
+    }
+}
+
+// In a test file
+TEST_CASE("Pipeline creation") {
+    // Setup test environment with mock or real Vulkan objects
+    vk::raii::Context context;
+    auto instance = create_test_instance(context);
+    auto device = create_test_device(instance);
+    auto render_pass = create_test_render_pass(device);
+    auto layout = create_test_pipeline_layout(device);
+
+    vk::raii::Pipeline pipeline{nullptr};
+    REQUIRE(create_pipeline(device, render_pass, layout, pipeline));
+    REQUIRE(pipeline);
+}
+----
+
+==== Integration Testing
+
+For integration testing, consider creating a headless rendering mode that can run in CI environments:
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+class HeadlessRenderer {
+public:
+    HeadlessRenderer() {
+        // Initialize Vulkan without surface
+        init_vulkan();
+    }
+
+    bool render_frame() {
+        // Render to an image without presenting
+        try {
+            // Rendering code
+            return true;
+        } catch (vk::SystemError& err) {
+            std::cerr << "Render failed: " << err.what() << std::endl;
+            return false;
+        }
+    }
+
+    // Compare rendered image with reference
+    bool verify_output(const std::string& reference_image) {
+        // Image comparison code
+        return true;
+    }
+
+private:
+    void init_vulkan() {
+        // Vulkan initialization code
+    }
+
+    vk::raii::Context context;
+    vk::raii::Instance instance{nullptr};
+    vk::raii::PhysicalDevice physical_device{nullptr};
+    vk::raii::Device device{nullptr};
+    // Other Vulkan objects
+};
+
+// In a test file
+TEST_CASE("Render output matches reference") {
+    HeadlessRenderer renderer;
+    REQUIRE(renderer.render_frame());
+    REQUIRE(renderer.verify_output("reference_image.png"));
+}
+----
+
+=== Distribution Considerations
+
+Once your application passes all tests, the final stage is packaging and distribution. Here are some considerations:
+
+==== Packaging Vulkan Applications
+
+* Include the appropriate Vulkan loader for each platform
+* Package shader files or pre-compiled SPIR-V
+* Consider using platform-specific packaging tools:
+  ** Windows: NSIS, WiX, or MSIX
+  ** Linux: AppImage, Flatpak, or .deb/.rpm packages
+  ** macOS: DMG or App Store packages
+
+==== Handling Vulkan Dependencies
+
+Ensure your package includes or correctly handles all dependencies:
+
+* Vulkan loader (or instructions to install it)
+* Any required Vulkan extensions
+* GPU driver requirements
+
+==== Versioning and Updates
+
+Implement a versioning system that includes:
+
+* Application version
+* Minimum required Vulkan version
+* Required extensions and their versions
+
+=== Conclusion
+
+A well-designed CI/CD pipeline is essential for maintaining quality and productivity when developing Vulkan applications. By automating building, testing, and packaging, you can focus more on developing features and less on manual processes.
+
+In the next section, we'll explore debugging tools for Vulkan applications, including the powerful VK_KHR_debug_utils extension and external tools like RenderDoc.
+
+link:01_introduction.adoc[Previous: Introduction] | link:03_debugging_and_renderdoc.adoc[Next: Debugging with VK_KHR_debug_utils and RenderDoc]

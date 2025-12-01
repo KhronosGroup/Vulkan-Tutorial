@@ -1,0 +1,76 @@
+:pp: {plus}{plus}
+
+= Subsystems: Introduction
+
+== Introduction to Engine Subsystems
+
+In previous chapters, we've built the foundation of our simple engine, implementing core components like the rendering pipeline, camera systems, and model loading. Now, we're ready to expand our engine's capabilities by adding two critical subsystems: Audio and Physics.
+
+These subsystems are essential for creating immersive and interactive experiences in modern games and simulations. While they may seem separate from the graphics pipeline we've been focusing on, modern engines can leverage Vulkan's computational power to enhance both audio processing and physics simulations.
+
+=== What We'll Cover
+
+This chapter will take you through implementing two crucial engine subsystems that bring games and simulations to life. We'll begin with an audio subsystem, starting from the fundamentals of playing sounds and music, then advancing to sophisticated techniques like Head-Related Transfer Function (HRTF) processing for convincing 3D spatial audio. The progression shows how Vulkan compute shaders can transform basic audio playback into immersive soundscapes that respond to your 3D world.
+
+Our physics subsystem follows a similar path, beginning with essential collision detection and response mechanisms that make objects interact believably. As we develop these foundations, we'll demonstrate how Vulkan's parallel processing capabilities can accelerate physics calculations dramatically, enabling simulations with large numbers of interacting objects that would overwhelm traditional CPU-based approaches.
+
+Throughout this chapter, we'll continue our modern C++ approach from previous chapters.
+
+=== Why Vulkan for Audio and Physics?
+
+The decision to use Vulkan for audio processing and physics simulations might seem unconventional at first, but it represents a forward-thinking approach to engine development that leverages modern hardware capabilities.
+
+Modern GPUs provide massive parallel processing power through thousands of cores designed for simultaneous computation. Through Vulkan's compute shaders, we can harness this computational muscle for tasks far beyond graphics rendering. Audio processing benefits tremendously from parallel operations—imagine processing dozens of simultaneous sound sources with real-time spatial effects, or running complex physics simulations with thousands of interacting objects.
+
+Vulkan's unified memory model creates opportunities for efficiency that traditional separated approaches cannot match. When graphics, audio, and physics processing share memory spaces, we eliminate the costly data transfers that would otherwise shuttle information between CPU and GPU repeatedly. This shared memory architecture enables sophisticated interactions—physics simulations can directly influence particle systems, audio processing can respond to visual effects, and all systems can work together seamlessly.
+
+Cross-platform consistency becomes increasingly valuable as projects target multiple devices. By implementing these subsystems through Vulkan, we maintain identical behavior across Windows, Linux, mobile platforms, and emerging devices. This consistency reduces debugging time and ensures that audio and physics behavior remains predictable regardless of deployment target.
+
+The performance benefits extend beyond raw computational power. Offloading intensive calculations to the GPU frees CPU resources for game logic, scripting, AI processing, and other tasks that require sequential processing or complex branching. This separation allows each processor type to focus on tasks it handles most efficiently.
+
+Additionally, the intention here is to offer a perspective of using Vulkan
+for more than just Graphics in your application.  Our goal with this tutorial
+ isn't to provide you a production quality game engine.  It's to provide you
+ with the tools necessary to tackle any Vulkan application development and to
+  think critically about how your applications can benefit from the GPU.
+
+=== Practical considerations: Don't offload everything to the GPU
+
+While Vulkan compute can deliver impressive speedups, it's not always advisable to offload every subsystem to the GPU—especially on mobile:
+
+* Mobile power and thermals: Many phones and tablets use big.LITTLE CPU clusters and mobile GPUs that are power/thermal constrained. Sustained heavy GPU compute can quickly lead to thermal throttling, causing frame rate drops and inconsistent latency.
+* Scheduling and latency: GPUs excel at throughput, but certain tasks (tight control loops, small pointer-heavy updates) can prefer CPU execution due to launch overheads and scheduling latency.
+* Determinism and debugging: For gameplay-critical physics, determinism and step-by-step debugging on the CPU can be advantageous. Consider keeping broad-phase or whole-physics on the CPU on mobile, or use a hybrid approach (e.g., CPU broad-phase + GPU narrow-phase).
+* Memory bandwidth: On integrated architectures, GPU/CPU share memory bandwidth. Aggressively moving everything to GPU can contend with graphics and hurt frame time and battery life.
+
+Audio-specific guidance:
+
+* Prefer platform audio APIs and any available dedicated audio hardware/DSP when feasible (for mixing, resampling, effects). This path often provides lower latency, better power characteristics, and more predictable behavior across devices.
+* HRTF support in dedicated hardware is not widespread in the wild. Many consumer devices rely on software HRTF in the OS or application. Evaluate your needs: a software HRTF pipeline may be perfectly adequate; reserving GPU compute strictly for spatial audio is rarely necessary unless you have many sources or complex effects.
+
+Practical recommendations:
+
+* Profile first: Establish CPU and GPU baselines before moving work.
+* Favor hybrid designs: Offload the clearly parallel, heavy kernels (e.g., batched constraint solves, FFT/IR convolution) while keeping control/coordination on CPU.
+* Plan for mobility: Provide runtime toggles to switch between CPU/GPU paths based on device class, thermal state, and power mode.
+
+=== Prerequisites
+
+This chapter builds extensively on the engine architecture and Vulkan foundations established in previous chapters. The modular design patterns we've implemented become crucial when adding subsystems that need to integrate cleanly with existing rendering, camera, and resource management systems.
+
+Experience with Vulkan compute shaders is essential, as we'll leverage compute capabilities to accelerate both audio processing and physics calculations. If you haven't worked through the compute shader sections in the main tutorial, review them before proceeding—the parallel processing concepts and GPU memory management techniques translate directly to our subsystem implementations.
+
+A basic understanding of audio and physics concepts in game development will help you appreciate the design decisions we make throughout the implementation. While we'll explain the fundamentals as we build each system, familiarity with concepts like sound attenuation, collision detection, and rigid body dynamics will deepen your understanding of how these subsystems serve the broader goals of interactive applications.
+
+You should also be familiar with the following chapters from the main tutorial:
+
+* Basic Vulkan concepts:
+** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+* xref:../../11_Compute_Shader.adoc[Compute shaders]
+
+Let's begin by exploring how to implement a basic audio subsystem and then enhance it with Vulkan's computational capabilities.
+
+link:../Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | link:02_audio_basics.adoc[Next: Audio Basics]

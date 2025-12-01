@@ -28,7 +28,7 @@ with the existing APIs somehow. This resulted in less than ideal abstractions
 Aside from these new features, the past decade also saw an influx of mobile
 and embedded devices with powerful graphics hardware. These mobile GPUs have
  different architectures based on their energy and space requirements.
-One such example is https://en.wikipedia.org/wiki/Tiled_rendering[tiled rendering], 
+One such example is https://en.wikipedia.org/wiki/Tiled_rendering[tiled rendering],
 which would benefit from improved performance by offering the
 programmer more control over this functionality.
 Another limitation originating from the age of these APIs is limited
@@ -330,7 +330,7 @@ _validation layers_.
 Validation layers are pieces of code that can be inserted between the API
 and the graphics driver to do things like running extra checks on function
 parameters and tracking memory management problems.
-The nice thing is that you can enable them during development and then
+An important benefit is that you can enable them during development and then
 completely disable them when releasing your application for zero overhead.
 Anyone can write their own validation layers, but the Vulkan SDK by LunarG
 provides a standard set of validation layers that we'll be using in this tutorial.

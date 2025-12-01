@@ -1,0 +1,130 @@
+= Push Constants
+
+In this section, we'll explore push constants, a powerful feature in Vulkan that allows us to efficiently pass small amounts of data to shaders without the overhead of descriptor sets.
+
+== What Are Push Constants?
+
+Push constants are a way to send a small amount of data directly to shaders. Unlike uniform buffers, which require descriptor sets and memory allocation, push constants are part of the command buffer itself. This makes them ideal for small, frequently changing data.
+
+Some key characteristics of push constants: they are tiny (typically up to 128 bytes, device dependent), fast to update per draw, and require no descriptor sets or allocations because they live on the command buffer. They can be read by any shader stage you enable in the pipeline.
+
+== When to Use Push Constants
+
+Use push constants for tiny, per‑draw parameters that change frequently—exactly the kind of material knobs (base color, metallic, roughness) we tweak per object. If the data is larger than the device’s push‑constant limit or doesn’t change often, prefer a uniform buffer instead.
+
+== Defining Push Constants in Shaders
+
+In GLSL (or SPIR-V), push constants are defined using a uniform block with the `push_constant` layout qualifier:
+
+[source,glsl]
+----
+layout(push_constant) uniform PushConstants {
+    vec4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureSet;
+    int physicalDescriptorTextureSet;
+    int normalTextureSet;
+    int occlusionTextureSet;
+    int emissiveTextureSet;
+    float alphaMask;
+    float alphaMaskCutoff;
+} material;
+----
+
+In Slang, which we're using for our engine, the syntax is slightly different:
+
+[source,slang]
+----
+struct PushConstants {
+    float4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureSet;
+    int physicalDescriptorTextureSet;
+    int normalTextureSet;
+    int occlusionTextureSet;
+    int emissiveTextureSet;
+    float alphaMask;
+    float alphaMaskCutoff;
+};
+
+[[vk::push_constant]] PushConstants material;
+----
+
+== Setting Up Push Constants in Vulkan
+
+To use push constants in Vulkan with vk::raii, we need to:
+
+1. Define a push constant range when creating the pipeline layout.
+2. Use `commandBuffer.pushConstants` to send data to the shader.
+
+Here's how we define a push constant range:
+
+[source,cpp]
+----
+// Set up push constant range for material properties
+vk::PushConstantRange pushConstantRange;
+pushConstantRange.setStageFlags(vk::ShaderStageFlagBits::eFragment) // Which shader stages can access the push constants
+               .setOffset(0)
+               .setSize(sizeof(PushConstantBlock)); // Size of our push constant data
+
+// Create pipeline layout with push constants
+vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+pipelineLayoutInfo.setSetLayoutCount(1)
+                 .setPSetLayouts(&*descriptorSetLayout)
+                 .setPushConstantRangeCount(1)
+                 .setPPushConstantRanges(&pushConstantRange);
+
+// Create pipeline layout with vk::raii
+vk::raii::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+----
+
+And here's how we send data to the shader:
+
+[source,cpp]
+----
+// Define material properties
+PushConstantBlock pushConstants{};
+pushConstants.baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
+pushConstants.metallicFactor = 1.0f;
+pushConstants.roughnessFactor = 0.5f;
+pushConstants.baseColorTextureSet = 0;
+pushConstants.physicalDescriptorTextureSet = 1;
+pushConstants.normalTextureSet = 2;
+pushConstants.occlusionTextureSet = 3;
+pushConstants.emissiveTextureSet = 4;
+pushConstants.alphaMask = 0.0f;
+pushConstants.alphaMaskCutoff = 0.5f;
+
+// Push constants to shader using vk::raii
+commandBuffer.pushConstants(
+    *pipelineLayout,
+    vk::ShaderStageFlagBits::eFragment, // Which shader stages will receive the data
+    0, // Offset
+    sizeof(PushConstantBlock), // Size
+    &pushConstants // Data
+);
+----
+
+== Push Constants vs. Uniform Buffers
+
+While push constants are efficient for small, frequently changing data, they have limitations. For larger data sets or data that doesn't change frequently, uniform buffers are often a better choice.
+
+Here's a comparison:
+
+|===
+| Feature | Push Constants | Uniform Buffers
+| Size | Limited (typically 128 bytes) | Much larger
+| Update Mechanism | Direct command in command buffer | Memory mapping or staging buffer
+| Descriptor Sets | Not required | Required
+| Memory Allocation | Not required | Required
+| Update Frequency | Ideal for frequent updates | Better for infrequent updates
+| Access Speed | Fast | Slightly slower
+|===
+
+For our PBR implementation, we'll use push constants for material properties and uniform buffers for light information and transformation matrices.
+
+In the next section, we'll implement a basic lighting shader that uses push constants for material properties.
+
+link:02_lighting_models.adoc[Previous: Lighting Models] | link:04_lighting_implementation.adoc[Next: Lighting Implementation]

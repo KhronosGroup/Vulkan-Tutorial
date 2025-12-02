@@ -149,7 +149,7 @@ catch (const vk::SystemError &e)
 }
 ----
 
-Recent versions of the Vulkan CPP header throw exceptions on unsuccessful return codes. To handle exceptions thrown by `vkQueuePresentKHR`, catch `vk::SystemError` and check the error code as shown above.
+Recent versions of Vulkan-hpp throw exceptions on unsuccessful return codes. To handle exceptions thrown by `vkQueuePresentKHR`, catch `vk::SystemError` and check the error code as shown above.
 
 == Fixing a deadlock
 

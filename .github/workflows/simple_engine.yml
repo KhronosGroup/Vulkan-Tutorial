@@ -35,6 +35,74 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      # Cache Vulkan SDK on Windows like in workflow.yml
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vulkan-sdk-
+
+      # Cache vcpkg packages (Windows) like in workflow.yml
+      - name: Cache vcpkg packages (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/packages
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/downloads
+            ${{ runner.temp }}/vcpkg-cache
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat', '**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ hashFiles('scripts/install_dependencies_windows.bat') }}-
+            ${{ runner.os }}-vcpkg-
+
+      # Cache apt packages (Ubuntu)
+      - name: Cache apt packages (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/simple_engine.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      # Cache ccache (Ubuntu)
+      - name: Cache ccache files (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('attachments/simple_engine/**', '**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      # Cache Vulkan SDK directory (Ubuntu)
+      - name: Cache Vulkan SDK (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/vulkan-sdk
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('attachments/simple_engine/**') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vulkan-sdk-
+
+      # Cache sccache binary (Windows)
+      - name: Cache sccache binary (Windows)
+        if: runner.os == 'Windows'
+        id: cache-sccache
+        uses: actions/cache@v3
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: ${{ runner.os }}-sccache-0.5.4
+
       # -----------------------
       # Linux: set up Vulkan SDK similar to workflow.yml
       # -----------------------
@@ -70,6 +138,15 @@ jobs:
             libxi-dev \
             libopenal-dev
 
+      - name: Install and configure ccache (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install -y ccache
+          ccache --max-size=2G
+          ccache -z
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+
       - name: Install project deps via script (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         working-directory: attachments/simple_engine
@@ -85,13 +162,42 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg.git $env:USERPROFILE\vcpkg
-          & $env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkgRoot) { $vcpkgRoot = "C:\vcpkg" }
+          if (-not (Test-Path $vcpkgRoot)) {
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+            & "$vcpkgRoot\bootstrap-vcpkg.bat"
+          }
           $triplet = 'x64-windows'
           # Use manifest mode; vcpkg.json at repo root defines dependencies
-          & $env:USERPROFILE\vcpkg\vcpkg.exe install --triplet $triplet
-          echo "CMAKE_TOOLCHAIN_FILE=$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
+          & "$vcpkgRoot\vcpkg.exe" install --triplet $triplet
+          echo "VCPKG_INSTALLATION_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
+          echo "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
           echo "VCPKG_TARGET_TRIPLET=$triplet" >> $env:GITHUB_ENV
+
+      - name: Install sccache (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\sccache\sccache.exe") {
+            Write-Host "Using cached sccache binary"
+            $sccachePath = "$env:RUNNER_TEMP\sccache"
+          } else {
+            Write-Host "Downloading and installing sccache..."
+            New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\sccache" | Out-Null
+            choco install -y aria2 --no-progress
+            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:RUNNER_TEMP" --out="sccache.tar.gz" "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz"
+            tar -xzf "$env:RUNNER_TEMP\sccache.tar.gz" --strip-components=1 -C "$env:RUNNER_TEMP\sccache" "sccache-v0.5.4-x86_64-pc-windows-msvc/sccache.exe"
+            $sccachePath = "$env:RUNNER_TEMP\sccache"
+          }
+          echo "$sccachePath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "SCCACHE_DIR=$HOME/.cache/sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_ERROR_LOG=$HOME/.cache/sccache/sccache.log" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_LOG=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "RUST_LOG=sccache=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force -Path "$HOME/.cache/sccache" | Out-Null
+          & "$sccachePath\sccache.exe" --version
 
       - name: Install project deps via script (Windows)
         if: matrix.os == 'windows-latest'
@@ -100,17 +206,51 @@ jobs:
         run: |
           if exist install_dependencies_windows.bat call install_dependencies_windows.bat || exit /b 0
 
-      # Install LunarG Vulkan SDK on Windows and export environment variables for our FindVulkan.cmake
+      # Install LunarG Vulkan SDK on Windows and export environment variables (mirror workflow.yml)
       - name: Install Vulkan SDK (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          choco install vulkan-sdk -y --no-progress
-          $sdkDir = Get-ChildItem -Path 'C:\VulkanSDK' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $sdkDir) { throw "Vulkan SDK was not installed to C:\VulkanSDK" }
-          echo "Using Vulkan SDK: $($sdkDir.FullName)"
-          echo "VULKAN_SDK=$($sdkDir.FullName)" >> $env:GITHUB_ENV
-          echo "PATH=$($sdkDir.FullName)\Bin;$env:PATH" >> $env:GITHUB_ENV
+          if (Test-Path "C:\VulkanSDK") {
+            Write-Host "Using cached Vulkan SDK"
+          } else {
+            Write-Host "Downloading Vulkan SDK installer from LunarG..."
+            choco install -y aria2 --no-progress
+            aria2c --split=16 --max-connection-per-server=16 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+
+            Write-Host "Installing Vulkan SDK silently..."
+            try {
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
+              if (-not (Test-Path "C:\VulkanSDK")) {
+                Write-Host "Vulkan SDK installation with components failed; retrying full install..."
+                Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+              }
+            } catch {
+              Write-Host "Error installing Vulkan SDK: $_"
+              Write-Host "Retrying full install without component selection..."
+              Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+            }
+          }
+
+          # Resolve installed Vulkan SDK path (latest)
+          $vulkanPath = ""
+          if (Test-Path "C:\VulkanSDK") {
+            $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $vulkanPath) {
+            if (Test-Path "C:\VulkanSDK\latest") {
+              $vulkanPath = "C:\VulkanSDK\latest"
+            } else {
+              throw "Vulkan SDK not found after installation."
+            }
+          }
+
+          Write-Host "Using Vulkan SDK: $vulkanPath"
+          echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # -----------------------
       # Configure & Build
@@ -122,7 +262,9 @@ jobs:
           cmake -S attachments/simple_engine \
                 -B build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} \
                 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }}
+                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }} \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       # Configure on Ubuntu with modules enabled: use Clang + Ninja (required for C++ modules)
       - name: "Configure (Ubuntu • module: Clang + Ninja)"
@@ -134,7 +276,9 @@ jobs:
                 -DCMAKE_C_COMPILER=clang \
                 -DCMAKE_CXX_COMPILER=clang++ \
                 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }}
+                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }} \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Configure (Windows)
         if: matrix.os == 'windows-latest'
@@ -145,13 +289,43 @@ jobs:
                 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
                 -DENABLE_CPP20_MODULE=${{ matrix.enable_module }} `
                 -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
-                -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TARGET_TRIPLET"
+                -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TARGET_TRIPLET" `
+                -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+                -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+
+      # Cache build artifacts (Windows)
+      - name: Cache build artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: |
+            build-simple_engine-windows-latest-*
+          key: ${{ runner.os }}-build-msvc-${{ hashFiles('attachments/simple_engine/**', '**/CMakeLists.txt') }}-${{ matrix.build_type }}-m${{ matrix.enable_module }}
+          restore-keys: |
+            ${{ runner.os }}-build-msvc-${{ hashFiles('attachments/simple_engine/**') }}-
+            ${{ runner.os }}-build-msvc-
+
+      # Cache build artifacts (Ubuntu)
+      - name: Cache build artifacts (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: |
+            build-simple_engine-ubuntu-latest-*
+          key: ${{ runner.os }}-build-${{ hashFiles('attachments/simple_engine/**', '**/CMakeLists.txt') }}-${{ matrix.build_type }}-m${{ matrix.enable_module }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ hashFiles('attachments/simple_engine/**') }}-
+            ${{ runner.os }}-build-
 
       - name: Build
         run: |
           cmake --build build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} --config ${{ matrix.build_type }}
 
-      - name: Package (Release only)
-        if: matrix.build_type == 'Release'
-        run: |
-          cmake --build build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} --target package --config ${{ matrix.build_type }}
+      - name: ccache statistics
+        if: runner.os == 'Linux'
+        run: ccache -s
+
+      - name: sccache statistics
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: sccache -s

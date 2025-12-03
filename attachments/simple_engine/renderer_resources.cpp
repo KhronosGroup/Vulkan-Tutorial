@@ -1893,7 +1893,8 @@ bool Renderer::createOrResizeLightStorageBuffers(size_t lightCount) {
 void Renderer::updateAllDescriptorSetsWithNewLightBuffers() {
     try {
         // Iterate through all entity resources and update their PBR descriptor sets
-        for (auto& resources : entityResources | std::views::values) {
+        for (auto& kv : entityResources) {
+            auto& resources = kv.second;
             // Only update PBR descriptor sets (they have light buffer bindings)
             if (!resources.pbrDescriptorSets.empty()) {
                 for (size_t i = 0; i < resources.pbrDescriptorSets.size() && i < lightStorageBuffers.size(); ++i) {

@@ -680,7 +680,8 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
     // Heuristic pass: fill missing baseColor (albedo) by deriving from normal map filenames
     // Many Bistro materials have no baseColorTexture index. When that happens, try inferring
     // the base color from the normal map by replacing common suffixes like _ddna -> _d/_c/_diffuse/_basecolor/_albedo.
-    for (auto& material : materials | std::views::values) {
+    for (auto& kv : materials) {
+        auto& material = kv.second;
         Material* mat = material.get();
         if (!mat) continue;
         if (!mat->albedoTexturePath.empty()) continue; // already set
@@ -1136,8 +1137,8 @@ if (materialMesh.vertices.empty()) {
 
     // Convert geometry-based material mesh map to vector
     std::vector<MaterialMesh> modelMaterialMeshes;
-    for (auto& val : geometryMaterialMeshMap | std::views::values) {
-        modelMaterialMeshes.push_back(val);
+    for (auto& kv : geometryMaterialMeshMap) {
+        modelMaterialMeshes.push_back(kv.second);
     }
 
     // Process texture loading for each MaterialMesh

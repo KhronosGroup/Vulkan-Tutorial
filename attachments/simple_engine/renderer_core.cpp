@@ -235,7 +235,8 @@ void Renderer::Cleanup() {
 
         // Wait for the device to be idle before cleaning up
         device.waitIdle();
-        for (auto& resources : entityResources | std::views::values) {
+        for (auto& kv : entityResources) {
+            auto& resources = kv.second;
             // Memory pool handles unmapping automatically, no need to manually unmap
             resources.basicDescriptorSets.clear();
             resources.pbrDescriptorSets.clear();

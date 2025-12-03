@@ -1473,6 +1473,14 @@ void Renderer::createTransparentFallbackDescriptorSets() {
 
 bool Renderer::createOpaqueSceneColorResources() {
     try {
+        // If an old pooled allocation exists (e.g., after a resize), free it before creating a new one
+        if (opaqueSceneColorImageAllocation) {
+            try {
+                memoryPool->deallocate(std::move(opaqueSceneColorImageAllocation));
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: failed to deallocate previous opaqueSceneColor allocation: " << e.what() << std::endl;
+            }
+        }
         // Create the image
         auto [image, allocation] = createImagePooled(
             swapChainExtent.width,
@@ -1483,7 +1491,8 @@ bool Renderer::createOpaqueSceneColorResources() {
             vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         opaqueSceneColorImage = std::move(image);
-        // We don't need a member for the allocation, it's managed by the unique_ptr
+        // Store the pooled allocation so it can be explicitly returned to the pool on cleanup
+        opaqueSceneColorImageAllocation = std::move(allocation);
 
         // Create the image view
         opaqueSceneColorImageView = createImageView(opaqueSceneColorImage, swapChainImageFormat, vk::ImageAspectFlagBits::eColor);
@@ -1857,7 +1866,10 @@ bool Renderer::createOrResizeLightStorageBuffers(size_t lightCount) {
             // Clean up old buffer if it exists (now safe after waitIdle)
             if (buffer.allocation) {
                 buffer.buffer = nullptr;
-                buffer.allocation.reset();
+                try { memoryPool->deallocate(std::move(buffer.allocation)); }
+                catch (const std::exception& e) {
+                    std::cerr << "Warning: failed to deallocate previous light storage buffer allocation: " << e.what() << std::endl;
+                }
                 buffer.mapped = nullptr;
             }
 

@@ -249,10 +249,29 @@ bool Renderer::createSyncObjects() {
 
 // Clean up swap chain
 void Renderer::cleanupSwapChain() {
-    // Clean up depth resources
+    // Ensure GPU is idle before tearing down resources bound to the swapchain
+    device.waitIdle();
+
+    // Clean up off-screen opaque scene color resources
+    opaqueSceneColorSampler = nullptr;
+    opaqueSceneColorImageView = nullptr;
+    if (opaqueSceneColorImageAllocation) {
+        try { memoryPool->deallocate(std::move(opaqueSceneColorImageAllocation)); }
+        catch (const std::exception& e) {
+            std::cerr << "Warning: failed to deallocate opaqueSceneColor allocation during cleanupSwapChain: " << e.what() << std::endl;
+        }
+    }
+    opaqueSceneColorImage = nullptr;
+
+    // Clean up depth resources (free pooled allocation explicitly)
     depthImageView = nullptr;
+    if (depthImageAllocation) {
+        try { memoryPool->deallocate(std::move(depthImageAllocation)); }
+        catch (const std::exception& e) {
+            std::cerr << "Warning: failed to deallocate depth allocation during cleanupSwapChain: " << e.what() << std::endl;
+        }
+    }
     depthImage = nullptr;
-    depthImageAllocation = nullptr;
 
     // Clean up swap chain image views
     swapChainImageViews.clear();

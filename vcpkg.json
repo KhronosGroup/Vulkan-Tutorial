@@ -9,7 +9,6 @@
     "tinygltf",
     "nlohmann-json",
     "ktx",
-    "openal-soft",
-    "vulkan"
+    "openal-soft"
   ]
 }

@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.29)
 
-# Enable C++ module dependency scanning
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
 # Option to enable/disable Vulkan C++20 module support for this standalone project

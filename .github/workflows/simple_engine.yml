@@ -60,6 +60,8 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             cmake \
+            ninja-build \
+            clang \
             libglfw3-dev \
             libglm-dev \
             libxrandr-dev \
@@ -98,14 +100,39 @@ jobs:
         run: |
           if exist install_dependencies_windows.bat call install_dependencies_windows.bat || exit /b 0
 
+      # Install LunarG Vulkan SDK on Windows and export environment variables for our FindVulkan.cmake
+      - name: Install Vulkan SDK (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install vulkan-sdk -y --no-progress
+          $sdkDir = Get-ChildItem -Path 'C:\VulkanSDK' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdkDir) { throw "Vulkan SDK was not installed to C:\VulkanSDK" }
+          echo "Using Vulkan SDK: $($sdkDir.FullName)"
+          echo "VULKAN_SDK=$($sdkDir.FullName)" >> $env:GITHUB_ENV
+          echo "PATH=$($sdkDir.FullName)\Bin;$env:PATH" >> $env:GITHUB_ENV
+
       # -----------------------
       # Configure & Build
       # -----------------------
-      - name: Configure (Unix)
-        if: matrix.os == 'ubuntu-latest'
+      # Configure on Ubuntu without modules: GCC + Unix Makefiles
+      - name: "Configure (Ubuntu • non-module: GCC + Makefiles)"
+        if: matrix.os == 'ubuntu-latest' && matrix.enable_module == 'OFF'
         run: |
           cmake -S attachments/simple_engine \
                 -B build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} \
+                -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }}
+
+      # Configure on Ubuntu with modules enabled: use Clang + Ninja (required for C++ modules)
+      - name: "Configure (Ubuntu • module: Clang + Ninja)"
+        if: matrix.os == 'ubuntu-latest' && matrix.enable_module == 'ON'
+        run: |
+          cmake -S attachments/simple_engine \
+                -B build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} \
+                -G Ninja \
+                -DCMAKE_C_COMPILER=clang \
+                -DCMAKE_CXX_COMPILER=clang++ \
                 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
                 -DENABLE_CPP20_MODULE=${{ matrix.enable_module }}
 

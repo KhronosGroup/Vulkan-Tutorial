@@ -1,0 +1,136 @@
+name: SimpleEngine CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/simple_engine.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/simple_engine.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-simple-engine:
+    name: SimpleEngine (${{ matrix.os }} • ${{ matrix.build_type }} • module=${{ matrix.enable_module }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        build_type: [Debug, Release]
+        enable_module: [OFF, ON]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      # -----------------------
+      # Linux: set up Vulkan SDK similar to workflow.yml
+      # -----------------------
+      - name: Install Vulkan SDK (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
+          echo "Using Vulkan SDK version: $VULKAN_VERSION"
+          mkdir -p vulkan-sdk
+          cd vulkan-sdk
+          curl -sSLO "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
+          tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
+          echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
+          echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
+          cd ..
+
+      - name: Install Dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libglfw3-dev \
+            libglm-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libopenal-dev \
+            libktx-dev
+
+      - name: Install project deps via script (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: attachments/simple_engine
+        run: |
+          if [ -x ./install_dependencies_linux.sh ]; then
+            ./install_dependencies_linux.sh || true
+          fi
+
+      # -----------------------
+      # Windows dependencies
+      # -----------------------
+      - name: Install vcpkg and dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $env:USERPROFILE\vcpkg
+          & $env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat
+          $triplet = 'x64-windows'
+          & $env:USERPROFILE\vcpkg\vcpkg.exe install `
+            vulkan:${triplet} `
+            glfw3:${triplet} `
+            glm:${triplet} `
+            tinygltf:${triplet} `
+            ktx:${triplet} `
+            openal-soft:${triplet}
+          echo "CMAKE_TOOLCHAIN_FILE=$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
+          echo "VCPKG_TARGET_TRIPLET=$triplet" >> $env:GITHUB_ENV
+
+      - name: Install project deps via script (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        working-directory: attachments/simple_engine
+        run: |
+          if exist install_dependencies_windows.bat call install_dependencies_windows.bat
+
+      # -----------------------
+      # Configure & Build
+      # -----------------------
+      - name: Configure (Unix)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cmake -S attachments/simple_engine \
+                -B build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} \
+                -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }}
+
+      - name: Configure (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cmake -S attachments/simple_engine `
+                -B build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} `
+                -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+                -DENABLE_CPP20_MODULE=${{ matrix.enable_module }} `
+                -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+                -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TARGET_TRIPLET"
+
+      - name: Build
+        run: |
+          cmake --build build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} --config ${{ matrix.build_type }}
+
+      - name: Package (Release only)
+        if: matrix.build_type == 'Release'
+        run: |
+          cmake --build build-simple_engine-${{ matrix.os }}-${{ matrix.build_type }}-m${{ matrix.enable_module }} --target package --config ${{ matrix.build_type }}

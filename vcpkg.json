@@ -8,6 +8,8 @@
     "stb",
     "tinygltf",
     "nlohmann-json",
-    "ktx"
+    "ktx",
+    "openal-soft",
+    "vulkan"
   ]
 }

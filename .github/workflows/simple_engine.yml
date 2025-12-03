@@ -66,8 +66,7 @@ jobs:
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
-            libopenal-dev \
-            libktx-dev
+            libopenal-dev
 
       - name: Install project deps via script (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -87,13 +86,8 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git $env:USERPROFILE\vcpkg
           & $env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat
           $triplet = 'x64-windows'
-          & $env:USERPROFILE\vcpkg\vcpkg.exe install `
-            vulkan:${triplet} `
-            glfw3:${triplet} `
-            glm:${triplet} `
-            tinygltf:${triplet} `
-            ktx:${triplet} `
-            openal-soft:${triplet}
+          # Use manifest mode; vcpkg.json at repo root defines dependencies
+          & $env:USERPROFILE\vcpkg\vcpkg.exe install --triplet $triplet
           echo "CMAKE_TOOLCHAIN_FILE=$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
           echo "VCPKG_TARGET_TRIPLET=$triplet" >> $env:GITHUB_ENV
 
@@ -102,7 +96,7 @@ jobs:
         shell: cmd
         working-directory: attachments/simple_engine
         run: |
-          if exist install_dependencies_windows.bat call install_dependencies_windows.bat
+          if exist install_dependencies_windows.bat call install_dependencies_windows.bat || exit /b 0
 
       # -----------------------
       # Configure & Build

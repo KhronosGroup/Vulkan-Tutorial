@@ -5,6 +5,14 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
+# Option to enable/disable Vulkan C++20 module support for this standalone project
+option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan in SimpleEngine" OFF)
+
+# Enable C++ module dependency scanning only when modules are enabled
+if(ENABLE_CPP20_MODULE)
+    set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+endif()
+
 # Add CMake module path for custom find modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../CMake")
 
@@ -16,32 +24,52 @@ find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 find_package (OpenAL REQUIRED)
 
-# set up Vulkan C++ module
-add_library(VulkanCppModule)
-add_library(Vulkan::cppm ALIAS VulkanCppModule)
+if(ENABLE_CPP20_MODULE)
+    # Set up Vulkan C++ module for this standalone project
+    add_library(VulkanCppModule)
+    add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
-target_compile_definitions(VulkanCppModule
-        PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
-)
-target_include_directories(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}"
-)
-target_link_libraries(VulkanCppModule
-        PUBLIC
-        Vulkan::Vulkan
-)
+    target_compile_definitions(VulkanCppModule
+            PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    )
+    target_include_directories(VulkanCppModule
+            PUBLIC
+            "${Vulkan_INCLUDE_DIR}"
+    )
+    target_link_libraries(VulkanCppModule
+            PUBLIC
+            Vulkan::Vulkan
+    )
 
-set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
+    set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
 
-target_sources(VulkanCppModule
-        PUBLIC
-        FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
-        FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-)
+    target_sources(VulkanCppModule
+            PUBLIC
+            FILE_SET cxx_modules TYPE CXX_MODULES
+            BASE_DIRS
+            "${Vulkan_INCLUDE_DIR}"
+            FILES
+            "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+    )
+
+    # MSVC-specific options to improve module support
+    if(MSVC)
+        target_compile_options(VulkanCppModule PRIVATE
+            /std:c++latest
+            /permissive-
+            /Zc:__cplusplus
+            /EHsc
+            /Zc:preprocessor
+        )
+    endif()
+else()
+    add_library(VulkanCppModule INTERFACE)
+    add_library(Vulkan::cppm ALIAS VulkanCppModule)
+    target_link_libraries(VulkanCppModule INTERFACE Vulkan::Vulkan)
+    target_compile_definitions(VulkanCppModule
+            INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    )
+endif()
 
 
 
@@ -122,9 +150,24 @@ add_executable(SimpleEngine ${SOURCES})
 add_dependencies(SimpleEngine shaders)
 set_target_properties (SimpleEngine PROPERTIES CXX_STANDARD 20)
 
+# Enable required defines for GLM experimental extensions and MSVC math constants
+target_compile_definitions(SimpleEngine PRIVATE
+    GLM_ENABLE_EXPERIMENTAL
+    _USE_MATH_DEFINES
+    VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC
+)
+
 # Link libraries
+# Prefer the Vulkan C++ module target when available (configured at the parent level),
+# but fall back to the standard Vulkan library otherwise.
+if(TARGET Vulkan::cppm)
+    target_link_libraries(SimpleEngine PRIVATE Vulkan::cppm)
+else()
+    target_link_libraries(SimpleEngine PRIVATE Vulkan::Vulkan)
+endif()
+
 target_link_libraries(SimpleEngine PRIVATE
-    Vulkan::cppm
     glm::glm
     tinygltf::tinygltf
     KTX::ktx

@@ -1554,8 +1554,8 @@ const std::vector<MaterialMesh>& ModelLoader::GetMaterialMeshes(const std::strin
     if (it != materialMeshes.end()) {
         return it->second;
     }
-    // Return a static empty vector to avoid creating temporary objects
-    static constexpr std::vector<MaterialMesh> emptyVector;
+    // Return a static empty vector to avoid creating temporary objects.
+    static const std::vector<MaterialMesh> emptyVector;
     return emptyVector;
 }
 

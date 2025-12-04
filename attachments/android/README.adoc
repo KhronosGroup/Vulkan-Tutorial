@@ -1,51 +1,67 @@
-= Android Project for Vulkan Game Engine Tutorial
+= Android Project for Vulkan Tutorial
 
-This Android project allows you to run the Game Engine's example code in Android.  It demonstrates how to manage a non-trivial project across Desktop and mobile environments from the same code base.
+This Android project allows you to run different chapters of the Vulkan Tutorial on Android devices.
 
-== Project Overview
+== Selecting a Chapter
 
-The Vulkan Game Engine Tutorial is a comprehensive learning project that showcases modern graphics programming using the Vulkan API.
-This Android port enables running the same engine code on mobile devices, demonstrating cross-platform development practices.
+By default, the project builds and runs the `34_android` chapter. You can select a different chapter by setting the `chapter` property in your Gradle build.
 
-== Prerequisites
+=== Available Chapters
 
-* Android Studio 4.2 or higher
-* Android NDK r21 or higher
-* CMake 3.10+
-* Vulkan SDK
-* Android device with Vulkan support (Android 7.0+)
+* `34_android`: The Android chapter that uses tinyobjloader to load OBJ models
+* `35_gltf_ktx`: The glTF and KTX chapter that uses tinygltf to load glTF models and KTX to load KTX2 textures
 
-== Building and Running
+=== How to Select a Chapter
 
-1. Open the project in Android Studio
-2. Sync Gradle files
-3. Build the project
-4. Run on your Android device or emulator
+==== From the Command Line
 
-== Project Structure
+[source,bash]
+----
+./gradlew assembleDebug -Pchapter=35_gltf_ktx
+----
 
-* `app/` - Android-specific code and resources
-* `src/` - Shared C++ engine code
-* `assets/` - Shared game assets and shaders (automatically copied by Gradle)
-** `models/` - GLTF/GLB model files
-** `shaders/` - Compiled SPIR-V shader files
-** `textures/` - Texture assets
-* `CMake/` - Build configuration files
+==== From Android Studio
 
-== Asset Management
+1. Edit the `gradle.properties` file in the project root directory
+2. Add the following line:
++
+[source]
+----
+chapter=35_gltf_ktx
+----
+3. Sync the project and build
 
-The project uses Gradle to automatically handle asset deployment.
-Place your assets in the following source locations:
+== Adding New Chapters
 
-* Source assets location: `<project_root>/assets/`
-* Gradle will automatically copy assets to: `app/src/main/assets/`
-* Asset changes will be synchronized during build
+To add support for a new chapter:
 
-== Key Components
+1. Add the chapter name to the `SUPPORTED_CHAPTERS` list in `app/src/main/cpp/CMakeLists.txt`
+2. Add any chapter-specific libraries and compile definitions in the same file
+3. Make sure the chapter's source file exists in the `attachments` directory
 
-* GLTF model loading support
-* Cross-platform rendering pipeline
-* JSON configuration using nlohmann_json
-* Unified asset management system with Gradle automation
+For example, to add support for a hypothetical `36_new_feature` chapter:
 
-The project demonstrates professional-grade techniques for maintaining a single codebase that targets both desktop and mobile platforms while leveraging modern C++20 features and Vulkan's cross-platform capabilities.
+[source,cmake]
+----
+# Define the list of supported chapters
+set(SUPPORTED_CHAPTERS
+    "34_android"
+    "35_gltf_ktx"
+    "36_new_feature"
+)
+
+# Add chapter-specific libraries and definitions
+if(CHAPTER STREQUAL "34_android")
+    # ...
+elseif(CHAPTER STREQUAL "35_gltf_ktx")
+    # ...
+elseif(CHAPTER STREQUAL "36_new_feature")
+    target_link_libraries(vulkan_tutorial_android
+        # Add any required libraries here
+    )
+
+    target_compile_definitions(vulkan_tutorial_android PRIVATE
+        # Add any required compile definitions here
+    )
+endif()
+----

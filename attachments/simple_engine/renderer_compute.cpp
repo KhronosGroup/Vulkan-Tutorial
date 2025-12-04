@@ -167,7 +167,7 @@ vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX, uint32_t groupCo
 
         std::array<vk::WriteDescriptorSet, 4> descriptorWrites = {
             vk::WriteDescriptorSet{
-                .dstSet = computeDescriptorSets[0],
+                .dstSet = *computeDescriptorSets[0],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -175,7 +175,7 @@ vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX, uint32_t groupCo
                 .pBufferInfo = &inputBufferInfo
             },
             vk::WriteDescriptorSet{
-                .dstSet = computeDescriptorSets[0],
+                .dstSet = *computeDescriptorSets[0],
                 .dstBinding = 1,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -183,7 +183,7 @@ vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX, uint32_t groupCo
                 .pBufferInfo = &outputBufferInfo
             },
             vk::WriteDescriptorSet{
-                .dstSet = computeDescriptorSets[0],
+                .dstSet = *computeDescriptorSets[0],
                 .dstBinding = 2,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -191,7 +191,7 @@ vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX, uint32_t groupCo
                 .pBufferInfo = &hrtfBufferInfo
             },
             vk::WriteDescriptorSet{
-                .dstSet = computeDescriptorSets[0],
+                .dstSet = *computeDescriptorSets[0],
                 .dstBinding = 3,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,

@@ -1893,7 +1893,8 @@ bool Renderer::createOrResizeLightStorageBuffers(size_t lightCount) {
 void Renderer::updateAllDescriptorSetsWithNewLightBuffers() {
     try {
         // Iterate through all entity resources and update their PBR descriptor sets
-        for (auto& resources : entityResources | std::views::values) {
+        for (auto &pair : entityResources) {
+            auto &resources = pair.second;
             // Only update PBR descriptor sets (they have light buffer bindings)
             if (!resources.pbrDescriptorSets.empty()) {
                 for (size_t i = 0; i < resources.pbrDescriptorSets.size() && i < lightStorageBuffers.size(); ++i) {
@@ -2289,7 +2290,7 @@ void Renderer::uploadImageFromStaging(vk::Buffer staging,
 
         // Submit once on the GRAPHICS queue; signal uploads timeline if available
         vk::raii::Fence fence(device, vk::FenceCreateInfo{});
-        bool canSignalTimeline = uploadsTimeline != nullptr;
+        bool canSignalTimeline = static_cast<VkSemaphore>(*uploadsTimeline) != VK_NULL_HANDLE;
         uint64_t signalValue = 0;
         {
             std::lock_guard<std::mutex> lock(queueMutex);

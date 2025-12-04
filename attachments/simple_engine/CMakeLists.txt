@@ -8,41 +8,21 @@ project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 # Add CMake module path for custom find modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../CMake")
 
+if(ANDROID)
+    include(FetchContent)
+    FetchContent_Declare(
+      VulkanHeaders
+      GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+      GIT_TAG v1.3.275 # Or a specific tag/commit  This needs to correspond to the NDK version of Vulkan.
+    )
+    FetchContent_MakeAvailable(VulkanHeaders)
+endif ()
+
 # Find required packages
-find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
-find_package (OpenAL REQUIRED)
-
-# set up Vulkan C++ module
-add_library(VulkanCppModule)
-add_library(Vulkan::cppm ALIAS VulkanCppModule)
-
-target_compile_definitions(VulkanCppModule
-        PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
-)
-target_include_directories(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}"
-)
-target_link_libraries(VulkanCppModule
-        PUBLIC
-        Vulkan::Vulkan
-)
-
-set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
-
-target_sources(VulkanCppModule
-        PUBLIC
-        FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
-        FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-)
-
 
 
 # Platform-specific settings
@@ -52,6 +32,8 @@ if(ANDROID)
 else()
     # Desktop-specific settings
     add_definitions(-DPLATFORM_DESKTOP)
+    find_package (glfw3 REQUIRED)
+    find_package (OpenAL REQUIRED)
 endif()
 
 # Shader compilation
@@ -117,22 +99,42 @@ set(SOURCES
     mikktspace.c
 )
 
-# Create executable
-add_executable(SimpleEngine ${SOURCES})
+# Create executable or library based on the platform
+if(ANDROID)
+    add_library(SimpleEngine STATIC ${SOURCES})
+else()
+    add_executable(SimpleEngine ${SOURCES})
+endif()
+
 add_dependencies(SimpleEngine shaders)
 set_target_properties (SimpleEngine PROPERTIES CXX_STANDARD 20)
 
 # Link libraries
-target_link_libraries(SimpleEngine PRIVATE
-    Vulkan::cppm
+target_link_libraries(SimpleEngine PUBLIC
+    Vulkan::Vulkan
+    Vulkan::Headers
     glm::glm
     tinygltf::tinygltf
     KTX::ktx
-    OpenAL::OpenAL
 )
 
-if(NOT ANDROID)
-    target_link_libraries(SimpleEngine PRIVATE glfw)
+if(ANDROID)
+    target_link_libraries(SimpleEngine PUBLIC
+        android
+        log
+        EGL
+        GLESv2
+        game-activity::game-activity
+        OpenSLES
+    )
+    target_include_directories(SimpleEngine PUBLIC
+        ${VulkanHeaders_SOURCE_DIR}/include
+        ${ANDROID_NDK}/sources/android/native_app_glue
+    )
+    target_compile_definitions(SimpleEngine PRIVATE VULKAN_HPP_NO_STRUCT_CONSTRUCTORS)
+else()
+    target_link_libraries(SimpleEngine PRIVATE glfw OpenAL::OpenAL)
+    target_compile_definitions(SimpleEngine PRIVATE VULKAN_HPP_NO_STRUCT_CONSTRUCTORS VULKAN_HPP_DISPATCH_LOADER_DYNAMIC)
 endif()
 
 # Copy model and texture files if they exist

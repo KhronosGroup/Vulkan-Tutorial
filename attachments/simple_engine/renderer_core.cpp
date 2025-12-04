@@ -11,24 +11,39 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE; // In a .cpp file
 
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vk_platform.h>
+#include <vulkan/vulkan.h> // for vkGetInstanceProcAddr and VK_FALSE
 
-// Debug callback for vk::raii
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
-    vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    vk::DebugUtilsMessageTypeFlagsEXT messageType,
-    const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) {
-
-    if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-        // Print a message to the console
-        std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+// Debug callbacks compatible with both Vulkan C and Vulkan-Hpp PFN signatures
+// Original C-style callback (kept for reference and potential uses elsewhere)
+#if defined(PLATFORM_ANDROID)
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT /*messageType*/,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* /*pUserData*/) {
+    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        std::cerr << "Validation layer: " << (pCallbackData && pCallbackData->pMessage ? pCallbackData->pMessage : "") << std::endl;
     } else {
-        // Print a message to the console
-        std::cout << "Validation layer: " << pCallbackData->pMessage << std::endl;
+        std::cout << "Validation layer: " << (pCallbackData && pCallbackData->pMessage ? pCallbackData->pMessage : "") << std::endl;
     }
-
     return VK_FALSE;
 }
+#else
+// Vulkan-Hpp typed wrapper to satisfy vk::PFN_DebugUtilsMessengerCallbackEXT
+static VKAPI_ATTR uint32_t VKAPI_CALL debugCallback(
+    vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    vk::DebugUtilsMessageTypeFlagsEXT /*messageType*/,
+    const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* /*pUserData*/) {
+    // Log similarly to the C-style callback using Hpp types
+    if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+        std::cerr << "Validation layer: " << (pCallbackData && pCallbackData->pMessage ? pCallbackData->pMessage : "") << std::endl;
+    } else {
+        std::cout << "Validation layer: " << (pCallbackData && pCallbackData->pMessage ? pCallbackData->pMessage : "") << std::endl;
+    }
+    return VK_FALSE;
+}
+#endif
 
 // Renderer core implementation for the "Rendering Pipeline" chapter of the tutorial.
 Renderer::Renderer(Platform* platform)
@@ -45,8 +60,8 @@ Renderer::~Renderer() {
 
 // Initialize the renderer
 bool Renderer::Initialize(const std::string& appName, bool enableValidationLayers) {
-    vk::detail::DynamicLoader dl;
-    auto vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+    // Use the globally exported loader symbol directly to avoid version-specific DynamicLoader APIs
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = &::vkGetInstanceProcAddr;
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
     // Create a Vulkan instance
     if (!createInstance(appName, enableValidationLayers)) {
@@ -204,8 +219,7 @@ void Renderer::ensureThreadLocalVulkanInit() const {
     static thread_local bool s_tlsInitialized = false;
     if (s_tlsInitialized) return;
     try {
-        vk::detail::DynamicLoader dl;
-        auto vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = &::vkGetInstanceProcAddr;
         if (vkGetInstanceProcAddr) {
             VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
         }
@@ -235,7 +249,8 @@ void Renderer::Cleanup() {
 
         // Wait for the device to be idle before cleaning up
         device.waitIdle();
-        for (auto& resources : entityResources | std::views::values) {
+        for (auto &entry : entityResources) {
+            auto &resources = entry.second;
             // Memory pool handles unmapping automatically, no need to manually unmap
             resources.basicDescriptorSets.clear();
             resources.pbrDescriptorSets.clear();
@@ -334,7 +349,7 @@ bool Renderer::setupDebugMessenger(bool enableValidationLayers) {
             .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
                           vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
                           vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-            .pfnUserCallback = debugCallbackVkRaii
+            .pfnUserCallback = debugCallback
         };
 
         // Create debug messenger

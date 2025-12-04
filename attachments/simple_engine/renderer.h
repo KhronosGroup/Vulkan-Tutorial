@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef VULKAN_HPP_DISPATCH_LOADER_DYNAMIC
+#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#endif
+
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vk_platform.h>

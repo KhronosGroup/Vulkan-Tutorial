@@ -1,0 +1,67 @@
+= Android Project for Vulkan Tutorial
+
+This Android project allows you to run different chapters of the Vulkan Tutorial on Android devices.
+
+== Selecting a Chapter
+
+By default, the project builds and runs the `34_android` chapter. You can select a different chapter by setting the `chapter` property in your Gradle build.
+
+=== Available Chapters
+
+* `34_android`: The Android chapter that uses tinyobjloader to load OBJ models
+* `35_gltf_ktx`: The glTF and KTX chapter that uses tinygltf to load glTF models and KTX to load KTX2 textures
+
+=== How to Select a Chapter
+
+==== From the Command Line
+
+[source,bash]
+----
+./gradlew assembleDebug -Pchapter=35_gltf_ktx
+----
+
+==== From Android Studio
+
+1. Edit the `gradle.properties` file in the project root directory
+2. Add the following line:
++
+[source]
+----
+chapter=35_gltf_ktx
+----
+3. Sync the project and build
+
+== Adding New Chapters
+
+To add support for a new chapter:
+
+1. Add the chapter name to the `SUPPORTED_CHAPTERS` list in `app/src/main/cpp/CMakeLists.txt`
+2. Add any chapter-specific libraries and compile definitions in the same file
+3. Make sure the chapter's source file exists in the `attachments` directory
+
+For example, to add support for a hypothetical `36_new_feature` chapter:
+
+[source,cmake]
+----
+# Define the list of supported chapters
+set(SUPPORTED_CHAPTERS
+    "34_android"
+    "35_gltf_ktx"
+    "36_new_feature"
+)
+
+# Add chapter-specific libraries and definitions
+if(CHAPTER STREQUAL "34_android")
+    # ...
+elseif(CHAPTER STREQUAL "35_gltf_ktx")
+    # ...
+elseif(CHAPTER STREQUAL "36_new_feature")
+    target_link_libraries(vulkan_tutorial_android
+        # Add any required libraries here
+    )
+
+    target_compile_definitions(vulkan_tutorial_android PRIVATE
+        # Add any required compile definitions here
+    )
+endif()
+----

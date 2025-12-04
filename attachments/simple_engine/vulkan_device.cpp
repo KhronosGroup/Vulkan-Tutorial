@@ -188,8 +188,8 @@ QueueFamilyIndices VulkanDevice::findQueueFamilies(vk::raii::PhysicalDevice& dev
             indices.computeFamily = i;
         }
 
-        // Check for present support
-        if (device.getSurfaceSupportKHR(i, surface)) {
+        // Check for present support (RAII PhysicalDevice overload expects a non‑RAII SurfaceKHR handle)
+        if (device.getSurfaceSupportKHR(i, *surface)) {
             indices.presentFamily = i;
         }
 
@@ -206,14 +206,14 @@ QueueFamilyIndices VulkanDevice::findQueueFamilies(vk::raii::PhysicalDevice& dev
 SwapChainSupportDetails VulkanDevice::querySwapChainSupport(vk::raii::PhysicalDevice& device) {
     SwapChainSupportDetails details;
 
-    // Get surface capabilities
-    details.capabilities = device.getSurfaceCapabilitiesKHR(surface);
+    // Get surface capabilities (pass underlying handle)
+    details.capabilities = device.getSurfaceCapabilitiesKHR(*surface);
 
     // Get surface formats
-    details.formats = device.getSurfaceFormatsKHR(surface);
+    details.formats = device.getSurfaceFormatsKHR(*surface);
 
     // Get present modes
-    details.presentModes = device.getSurfacePresentModesKHR(surface);
+    details.presentModes = device.getSurfacePresentModesKHR(*surface);
 
     return details;
 }

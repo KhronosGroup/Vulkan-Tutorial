@@ -235,13 +235,111 @@ void Renderer::Cleanup() {
 
         // Wait for the device to be idle before cleaning up
         device.waitIdle();
+
+        // Clean up swapchain-bound resources (depth, offscreen color, pipelines, views, etc.)
+        cleanupSwapChain();
+
+        // Release per-entity resources and return pooled memory to the MemoryPool
         for (auto& resources : entityResources | std::views::values) {
-            // Memory pool handles unmapping automatically, no need to manually unmap
+            // Descriptor sets are RAII and freed with descriptorPool; just clear holders
             resources.basicDescriptorSets.clear();
             resources.pbrDescriptorSets.clear();
+
+            // Destroy UBO buffers and return pooled allocations
             resources.uniformBuffers.clear();
+            for (auto& alloc : resources.uniformBufferAllocations) {
+                if (alloc) {
+                    try { memoryPool->deallocate(std::move(alloc)); }
+                    catch (const std::exception& e) {
+                        std::cerr << "Warning: failed to deallocate UBO allocation during Cleanup: " << e.what() << std::endl;
+                    }
+                }
+            }
             resources.uniformBufferAllocations.clear();
             resources.uniformBuffersMapped.clear();
+
+            // Destroy instance buffer and return pooled allocation
+            resources.instanceBuffer = nullptr;
+            if (resources.instanceBufferAllocation) {
+                try { memoryPool->deallocate(std::move(resources.instanceBufferAllocation)); }
+                catch (const std::exception& e) {
+                    std::cerr << "Warning: failed to deallocate instance buffer allocation during Cleanup: " << e.what() << std::endl;
+                }
+            }
+            resources.instanceBufferMapped = nullptr;
+        }
+        entityResources.clear();
+
+        // Release light storage buffers
+        for (auto& lsb : lightStorageBuffers) {
+            lsb.buffer = nullptr;
+            if (lsb.allocation) {
+                try { memoryPool->deallocate(std::move(lsb.allocation)); }
+                catch (const std::exception& e) {
+                    std::cerr << "Warning: failed to deallocate light storage buffer during Cleanup: " << e.what() << std::endl;
+                }
+            }
+            lsb.mapped = nullptr;
+            lsb.capacity = 0;
+            lsb.size = 0;
+        }
+        lightStorageBuffers.clear();
+
+        // Release mesh device-local buffers and return pooled allocations
+        for (auto& [mesh, mres] : meshResources) {
+            mres.vertexBuffer = nullptr;
+            if (mres.vertexBufferAllocation) {
+                try { memoryPool->deallocate(std::move(mres.vertexBufferAllocation)); }
+                catch (const std::exception& e) {
+                    std::cerr << "Warning: failed to deallocate vertex buffer allocation during Cleanup: " << e.what() << std::endl;
+                }
+            }
+            mres.indexBuffer = nullptr;
+            if (mres.indexBufferAllocation) {
+                try { memoryPool->deallocate(std::move(mres.indexBufferAllocation)); }
+                catch (const std::exception& e) {
+                    std::cerr << "Warning: failed to deallocate index buffer allocation during Cleanup: " << e.what() << std::endl;
+                }
+            }
+            // Staging buffers are RAII and not pooled
+            mres.stagingVertexBuffer = nullptr;
+            mres.stagingVertexBufferMemory = nullptr;
+            mres.stagingIndexBuffer = nullptr;
+            mres.stagingIndexBufferMemory = nullptr;
+            mres.vertexBufferSizeBytes = 0;
+            mres.indexBufferSizeBytes = 0;
+            mres.indexCount = 0;
+        }
+        meshResources.clear();
+
+        // Release textures and return pooled allocations
+        {
+            std::unique_lock<std::shared_mutex> texLock(textureResourcesMutex);
+            for (auto& [key, tres] : textureResources) {
+                tres.textureSampler = nullptr;
+                tres.textureImageView = nullptr;
+                tres.textureImage = nullptr;
+                if (tres.textureImageAllocation) {
+                    try { memoryPool->deallocate(std::move(tres.textureImageAllocation)); }
+                    catch (const std::exception& e) {
+                        std::cerr << "Warning: failed to deallocate texture image allocation during Cleanup: " << e.what() << std::endl;
+                    }
+                }
+            }
+            textureResources.clear();
+            textureAliases.clear();
+            textureToEntities.clear();
+        }
+
+        // Release default texture resources if allocated
+        defaultTextureResources.textureSampler = nullptr;
+        defaultTextureResources.textureImageView = nullptr;
+        defaultTextureResources.textureImage = nullptr;
+        if (defaultTextureResources.textureImageAllocation) {
+            try { memoryPool->deallocate(std::move(defaultTextureResources.textureImageAllocation)); }
+            catch (const std::exception& e) {
+                std::cerr << "Warning: failed to deallocate default texture image allocation during Cleanup: " << e.what() << std::endl;
+            }
         }
         // Also clear global descriptor sets that are allocated from descriptorPool, so they are
         // destroyed while the pool is still valid (avoid vkFreeDescriptorSets invalid pool errors)

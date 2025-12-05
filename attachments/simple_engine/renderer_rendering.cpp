@@ -316,7 +316,8 @@ void Renderer::recreateSwapChain() {
     }
 
     // Clear all entity descriptor sets since they're now invalid (allocated from the old pool)
-    for (auto& resources : entityResources | std::views::values) {
+    for (auto& kv : entityResources) {
+        auto& resources = kv.second;
         resources.basicDescriptorSets.clear();
         resources.pbrDescriptorSets.clear();
     }
@@ -331,7 +332,8 @@ void Renderer::recreateSwapChain() {
     currentFrame = 0;
 
     // Recreate descriptor sets for all entities after swapchain/pipeline rebuild
-    for (const auto& entity : entityResources | std::views::keys) {
+    for (const auto& kv : entityResources) {
+        const auto& entity = kv.first;
         if (!entity) continue;
         auto meshComponent = entity->GetComponent<MeshComponent>();
         if (!meshComponent) continue;

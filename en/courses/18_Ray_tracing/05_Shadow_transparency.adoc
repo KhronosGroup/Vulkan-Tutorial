@@ -94,9 +94,9 @@ Note how the renderer does not bind separate material textures for each submesh.
             PushConstant pushConstant = {
                 .materialIndex = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID),
             };
-            commandBuffers[currentFrame].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
+            commandBuffers[frameIndex].pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
 
-            commandBuffers[currentFrame].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
+            commandBuffers[frameIndex].drawIndexed(sub.indexCount, 1, sub.indexOffset, 0, 0);
         }
 ----
 

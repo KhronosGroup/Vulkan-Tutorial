@@ -118,7 +118,7 @@ class ComputeShaderApplication
 	vk::raii::Semaphore          semaphore     = nullptr;
 	uint64_t                     timelineValue = 0;
 	std::vector<vk::raii::Fence> inFlightFences;
-	uint32_t                     currentFrame = 0;
+	uint32_t                     frameIndex = 0;
 
 	double lastFrameTime = 0.0;
 
@@ -697,8 +697,9 @@ class ComputeShaderApplication
 
 	void recordCommandBuffer(uint32_t imageIndex)
 	{
-		commandBuffers[currentFrame].reset();
-		commandBuffers[currentFrame].begin({});
+		auto &commandBuffer = commandBuffers[frameIndex];
+		commandBuffer.reset();
+		commandBuffer.begin({});
 		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
 		transition_image_layout(
 		    imageIndex,
@@ -721,13 +722,13 @@ class ComputeShaderApplication
 		    .layerCount           = 1,
 		    .colorAttachmentCount = 1,
 		    .pColorAttachments    = &attachmentInfo};
-		commandBuffers[currentFrame].beginRendering(renderingInfo);
-		commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffers[currentFrame].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-		commandBuffers[currentFrame].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
-		commandBuffers[currentFrame].bindVertexBuffers(0, {shaderStorageBuffers[currentFrame]}, {0});
-		commandBuffers[currentFrame].draw(PARTICLE_COUNT, 1, 0, 0);
-		commandBuffers[currentFrame].endRendering();
+		commandBuffer.beginRendering(renderingInfo);
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+		commandBuffer.bindVertexBuffers(0, {shaderStorageBuffers[frameIndex]}, {0});
+		commandBuffer.draw(PARTICLE_COUNT, 1, 0, 0);
+		commandBuffer.endRendering();
 		// After rendering, transition the swapchain image to PRESENT_SRC
 		transition_image_layout(
 		    imageIndex,
@@ -738,7 +739,7 @@ class ComputeShaderApplication
 		    vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
 		    vk::PipelineStageFlagBits2::eBottomOfPipe                  // dstStage
 		);
-		commandBuffers[currentFrame].end();
+		commandBuffer.end();
 	}
 
 	void transition_image_layout(
@@ -770,17 +771,18 @@ class ComputeShaderApplication
 		    .dependencyFlags         = {},
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers    = &barrier};
-		commandBuffers[currentFrame].pipelineBarrier2(dependency_info);
+		commandBuffers[frameIndex].pipelineBarrier2(dependency_info);
 	}
 
 	void recordComputeCommandBuffer()
 	{
-		computeCommandBuffers[currentFrame].reset();
-		computeCommandBuffers[currentFrame].begin({});
-		computeCommandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline);
-		computeCommandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eCompute, computePipelineLayout, 0, {computeDescriptorSets[currentFrame]}, {});
-		computeCommandBuffers[currentFrame].dispatch(PARTICLE_COUNT / 256, 1, 1);
-		computeCommandBuffers[currentFrame].end();
+		auto &commandBuffer = computeCommandBuffers[frameIndex];
+		commandBuffer.reset();
+		commandBuffer.begin({});
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline);
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, computePipelineLayout, 0, {computeDescriptorSets[frameIndex]}, {});
+		commandBuffer.dispatch(PARTICLE_COUNT / 256, 1, 1);
+		commandBuffer.end();
 	}
 
 	void createSyncObjects()
@@ -808,10 +810,10 @@ class ComputeShaderApplication
 
 	void drawFrame()
 	{
-		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, nullptr, *inFlightFences[currentFrame]);
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX))
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, nullptr, *inFlightFences[frameIndex]);
+		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
 			;
-		device.resetFences(*inFlightFences[currentFrame]);
+		device.resetFences(*inFlightFences[frameIndex]);
 
 		// Update timeline value for this frame
 		uint64_t computeWaitValue    = timelineValue;
@@ -819,7 +821,7 @@ class ComputeShaderApplication
 		uint64_t graphicsWaitValue   = computeSignalValue;
 		uint64_t graphicsSignalValue = ++timelineValue;
 
-		updateUniformBuffer(currentFrame);
+		updateUniformBuffer(frameIndex);
 
 		{
 			recordComputeCommandBuffer();
@@ -838,7 +840,7 @@ class ComputeShaderApplication
 			    .pWaitSemaphores      = &*semaphore,
 			    .pWaitDstStageMask    = waitStages,
 			    .commandBufferCount   = 1,
-			    .pCommandBuffers      = &*computeCommandBuffers[currentFrame],
+			    .pCommandBuffers      = &*computeCommandBuffers[frameIndex],
 			    .signalSemaphoreCount = 1,
 			    .pSignalSemaphores    = &*semaphore};
 
@@ -862,7 +864,7 @@ class ComputeShaderApplication
 			    .pWaitSemaphores      = &*semaphore,
 			    .pWaitDstStageMask    = &waitStage,
 			    .commandBufferCount   = 1,
-			    .pCommandBuffers      = &*commandBuffers[currentFrame],
+			    .pCommandBuffers      = &*commandBuffers[frameIndex],
 			    .signalSemaphoreCount = 1,
 			    .pSignalSemaphores    = &*semaphore};
 
@@ -911,7 +913,7 @@ class ComputeShaderApplication
 				}
 			}
 		}
-		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char> &code) const

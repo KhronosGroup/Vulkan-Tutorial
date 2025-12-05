@@ -202,7 +202,7 @@ class MultithreadedApplication
 	uint64_t                         timelineValue     = 0;
 	std::vector<vk::raii::Semaphore> imageAvailableSemaphores;
 	std::vector<vk::raii::Fence>     inFlightFences;
-	uint32_t                         currentFrame = 0;
+	uint32_t                         frameIndex = 0;
 
 	double lastFrameTime = 0.0;
 
@@ -1002,7 +1002,7 @@ class MultithreadedApplication
 		cmdBuffer.begin(beginInfo);
 
 		cmdBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *computePipeline);
-		cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *computePipelineLayout, 0, {*computeDescriptorSets[currentFrame]}, {});
+		cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *computePipelineLayout, 0, {*computeDescriptorSets[frameIndex]}, {});
 
 		struct PushConstants
 		{
@@ -1020,11 +1020,11 @@ class MultithreadedApplication
 
 	void recordGraphicsCommandBuffer(uint32_t imageIndex)
 	{
-		graphicsCommandBuffers[currentFrame].reset();
+		graphicsCommandBuffers[frameIndex].reset();
 
 		vk::CommandBufferBeginInfo beginInfo{
 		    .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
-		graphicsCommandBuffers[currentFrame].begin(beginInfo);
+		graphicsCommandBuffers[frameIndex].begin(beginInfo);
 
 		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
 		transition_image_layout(
@@ -1050,14 +1050,14 @@ class MultithreadedApplication
 		    .colorAttachmentCount = 1,
 		    .pColorAttachments    = &attachmentInfo};
 
-		graphicsCommandBuffers[currentFrame].beginRendering(renderingInfo);
+		graphicsCommandBuffers[frameIndex].beginRendering(renderingInfo);
 
-		graphicsCommandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		graphicsCommandBuffers[currentFrame].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-		graphicsCommandBuffers[currentFrame].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
-		graphicsCommandBuffers[currentFrame].bindVertexBuffers(0, {shaderStorageBuffers[currentFrame]}, {0});
-		graphicsCommandBuffers[currentFrame].draw(PARTICLE_COUNT, 1, 0, 0);
-		graphicsCommandBuffers[currentFrame].endRendering();
+		graphicsCommandBuffers[frameIndex].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+		graphicsCommandBuffers[frameIndex].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		graphicsCommandBuffers[frameIndex].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+		graphicsCommandBuffers[frameIndex].bindVertexBuffers(0, {shaderStorageBuffers[frameIndex]}, {0});
+		graphicsCommandBuffers[frameIndex].draw(PARTICLE_COUNT, 1, 0, 0);
+		graphicsCommandBuffers[frameIndex].endRendering();
 
 		// After rendering, transition the swapchain image to PRESENT_SRC
 		transition_image_layout(
@@ -1070,7 +1070,7 @@ class MultithreadedApplication
 		    vk::PipelineStageFlagBits2::eBottomOfPipe,                 // dstStage
 		    vk::ImageAspectFlagBits::eColor);
 
-		graphicsCommandBuffers[currentFrame].end();
+		graphicsCommandBuffers[frameIndex].end();
 	}
 
 	void transition_image_layout(
@@ -1103,7 +1103,7 @@ class MultithreadedApplication
 		    .dependencyFlags         = {},
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers    = &barrier};
-		graphicsCommandBuffers[currentFrame].pipelineBarrier2(dependency_info);
+		graphicsCommandBuffers[frameIndex].pipelineBarrier2(dependency_info);
 	}
 
 	void signalThreadsToWork()
@@ -1185,7 +1185,7 @@ class MultithreadedApplication
 	void drawFrame()
 	{
 		// Wait for the previous frame to finish
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX))
+		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
 			;
 
 		// If the framebuffer was resized, rebuild the swap chain before acquiring a new image
@@ -1197,7 +1197,7 @@ class MultithreadedApplication
 		}
 
 		// Acquire the next image
-		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame], nullptr);
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[frameIndex], nullptr);
 		if (result == vk::Result::eErrorOutOfDateKHR)
 		{
 			recreateSwapChain();
@@ -1215,7 +1215,7 @@ class MultithreadedApplication
 		uint64_t graphicsSignalValue = ++timelineValue;
 
 		// Update uniform buffer with the latest delta time
-		updateUniformBuffer(currentFrame);
+		updateUniformBuffer(frameIndex);
 
 		// Signal worker threads to start processing particles
 		signalThreadsToWork();
@@ -1275,7 +1275,7 @@ class MultithreadedApplication
 		// Set up graphics submission
 		vk::PipelineStageFlags graphicsWaitStages[] = {vk::PipelineStageFlagBits::eVertexInput, vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
-		std::array<vk::Semaphore, 2> waitSemaphores      = {*timelineSemaphore, *imageAvailableSemaphores[currentFrame]};
+		std::array<vk::Semaphore, 2> waitSemaphores      = {*timelineSemaphore, *imageAvailableSemaphores[frameIndex]};
 		std::array<uint64_t, 2>      waitSemaphoreValues = {graphicsWaitValue, 0};
 
 		vk::TimelineSemaphoreSubmitInfo graphicsTimelineInfo{
@@ -1290,15 +1290,15 @@ class MultithreadedApplication
 		    .pWaitSemaphores      = waitSemaphores.data(),
 		    .pWaitDstStageMask    = graphicsWaitStages,
 		    .commandBufferCount   = 1,
-		    .pCommandBuffers      = &*graphicsCommandBuffers[currentFrame],
+		    .pCommandBuffers      = &*graphicsCommandBuffers[frameIndex],
 		    .signalSemaphoreCount = 1,
 		    .pSignalSemaphores    = &*timelineSemaphore};
 
 		// Submit graphics work
 		{
 			std::lock_guard<std::mutex> lock(queueSubmitMutex);
-			device.resetFences(*inFlightFences[currentFrame]);
-			queue.submit(graphicsSubmitInfo, *inFlightFences[currentFrame]);
+			device.resetFences(*inFlightFences[frameIndex]);
+			queue.submit(graphicsSubmitInfo, *inFlightFences[frameIndex]);
 		}
 
 		// Wait for graphics to complete before presenting
@@ -1335,7 +1335,7 @@ class MultithreadedApplication
 		}
 
 		// Move to the next frame
-		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 };
 

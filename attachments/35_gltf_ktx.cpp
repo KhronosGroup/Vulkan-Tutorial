@@ -313,10 +313,10 @@ class VulkanApplication
 	vk::raii::CommandPool                commandPool = nullptr;
 	std::vector<vk::raii::CommandBuffer> commandBuffers;
 
-	std::vector<vk::raii::Semaphore> presentCompleteSemaphore;
-	std::vector<vk::raii::Semaphore> renderFinishedSemaphore;
+	std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
+	std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
 	std::vector<vk::raii::Fence>     inFlightFences;
-	uint32_t                         currentFrame = 0;
+	uint32_t                         frameIndex = 0;
 
 	bool framebufferResized = false;
 
@@ -1258,7 +1258,8 @@ class VulkanApplication
 
 	void recordCommandBuffer(uint32_t imageIndex)
 	{
-		commandBuffers[currentFrame].begin({});
+		auto &commandBuffer = commandBuffers[frameIndex];
+		commandBuffer.begin({});
 		transition_image_layout(
 		    swapChainImages[imageIndex],
 		    vk::ImageLayout::eUndefined,
@@ -1299,15 +1300,15 @@ class VulkanApplication
 		    .colorAttachmentCount = 1,
 		    .pColorAttachments    = &attachmentInfo,
 		    .pDepthAttachment     = &depthAttachmentInfo};
-		commandBuffers[currentFrame].beginRendering(renderingInfo);
-		commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffers[currentFrame].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-		commandBuffers[currentFrame].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
-		commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
-		commandBuffers[currentFrame].bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
-		commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, *descriptorSets[currentFrame], nullptr);
-		commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
-		commandBuffers[currentFrame].endRendering();
+		commandBuffer.beginRendering(renderingInfo);
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
+		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, *descriptorSets[frameIndex], nullptr);
+		commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
+		commandBuffer.endRendering();
 		// After rendering, transition the swapchain image to PRESENT_SRC
 		transition_image_layout(
 		    swapChainImages[imageIndex],
@@ -1318,7 +1319,7 @@ class VulkanApplication
 		    vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
 		    vk::PipelineStageFlagBits2::eBottomOfPipe,                 // dstStage
 		    vk::ImageAspectFlagBits::eColor);
-		commandBuffers[currentFrame].end();
+		commandBuffer.end();
 	}
 
 	void transition_image_layout(
@@ -1351,23 +1352,21 @@ class VulkanApplication
 		    .dependencyFlags         = {},
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers    = &barrier};
-		commandBuffers[currentFrame].pipelineBarrier2(dependency_info);
+		commandBuffers[frameIndex].pipelineBarrier2(dependency_info);
 	}
 
 	void createSyncObjects()
 	{
-		presentCompleteSemaphore.clear();
-		renderFinishedSemaphore.clear();
-		inFlightFences.clear();
+		assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
 
 		for (size_t i = 0; i < swapChainImages.size(); i++)
 		{
-			presentCompleteSemaphore.emplace_back(device, vk::SemaphoreCreateInfo());
-			renderFinishedSemaphore.emplace_back(device, vk::SemaphoreCreateInfo());
+			renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
 		}
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
+			presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
 			inFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
 		}
 	}
@@ -1392,9 +1391,13 @@ class VulkanApplication
 
 	void drawFrame()
 	{
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX))
+		// Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex,
+		//       while renderFinishedSemaphores is indexed by imageIndex
+		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
 			;
-		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore[currentFrame], nullptr);
+		device.resetFences(*inFlightFences[frameIndex]);
+
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
 		if (result == vk::Result::eErrorOutOfDateKHR)
 		{
@@ -1405,19 +1408,28 @@ class VulkanApplication
 		{
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
-		updateUniformBuffer(currentFrame);
+		updateUniformBuffer(frameIndex);
 
-		device.resetFences(*inFlightFences[currentFrame]);
-		commandBuffers[currentFrame].reset();
+		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 
 		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
-		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore[currentFrame], .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame], .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore[imageIndex]};
-		queue.submit(submitInfo, *inFlightFences[currentFrame]);
+		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+		                                  .pWaitSemaphores      = &*presentCompleteSemaphores[frameIndex],
+		                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+		                                  .commandBufferCount   = 1,
+		                                  .pCommandBuffers      = &*commandBuffers[frameIndex],
+		                                  .signalSemaphoreCount = 1,
+		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
+		queue.submit(submitInfo, *inFlightFences[frameIndex]);
 
 		try
 		{
-			const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
+			const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
+			                                        .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
+			                                        .swapchainCount     = 1,
+			                                        .pSwapchains        = &*swapChain,
+			                                        .pImageIndices      = &imageIndex};
 			result = queue.presentKHR(presentInfoKHR);
 			if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
 			{
@@ -1441,7 +1453,7 @@ class VulkanApplication
 				throw;
 			}
 		}
-		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char> &code) const

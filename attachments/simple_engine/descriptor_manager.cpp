@@ -106,7 +106,7 @@ bool DescriptorManager::update_descriptor_sets(Entity* entity, uint32_t maxFrame
         // Create descriptor writes
         std::array<vk::WriteDescriptorSet, 2> descriptorWrites = {
             vk::WriteDescriptorSet{
-                .dstSet = entityResources[entity].descriptorSets[i],
+                .dstSet = *entityResources[entity].descriptorSets[i],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -116,7 +116,7 @@ bool DescriptorManager::update_descriptor_sets(Entity* entity, uint32_t maxFrame
                 .pTexelBufferView = nullptr
             },
             vk::WriteDescriptorSet{
-                .dstSet = entityResources[entity].descriptorSets[i],
+                .dstSet = *entityResources[entity].descriptorSets[i],
                 .dstBinding = 1,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,

@@ -11,6 +11,8 @@
 #include <cmath>
 #include <ctime>
 #include <glm/gtx/norm.hpp>
+#include <type_traits>
+#include <utility>
 
 // This file contains rendering-related methods from the Renderer class
 
@@ -316,7 +318,8 @@ void Renderer::recreateSwapChain() {
     }
 
     // Clear all entity descriptor sets since they're now invalid (allocated from the old pool)
-    for (auto& resources : entityResources | std::views::values) {
+    for (auto &entry : entityResources) {
+        auto &resources = entry.second;
         resources.basicDescriptorSets.clear();
         resources.pbrDescriptorSets.clear();
     }
@@ -331,7 +334,8 @@ void Renderer::recreateSwapChain() {
     currentFrame = 0;
 
     // Recreate descriptor sets for all entities after swapchain/pipeline rebuild
-    for (const auto& entity : entityResources | std::views::keys) {
+    for (const auto &entry : entityResources) {
+        auto* entity = entry.first;
         if (!entity) continue;
         auto meshComponent = entity->GetComponent<MeshComponent>();
         if (!meshComponent) continue;
@@ -457,10 +461,25 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
 
     if (device.waitForFences(*inFlightFences[currentFrame], VK_TRUE, UINT64_MAX) != vk::Result::eSuccess) {}
 
-    uint32_t imageIndex;
-    vk::ResultValue<uint32_t> result{{},0};
+    uint32_t imageIndex = 0;
+    vk::Result acquireRes = vk::Result::eSuccess;
     try {
-        result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
+        // Normalize acquireNextImage return type across different Vulkan-Hpp variants
+        // to a common std::pair<vk::Result, uint32_t>. This is required as Android requires
+        // using the same version of Vulkan_HPP that Vulkan in the NDK was shipped with so legacy.
+        auto ai = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
+        // Overloads to unwrap either ResultValue<uint32_t> or std::pair<vk::Result,uint32_t>
+        auto unwrap = [](auto const& v) -> std::pair<vk::Result, uint32_t> {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, vk::ResultValue<uint32_t>>) {
+                return { v.result, v.value };
+            } else {
+                return { v.first, v.second };
+            }
+        };
+        auto [resTmp, idxTmp] = unwrap(ai);
+        acquireRes = resTmp;
+        imageIndex = idxTmp;
     } catch (const vk::OutOfDateKHRError&) {
         // Swapchain is out of date (e.g., window resized) before we could
         // query the result. Trigger recreation and exit this frame cleanly.
@@ -470,15 +489,13 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
         return;
     }
 
-    imageIndex = result.value;
-
-    if (result.result == vk::Result::eErrorOutOfDateKHR || result.result == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+    if (acquireRes == vk::Result::eErrorOutOfDateKHR || acquireRes == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
         framebufferResized.store(false, std::memory_order_relaxed);
         if (imguiSystem) ImGui::EndFrame();
         recreateSwapChain();
         return;
     }
-    if (result.result != vk::Result::eSuccess) {
+    if (acquireRes != vk::Result::eSuccess) {
         throw std::runtime_error("Failed to acquire swap chain image");
     }
 
@@ -958,15 +975,15 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, Came
     vk::PresentInfoKHR presentInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex };
     try {
         std::lock_guard<std::mutex> lock(queueMutex);
-        result.result = presentQueue.presentKHR(presentInfo);
+        vk::Result presentRes = presentQueue.presentKHR(presentInfo);
+        if (presentRes == vk::Result::eErrorOutOfDateKHR || presentRes == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+            framebufferResized.store(false, std::memory_order_relaxed);
+            recreateSwapChain();
+        } else if (presentRes != vk::Result::eSuccess) {
+            throw std::runtime_error("Failed to present swap chain image");
+        }
     } catch (const vk::OutOfDateKHRError&) {
         framebufferResized.store(true, std::memory_order_relaxed);
-    }
-    if (result.result == vk::Result::eErrorOutOfDateKHR || result.result == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
-        framebufferResized.store(false, std::memory_order_relaxed);
-        recreateSwapChain();
-    } else if (result.result != vk::Result::eSuccess) {
-        throw std::runtime_error("Failed to present swap chain image");
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

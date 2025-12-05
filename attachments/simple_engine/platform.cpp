@@ -3,6 +3,9 @@
 #include <stdexcept>
 
 #if defined(PLATFORM_ANDROID)
+#include <vulkan/vulkan_android.h>
+#include <cassert>
+
 // Android platform implementation
 
 AndroidPlatform::AndroidPlatform(android_app* androidApp)
@@ -86,7 +89,7 @@ bool AndroidPlatform::ProcessEvents() {
     android_poll_source* source;
 
     // Poll for events with a timeout of 0 (non-blocking)
-    while (ALooper_pollAll(0, nullptr, &events, (void**)&source) >= 0) {
+    if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
         if (source != nullptr) {
             source->process(app, source);
         }
@@ -96,7 +99,7 @@ bool AndroidPlatform::ProcessEvents() {
             return false;
         }
     }
-
+    process_android_input_events();
     return true;
 }
 
@@ -187,11 +190,11 @@ void AndroidPlatform::DetectDeviceCapabilities() {
         jmethodID memoryInfoConstructor = env->GetMethodID(memoryInfoClass, "<init>", "()V");
         jobject memoryInfo = env->NewObject(memoryInfoClass, memoryInfoConstructor);
 
-        jmethodID getSystemService = env->GetMethodID(env->GetObjectClass(app->activity->clazz),
+        jmethodID getSystemService = env->GetMethodID(env->GetObjectClass(app->activity->javaGameActivity),
                                                     "getSystemService",
                                                     "(Ljava/lang/String;)Ljava/lang/Object;");
         jstring serviceStr = env->NewStringUTF("activity");
-        jobject activityManager = env->CallObjectMethod(app->activity->clazz, getSystemService, serviceStr);
+        jobject activityManager = env->CallObjectMethod(app->activity->javaGameActivity, getSystemService, serviceStr);
 
         jmethodID getMemoryInfo = env->GetMethodID(activityManagerClass, "getMemoryInfo",
                                                  "(Landroid/app/ActivityManager$MemoryInfo;)V");
@@ -246,10 +249,10 @@ void AndroidPlatform::SetupPowerSavingMode() {
         jstring actionBatteryChanged = env->NewStringUTF("android.intent.action.BATTERY_CHANGED");
         jobject filter = env->NewObject(intentFilterClass, intentFilterConstructor, actionBatteryChanged);
 
-        jmethodID registerReceiver = env->GetMethodID(env->GetObjectClass(app->activity->clazz),
+        jmethodID registerReceiver = env->GetMethodID(env->GetObjectClass(app->activity->javaGameActivity),
                                                     "registerReceiver",
                                                     "(Landroid/content/BroadcastReceiver;Landroid/content/IntentFilter;)Landroid/content/Intent;");
-        jobject intent = env->CallObjectMethod(app->activity->clazz, registerReceiver, nullptr, filter);
+        jobject intent = env->CallObjectMethod(app->activity->javaGameActivity, registerReceiver, nullptr, filter);
 
         if (intent) {
             // Get battery level
@@ -293,44 +296,58 @@ void AndroidPlatform::InitializeTouchInput() {
     if (!app) {
         return;
     }
+    //process_android_input_events();
+}
 
-    // Set up input handling for touch events
-    app->onInputEvent = [](android_app* app, AInputEvent* event) -> int32_t {
-        auto* platform = static_cast<AndroidPlatform*>(app->userData);
+void AndroidPlatform::process_android_input_events(void)
+{
+    auto* platform = static_cast<AndroidPlatform*>(app->userData);
+    auto input_buf = android_app_swap_input_buffers(app);
+    if (!input_buf)
+    {
+        return;
+    }
 
-        if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
-            int32_t action = AMotionEvent_getAction(event);
-            uint32_t flags = action & AMOTION_EVENT_ACTION_MASK;
+    if (input_buf->motionEventsCount)
+    {
+        for (int idx = 0; idx < input_buf->motionEventsCount; idx++)
+        {
+            auto event = &input_buf->motionEvents[idx];
+            assert((event->source == AINPUT_SOURCE_MOUSE ||
+                    event->source == AINPUT_SOURCE_TOUCHSCREEN) &&
+                   "Invalid motion event source");
 
-            // Handle multi-touch if enabled
-            int32_t pointerCount = AMotionEvent_getPointerCount(event);
-            if (platform->IsMultiTouchEnabled() && pointerCount > 1) {
-                // In a real implementation, this would handle multi-touch gestures
-                // For now, just log the number of touch points
-                LOGI("Multi-touch event with %d pointers", pointerCount);
-            }
+            std::int32_t action = event->action;
 
-            // Convert touch event to mouse event for the engine
+            float x = GameActivityPointerAxes_getX(&event->pointers[0]);
+            float y = GameActivityPointerAxes_getY(&event->pointers[0]);
+
             if (platform->mouseCallback) {
-                float x = AMotionEvent_getX(event, 0);
-                float y = AMotionEvent_getY(event, 0);
-
                 uint32_t buttons = 0;
-                if (flags == AMOTION_EVENT_ACTION_DOWN || flags == AMOTION_EVENT_ACTION_MOVE) {
+                if (action == AMOTION_EVENT_ACTION_DOWN || action == AMOTION_EVENT_ACTION_MOVE) {
                     buttons |= 0x01; // Left button
                 }
-
-                platform->mouseCallback(x, y, buttons);
+                platform->mouseCallback(x,y,buttons);
             }
-
-            return 1; // Event handled
         }
+        android_app_clear_motion_events(input_buf);
+    }
 
-        return 0; // Event not handled
-    };
-
-    LOGI("Touch input initialized");
+    if (input_buf->keyEventsCount)
+    {
+        for (int idx = 0; idx < input_buf->keyEventsCount; idx++)
+        {
+            auto event = &input_buf->keyEvents[idx];
+            assert((event->source == AINPUT_SOURCE_KEYBOARD) &&
+                   "Invalid key event source");
+            if (platform->keyboardCallback) {
+                platform->keyboardCallback(event->keyCode, event->action == AKEY_EVENT_ACTION_DOWN);
+            }
+        }
+        android_app_clear_key_events(input_buf);
+    }
 }
+
 
 void AndroidPlatform::EnablePowerSavingMode(bool enable) {
     powerSavingMode = enable;

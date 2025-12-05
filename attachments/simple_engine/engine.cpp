@@ -332,6 +332,7 @@ void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
         HandleMouseHover(x, y);
 }
 void Engine::handleKeyInput(uint32_t key, bool pressed) {
+#if defined(PLATFORM_DESKTOP)
     switch (key) {
         case GLFW_KEY_W:
         case GLFW_KEY_UP:
@@ -361,7 +362,7 @@ void Engine::handleKeyInput(uint32_t key, bool pressed) {
             break;
         default: break;
     }
-
+#endif
     if (imguiSystem) {
         imguiSystem->HandleKeyboard(key, pressed);
     }

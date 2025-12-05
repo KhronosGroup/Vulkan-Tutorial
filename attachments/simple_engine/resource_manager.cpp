@@ -18,9 +18,11 @@ void Resource::Unload() {
 }
 
 void ResourceManager::UnloadAllResources() {
-    for (auto& val : resources | std::views::values) {
-        for (auto& loadedResource : val | std::views::values) {
-            loadedResource->Unload();
+    for (auto &bucketEntry : resources) {
+        auto &val = bucketEntry.second;
+        for (auto &resEntry : val) {
+            auto &loadedResource = resEntry.second;
+            if (loadedResource) loadedResource->Unload();
         }
         val.clear();
     }

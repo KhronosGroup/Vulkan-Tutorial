@@ -5,7 +5,7 @@
 #include <array>
 #include <glm/glm.hpp>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 #include "component.h"
 
@@ -78,7 +78,7 @@ struct InstanceData {
         constexpr uint32_t modelBase = offsetof(InstanceData, modelMatrix);
         constexpr uint32_t normalBase = offsetof(InstanceData, normalMatrix);
         constexpr uint32_t vec4Size = sizeof(glm::vec4);
-        constexpr std::array<vk::VertexInputAttributeDescription, 7> attributeDescriptions = {
+        std::array<vk::VertexInputAttributeDescription, 7> attributeDescriptions = {
             // Model matrix columns (locations 4-7)
             vk::VertexInputAttributeDescription{
                 .location = 4,
@@ -131,7 +131,7 @@ struct InstanceData {
     static std::array<vk::VertexInputAttributeDescription, 4> getModelMatrixAttributeDescriptions() {
         constexpr uint32_t modelBase = offsetof(InstanceData, modelMatrix);
         constexpr uint32_t vec4Size = sizeof(glm::vec4);
-        constexpr std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
+        const std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
             vk::VertexInputAttributeDescription{
                 .location = 4,
                 .binding = 1,
@@ -164,7 +164,7 @@ struct InstanceData {
     static std::array<vk::VertexInputAttributeDescription, 3> getNormalMatrixAttributeDescriptions() {
         constexpr uint32_t normalBase = offsetof(InstanceData, normalMatrix);
         constexpr uint32_t vec4Size = sizeof(glm::vec4);
-        constexpr std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions = {
+        const std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions = {
             vk::VertexInputAttributeDescription{
                 .location = 8,
                 .binding = 1,
@@ -214,7 +214,7 @@ struct Vertex {
     }
 
     static std::array<vk::VertexInputAttributeDescription, 4> getAttributeDescriptions() {
-        constexpr std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
+        const std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions = {
             vk::VertexInputAttributeDescription{
                 .location = 0,
                 .binding = 0,

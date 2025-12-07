@@ -2,6 +2,23 @@
 
 = Base code
 
+== Vulkan-hpp and designated initializers
+
+NOTE: We are going to use designated initializers introduced with C++ 20. By default,
+Vulkan-hpp uses a different way of initializing and we need to explicitly enable this
+by using the `VULKAN_HPP_NO_STRUCT_CONSTRUCTORS` define.
+
+This provides a better meaning towards what each option relates to in the structures that we're depending upon. For this tutorial, said define is declared in the xref:../../02_Development_environment.adoc#cmake[CMake build setup].
+
+If you use a different build setup or want to write code from scratch, you need to manually define this before including the Vulkan-hpp headers like this: 
+[,c++]
+----
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+#include <vulkan/vulkan.hpp>
+// or
+#include <vulkan/vulkan_raii.hpp>
+----
+
 == General structure
 
 In the previous chapter, you've created a Vulkan project with all the proper
@@ -155,14 +172,6 @@ vk::InstanceCreateInfo createInfo{
 
 instance = vk::raii::Instance(context, createInfo);
 ----
-
-NOTE: We use Vulkan-hpp with designated initializers introduced with C++ 20. By default,
-Vulkan-hpp uses a different way of initializing and we need to explicitly enable this
-by using the `VULKAN_HPP_NO_STRUCT_CONSTRUCTORS` define. This provides a better meaning
-towards what each option relates to in the structures that we're depending upon.
-For this tutorial, said define is declared in the xref:../../02_Development_environment.adoc#cmake[CMake build setup].
-If you use a different build setup, you need to manually define this before including
-Vulkan-hpp.
 
 == Integrating GLFW
 

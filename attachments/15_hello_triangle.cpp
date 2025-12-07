@@ -467,8 +467,11 @@ class HelloTriangleApplication
 		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore, .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffer, .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore};
 		queue.submit(submitInfo, *drawFence);
-		while (vk::Result::eTimeout == device.waitForFences(*drawFence, vk::True, UINT64_MAX))
-			;
+		result = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
+		if (result != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
 
 		const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore, .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
 		result = queue.presentKHR(presentInfoKHR);

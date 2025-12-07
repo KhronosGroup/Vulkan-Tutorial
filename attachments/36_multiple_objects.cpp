@@ -1526,8 +1526,11 @@ class VulkanApplication
 	{
 		// Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex,
 		//       while renderFinishedSemaphores is indexed by imageIndex
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
-			;
+		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
 		device.resetFences(*inFlightFences[frameIndex]);
 
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);

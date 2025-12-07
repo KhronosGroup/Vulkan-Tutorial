@@ -1554,7 +1554,11 @@ class HelloTriangleApplication
 
 	void drawFrame()
 	{
-		static_cast<void>(device.waitForFences({*inFlightFences[frameIndex]}, VK_TRUE, UINT64_MAX));
+		vk::Result result = device.waitForFences({*inFlightFences[frameIndex]}, VK_TRUE, UINT64_MAX);
+		if (result != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
 
 		uint32_t imageIndex;
 		try

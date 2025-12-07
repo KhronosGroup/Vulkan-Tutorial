@@ -215,12 +215,25 @@ To do that, we call `vkWaitForFences`:
 [,c++]
 ----
 void drawFrame() {
-   auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr );
+    auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
 }
 ----
 
-First, let's grab an image from the framebuffer after the previous frame has
-finished.
+The `waitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
+The `vk::True` we pass here indicates that we want to wait for all fences, but in the case of a single one it doesn't matter.
+This function also has a timeout parameter that we set to the maximum value of a 64 bit unsigned integer, `UINT64_MAX`, which effectively disables the timeout.
+
+Next, let's grab an image from the framebuffer after the previous frame has
+finished:
+
+[,c++]
+----
+void drawFrame() {
+    ...
+    auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+}
+----
+
 The first two parameters of `vkAcquireNextImageKHR` are the logical device and the swap chain from which we wish to acquire an image.
 The third parameter specifies a timeout in nanoseconds for an image to become available.
 Using the maximum value of a 64-bit unsigned integer means we effectively disable the timeout.
@@ -234,11 +247,6 @@ The last parameter specifies a variable to output the index of the swap chain im
 The index refers to the `VkImage` in our `swapChainImages` array.
 We're going to use that index to pick the `VkFrameBuffer`. Then we'll record
 into that framebuffer.
-
-The `vkWaitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
-The `VK_TRUE` we pass here indicates that we want to wait for all fences, but in the case of a single one it doesn't matter.
-This function also has a timeout parameter that we set to the maximum value of a 64 bit unsigned integer, `UINT64_MAX`, which effectively disables the timeout.
-
 
 == Recording the command buffer
 

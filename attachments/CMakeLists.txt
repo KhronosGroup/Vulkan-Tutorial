@@ -14,7 +14,7 @@ endif()
 
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
-find_package (Vulkan REQUIRED)
+find_package (Vulkan 1.4.335 REQUIRED)      # Require Vulkan SDK version 1.4.335 or higher
 find_package (tinyobjloader REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
@@ -138,6 +138,9 @@ function (add_chapter CHAPTER_NAME)
   if(ENABLE_CPP20_MODULE)
     target_compile_definitions(${CHAPTER_NAME} PRIVATE USE_CPP20_MODULES=1)
   endif()
+
+  # Define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS to treat VK_ERROR_OUT_OF_DATE_KHR as a success code
+  target_compile_definitions(${CHAPTER_NAME} PRIVATE "VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS" )
 
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")

@@ -132,7 +132,7 @@ QueueFamilyIndices Renderer::findQueueFamilies(const vk::raii::PhysicalDevice& d
             indices.computeFamily = i;
         }
         // Check for present support
-        if (!indices.presentFamily.has_value() && device.getSurfaceSupportKHR(i, surface)) {
+        if (!indices.presentFamily.has_value() && device.getSurfaceSupportKHR(i, *surface)) {
             indices.presentFamily = i;
         }
         // Prefer a dedicated transfer queue (transfer bit set, but NOT graphics) if available
@@ -161,13 +161,13 @@ SwapChainSupportDetails Renderer::querySwapChainSupport(const vk::raii::Physical
     SwapChainSupportDetails details;
 
     // Get surface capabilities
-    details.capabilities = device.getSurfaceCapabilitiesKHR(surface);
+    details.capabilities = device.getSurfaceCapabilitiesKHR(*surface);
 
     // Get surface formats
-    details.formats = device.getSurfaceFormatsKHR(surface);
+    details.formats = device.getSurfaceFormatsKHR(*surface);
 
     // Get present modes
-    details.presentModes = device.getSurfacePresentModesKHR(surface);
+    details.presentModes = device.getSurfacePresentModesKHR(*surface);
 
     return details;
 }

@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include <vulkan/vulkan.h>
 
 #if defined(PLATFORM_ANDROID)
 #include <android/native_activity.h>
@@ -10,6 +11,7 @@
 #include <android/asset_manager_jni.h>
 #include <android/log.h>
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+#include <game-activity/GameActivity.h>
 #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "SimpleEngine", __VA_ARGS__))
 #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "SimpleEngine", __VA_ARGS__))
 #define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "SimpleEngine", __VA_ARGS__))
@@ -174,6 +176,11 @@ private:
     void InitializeTouchInput();
 
 public:
+    /**
+     * @brief Process android input events.
+     */
+    void process_android_input_events(void);
+
     /**
      * @brief Enable or disable power-saving mode.
      * @param enable Whether to enable power-saving mode.

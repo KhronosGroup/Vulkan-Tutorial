@@ -13,6 +13,20 @@
 #include <vulkan/vk_platform.h>
 #include <stdexcept>
 
+#if defined(PLATFORM_ANDROID)
+#include <SLES/OpenSLES.h>
+#include <SLES/OpenSLES_Android.h>
+#else
+// OpenAL headers
+#ifdef __APPLE__
+#include <OpenAL/al.h>
+#include <OpenAL/alc.h>
+#else
+#include <AL/al.h>
+#include <AL/alc.h>
+#endif
+#endif
+
 /**
  * @brief Class representing an audio source.
  */

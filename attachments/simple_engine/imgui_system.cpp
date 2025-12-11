@@ -482,7 +482,7 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer & commandBuffer, uint32_t frame
         pushConstBlock.translate[0] = -1.0f;
         pushConstBlock.translate[1] = -1.0f;
 
-        commandBuffer.pushConstants<PushConstBlock>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstBlock);
+        commandBuffer.pushConstants<PushConstBlock>(*pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstBlock);
 
         // Bind vertex and index buffers for this frame
         std::array<vk::Buffer, 1> vertexBuffersArr = {*vertexBuffers[frameIndex]};

@@ -1062,7 +1062,6 @@ class HelloTriangleApplication
 		//       while renderFinishedSemaphores is indexed by imageIndex
 		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
 			;
-		device.resetFences(*inFlightFences[frameIndex]);
 
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
@@ -1077,6 +1076,7 @@ class HelloTriangleApplication
 		}
 		updateUniformBuffer(frameIndex);
 
+		device.resetFences(*inFlightFences[frameIndex]);
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

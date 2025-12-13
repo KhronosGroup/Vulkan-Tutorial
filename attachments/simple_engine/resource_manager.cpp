@@ -18,8 +18,10 @@ void Resource::Unload() {
 }
 
 void ResourceManager::UnloadAllResources() {
-    for (auto& val : resources | std::views::values) {
-        for (auto& loadedResource : val | std::views::values) {
+    for (auto& kv : resources) {
+        auto& val = kv.second;
+        for (auto& innerKv : val) {
+            auto& loadedResource = innerKv.second;
             loadedResource->Unload();
         }
         val.clear();

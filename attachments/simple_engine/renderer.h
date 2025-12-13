@@ -622,9 +622,10 @@ private:
 
     // The texture that will hold a snapshot of the opaque scene
     vk::raii::Image opaqueSceneColorImage{nullptr};
-    vk::raii::DeviceMemory opaqueSceneColorImageMemory{nullptr}; // <-- Standard Vulkan memory
     vk::raii::ImageView opaqueSceneColorImageView{nullptr};
     vk::raii::Sampler opaqueSceneColorSampler{nullptr};
+    // Pooled allocation associated with opaqueSceneColorImage (must be explicitly deallocated)
+    std::unique_ptr<MemoryPool::Allocation> opaqueSceneColorImageAllocation = nullptr;
 
     // A descriptor set for the opaque scene color texture. We will have one for each frame in flight
     // to match the swapchain images.

@@ -1185,8 +1185,11 @@ class MultithreadedApplication
 	void drawFrame()
 	{
 		// Wait for the previous frame to finish
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
-			;
+		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
 
 		// If the framebuffer was resized, rebuild the swap chain before acquiring a new image
 		if (framebufferResized)

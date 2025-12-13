@@ -811,8 +811,11 @@ class ComputeShaderApplication
 	void drawFrame()
 	{
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, nullptr, *inFlightFences[frameIndex]);
-		while (vk::Result::eTimeout == device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX))
-			;
+		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
 		device.resetFences(*inFlightFences[frameIndex]);
 
 		// Update timeline value for this frame
@@ -877,8 +880,11 @@ class ComputeShaderApplication
 			    .pValues        = &graphicsSignalValue};
 
 			// Wait for graphics to complete before presenting
-			while (vk::Result::eTimeout == device.waitSemaphores(waitInfo, UINT64_MAX))
-				;
+			auto result = device.waitSemaphores(waitInfo, UINT64_MAX);
+			if (result != vk::Result::eSuccess)
+			{
+				throw std::runtime_error("failed to wait for semaphore!");
+			}			
 
 			vk::PresentInfoKHR presentInfo{
 			    .waitSemaphoreCount = 0,        // No binary semaphores needed

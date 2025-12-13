@@ -192,7 +192,7 @@ void createSyncObjects() {
 }
 ----
 
-Creating semaphores requires filling in the `VkSemaphoreCreateInfo`, but in the current version of the API it doesn't actually have any required fields besides `sType`:
+Creating semaphores requires filling in the `vk::SemaphoreCreateInfo`, but in the current version of the API it doesn't actually have any fields relevant to the tutorial:
 
 [,c++]
 ----
@@ -210,35 +210,42 @@ Onto the main drawing function!
 == Waiting for the previous frame
 
 At the start of the frame, we want to wait until the previous frame has finished, so that the command buffer and semaphores are available to use.
-To do that, we call `vkWaitForFences`:
+To do that, we call `device.waitForFences`:
 
 [,c++]
 ----
 void drawFrame() {
-   auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphore, nullptr );
+    auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
 }
 ----
 
-First, let's grab an image from the framebuffer after the previous frame has
-finished.
-The first two parameters of `vkAcquireNextImageKHR` are the logical device and the swap chain from which we wish to acquire an image.
-The third parameter specifies a timeout in nanoseconds for an image to become available.
+The `waitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
+The `vk::True` we pass here indicates that we want to wait for all fences, but in the case of a single one it doesn't matter.
+This function also has a timeout parameter that we set to the maximum value of a 64 bit unsigned integer, `UINT64_MAX`, which effectively disables the timeout.
+
+Next, let's grab an image from the framebuffer after the previous frame has
+finished:
+
+[,c++]
+----
+void drawFrame() {
+    ...
+    auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+}
+----
+
+The first parameter specifies a timeout in nanoseconds for an image to become available.
 Using the maximum value of a 64-bit unsigned integer means we effectively disable the timeout.
 
 The next two parameters specify synchronization objects that are to be signaled when the presentation engine is finished using the image.
 That's the point in time where we can start drawing to it.
 It is possible to specify a semaphore, fence or both.
-We're going to use our `imageAvailableSemaphore` for that purpose here.
+We're going to use our `presentCompleteSemaphores` for that purpose here.
 
 The last parameter specifies a variable to output the index of the swap chain image that has become available.
 The index refers to the `VkImage` in our `swapChainImages` array.
 We're going to use that index to pick the `VkFrameBuffer`. Then we'll record
 into that framebuffer.
-
-The `vkWaitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
-The `VK_TRUE` we pass here indicates that we want to wait for all fences, but in the case of a single one it doesn't matter.
-This function also has a timeout parameter that we set to the maximum value of a 64 bit unsigned integer, `UINT64_MAX`, which effectively disables the timeout.
-
 
 == Recording the command buffer
 
@@ -255,19 +262,26 @@ already happened, so we know to wait on it later.
 
 [,c++]
 ----
-device.resetFences(  *drawFence );
+device.resetFences(*drawFence);
 ----
 
 With a fully recorded command buffer, we can now submit it.
 
 == Submitting the command buffer
 
-Queue submission and synchronization is configured through parameters in the `VkSubmitInfo` structure.
+Queue submission and synchronization is configured through parameters in the `vk::SubmitInfo` structure.
 
 [,c++]
 ----
 vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-const vk::SubmitInfo submitInfo( **presentCompleteSemaphore, waitDestinationStageMask, **commandBuffer, **renderFinishedSemaphore );
+const vk::SubmitInfo submitInfo{
+    .waitSemaphoreCount = 1,
+    .pWaitSemaphores = &*presentCompleteSemaphore,
+    .pWaitDstStageMask = &waitDestinationStageMask,
+    .commandBufferCount = 1,
+    .pCommandBuffers = &*commandBuffer,
+    .signalSemaphoreCount = 1,
+    .pSignalSemaphores = &*renderFinishedSemaphore};
 ----
 
 The first three parameters specify which semaphores to wait on before execution begins and in which stage(s) of the pipeline to wait.
@@ -287,18 +301,10 @@ In our case we're using the `renderFinishedSemaphore` for that purpose.
 graphicsQueue.submit(submitInfo, *drawFence);
 ----
 
-We can now submit the command buffer to the graphics queue using `vkQueueSubmit`.
-The function takes an array of `VkSubmitInfo` structures as argument for efficiency when the workload is much larger.
+We can now submit the command buffer to the graphics queue using `submit`.
+The function takes an array of `vk::SubmitInfo` structures as argument for efficiency when the workload is much larger.
 The last parameter references an optional fence that will be signaled when the command buffers finish execution.
-This allows us to know when it is safe for the command buffer to be reused, thus we want to give it `drawFence`.
-Now we want the CPU to wait while the GPU finishes rendering that frame we
-just submitted:
-
-[,c++]
-----
-while ( vk::Result::eTimeout == device.waitForFences( *drawFence, vk::True, UINT64_MAX ) )
-            ;
-----
+This allows us to know when it is safe for the command buffer to be reused, thus we want to give it `drawFence`, which is waited on in the next frame.
 
 == Subpass dependencies
 
@@ -357,14 +363,19 @@ link:/attachments/15_hello_triangle.cpp[demo code.]
 == Presentation
 
 The last step of drawing a frame is submitting the result back to the swap chain to have it eventually show up on the screen.
-Presentation is configured through a `VkPresentInfoKHR` structure at the end of the `drawFrame` function.
+Presentation is configured through a `vk::PresentInfoKHR` structure at the end of the `drawFrame` function.
 
 [,c++]
 ----
-const vk::PresentInfoKHR presentInfoKHR( **renderFinishedSemaphore, **swapChain, imageIndex );
+const vk::PresentInfoKHR presentInfoKHR{
+    .waitSemaphoreCount = 1,
+    .pWaitSemaphores = &*renderFinishedSemaphore,
+    .swapchainCount = 1,
+    .pSwapchains = &*swapChain,
+    .pImageIndices = &imageIndex};
 ----
 
-The first two parameters specify which semaphores to wait on before presentation can happen, just like `VkSubmitInfo`.
+The first two parameters specify which semaphores to wait on before presentation can happen, just like `vk::SubmitInfo`.
 Since we want to wait on the command buffer to finish execution, thus our triangle being drawn, we take the semaphores which will be signaled and wait on them, thus we use `signalSemaphores`.
 
 The next two parameters specify the swap chains to present images to and the index of the image for each swap chain.
@@ -376,16 +387,16 @@ presentInfo.pResults = nullptr; // Optional
 ----
 
 There is one last optional parameter called `pResults`.
-It allows you to specify an array of `VkResult` values to check for every swap chain if presentation was successful.
+It allows you to specify an array of `vk::Result` values to check for every swap chain if presentation was successful.
 It's not necessary if you're only using a single swap chain, because you can use the return value of the present function.
 
 [,c++]
 ----
-result = presentQueue.presentKHR( presentInfoKHR );
+result = presentQueue.presentKHR(presentInfoKHR);
 ----
 
-The `vkQueuePresentKHR` function submits the request to present an image to the swap chain.
-We'll add error handling for both `vkAcquireNextImageKHR` and `vkQueuePresentKHR` in the next chapter, because their failure does not necessarily mean that the program should terminate, unlike the functions we've seen so far.
+The `presentKHR` function submits the request to present an image to the swap chain.
+We'll add error handling for both `swapChain.acquireNextImage` and `queue.presentKHR` in the next chapter, because their failure does not necessarily mean that the program should terminate, unlike the functions we've seen so far.
 
 If you did everything correctly up to this point, then you should now see something resembling the following when you run your program:
 

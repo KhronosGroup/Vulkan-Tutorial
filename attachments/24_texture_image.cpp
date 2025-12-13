@@ -807,7 +807,6 @@ class HelloTriangleApplication
 		{
 			throw std::runtime_error("failed to wait for fence!");
 		}
-		device.resetFences(*inFlightFences[frameIndex]);
 
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
@@ -822,6 +821,7 @@ class HelloTriangleApplication
 		}
 		updateUniformBuffer(frameIndex);
 
+		device.resetFences(*inFlightFences[frameIndex]);
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

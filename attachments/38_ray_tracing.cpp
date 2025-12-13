@@ -1828,7 +1828,6 @@ class VulkanRaytracingApplication
 		{
 			throw std::runtime_error("failed to wait for fence!");
 		}
-		device.resetFences(*inFlightFences[frameIndex]);
 
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
@@ -1847,6 +1846,7 @@ class VulkanRaytracingApplication
 		updateTopLevelAS(ubo.model);
 #endif        // LAB_TASK_LEVEL >= LAB_TASK_AS_ANIMATION
 
+		device.resetFences(*inFlightFences[frameIndex]);
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

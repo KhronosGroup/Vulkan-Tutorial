@@ -524,7 +524,6 @@ class HelloTriangleApplication
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
-		device.resetFences(*inFlightFences[frameIndex]);
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

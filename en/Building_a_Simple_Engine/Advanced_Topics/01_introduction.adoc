@@ -1,0 +1,27 @@
+::pp: {plus}{plus}
+
+= Advanced Topics (Simple Engine)
+
+Welcome — this section collects short, conversational guides that explain what each feature is, why we use it, and how it’s implemented in the Simple Engine.
+
+Start anywhere that matches your interest:
+
+* xref:Planar_Reflections.adoc[Planar Reflections]
+* xref:Ray_Query_Rendering.adoc[Ray Query Rendering]
+* xref:Ray_Query_Reflections_and_Transparency.adoc[Ray Query Reflections and Transparency]
+* xref:Rendering_Pipeline_Overview.adoc[Rendering Pipeline Overview]
+* xref:Forward_ForwardPlus_Deferred.adoc[Forward, Forward+, Deferred]
+* xref:ForwardPlus_Rendering.adoc[Forward+ Rendering]
+* xref:Culling.adoc[Frustum Culling and Distance LOD]
+* xref:Mipmaps_and_LOD.adoc[Mipmaps and LOD]
+* xref:GLTF_Animation.adoc[glTF Animation & Transform Composition]
+* xref:Push_Constants_Per_Object.adoc[Push Constants (per‑object material)]
+* xref:Descriptor_Indexing_UpdateAfterBind.adoc[Descriptor Indexing & Stable Updates]
+* xref:Separate_Image_Sampler_Descriptors.adoc[Separate Image/Sampler]
+* xref:Synchronization_and_Streaming.adoc[Synchronization & Streaming]
+* xref:Synchronization_2_Frame_Pacing.adoc[Synchronization 2 & Frame Pacing]
+* xref:Robustness2.adoc[VK_EXT_robustness2]
+* xref:Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read]
+* xref:Shader_Tile_Image.adoc[Shader Tile Image]
+
+link:../index.html[Back to Building a Simple Engine]

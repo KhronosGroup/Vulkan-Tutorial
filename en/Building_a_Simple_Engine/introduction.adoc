@@ -45,6 +45,8 @@ Let's begin our journey into engine development with these chapters:
 7. xref:Tooling/01_introduction.adoc[Tooling] - CI/CD, Debugging, Crash minidump, Distribution, and Vulkan extensions for robustness.
 8. xref:Mobile_Development/01_introduction.adoc[Mobile Development] - Adapting the engine for Android/iOS, focusing on performance considerations and mobile-specific Vulkan extensions.
 
+9. xref:Advanced_Topics/01_introduction.adoc[Advanced Topics] - Short, focused tutorials that extend the Simple Engine with specific features and optimizations.
+
 xref:../conclusion.adoc[Previous: Main Tutorial Conclusion] | xref:Engine_Architecture/01_introduction.adoc[Next: Engine Architecture]
 
 

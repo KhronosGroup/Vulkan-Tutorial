@@ -189,6 +189,14 @@ private:
 - Add automated startup probes that dump device/feature info to logs for field telemetry.
 - Expand the regression scene suite to cover TBR‑sensitive and bandwidth‑heavy paths.
 
+==== Explore Advanced Topics (Simple Engine Tutorials)
+
+The following short, focused tutorials build directly on the Simple Engine and are great next steps:
+
+- xref:../Advanced_Topics/01_introduction.adoc[Tutorials Index — browse all topics]
+- xref:../Advanced_Topics/Mipmaps_and_LOD.adoc[Mipmaps and LOD] — practical guidance on stable texture sampling and anisotropy.
+- xref:../Advanced_Topics/Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read] — optimize same‑pass reads via tile/local memory when supported.
+
 === Code Examples
 
 The complete code for this chapter can be found in the following files:

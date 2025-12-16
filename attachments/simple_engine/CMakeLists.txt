@@ -1,12 +1,17 @@
 cmake_minimum_required(VERSION 3.29)
 
-# Enable C++ module dependency scanning
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
+# Option to enable/disable Vulkan C++20 module support for this standalone project
+option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan in SimpleEngine" OFF)
+
+# Enable C++ module dependency scanning only when modules are enabled
+if(ENABLE_CPP20_MODULE)
+    set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+endif()
+
 # Add CMake module path for custom find modules
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../CMake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 # Find required packages
 find_package (glfw3 REQUIRED)
@@ -16,32 +21,52 @@ find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
 find_package (OpenAL REQUIRED)
 
-# set up Vulkan C++ module
-add_library(VulkanCppModule)
-add_library(Vulkan::cppm ALIAS VulkanCppModule)
+if(ENABLE_CPP20_MODULE)
+    # Set up Vulkan C++ module for this standalone project
+    add_library(VulkanCppModule)
+    add_library(Vulkan::cppm ALIAS VulkanCppModule)
 
-target_compile_definitions(VulkanCppModule
-        PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
-)
-target_include_directories(VulkanCppModule
-        PRIVATE
-        "${Vulkan_INCLUDE_DIR}"
-)
-target_link_libraries(VulkanCppModule
-        PUBLIC
-        Vulkan::Vulkan
-)
+    target_compile_definitions(VulkanCppModule
+            PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    )
+    target_include_directories(VulkanCppModule
+            PUBLIC
+            "${Vulkan_INCLUDE_DIR}"
+    )
+    target_link_libraries(VulkanCppModule
+            PUBLIC
+            Vulkan::Vulkan
+    )
 
-set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
+    set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
 
-target_sources(VulkanCppModule
-        PUBLIC
-        FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
-        FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
-)
+    target_sources(VulkanCppModule
+            PUBLIC
+            FILE_SET cxx_modules TYPE CXX_MODULES
+            BASE_DIRS
+            "${Vulkan_INCLUDE_DIR}"
+            FILES
+            "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+    )
+
+    # MSVC-specific options to improve module support
+    if(MSVC)
+        target_compile_options(VulkanCppModule PRIVATE
+            /std:c++latest
+            /permissive-
+            /Zc:__cplusplus
+            /EHsc
+            /Zc:preprocessor
+        )
+    endif()
+else()
+    add_library(VulkanCppModule INTERFACE)
+    add_library(Vulkan::cppm ALIAS VulkanCppModule)
+    target_link_libraries(VulkanCppModule INTERFACE Vulkan::Vulkan)
+    target_compile_definitions(VulkanCppModule
+            INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    )
+endif()
 
 
 
@@ -55,8 +80,9 @@ else()
 endif()
 
 # Shader compilation
-# Find Slang shaders
+# Find Slang shaders (exclude utility modules that are imported, not compiled standalone)
 file(GLOB SLANG_SHADER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang)
+list(FILTER SLANG_SHADER_SOURCES EXCLUDE REGEX ".*/(common_types|pbr_utils|lighting_utils|tonemapping_utils)\\.slang$")
 
 # Find slangc executable (optional)
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin)
@@ -97,6 +123,7 @@ set(SOURCES
     renderer_compute.cpp
     renderer_utils.cpp
     renderer_resources.cpp
+    renderer_ray_query.cpp
     memory_pool.cpp
     resource_manager.cpp
     entity.cpp
@@ -104,6 +131,7 @@ set(SOURCES
     transform_component.cpp
     mesh_component.cpp
     camera_component.cpp
+    animation_component.cpp
     model_loader.cpp
     audio_system.cpp
     physics_system.cpp
@@ -122,9 +150,24 @@ add_executable(SimpleEngine ${SOURCES})
 add_dependencies(SimpleEngine shaders)
 set_target_properties (SimpleEngine PROPERTIES CXX_STANDARD 20)
 
+# Enable required defines for GLM experimental extensions and MSVC math constants
+target_compile_definitions(SimpleEngine PRIVATE
+    GLM_ENABLE_EXPERIMENTAL
+    _USE_MATH_DEFINES
+    VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC
+)
+
 # Link libraries
+# Prefer the Vulkan C++ module target when available (configured at the parent level),
+# but fall back to the standard Vulkan library otherwise.
+if(TARGET Vulkan::cppm)
+    target_link_libraries(SimpleEngine PRIVATE Vulkan::cppm)
+else()
+    target_link_libraries(SimpleEngine PRIVATE Vulkan::Vulkan)
+endif()
+
 target_link_libraries(SimpleEngine PRIVATE
-    Vulkan::cppm
     glm::glm
     tinygltf::tinygltf
     KTX::ktx
@@ -133,6 +176,33 @@ target_link_libraries(SimpleEngine PRIVATE
 
 if(NOT ANDROID)
     target_link_libraries(SimpleEngine PRIVATE glfw)
+endif()
+
+# Windows/MSVC portability and build settings
+if(MSVC)
+    # Avoid Windows.h macro pollution and CRT warnings; improve conformance and build perf
+    target_compile_definitions(SimpleEngine PRIVATE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+    target_compile_options(SimpleEngine PRIVATE
+        /permissive-
+        /Zc:__cplusplus
+        /EHsc
+        /W3
+        /MP
+        /bigobj
+    )
+    # Crash reporter uses Dbghelp; pragma should suffice, but make it explicit for clarity
+    target_link_libraries(SimpleEngine PRIVATE Dbghelp)
+elseif(WIN32)
+    # Non-MSVC Windows toolchains (e.g., MinGW)
+    target_compile_definitions(SimpleEngine PRIVATE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
 endif()
 
 # Copy model and texture files if they exist

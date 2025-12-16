@@ -14,43 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "entity.h"
+// Tonemapping utilities for HDR to LDR conversion
+// Shared between rasterization and ray query shaders
 
-// Most of the Entity class implementation is in the header file
-// This file is mainly for any methods that might need additional implementation
-
-void Entity::Initialize()
-{
-	for (auto &component : components)
-	{
-		component->Initialize();
-	}
-}
-
-void Entity::Update(std::chrono::milliseconds deltaTime)
-{
-	if (!active)
-		return;
-
-	for (auto &component : components)
-	{
-		if (component->IsActive())
-		{
-			component->Update(deltaTime);
-		}
-	}
-}
-
-void Entity::Render()
-{
-	if (!active)
-		return;
-
-	for (auto &component : components)
-	{
-		if (component->IsActive())
-		{
-			component->Render();
-		}
-	}
+// Hable/Uncharted 2 filmic tonemapping operator
+// Provides a cinematic look with good highlight rolloff
+namespace Hable_Filmic_Tonemapping {
+    static const float A = 0.15; 
+    static const float B = 0.50;
+    static const float C = 0.10; 
+    static const float D = 0.20;
+    static const float E = 0.02; 
+    static const float F = 0.30;
+    static const float W = 11.2;
+    
+    float3 Uncharted2Tonemap(float3 x) {
+        return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+    }
 }

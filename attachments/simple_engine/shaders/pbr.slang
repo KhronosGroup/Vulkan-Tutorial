@@ -1,3 +1,25 @@
+/* Copyright (c) 2025 Holochip Corporation
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// Import shared utility modules
+import common_types;
+import pbr_utils;
+import lighting_utils;
+import tonemapping_utils;
+
 // Input from vertex buffer
 struct VSInput {
     [[vk::location(0)]] float3 Position;
@@ -24,61 +46,7 @@ struct VSOutput {
     float4 Tangent : TANGENT;
 };
 
-// Light data structure for storage buffer
-struct LightData {
-    [[vk::offset(0)]]   float4 position;
-    [[vk::offset(16)]]  float4 color;
-    [[vk::offset(32)]]  column_major float4x4 lightSpaceMatrix;
-    [[vk::offset(96)]]  int   lightType;
-    [[vk::offset(100)]] float range;
-    [[vk::offset(104)]] float innerConeAngle;
-    [[vk::offset(108)]] float outerConeAngle;
-};
-
-// Uniform buffer (now without fixed light arrays)
-struct UniformBufferObject {
-    float4x4 model;
-    float4x4 view;
-    float4x4 proj;
-    float4 camPos;
-    float exposure;
-    float gamma;
-    float prefilteredCubeMipLevels;
-    float scaleIBLAmbient;
-    int lightCount;
-    int padding0;
-    float padding1;
-    float padding2;
-    float2 screenDimensions;
-};
-
-
 [[vk::binding(0, 1)]] Sampler2D opaqueSceneColor;
-
-// Push constants for material properties
-struct PushConstants {
-    float4 baseColorFactor;
-    float metallicFactor;
-    float roughnessFactor;
-    int baseColorTextureSet;
-    int physicalDescriptorTextureSet;
-    int normalTextureSet;
-    int occlusionTextureSet;
-    int emissiveTextureSet;
-    float alphaMask;
-    float alphaMaskCutoff;
-    float3 emissiveFactor;
-    float emissiveStrength;
-    float transmissionFactor;
-    int useSpecGlossWorkflow;
-    float glossinessFactor;
-    float3 specularFactor;
-    float ior;
-    bool hasEmissiveStrengthExt;
-};
-
-// Constants
-static const float PI = 3.14159265359;
 
 // Bindings
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
@@ -88,37 +56,13 @@ static const float PI = 3.14159265359;
 [[vk::binding(4, 0)]] Sampler2D occlusionMap;
 [[vk::binding(5, 0)]] Sampler2D emissiveMap;
 [[vk::binding(6, 0)]] StructuredBuffer<LightData> lightBuffer;
+// Forward+ per-tile light lists (same set 0 to keep pipeline layouts compact)
+[[vk::binding(7, 0)]] StructuredBuffer<TileHeader> tileHeaders;
+[[vk::binding(8, 0)]] StructuredBuffer<uint> tileLightIndices;
+// Planar reflection sampler (bound only when reflections are enabled)
+[[vk::binding(10, 0)]] Sampler2D reflectionMap;
 
 [[vk::push_constant]] PushConstants material;
-
-// PBR functions
-float DistributionGGX(float NdotH, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH2 = NdotH * NdotH;
-    float nom = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-    return nom / max(denom, 0.000001);
-}
-
-float GeometrySmith(float NdotV, float NdotL, float roughness) {
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-    float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
-    float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
-    return ggx1 * ggx2;
-}
-
-float3 FresnelSchlick(float cosTheta, float3 F0) {
-    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
-}
-
-float3 Fresnel_Dielectric(float cosTheta, float ior) {
-    float r0 = (1.0 - ior) / (1.0 + ior);
-    float3 F0 = float3(r0 * r0);
-    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
-}
 
 // Vertex shader entry point
 [[shader("vertex")]]
@@ -130,37 +74,21 @@ VSOutput VSMain(VSInput input)
     output.Position = mul(ubo.proj, mul(ubo.view, worldPos));
     output.WorldPos = worldPos.xyz;
 
-    // DEBUG EXPERIMENT:
-    // Ignore the per-instance normal matrix columns (InstanceNormal0/1/2)
-    // and derive normals purely from the combined entity * instance
-    // transform. This helps isolate whether InstanceNormal is the
-    // source of the discrepancy between nearby ground patches.
-    float3x3 combined3x3 = (float3x3)mul(ubo.model, instanceModelMatrix);
-
-    float3 worldNormal = normalize(mul(combined3x3, input.Normal));
+    // Transform normals correctly: first by the per-instance normal matrix,
+    // then by the entity model 3x3 (avoid double-applying instance transform).
+    float3x3 instNormal = float3x3(input.InstanceNormal0.xyz, input.InstanceNormal1.xyz, input.InstanceNormal2.xyz);
+    float3x3 model3x3 = (float3x3)ubo.model;
+    float3 worldNormal = normalize(mul(model3x3, mul(instNormal, input.Normal)));
     output.Normal = worldNormal;
 
-    // Geometric normal (pre-normal-map) uses the same combined transform.
-    float3 geomNormal = worldNormal;
-    output.GeometricNormal = geomNormal;
+    // Geometric normal (pre-normal-map) uses the same transform path.
+    output.GeometricNormal = worldNormal;
 
-    // For this test, transform tangents with the same combined3x3 so
-    // the TBN basis is consistent with the position transform, while
-    // still bypassing InstanceNormal{0,1,2}.
-    float3 worldTangent = normalize(mul(combined3x3, input.Tangent.xyz));
+    // Transform tangent similarly (approximate with same normal transform path).
+    float3 worldTangent = normalize(mul(model3x3, mul(instNormal, input.Tangent.xyz)));
     output.UV = input.UV;
     output.Tangent = float4(worldTangent, input.Tangent.w);
     return output;
-}
-
-namespace Hable_Filmic_Tonemapping {
-    static const float A = 0.15; static const float B = 0.50;
-    static const float C = 0.10; static const float D = 0.20;
-    static const float E = 0.02; static const float F = 0.30;
-    static const float W = 11.2;
-    float3 Uncharted2Tonemap(float3 x) {
-        return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
-    }
 }
 
 // Fragment shader entry point for generic PBR materials
@@ -200,9 +128,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     if (material.hasEmissiveStrengthExt)
       emissive *= material.emissiveStrength;
 
-    if (material.alphaMask > 0.5 && baseColor.a < material.alphaMaskCutoff) {
-        discard;
-    }
+    if (material.alphaMask > 0.5 && baseColor.a < material.alphaMaskCutoff) { discard; }
 
     // --- 2. Normal Calculation ---
     float3 N = normalize(input.Normal);
@@ -231,54 +157,144 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float3 diffuseLighting  = float3(0.0, 0.0, 0.0);
     float3 specularLighting = float3(0.0, 0.0, 0.0);
 
-    // Accumulate per-light diffuse and specular terms using GGX microfacet BRDF.
-    for (int i = 0; i < ubo.lightCount; i++) {
-        LightData light = lightBuffer[i];
-        float3 L, radiance;
-        if (light.lightType == 1) {
-            L = normalize(-light.position.xyz);
-            radiance = light.color.rgb;
-        } else {
-            // Point/spot/emissive: position.xyz is light position in world space
-            L = normalize(light.position.xyz - input.WorldPos);
-            float d = length(light.position.xyz - input.WorldPos);
-            radiance = light.color.rgb / max(d * d, 0.0001);
+    // Forward+: compute tile id and iterate culled light list
+    const uint TILE = 16u; // must match engine configuration
+    uint tilesX = (uint(ubo.screenDimensions.x) + TILE - 1u) / TILE;
+    uint tilesY = (uint(ubo.screenDimensions.y) + TILE - 1u) / TILE;
 
-            // For emissive-derived lights (lightType == 3), skip lights whose
-            // contribution has attenuated to a numerically negligible level at
-            // this fragment. This avoids paying full BRDF cost for thousands
-            // of far-away emissive sources while preserving the visible ones.
-            if (light.lightType == 3) {
-                float radianceLuma = dot(radiance, float3(0.299, 0.587, 0.114));
-                if (radianceLuma < 1e-4) {
-                    continue;
+    // SV_POSITION in the fragment stage is in window coordinates. Use robust integer index.
+    uint px = (uint)max(0.0, input.Position.x);
+    uint py = (uint)max(0.0, input.Position.y);
+    uint tileX = (tilesX > 0u) ? min(px / TILE, tilesX - 1u) : 0u;
+    uint tileY = (tilesY > 0u) ? min(py / TILE, tilesY - 1u) : 0u;
+    uint totalTiles = max(tilesX * tilesY, 1u);
+
+    // Clustered Z slice index from view-space depth (positive distance)
+    float dVS = abs(mul(ubo.view, float4(input.WorldPos, 1.0)).z);
+    float lnN = log(max(ubo.nearZ, 1e-4));
+    float lnF = log(max(ubo.farZ,  lnN + 1e-4));
+    float denom = max(lnF - lnN, 1e-6);
+    float slices = max(ubo.slicesZ, 1.0);
+    float lambda = saturate((log(max(dVS, 1e-4)) - lnN) / denom);
+    uint slice = (uint)clamp(floor(lambda * slices), 0.0, slices - 1.0);
+
+    uint tileId = (slice * tilesY + tileY) * tilesX + tileX;
+
+    uint base = 0u;
+    uint count = 0u;
+    if (tileId < totalTiles * (uint)slices) {
+        TileHeader th = tileHeaders[tileId];
+        base = th.offset;
+        count = th.count;
+    }
+
+    bool forceGlobal = false;
+
+    // No one-frame fragment debug
+
+    // Accumulate per-light diffuse and specular terms using GGX microfacet BRDF.
+    if (!forceGlobal && count > 0) {
+        // Use Forward+ culled list
+        for (uint li = 0u; li < count; ++li) {
+            uint lightIndex = tileLightIndices[base + li];
+            LightData light = lightBuffer[lightIndex];
+            float3 L, radiance;
+            if (light.lightType == 1) {
+                // Directional
+                L = normalize(-light.position.xyz);
+                radiance = light.color.rgb;
+            } else {
+                // Point/spot/emissive: position.xyz is light position in world space
+                float3 toLight = light.position.xyz - input.WorldPos;
+                float d = length(toLight);
+                L = (d > 1e-5) ? toLight / d : float3(0,0,1);
+
+                if (light.lightType == 3) {
+                    // Emissive: soft falloff using range as a characteristic radius
+                    float r = max(light.range, 0.001);
+                    float att = 1.0 / (1.0 + (d / r) * (d / r));
+                    radiance = light.color.rgb * att;
+                } else {
+                    // Punctual (not used currently)
+                    radiance = light.color.rgb / max(d * d, 0.0001);
                 }
             }
-        }
-        float NdotL = max(dot(N, L), 0.0);
-        if (NdotL > 0.0) {
-            float3 H = normalize(V + L);
-            float NdotV = max(dot(N, V), 0.0);
-            float NdotH = max(dot(N, H), 0.0);
-            float HdotV = max(dot(H, V), 0.0);
+            // For emissive lights, treat lighting as two-sided to avoid glass/self-occlusion issues
+            float rawDot = dot(N, L);
+            float NdotL = (light.lightType == 3) ? abs(rawDot) : max(rawDot, 0.0);
 
-            float D      = DistributionGGX(NdotH, roughness);
-            float G  = GeometrySmith(NdotV, NdotL, roughness);
-            float3 F     = FresnelSchlick(HdotV, F0);
-            float3 spec  = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
-            float3 kD    = (1.0 - F) * (1.0 - metallic);
-
-            specularLighting += spec * radiance * NdotL;
-            diffuseLighting  += (kD * albedo / PI) * radiance * NdotL;
+            if (NdotL > 0.0) {
+                float3 H = normalize(V + L);
+                float NdotV = max(dot(N, V), 0.0);
+                float NdotH = max(dot(N, H), 0.0);
+                float HdotV = max(dot(H, V), 0.0);
+                float D      = DistributionGGX(NdotH, roughness);
+                float G      = GeometrySmith(NdotV, NdotL, roughness);
+                float3 F     = FresnelSchlick(HdotV, F0);
+                float3 spec  = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
+                float3 kD    = (1.0 - F) * (1.0 - metallic);
+                specularLighting += spec * radiance * NdotL;
+                diffuseLighting  += (kD * albedo / PI) * radiance * NdotL;
+                // no debug writes
+            }
         }
     }
-    // specularLighting = min(specularLighting, 50.0);
+    // Global light loop (fallback or forced debug)
+    // Fallback when Forward+ list is empty but lights exist and not in single-tile mode,
+    // OR always when forceGlobal flag is enabled.
+    if (forceGlobal || (count == 0 && ubo.lightCount > 0 && (ubo.padding1 == 0.0))) {
+        // Fallback path when Forward+ is disabled or lists are not populated yet
+        for (uint li = 0u; li < (uint)ubo.lightCount; ++li) {
+            LightData light = lightBuffer[li];
+            float3 L, radiance;
+            if (light.lightType == 1) {
+                L = normalize(-light.position.xyz);
+                radiance = light.color.rgb;
+            } else {
+                float3 toLight = light.position.xyz - input.WorldPos;
+                float d = length(toLight);
+                L = (d > 1e-5) ? toLight / d : float3(0,0,1);
+                if (light.lightType == 3) {
+                    float r = max(light.range, 0.001);
+                    float att = 1.0 / (1.0 + (d / r) * (d / r));
+                    radiance = light.color.rgb * att;
+                } else {
+                    radiance = light.color.rgb / max(d * d, 0.0001);
+                }
+            }
+            float NdotL = (light.lightType == 3) ? abs(dot(N, L)) : max(dot(N, L), 0.0);
+            if (NdotL > 0.0) {
+                float3 H = normalize(V + L);
+                float NdotV = max(dot(N, V), 0.0);
+                float NdotH = max(dot(N, H), 0.0);
+                float HdotV = max(dot(H, V), 0.0);
+                float D      = DistributionGGX(NdotH, roughness);
+                float G      = GeometrySmith(NdotV, NdotL, roughness);
+                float3 F     = FresnelSchlick(HdotV, F0);
+                float3 spec  = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
+                float3 kD    = (1.0 - F) * (1.0 - metallic);
+                specularLighting += spec * radiance * NdotL;
+                diffuseLighting  += (kD * albedo / PI) * radiance * NdotL;
+            }
+        }
+    }
+
+    // No debug paths
     float3 ambient = albedo * ao * (0.03 * ubo.scaleIBLAmbient);
     float3 opaqueLit = diffuseLighting + specularLighting + ambient + emissive;
 
     // --- 4. Final Color Assembly (opaque only; transmission handled in GlassPSMain) ---
     float3 color    = opaqueLit;
     float  alphaOut = baseColor.a;
+
+    // Clip-plane discard during reflection render pass (to remove behind-plane geometry)
+    if (ubo.reflectionPass == 1) {
+        float side = dot(ubo.clipPlaneWS, float4(input.WorldPos, 1.0));
+        if (side > 0.0) discard; // discard geometry on the positive side of the plane
+    }
+
+    // Note: reflections are only applied in glass path (GlassPSMain). No planar reflection
+    // sampling here to avoid banding/aliasing and ensure user-requested behavior.
 
     // --- 5. Post-Processing ---
     // Apply exposure and filmic tonemapping; apply gamma only if the swapchain is NOT sRGB.
@@ -356,11 +372,28 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
     float alphaOut = baseColor.a;
 
     if (T_eff > 0.0) {
-        // Stylized, environment-independent glass:
-        // - Do NOT sample opaqueSceneColor.
-        // - Treat glass as a tinted, view-dependent surface with a subtle
-        //   rim highlight. This keeps behavior stable while still giving
-        //   users a sense of thickness and angle.
+        // Reflections for glass
+        // Prefer planar reflection texture rendered from the mirrored view when enabled.
+        // Fallback: use the opaque scene color behind the glass (refraction/background approximation).
+        float3 refl = float3(0.0, 0.0, 0.0);
+        if (ubo.reflectionEnabled == 1) {
+            float4 pr = mul(ubo.reflectionVP, float4(input.WorldPos, 1.0));
+            float2 uvP = pr.xy / max(pr.w, 1e-5);
+            uvP = uvP * 0.5 + 0.5;
+            // Sample only if within the reflection RT
+            if (uvP.x >= 0.0 && uvP.x <= 1.0 && uvP.y >= 0.0 && uvP.y <= 1.0) {
+                refl = reflectionMap.Sample(uvP).rgb;
+            }
+        } else {
+            // Project current position to screen for a stable background sample
+            float2 ndc = input.Position.xy / input.Position.w;
+            float2 uvR = ndc * 0.5 + 0.5;
+            uvR = clamp(uvR, float2(0.0, 0.0), float2(1.0, 1.0));
+            refl = opaqueSceneColor.Sample(uvR).rgb;
+        }
+
+        // Stylized, stable glass: do NOT sample opaqueSceneColor. Use a tinted
+        // glass body + rim highlight, then add planar reflection contribution.
 
         // Use symmetric |N·V| so that front/back views of thin glass walls
         // behave consistently (important when looking down into glasses).
@@ -388,9 +421,16 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
 
         color = glassBody + rim + surfaceTerm;
 
-        // Fresnel only influences alpha (how opaque the glass appears), not color.
-        float3 F_view = FresnelSchlick(NdotV, float3(0.04, 0.04, 0.04));
-        float F_avg = (F_view.r + F_view.g + F_view.b) / 3.0;
+        // Restore Fresnel-blended mixing with boosted visibility for debugging/tuning.
+        float3 F_view2 = FresnelSchlick(NdotV, float3(0.06, 0.06, 0.06));
+        float F_avg2 = (F_view2.r + F_view2.g + F_view2.b) / 3.0;
+        float reflStrength = saturate(0.15 + (1.5 * F_avg2) * (1.0 - material.roughnessFactor));
+        // Scale by user-controlled intensity
+        reflStrength *= max(0.0, ubo.reflectionIntensity);
+        color = lerp(color, refl, reflStrength);
+
+        // Fresnel influences alpha (how opaque the glass appears), not color here.
+        // We already used F to modulate reflection strength above.
 
         // Opacity model for architectural glass: mostly transparent at
         // normal incidence, with a gentle Fresnel-driven increase in
@@ -402,6 +442,9 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
         float baseAlpha = lerp(0.08, 0.25, 1.0 - T_eff);
 
         // Edge boost: more opaque at grazing angles, scaled by Fresnel.
+        // Recompute a local Fresnel average for alpha since we’re in debug mode above.
+        float3 F_view_dbg = FresnelSchlick(NdotV, float3(0.04, 0.04, 0.04));
+        float F_avg = (F_view_dbg.r + F_view_dbg.g + F_view_dbg.b) / 3.0;
         float edgeFactor = pow(1.0 - NdotV, 2.0);
         float edgeAlpha  = F_avg * edgeFactor * 0.8;
 
@@ -412,7 +455,74 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
         color = ambient + emissive;
     }
 
+    // Simple Forward+ lighting for glass (additive), using per-tile lists.
+    // This is a pragmatic lighting contribution so emissive bulbs can light glass-covered pixels.
+    // It does not model full transmission; it simply adds local diffuse+spec highlights.
+    {
+        const uint TILE = 16u;
+        uint tilesX = (uint(ubo.screenDimensions.x) + TILE - 1u) / TILE;
+        uint tilesY = (uint(ubo.screenDimensions.y) + TILE - 1u) / TILE;
+        uint px = (uint)max(0.0, input.Position.x);
+        uint py = (uint)max(0.0, input.Position.y);
+        uint tileX = (tilesX > 0u) ? min(px / TILE, tilesX - 1u) : 0u;
+        uint tileY = (tilesY > 0u) ? min(py / TILE, tilesY - 1u) : 0u;
+        uint totalTiles = max(tilesX * tilesY, 1u);
+        uint tileId = tileY * tilesX + tileX;
+        uint base = 0u;
+        uint count = 0u;
+        if (tileId < totalTiles) {
+            TileHeader th = tileHeaders[tileId];
+            base = th.offset;
+            count = th.count;
+        }
+        if (count > 0u) {
+            float3 Ng = normalize(input.GeometricNormal);
+            float3 Vv = normalize(ubo.camPos.xyz - input.WorldPos);
+            // Use a neutral albedo to avoid darkening glass; weight specular more
+            float3 alb = float3(0.6, 0.6, 0.6);
+            float  rough = 0.49;
+            float  metal = 0.0;
+            for (uint li = 0u; li < count; ++li) {
+                uint lightIndex = tileLightIndices[base + li];
+                LightData light = lightBuffer[lightIndex];
+                float3 L, radiance;
+                if (light.lightType == 1) {
+                    L = normalize(-light.position.xyz);
+                    radiance = light.color.rgb;
+                } else {
+                    float3 toLight = light.position.xyz - input.WorldPos;
+                    float d = length(toLight);
+                    L = (d > 1e-5) ? toLight / d : float3(0,0,1);
+                    if (light.lightType == 3) {
+                        float r = max(light.range, 0.001);
+                        float att = 1.0 / (1.0 + (d / r) * (d / r));
+                        radiance = light.color.rgb * att;
+                    } else {
+                        radiance = light.color.rgb / max(d * d, 0.0001);
+                    }
+                }
+                float rawDot = dot(Ng, L);
+                float NdotL = (light.lightType == 3) ? abs(rawDot) : max(rawDot, 0.0);
+                if (NdotL > 0.0) {
+                    float3 H = normalize(Vv + L);
+                    float NdotV = max(dot(Ng, Vv), 0.0);
+                    float NdotH = max(dot(Ng, H), 0.0);
+                    float HdotV = max(dot(H, Vv), 0.0);
+                    float D      = DistributionGGX(NdotH, rough);
+                    float G      = GeometrySmith(NdotV, NdotL, rough);
+                    float3 F     = FresnelSchlick(HdotV, lerp(float3(0.04,0.04,0.04), alb, metal));
+                    float3 spec  = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
+                    float3 kD    = (1.0 - F) * (1.0 - metal);
+                    // Add a modest contribution to the glass color
+                    color += (kD * alb / PI) * radiance * NdotL * 0.6 + spec * radiance * NdotL * 0.8;
+                }
+            }
+        }
+    }
+
+
     // --- 3. Post-processing (same as PSMain) ---
+    // No debug recording
     color *= ubo.exposure;
 
     // Uncharted2 / Hable filmic tonemap. Use the canonical form without
@@ -427,6 +537,8 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
     } else {
         color = saturate(color);
     }
+
+    // (fragment debug disabled in this build)
 
     return float4(color, alphaOut);
 }

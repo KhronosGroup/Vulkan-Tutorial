@@ -312,7 +312,6 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer                    &
                                     CameraComponent                            *camera,
                                     const std::vector<std::unique_ptr<Entity>> &entities)
 {
-	// Initial scaffolding: clear the reflection RT; drawing the mirrored scene will be added next.
 	if (reflections.empty())
 		return;
 	auto &rt = reflections[currentFrame];
@@ -2395,10 +2394,7 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>> &entities, Came
 			// As a last guard before dispatch, make sure compute binding 0 is valid for this frame
 			refreshForwardPlusComputeLightsBindingForFrame(currentFrame);
 
-			// Forward+ per-frame debug printing removed
-
 			dispatchForwardPlus(commandBuffers[currentFrame], tilesX, tilesY, forwardPlusSlicesZ);
-			// Forward+ debug dumps and tile header prints removed
 		}
 
 		// PASS 1: RENDER OPAQUE OBJECTS TO OFF-SCREEN TEXTURE
@@ -2418,7 +2414,6 @@ void Renderer::Render(const std::vector<std::unique_ptr<Entity>> &entities, Came
 		// Clear the off-screen target at the start of opaque rendering to a neutral black background
 		vk::RenderingAttachmentInfo colorAttachment{.imageView = *opaqueSceneColorImageView, .imageLayout = vk::ImageLayout::eColorAttachmentOptimal, .loadOp = vk::AttachmentLoadOp::eClear, .storeOp = vk::AttachmentStoreOp::eStore, .clearValue = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f})};
 		depthAttachment.imageView = *depthImageView;
-		// Load depth only if we actually performed a pre-pass (and not in opaque-only debug which intentionally ignores transparency ordering)
 		depthAttachment.loadOp = (didOpaqueDepthPrepass) ? vk::AttachmentLoadOp::eLoad : vk::AttachmentLoadOp::eClear;
 		vk::RenderingInfo passInfo{.renderArea = vk::Rect2D({0, 0}, swapChainExtent), .layerCount = 1, .colorAttachmentCount = 1, .pColorAttachments = &colorAttachment, .pDepthAttachment = &depthAttachment};
 		commandBuffers[currentFrame].beginRendering(passInfo);

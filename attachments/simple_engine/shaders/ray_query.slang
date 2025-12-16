@@ -472,8 +472,6 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
         }
     }
     
-    // (No debugPrintf in production)
-    
     // Check if we hit anything
     if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
         result.hit = true;
@@ -493,8 +491,6 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
         uint blasIndex = instIndex;
         uint primitiveIndex = q.CommittedPrimitiveIndex();
 
-        // Minimal debug disabled in production
-        
         // Validate instance index is in bounds of geometry info buffer
         if (blasIndex >= uint(max(0, ubo.geometryInfoCount))) {
             // Invalid BLAS index, use default values
@@ -575,8 +571,6 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
         uint i1 = indexBuffer[idxBase + 1u];
         uint i2 = indexBuffer[idxBase + 2u];
         
-        // CRITICAL: Validate vertex indices are within bounds to prevent GPU hang
-        // Reading beyond vertex buffer bounds causes GPU fault/hang
         if (i0 >= geoInfo.vertexCount || i1 >= geoInfo.vertexCount || i2 >= geoInfo.vertexCount) {
             // Out of bounds vertex indices - still present material-derived color
             result.normal = float3(0, 1, 0);
@@ -780,8 +774,6 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
         result.alphaMode = material.alphaMode;
         result.opacity = clamp(material.alpha, 0.0, 1.0);
         result.thinWalled = (material.thinWalled != 0);
-
-        // (No debug-only overrides in production)
     }
     
     return result;
@@ -800,8 +792,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
     }
     
-    // (No debug-only heartbeat/screen-test paths in production)
-
     // Generate primary ray
     float2 uv = (float2(pixelCoord) + 0.5) / float2(imageDim);
     float2 ndc = uv * 2.0 - 1.0;
@@ -832,18 +822,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0);
     
-    // Production: normal shading (no instance visualization)
-    bool colorByInstance = false;
-
     if (hit.hit) {
         float3 c = shadeWithSecondaryRays(rayOrigin, rayDir, hit);
         // Output linear HDR-ish color; composite pass will apply exposure/gamma.
         outputImage[pixelCoord] = float4(c, 1.0);
 
-        // (Debug print hooks intentionally removed from default path)
     } else {
         // Sky/background color
         outputImage[pixelCoord] = float4(skyColor(rayDir), 1.0);
     }
-    // Debug probes disabled in production
 }

@@ -190,8 +190,6 @@ float4 PSMain(VSOutput input) : SV_TARGET
 
     bool forceGlobal = false;
 
-    // No one-frame fragment debug
-
     // Accumulate per-light diffuse and specular terms using GGX microfacet BRDF.
     if (!forceGlobal && count > 0) {
         // Use Forward+ culled list
@@ -235,7 +233,6 @@ float4 PSMain(VSOutput input) : SV_TARGET
                 float3 kD    = (1.0 - F) * (1.0 - metallic);
                 specularLighting += spec * radiance * NdotL;
                 diffuseLighting  += (kD * albedo / PI) * radiance * NdotL;
-                // no debug writes
             }
         }
     }
@@ -279,7 +276,6 @@ float4 PSMain(VSOutput input) : SV_TARGET
         }
     }
 
-    // No debug paths
     float3 ambient = albedo * ao * (0.03 * ubo.scaleIBLAmbient);
     float3 opaqueLit = diffuseLighting + specularLighting + ambient + emissive;
 
@@ -392,7 +388,7 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
             refl = opaqueSceneColor.Sample(uvR).rgb;
         }
 
-        // Stylized, stable glass: do NOT sample opaqueSceneColor. Use a tinted
+        // Stylized, stable glass: Use a tinted
         // glass body + rim highlight, then add planar reflection contribution.
 
         // Use symmetric |N·V| so that front/back views of thin glass walls
@@ -522,7 +518,6 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
 
 
     // --- 3. Post-processing (same as PSMain) ---
-    // No debug recording
     color *= ubo.exposure;
 
     // Uncharted2 / Hable filmic tonemap. Use the canonical form without
@@ -537,8 +532,6 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
     } else {
         color = saturate(color);
     }
-
-    // (fragment debug disabled in this build)
 
     return float4(color, alphaOut);
 }

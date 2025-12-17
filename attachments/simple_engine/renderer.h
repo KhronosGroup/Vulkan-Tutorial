@@ -732,6 +732,8 @@ class Renderer
 	 */
 	void RequestAccelerationStructureBuild()
 	{
+		if (!accelerationStructureEnabled || !rayQueryEnabled)
+			return;
 		// Allow AS build to take longer than the watchdog threshold (large scenes in Debug).
 		watchdogSuppressed.store(true, std::memory_order_relaxed);
 		asBuildRequested.store(true, std::memory_order_release);
@@ -739,6 +741,8 @@ class Renderer
 	// Overload with reason tracking for diagnostics
 	void RequestAccelerationStructureBuild(const char *reason)
 	{
+		if (!accelerationStructureEnabled || !rayQueryEnabled)
+			return;
 		if (reason)
 			lastASBuildRequestReason = reason;
 		else

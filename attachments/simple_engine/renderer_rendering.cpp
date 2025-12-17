@@ -1473,7 +1473,16 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				}
 				else
 				{
-					std::cout << "Failed to build acceleration structures, will retry next frame" << std::endl;
+					if (!accelerationStructureEnabled || !rayQueryEnabled)
+					{
+						// Permanent failure due to lack of support; do not retry.
+						asBuildRequested.store(false, std::memory_order_release);
+						watchdogSuppressed.store(false, std::memory_order_relaxed);
+					}
+					else
+					{
+						std::cout << "Failed to build acceleration structures, will retry next frame" << std::endl;
+					}
 				}
 				// Reset dev override after one use
 				asDevOverrideAllowRebuild = false;

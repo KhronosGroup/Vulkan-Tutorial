@@ -399,11 +399,10 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 		// Pre-allocate Vulkan resources for all geometry entities in a single batched pass
 		if (!geometryEntities.empty())
 		{
-			if (!renderer->preAllocateEntityResourcesBatch(geometryEntities))
-			{
-				std::cerr << "Failed to pre-allocate resources for one or more geometry entities in batch" << std::endl;
-				// For now, continue; individual entities may still be partially usable
-			}
+			// Scene loading runs on a background thread. Do NOT perform Vulkan allocations
+			// or mutate renderer resource maps here. Enqueue the batch so the render thread can
+			// perform the GPU work safely at its frame-start safe point.
+			renderer->EnqueueEntityPreallocationBatch(geometryEntities);
 		}
 
 		// Set up animations if the model has any

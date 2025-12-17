@@ -1591,7 +1591,8 @@ bool Renderer::preAllocateEntityResources(Entity *entity)
 			auto it = entityResources.find(entity);
 			if (it != entityResources.end())
 			{
-				it->second.uboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+				it->second.pbrUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+				it->second.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 				it->second.pbrImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 				it->second.basicImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 			}
@@ -1752,6 +1753,65 @@ void Renderer::EnqueueMeshUploads(const std::vector<MeshComponent *> &meshes)
 		if (!m)
 			continue;
 		pendingMeshUploads.push_back(m);
+	}
+}
+
+void Renderer::EnqueueEntityPreallocationBatch(const std::vector<Entity *> &entities)
+{
+	if (entities.empty())
+		return;
+	{
+		std::lock_guard<std::mutex> lk(pendingEntityPreallocMutex);
+		for (Entity *e : entities)
+		{
+			if (!e)
+				continue;
+			pendingEntityPrealloc.push_back(e);
+		}
+	}
+	pendingEntityPreallocQueued.store(true, std::memory_order_relaxed);
+}
+
+void Renderer::ProcessPendingEntityPreallocations()
+{
+	if (!pendingEntityPreallocQueued.load(std::memory_order_relaxed))
+		return;
+
+	std::vector<Entity *> toProcess;
+	{
+		std::lock_guard<std::mutex> lk(pendingEntityPreallocMutex);
+		if (pendingEntityPrealloc.empty())
+		{
+			pendingEntityPreallocQueued.store(false, std::memory_order_relaxed);
+			return;
+		}
+		toProcess.swap(pendingEntityPrealloc);
+		pendingEntityPreallocQueued.store(false, std::memory_order_relaxed);
+	}
+
+	// De-dup to avoid repeated work if loader enqueues overlapping batches
+	std::sort(toProcess.begin(), toProcess.end());
+	toProcess.erase(std::unique(toProcess.begin(), toProcess.end()), toProcess.end());
+
+	std::vector<Entity *> batch;
+	batch.reserve(toProcess.size());
+	for (Entity *e : toProcess)
+	{
+		if (!e || !e->IsActive())
+			continue;
+		// Only preallocate for entities that actually have renderable mesh data
+		if (!e->GetComponent<MeshComponent>())
+			continue;
+		batch.push_back(e);
+	}
+	if (batch.empty())
+		return;
+
+	// Execute GPU resource creation on the render thread at the safe point.
+	// Keep failures non-fatal so loading can continue; we'll retry on subsequent frames.
+	if (!preAllocateEntityResourcesBatch(batch))
+	{
+		std::cerr << "Warning: batch entity GPU preallocation failed; will retry" << std::endl;
 	}
 }
 
@@ -2007,12 +2067,12 @@ void Renderer::createTransparentDescriptorSets()
 		transparentDescriptorSets = vk::raii::DescriptorSets(device, allocInfo);
 	}
 
-	// Update each descriptor set to point to our single off-screen opaque color image
+	// Update each descriptor set to point to the per-frame off-screen opaque color image
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		vk::DescriptorImageInfo imageInfo{
 		    .sampler     = *opaqueSceneColorSampler,
-		    .imageView   = *opaqueSceneColorImageView,
+		    .imageView   = *opaqueSceneColorImageViews[i],
 		    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
 		vk::WriteDescriptorSet descriptorWrite{
@@ -2069,22 +2129,33 @@ bool Renderer::createOpaqueSceneColorResources()
 {
 	try
 	{
-		// Create the image
-		auto [image, allocation] = createImagePooled(
-		    swapChainExtent.width,
-		    swapChainExtent.height,
-		    swapChainImageFormat,        // Use the same format as the swapchain
-		    vk::ImageTiling::eOptimal,
-		    vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc,        // <-- Note the new usage flags
-		    vk::MemoryPropertyFlagBits::eDeviceLocal);
+		opaqueSceneColorImages.clear();
+		opaqueSceneColorImageAllocations.clear();
+		opaqueSceneColorImageViews.clear();
+		opaqueSceneColorImageLayouts.clear();
 
-		opaqueSceneColorImage = std::move(image);
-		// We don't need a member for the allocation, it's managed by the unique_ptr
+		opaqueSceneColorImages.reserve(MAX_FRAMES_IN_FLIGHT);
+		opaqueSceneColorImageAllocations.reserve(MAX_FRAMES_IN_FLIGHT);
+		opaqueSceneColorImageViews.reserve(MAX_FRAMES_IN_FLIGHT);
+		opaqueSceneColorImageLayouts.reserve(MAX_FRAMES_IN_FLIGHT);
 
-		// Create the image view
-		opaqueSceneColorImageView = createImageView(opaqueSceneColorImage, swapChainImageFormat, vk::ImageAspectFlagBits::eColor);
+		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+		{
+			auto [image, allocation] = createImagePooled(
+			    swapChainExtent.width,
+			    swapChainExtent.height,
+			    swapChainImageFormat,        // Use the same format as the swapchain
+			    vk::ImageTiling::eOptimal,
+			    vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc,
+			    vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-		// Create the sampler
+			opaqueSceneColorImages.push_back(std::move(image));
+			opaqueSceneColorImageAllocations.push_back(std::move(allocation));
+			opaqueSceneColorImageViews.push_back(createImageView(opaqueSceneColorImages.back(), swapChainImageFormat, vk::ImageAspectFlagBits::eColor));
+			opaqueSceneColorImageLayouts.push_back(vk::ImageLayout::eUndefined);
+		}
+
+		// Create (or recreate) the sampler (shared across frames)
 		vk::SamplerCreateInfo samplerInfo{
 		    .magFilter    = vk::Filter::eLinear,
 		    .minFilter    = vk::Filter::eLinear,
@@ -2383,12 +2454,12 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 		{
 			std::lock_guard<std::mutex> lock(queueMutex);
 			vk::SubmitInfo              submitInfo{};
+			vk::TimelineSemaphoreSubmitInfo timelineInfo{}; // keep alive through submit
 			if (canSignalTimeline)
 			{
 				signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
-				vk::TimelineSemaphoreSubmitInfo timelineInfo{
-				    .signalSemaphoreValueCount = 1,
-				    .pSignalSemaphoreValues    = &signalValue};
+				timelineInfo.signalSemaphoreValueCount = 1;
+				timelineInfo.pSignalSemaphoreValues    = &signalValue;
 				submitInfo.pNext                = &timelineInfo;
 				submitInfo.signalSemaphoreCount = 1;
 				submitInfo.pSignalSemaphores    = &*uploadsTimeline;
@@ -2452,12 +2523,12 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
 		{
 			std::lock_guard<std::mutex> lock(queueMutex);
 			vk::SubmitInfo              submitInfo{};
+			vk::TimelineSemaphoreSubmitInfo timelineInfo{}; // keep alive through submit
 			if (canSignalTimeline)
 			{
 				signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
-				vk::TimelineSemaphoreSubmitInfo timelineInfo{
-				    .signalSemaphoreValueCount = 1,
-				    .pSignalSemaphoreValues    = &signalValue};
+				timelineInfo.signalSemaphoreValueCount = 1;
+				timelineInfo.pSignalSemaphoreValues    = &signalValue;
 				submitInfo.pNext                = &timelineInfo;
 				submitInfo.signalSemaphoreCount = 1;
 				submitInfo.pSignalSemaphores    = &*uploadsTimeline;
@@ -3266,20 +3337,22 @@ void Renderer::StartUploadsWorker(size_t workerCount)
 							uint64_t        signalValue = 0;
 							bool            canSignal   = uploadsTimeline != nullptr;
 							{
-								std::lock_guard<std::mutex> lock(queueMutex);
-								vk::SubmitInfo              submit{};
-								if (canSignal)
-								{
-									signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
-									vk::TimelineSemaphoreSubmitInfo timelineInfo{.signalSemaphoreValueCount = 1, .pSignalSemaphoreValues = &signalValue};
-									submit.pNext                = &timelineInfo;
-									submit.signalSemaphoreCount = 1;
-									submit.pSignalSemaphores    = &*uploadsTimeline;
-								}
-								submit.commandBufferCount = 1;
-								submit.pCommandBuffers    = &*cb;
-								transferQueue.submit(submit, *fence);
-							}
+    				std::lock_guard<std::mutex> lock(queueMutex);
+    				vk::SubmitInfo                      submit{};
+    				vk::TimelineSemaphoreSubmitInfo     timelineInfo{}; // keep alive through submit
+    				if (canSignal)
+    				{
+    					signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
+    					timelineInfo.signalSemaphoreValueCount = 1;
+    					timelineInfo.pSignalSemaphoreValues    = &signalValue;
+    					submit.pNext                            = &timelineInfo;
+    					submit.signalSemaphoreCount             = 1;
+    					submit.pSignalSemaphores                = &*uploadsTimeline;
+    				}
+    				submit.commandBufferCount = 1;
+    				submit.pCommandBuffers    = &*cb;
+    				transferQueue.submit(submit, *fence);
+    			}
 							device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
 
 							// Perf accounting for the batch
@@ -3436,8 +3509,12 @@ void Renderer::MarkEntityDescriptorsDirty(Entity *entity)
 {
 	if (!entity)
 		return;
+	// Mark this entity as needing refresh for *all* frames-in-flight.
+	// Each frame will refresh its own descriptor sets at its safe point.
+	const uint32_t allFramesMask = (MAX_FRAMES_IN_FLIGHT >= 32u) ? 0xFFFFFFFFu : ((1u << MAX_FRAMES_IN_FLIGHT) - 1u);
 	std::lock_guard<std::mutex> lk(dirtyEntitiesMutex);
-	descriptorDirtyEntities.insert(entity);
+	auto &mask = descriptorDirtyEntities[entity];
+	mask |= allFramesMask;
 }
 
 bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
@@ -3493,10 +3570,14 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 
 	vk::DescriptorBufferInfo bufferInfo{.buffer = *entityIt->second.uniformBuffers[frameIndex], .range = sizeof(UniformBufferObject)};
 
-	// Ensure uboBindingWritten vector is sized
-	if (entityIt->second.uboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT)
+	// Ensure per-pipeline UBO init tracking is sized
+	if (entityIt->second.pbrUboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT)
 	{
-		entityIt->second.uboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+		entityIt->second.pbrUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+	}
+	if (entityIt->second.basicUboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT)
+	{
+		entityIt->second.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 	}
 
 	if (usePBR)
@@ -3510,14 +3591,14 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 		if (uboOnly)
 		{
 			// Avoid re-writing if we already initialized this frame's UBO binding
-			if (!entityIt->second.uboBindingWritten[frameIndex])
+			if (!entityIt->second.pbrUboBindingWritten[frameIndex])
 			{
 				writes.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo});
 				{
 					std::lock_guard<std::mutex> lk(descriptorMutex);
 					device.updateDescriptorSets(writes, {});
 				}
-				entityIt->second.uboBindingWritten[frameIndex] = true;
+				entityIt->second.pbrUboBindingWritten[frameIndex] = true;
 			}
 			return true;
 		}
@@ -3560,7 +3641,7 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 		// CRITICAL FIX: Only mark UBO as written if we actually wrote it (not during imagesOnly updates)
 		if (!imagesOnly)
 		{
-			entityIt->second.uboBindingWritten[frameIndex] = true;
+			entityIt->second.pbrUboBindingWritten[frameIndex] = true;
 		}
 	}
 	else
@@ -3583,13 +3664,16 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 			// If uboOnly is requested for basic pipeline, only write binding 0
 			if (uboOnly)
 			{
-				std::array<vk::WriteDescriptorSet, 1> descriptorWrites = {
-				    vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo}};
+				if (!entityIt->second.basicUboBindingWritten[frameIndex])
 				{
-					std::lock_guard<std::mutex> lk(descriptorMutex);
-					device.updateDescriptorSets(descriptorWrites, {});
+					std::array<vk::WriteDescriptorSet, 1> descriptorWrites = {
+					    vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo}};
+					{
+						std::lock_guard<std::mutex> lk(descriptorMutex);
+						device.updateDescriptorSets(descriptorWrites, {});
+					}
+					entityIt->second.basicUboBindingWritten[frameIndex] = true;
 				}
-				entityIt->second.uboBindingWritten[frameIndex] = true;
 				return true;
 			}
 			std::array<vk::WriteDescriptorSet, 2> descriptorWrites = {
@@ -3599,7 +3683,7 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 				std::lock_guard<std::mutex> lk(descriptorMutex);
 				device.updateDescriptorSets(descriptorWrites, {});
 			}
-			entityIt->second.uboBindingWritten[frameIndex] = true;
+			entityIt->second.basicUboBindingWritten[frameIndex] = true;
 		}
 	}
 	return true;
@@ -3607,18 +3691,26 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 
 void Renderer::ProcessDirtyDescriptorsForFrame(uint32_t frameIndex)
 {
-	std::vector<Entity *> dirty;
+	if (frameIndex >= 32u)
+		return;
+	const uint32_t frameBit = (1u << frameIndex);
+
+	std::vector<Entity *> toProcess;
 	{
 		std::lock_guard<std::mutex> lk(dirtyEntitiesMutex);
 		if (descriptorDirtyEntities.empty())
 			return;
-		dirty.reserve(descriptorDirtyEntities.size());
-		for (auto *e : descriptorDirtyEntities)
-			dirty.push_back(e);
-		descriptorDirtyEntities.clear();
+		toProcess.reserve(descriptorDirtyEntities.size());
+		for (auto &[e, mask] : descriptorDirtyEntities)
+		{
+			if (e && (mask & frameBit))
+			{
+				toProcess.push_back(e);
+			}
+		}
 	}
 
-	for (Entity *entity : dirty)
+	for (Entity *entity : toProcess)
 	{
 		if (!entity)
 			continue;
@@ -3635,6 +3727,22 @@ void Renderer::ProcessDirtyDescriptorsForFrame(uint32_t frameIndex)
 		updateDescriptorSetsForFrame(entity, basicTexPath, false, frameIndex, /*imagesOnly=*/true);
 		updateDescriptorSetsForFrame(entity, basicTexPath, true, frameIndex, /*imagesOnly=*/true);
 		// Do not touch descriptors for other frames while their command buffers may be pending.
+	}
+
+	// Clear the processed bit; keep entities dirty until all frames have been refreshed.
+	{
+		std::lock_guard<std::mutex> lk(dirtyEntitiesMutex);
+		for (Entity *entity : toProcess)
+		{
+			auto it = descriptorDirtyEntities.find(entity);
+			if (it == descriptorDirtyEntities.end())
+				continue;
+			it->second &= ~frameBit;
+			if (it->second == 0u)
+			{
+				descriptorDirtyEntities.erase(it);
+			}
+		}
 	}
 }
 
@@ -3825,16 +3933,16 @@ void Renderer::uploadImageFromStaging(vk::Buffer                              st
 		uint64_t        signalValue       = 0;
 		{
 			std::lock_guard<std::mutex> lock(queueMutex);
-			vk::SubmitInfo              submit{};
+			vk::SubmitInfo                  submit{};
+			vk::TimelineSemaphoreSubmitInfo timelineInfo{}; // keep alive through submit
 			if (canSignalTimeline)
 			{
 				signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
-				vk::TimelineSemaphoreSubmitInfo timelineInfo{
-				    .signalSemaphoreValueCount = 1,
-				    .pSignalSemaphoreValues    = &signalValue};
-				submit.pNext                = &timelineInfo;
-				submit.signalSemaphoreCount = 1;
-				submit.pSignalSemaphores    = &*uploadsTimeline;
+				timelineInfo.signalSemaphoreValueCount = 1;
+				timelineInfo.pSignalSemaphoreValues    = &signalValue;
+				submit.pNext                            = &timelineInfo;
+				submit.signalSemaphoreCount             = 1;
+				submit.pSignalSemaphores                = &*uploadsTimeline;
 			}
 			submit.commandBufferCount = 1;
 			submit.pCommandBuffers    = &*cb;
@@ -3933,20 +4041,20 @@ void Renderer::generateMipmaps(vk::Image  image,
 	bool            canSignalTimeline = uploadsTimeline != nullptr;
 	uint64_t        signalValue       = 0;
 	{
-		std::lock_guard<std::mutex> lock(queueMutex);
-		vk::SubmitInfo              submit{};
-		if (canSignalTimeline)
-		{
-			signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
-			vk::TimelineSemaphoreSubmitInfo timelineInfo{
-			    .signalSemaphoreValueCount = 1,
-			    .pSignalSemaphoreValues    = &signalValue};
-			submit.pNext                = &timelineInfo;
-			submit.signalSemaphoreCount = 1;
-			submit.pSignalSemaphores    = &*uploadsTimeline;
-		}
-		submit.commandBufferCount = 1;
-		submit.pCommandBuffers    = &*cb;
+ 	std::lock_guard<std::mutex> lock(queueMutex);
+ 	vk::SubmitInfo                  submit{};
+ 	vk::TimelineSemaphoreSubmitInfo timelineInfo{}; // keep alive through submit
+ 	if (canSignalTimeline)
+ 	{
+ 		signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
+ 		timelineInfo.signalSemaphoreValueCount = 1;
+ 		timelineInfo.pSignalSemaphoreValues    = &signalValue;
+ 		submit.pNext                            = &timelineInfo;
+ 		submit.signalSemaphoreCount             = 1;
+ 		submit.pSignalSemaphores                = &*uploadsTimeline;
+ 	}
+ 	submit.commandBufferCount = 1;
+ 	submit.pCommandBuffers    = &*cb;
 		graphicsQueue.submit(submit, *fence);
 	}
 	(void) device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);

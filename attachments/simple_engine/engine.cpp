@@ -33,6 +33,37 @@ Engine::Engine() :
 {
 }
 
+bool Engine::IsMainThread() const
+{
+	return std::this_thread::get_id() == mainThreadId;
+}
+
+void Engine::ProcessPendingEntityRemovals()
+{
+	std::vector<std::string> names;
+	{
+		std::lock_guard<std::mutex> lk(pendingEntityRemovalsMutex);
+		if (pendingEntityRemovalNames.empty())
+			return;
+		names.swap(pendingEntityRemovalNames);
+	}
+
+	// Process on the main thread only (safety)
+	if (!IsMainThread())
+	{
+		// Put them back; we'll retry next main-thread tick
+		std::lock_guard<std::mutex> lk(pendingEntityRemovalsMutex);
+		pendingEntityRemovalNames.insert(pendingEntityRemovalNames.end(), names.begin(), names.end());
+		return;
+	}
+
+	// Apply removals using the normal API (which takes the appropriate locks).
+	for (const auto &name : names)
+	{
+		(void) RemoveEntity(name);
+	}
+}
+
 Engine::~Engine()
 {
 	Cleanup();
@@ -46,6 +77,9 @@ bool Engine::Initialize(const std::string &appName, int width, int height, bool 
 	// This will be handled in the android_main function
 	return false;
 #else
+	// Record main thread identity for deferring destructive operations from background threads
+	mainThreadId = std::this_thread::get_id();
+
 	platform = CreatePlatform();
 	if (!platform->Initialize(appName, width, height))
 	{
@@ -188,8 +222,11 @@ void Engine::Cleanup()
 		}
 
 		// Clear entities
-		entities.clear();
-		entityMap.clear();
+		{
+			std::unique_lock<std::shared_mutex> lk(entitiesMutex);
+			entities.clear();
+			entityMap.clear();
+		}
 
 		// Clean up subsystems in reverse order of creation
 		imguiSystem.reset();
@@ -205,6 +242,7 @@ void Engine::Cleanup()
 
 Entity *Engine::CreateEntity(const std::string &name)
 {
+	std::unique_lock<std::shared_mutex> lk(entitiesMutex);
 	// Always allow duplicate names; map stores a representative entity
 	// Create the entity
 	auto entity = std::make_unique<Entity>(name);
@@ -219,6 +257,7 @@ Entity *Engine::CreateEntity(const std::string &name)
 
 Entity *Engine::GetEntity(const std::string &name)
 {
+	std::shared_lock<std::shared_mutex> lk(entitiesMutex);
 	auto it = entityMap.find(name);
 	if (it != entityMap.end())
 	{
@@ -233,6 +272,17 @@ bool Engine::RemoveEntity(Entity *entity)
 	{
 		return false;
 	}
+
+	// If called from a background thread, defer removal to avoid deleting entities
+	// while the render thread may be iterating a snapshot.
+	if (!IsMainThread())
+	{
+		std::lock_guard<std::mutex> lk(pendingEntityRemovalsMutex);
+		pendingEntityRemovalNames.push_back(entity->GetName());
+		return true;
+	}
+
+	std::unique_lock<std::shared_mutex> lk(entitiesMutex);
 
 	// Remember the name before erasing ownership
 	std::string name = entity->GetName();
@@ -271,12 +321,50 @@ bool Engine::RemoveEntity(Entity *entity)
 
 bool Engine::RemoveEntity(const std::string &name)
 {
-	Entity *entity = GetEntity(name);
-	if (entity)
+	// If called from a background thread, defer removal to avoid deleting entities
+	// while the render thread may be iterating a snapshot.
+	if (!IsMainThread())
 	{
-		return RemoveEntity(entity);
+		std::lock_guard<std::mutex> lk(pendingEntityRemovalsMutex);
+		pendingEntityRemovalNames.push_back(name);
+		return true;
 	}
-	return false;
+
+	std::unique_lock<std::shared_mutex> lk(entitiesMutex);
+	auto                             it = entityMap.find(name);
+	if (it == entityMap.end())
+		return false;
+	Entity *entity = it->second;
+	if (!entity)
+		return false;
+
+	// Find the entity in the vector
+	auto vecIt = std::ranges::find_if(entities,
+	                                 [entity](const std::unique_ptr<Entity> &e) {
+		                                 return e.get() == entity;
+	                                 });
+	if (vecIt == entities.end())
+	{
+		entityMap.erase(name);
+		return false;
+	}
+
+	entities.erase(vecIt);
+
+	// Update the map: point to another entity with the same name if one exists
+	auto remainingIt = std::ranges::find_if(entities,
+	                                      [&name](const std::unique_ptr<Entity> &e) {
+		                                      return e && e->GetName() == name;
+	                                      });
+	if (remainingIt != entities.end())
+	{
+		entityMap[name] = remainingIt->get();
+	}
+	else
+	{
+		entityMap.erase(name);
+	}
+	return true;
 }
 
 void Engine::SetActiveCamera(CameraComponent *cameraComponent)
@@ -441,6 +529,9 @@ void Engine::handleKeyInput(uint32_t key, bool pressed)
 
 void Engine::Update(TimeDelta deltaTime)
 {
+	// Apply any entity removals requested by background threads.
+	ProcessPendingEntityRemovals();
+
 	// During background scene loading we avoid touching the live entity
 	// list from the main thread. This lets the loading thread construct
 	// entities/components safely while the main thread only drives the
@@ -478,17 +569,23 @@ void Engine::Update(TimeDelta deltaTime)
 		UpdateCameraControls(deltaTime);
 	}
 
-	// Update all entities (guard against null unique_ptrs)
-	for (auto &entity : entities)
+	// Update all entities.
+	// Do not hold `entitiesMutex` while calling `Entity::Update()`.
+	// Background threads may need the unique lock to add entities during loading,
+	// and holding a shared lock for a long time can starve them.
+	std::vector<Entity *> snapshot;
 	{
-		if (!entity)
+		std::shared_lock<std::shared_mutex> lk(entitiesMutex);
+		snapshot.reserve(entities.size());
+		for (auto &uptr : entities)
 		{
-			continue;
+			snapshot.push_back(uptr.get());
 		}
-		if (!entity->IsActive())
-		{
+	}
+	for (Entity *entity : snapshot)
+	{
+		if (!entity || !entity->IsActive())
 			continue;
-		}
 		entity->Update(deltaTime);
 	}
 }
@@ -507,8 +604,24 @@ void Engine::Render()
 		return;
 	}
 
+	// Apply any entity removals requested by background threads before taking a snapshot.
+	ProcessPendingEntityRemovals();
+
+	// Snapshot entity pointers under a short shared lock, then release the lock
+	// before rendering. This prevents starving the background loader/physics threads
+	// that need the unique lock to create entities/components.
+	std::vector<Entity *> snapshot;
+	{
+		std::shared_lock<std::shared_mutex> lk(entitiesMutex);
+		snapshot.reserve(entities.size());
+		for (auto &uptr : entities)
+		{
+			snapshot.push_back(uptr.get());
+		}
+	}
+
 	// Render the scene (ImGui will be rendered within the render pass)
-	renderer->Render(entities, activeCamera, imguiSystem.get());
+	renderer->Render(snapshot, activeCamera, imguiSystem.get());
 }
 
 std::chrono::milliseconds Engine::CalculateDeltaTimeMs()
@@ -574,8 +687,14 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime)
 	if (imguiSystem && imguiSystem->IsCameraTrackingEnabled())
 	{
 		// Find the first active ball entity
-		auto    ballEntityIt = std::ranges::find_if(entities, [](auto const &entity) { return entity->IsActive() && (entity->GetName().find("Ball_") != std::string::npos); });
-		Entity *ballEntity   = ballEntityIt != entities.end() ? ballEntityIt->get() : nullptr;
+		Entity *ballEntity = nullptr;
+		{
+			std::shared_lock<std::shared_mutex> lk(entitiesMutex);
+			auto ballEntityIt = std::ranges::find_if(entities, [](auto const &entity) {
+				return entity && entity->IsActive() && (entity->GetName().find("Ball_") != std::string::npos);
+			});
+			ballEntity = (ballEntityIt != entities.end()) ? ballEntityIt->get() : nullptr;
+		}
 
 		if (ballEntity)
 		{

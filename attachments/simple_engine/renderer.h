@@ -271,6 +271,11 @@ class Renderer
 	 */
 	void Render(const std::vector<std::unique_ptr<Entity>> &entities, CameraComponent *camera, ImGuiSystem *imguiSystem = nullptr);
 
+	// Render overload that accepts a snapshot of raw entity pointers.
+	// This allows the Engine to release its entity-container lock before rendering
+	// (avoiding writer starvation of background loading/physics threads).
+	void Render(const std::vector<Entity *> &entities, CameraComponent *camera, ImGuiSystem *imguiSystem = nullptr);
+
 	/**
 	 * @brief Wait for the device to be idle.
 	 */
@@ -630,6 +635,16 @@ class Renderer
 	void SetModelLoader(ModelLoader *_modelLoader)
 	{
 		modelLoader = _modelLoader;
+		// Materials are resolved via ModelLoader; invalidate cached per-entity material info.
+		for (auto &kv : entityResources)
+		{
+			kv.second.materialCacheValid = false;
+			kv.second.cachedMaterial     = nullptr;
+			kv.second.cachedIsBlended    = false;
+			kv.second.cachedIsGlass      = false;
+			kv.second.cachedIsLiquid     = false;
+			kv.second.cachedMaterialProps = MaterialProperties{};
+		}
 	}
 
 	/**
@@ -717,6 +732,8 @@ class Renderer
 	 */
 	void RequestAccelerationStructureBuild()
 	{
+		// Allow AS build to take longer than the watchdog threshold (large scenes in Debug).
+		watchdogSuppressed.store(true, std::memory_order_relaxed);
 		asBuildRequested.store(true, std::memory_order_release);
 	}
 	// Overload with reason tracking for diagnostics
@@ -726,6 +743,7 @@ class Renderer
 			lastASBuildRequestReason = reason;
 		else
 			lastASBuildRequestReason = "(no reason)";
+		watchdogSuppressed.store(true, std::memory_order_relaxed);
 		asBuildRequested.store(true, std::memory_order_release);
 	}
 
@@ -734,17 +752,17 @@ class Renderer
 	 * @param entities The entities to include in the acceleration structures.
 	 * @return True if successful, false otherwise.
 	 */
-	bool buildAccelerationStructures(const std::vector<std::unique_ptr<Entity>> &entities);
+	bool buildAccelerationStructures(const std::vector<Entity *> &entities);
 
 	// Refit/UPDATE the TLAS with latest entity transforms (no rebuild)
-	bool refitTopLevelAS(const std::vector<std::unique_ptr<Entity>> &entities);
+	bool refitTopLevelAS(const std::vector<Entity *> &entities);
 
 	/**
 	 * @brief Update ray query descriptor sets with current resources.
 	 * @param frameIndex The frame index to update (or all frames if not specified).
 	 * @return True if successful, false otherwise.
 	 */
-	bool updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vector<std::unique_ptr<Entity>> &entities);
+	bool updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vector<Entity *> &entities);
 
 	/**
 	 * @brief Create or resize light storage buffers to accommodate the given number of lights.
@@ -805,6 +823,10 @@ class Renderer
 	 * should prefer this over repeated preAllocateEntityResources() calls.
 	 */
 	bool preAllocateEntityResourcesBatch(const std::vector<Entity *> &entities);
+
+	// Thread-safe: enqueue entities that need GPU-side resource preallocation.
+	// The actual Vulkan work will be performed on the render thread at the frame-start safe point.
+	void EnqueueEntityPreallocationBatch(const std::vector<Entity *> &entities);
 
 	/**
 	 * @brief Recreate the instance buffer for an entity that had its instances cleared.
@@ -1174,6 +1196,12 @@ class Renderer
 	// Execute pending mesh uploads on the render thread (called from Render after fence wait)
 	void ProcessPendingMeshUploads();
 
+	// --- Pending entity GPU preallocation (enqueued by scene loader thread; executed on render thread) ---
+	std::mutex        pendingEntityPreallocMutex;
+	std::vector<Entity *> pendingEntityPrealloc;
+	std::atomic<bool> pendingEntityPreallocQueued{false};
+	void              ProcessPendingEntityPreallocations();
+
 	// Descriptor set layouts (declared before pools and sets)
 	vk::raii::DescriptorSetLayout descriptorSetLayout            = nullptr;
 	vk::raii::DescriptorSetLayout pbrDescriptorSetLayout         = nullptr;
@@ -1181,13 +1209,15 @@ class Renderer
 	vk::raii::PipelineLayout      pbrTransparentPipelineLayout   = nullptr;
 
 	// The texture that will hold a snapshot of the opaque scene
-	vk::raii::Image        opaqueSceneColorImage{nullptr};
-	vk::raii::DeviceMemory opaqueSceneColorImageMemory{nullptr};        // <-- Standard Vulkan memory
-	vk::raii::ImageView    opaqueSceneColorImageView{nullptr};
-	vk::raii::Sampler      opaqueSceneColorSampler{nullptr};
+	// One off-screen color image per frame-in-flight to avoid cross-frame read/write hazards.
+	std::vector<vk::raii::Image>                          opaqueSceneColorImages;
+	std::vector<std::unique_ptr<MemoryPool::Allocation>>  opaqueSceneColorImageAllocations;
+	std::vector<vk::raii::ImageView>                      opaqueSceneColorImageViews;
+	// Track the current layout per frame (initialized to eUndefined at creation)
+	std::vector<vk::ImageLayout>                          opaqueSceneColorImageLayouts;
+	vk::raii::Sampler                                     opaqueSceneColorSampler{nullptr};
 
-	// A descriptor set for the opaque scene color texture. We will have one for each frame in flight
-	// to match the swapchain images.
+	// A descriptor set for the opaque scene color texture. One per frame in flight.
 	std::vector<vk::raii::DescriptorSet> transparentDescriptorSets;
 	// Fallback descriptor sets for opaque pass (binds a default SHADER_READ_ONLY texture as Set 1)
 	std::vector<vk::raii::DescriptorSet> transparentFallbackDescriptorSets;
@@ -1291,7 +1321,10 @@ class Renderer
 
 	// Entities needing descriptor set refresh due to streamed textures
 	std::mutex                   dirtyEntitiesMutex;
-	std::unordered_set<Entity *> descriptorDirtyEntities;
+	// Map of entity -> bitmask of frames-in-flight that still need a descriptor refresh.
+	// This avoids the “frame 0 updated / frame 1 still default” oscillation when
+	// MAX_FRAMES_IN_FLIGHT > 1 and a texture becomes available mid-stream.
+	std::unordered_map<Entity *, uint32_t> descriptorDirtyEntities;
 
 	// Protect concurrent access to textureResources
 	mutable std::shared_mutex textureResourcesMutex;
@@ -1351,11 +1384,12 @@ class Renderer
 		std::unique_ptr<MemoryPool::Allocation> instanceBufferAllocation = nullptr;
 		void                                   *instanceBufferMapped     = nullptr;
 
-		// Tracks whether binding 0 (UBO) has been written at least once for each frame.
-		// This lets us avoid re-writing descriptor binding 0 every frame and prevents
-		// update-after-bind warnings while keeping initialization correct when a frame
-		// first becomes current.
-		std::vector<bool> uboBindingWritten;        // size = MAX_FRAMES_IN_FLIGHT
+		// Tracks whether binding 0 (UBO) has been written at least once for each frame
+		// for each pipeline type. Descriptor sets for non-current frames are allocated
+		// but not necessarily initialized immediately (to avoid update-after-bind hazards),
+		// so each frame needs a one-time initialization at its safe point.
+		std::vector<bool> pbrUboBindingWritten;          // size = MAX_FRAMES_IN_FLIGHT
+		std::vector<bool> basicUboBindingWritten;        // size = MAX_FRAMES_IN_FLIGHT
 
 		// Tracks whether image bindings have been written at least once for each frame.
 		// If false for the current frame at the safe point, we cold-initialize the
@@ -1363,6 +1397,18 @@ class Renderer
 		// real textures or shared defaults to avoid per-frame "black" flashes.
 		std::vector<bool> pbrImagesWritten;          // size = MAX_FRAMES_IN_FLIGHT
 		std::vector<bool> basicImagesWritten;        // size = MAX_FRAMES_IN_FLIGHT
+
+		// Cached material lookup/classification for raster rendering.
+		// Avoids per-frame string parsing of entity names ("_Material_") and repeated
+		// ModelLoader material lookups across culling, sorting, and draw loops.
+		bool       materialCacheValid = false;
+		Material  *cachedMaterial     = nullptr;
+		// Derived flags used by render queues and sorting heuristics
+		bool cachedIsBlended = false;
+		bool cachedIsGlass   = false;
+		bool cachedIsLiquid  = false;
+		// Material-derived push constants defaults (static per-entity unless material changes)
+		MaterialProperties cachedMaterialProps{};
 	};
 	std::unordered_map<Entity *, EntityResources> entityResources;
 
@@ -1469,8 +1515,11 @@ class Renderer
 	vk::raii::Buffer                        tlasUpdateScratchBuffer{nullptr};
 	std::unique_ptr<MemoryPool::Allocation> tlasUpdateScratchAllocation;
 
-	// Maximum number of frames in flight
-	const uint32_t MAX_FRAMES_IN_FLIGHT = 1u;
+ // Maximum number of frames in flight
+ // More than 1 allows CPU/GPU overlap and reduce per-frame stalls.
+ // All per-frame resources (UBOs, descriptor sets, reflection RTs, etc.)
+ // are sized dynamically based on this value.
+ const uint32_t MAX_FRAMES_IN_FLIGHT = 2u;
 
 	// --- Performance & diagnostics ---
 	// CPU-side frustum culling toggle and last-frame stats
@@ -1508,6 +1557,9 @@ class Renderer
 	std::atomic<std::chrono::steady_clock::time_point> lastFrameUpdateTime;
 	std::thread                                        watchdogThread;
 	std::atomic<bool>                                  watchdogRunning{false};
+	// Some operations (notably BLAS/TLAS builds in Debug on large scenes) can legitimately take
+	// longer than the watchdog threshold. When set, the watchdog will not abort.
+	std::atomic<bool>                                  watchdogSuppressed{false};
 
 	// === Descriptor update deferral while recording ===
 	struct PendingDescOp
@@ -1598,13 +1650,17 @@ class Renderer
 	bool createReflectionResources(uint32_t width, uint32_t height);
 	void destroyReflectionResources();
 	// Render the scene into the reflection RT (mirrored about a plane) — to be fleshed out next step
-	void renderReflectionPass(vk::raii::CommandBuffer                    &cmd,
-	                          const glm::vec4                            &planeWS,
-	                          CameraComponent                            *camera,
-	                          const std::vector<std::unique_ptr<Entity>> &entities);
+	void renderReflectionPass(vk::raii::CommandBuffer           &cmd,
+	                          const glm::vec4                   &planeWS,
+	                          CameraComponent                   *camera,
+	                          const std::vector<Entity *>       &entities);
 
 	// Ensure Vulkan-Hpp dispatcher is initialized for the current thread when using RAII objects on worker threads
 	void ensureThreadLocalVulkanInit() const;
+
+	// Cache and classify an entity's material for raster rendering (opaque vs blended, glass/liquid flags,
+	// and push-constant defaults). This avoids repeated per-frame string parsing and material lookups.
+	void ensureEntityMaterialCache(Entity *entity);
 
 	// ===================== Culling helpers =====================
 	struct FrustumPlanes

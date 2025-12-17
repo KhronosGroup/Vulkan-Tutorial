@@ -18,7 +18,10 @@
 
 #include <chrono>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -218,8 +221,22 @@ class Engine
 	std::unique_ptr<ImGuiSystem>     imguiSystem;
 
 	// Entities
+	// NOTE: Entities can be created from a background loading thread (see `main.cpp`).
+	// Protect the containers to avoid iterator invalidation/data races while the render thread
+	// iterates them.
+	mutable std::shared_mutex                 entitiesMutex;
 	std::vector<std::unique_ptr<Entity>>      entities;
 	std::unordered_map<std::string, Entity *> entityMap;
+
+	// Main thread identity (used to defer destructive operations from background threads)
+	std::thread::id mainThreadId{};
+
+	// Background threads may request entity removal while the render thread is iterating snapshots.
+	// To keep `Entity*` snapshots safe, defer removals to the main thread at a safe point.
+	std::mutex              pendingEntityRemovalsMutex;
+	std::vector<std::string> pendingEntityRemovalNames;
+	void                    ProcessPendingEntityRemovals();
+	bool                    IsMainThread() const;
 
 	// Active camera
 	CameraComponent *activeCamera = nullptr;

@@ -206,8 +206,15 @@ bool Renderer::createPBRDescriptorSetLayout()
 			transBindingFlagsInfo.pBindingFlags                      = &transFlags;
 			transparentLayoutInfo.flags |= vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
 			transparentLayoutInfo.pNext = &transBindingFlagsInfo;
+
+			// Create the layout while the pNext chain is still valid (avoid dangling pointer)
+			transparentDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, transparentLayoutInfo);
 		}
-		transparentDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, transparentLayoutInfo);
+		else
+		{
+			// Create without extra binding flags
+			transparentDescriptorSetLayout = vk::raii::DescriptorSetLayout(device, transparentLayoutInfo);
+		}
 
 		return true;
 	}

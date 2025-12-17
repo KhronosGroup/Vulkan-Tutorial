@@ -40,7 +40,7 @@ vk::DeviceAddress getBufferDeviceAddress(const vk::raii::Device &device, vk::Buf
  * @param entities The entities to include in the acceleration structures.
  * @return True if successful, false otherwise.
  */
-bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Entity>> &entities)
+bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities)
 {
 	if (!accelerationStructureEnabled || !rayQueryEnabled)
 	{
@@ -50,7 +50,19 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 
 	try
 	{
-		std::cout << "Building acceleration structures for " << entities.size() << " entities...\n";
+		// Large scenes can take seconds to build BLAS/TLAS. Keep the watchdog alive while we work.
+		auto lastKick = std::chrono::steady_clock::now();
+		auto kickWatchdog = [&]() {
+			auto now = std::chrono::steady_clock::now();
+			if (now - lastKick > std::chrono::milliseconds(200))
+			{
+				lastFrameUpdateTime.store(now, std::memory_order_relaxed);
+				lastKick = now;
+			}
+		};
+		kickWatchdog();
+
+		std::cout << "Building acceleration structures for " << entities.size() << " entities..." << std::endl;
 
 		// PRECHECK: Determine how many renderable entities and unique meshes are READY right now.
 		// If the counts would shrink compared to the last successful build (e.g., streaming not done),
@@ -64,9 +76,9 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 			size_t skippedException = 0;
 
 			std::map<MeshComponent *, uint32_t> meshToBLASProbe;
-			for (const auto &entityPtr : entities)
+			for (Entity *entity : entities)
 			{
-				Entity *entity = entityPtr.get();
+				kickWatchdog();
 				if (!entity || !entity->IsActive())
 				{
 					skippedInactive++;
@@ -156,9 +168,9 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 		size_t skippedZeroIndices    = 0;
 		size_t skippedException      = 0;
 
-		for (const auto &entityPtr : entities)
+		for (Entity *entity : entities)
 		{
-			Entity *entity = entityPtr.get();
+			kickWatchdog();
 			if (!entity || !entity->IsActive())
 			{
 				skippedInactive++;
@@ -269,11 +281,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 
 		for (size_t i = 0; i < uniqueMeshes.size(); ++i)
 		{
-			// Update watchdog every 50 BLAS to prevent false hang detection during long AS build
-			if (i > 0 && i % 50 == 0)
-			{
-				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-			}
+			kickWatchdog();
 
 			MeshComponent *meshComp = uniqueMeshes[i];
 			auto          &meshRes  = meshResources.at(meshComp);
@@ -459,6 +467,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 		uint32_t runningInstanceIndex = 0;
 		for (auto entity : renderableEntities)
 		{
+			kickWatchdog();
 			auto     meshComp  = entity->GetComponent<MeshComponent>();
 			uint32_t blasIndex = meshToBLAS.at(meshComp);
 
@@ -472,6 +481,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 
 			for (size_t iInst = 0; iInst < instCount; ++iInst)
 			{
+				kickWatchdog();
 				glm::mat4 finalModel = entityModel;
 				if (hasInstance && iInst < meshInstCount)
 				{
@@ -721,9 +731,18 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 			graphicsQueue.submit(submitInfo, *fence);
 		}
 
-		if (device.waitForFences(*fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess)
+		// Wait with periodic watchdog kicks to avoid false hang detection on large scenes.
+		while (true)
 		{
-			std::cerr << "Failed to wait for AS build fence\n";
+			vk::Result r = device.waitForFences({*fence}, VK_TRUE, /*timeout*/ 100'000'000ULL);        // 100ms
+			if (r == vk::Result::eSuccess)
+				break;
+			if (r == vk::Result::eTimeout)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+				continue;
+			}
+			std::cerr << "Failed to wait for AS build fence: " << vk::to_string(r) << "\n";
 			return false;
 		}
 
@@ -1027,7 +1046,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<std::unique_ptr<Ent
 	}
 }
 
-bool Renderer::refitTopLevelAS(const std::vector<std::unique_ptr<Entity>> &entities)
+bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
 {
 	try
 	{
@@ -1138,9 +1157,18 @@ bool Renderer::refitTopLevelAS(const std::vector<std::unique_ptr<Entity>> &entit
 			std::lock_guard<std::mutex> lock(queueMutex);
 			graphicsQueue.submit(submitInfo, *fence);
 		}
-		if (device.waitForFences(*fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess)
+		// Wait with periodic watchdog kicks to avoid false hang detection on long refits.
+		while (true)
 		{
-			std::cerr << "Failed to wait for TLAS refit fence\n";
+			vk::Result r = device.waitForFences({*fence}, VK_TRUE, /*timeout*/ 100'000'000ULL);        // 100ms
+			if (r == vk::Result::eSuccess)
+				break;
+			if (r == vk::Result::eTimeout)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+				continue;
+			}
+			std::cerr << "Failed to wait for TLAS refit fence: " << vk::to_string(r) << "\n";
 			return false;
 		}
 		return true;
@@ -1160,7 +1188,7 @@ bool Renderer::refitTopLevelAS(const std::vector<std::unique_ptr<Entity>> &entit
  * @param frameIndex The frame index to update.
  * @return True if successful, false otherwise.
  */
-bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vector<std::unique_ptr<Entity>> &entities)
+bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vector<Entity *> &entities)
 {
 	if (!rayQueryEnabled || !accelerationStructureEnabled)
 	{

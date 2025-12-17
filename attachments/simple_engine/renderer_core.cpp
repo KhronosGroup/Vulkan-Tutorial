@@ -52,7 +52,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
 
 // Watchdog thread function - monitors frame updates and aborts if application hangs
 static void WatchdogThreadFunc(std::atomic<std::chrono::steady_clock::time_point> *lastFrameTime,
-                               std::atomic<bool>                                  *running)
+                               std::atomic<bool>                                  *running,
+                               std::atomic<bool>                                  *suppressed)
 {
 	std::cout << "[Watchdog] Started - will abort if no frame updates for 5+ seconds\n";
 
@@ -65,13 +66,15 @@ static void WatchdogThreadFunc(std::atomic<std::chrono::steady_clock::time_point
 			break;        // Shutdown requested
 		}
 
-		// Check if frame timestamp was updated in the last 5 seconds
-		// 5 seconds allows for heavy GPU workloads (ray query with 552 meshes + reflections/transparency)
+		// Check if frame timestamp was updated recently.
+		// Some operations (e.g., BLAS/TLAS builds in Debug on large scenes) can legitimately take
+		// much longer than 5 seconds. When suppressed, allow a longer grace period.
 		auto now        = std::chrono::steady_clock::now();
 		auto lastUpdate = lastFrameTime->load(std::memory_order_relaxed);
 		auto elapsed    = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdate).count();
+		const int64_t allowedSeconds = (suppressed && suppressed->load(std::memory_order_relaxed)) ? 60 : 5;
 
-		if (elapsed >= 5)
+		if (elapsed >= allowedSeconds)
 		{
 			// APPLICATION HAS HUNG - no frame updates for 5+ seconds
 			std::cerr << "\n\n";
@@ -341,7 +344,7 @@ bool Renderer::Initialize(const std::string &appName, bool enableValidationLayer
 	// Start watchdog thread to detect application hangs
 	lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 	watchdogRunning.store(true, std::memory_order_relaxed);
-	watchdogThread = std::thread(WatchdogThreadFunc, &lastFrameUpdateTime, &watchdogRunning);
+	watchdogThread = std::thread(WatchdogThreadFunc, &lastFrameUpdateTime, &watchdogRunning, &watchdogSuppressed);
 
 	initialized = true;
 	return true;
@@ -528,10 +531,11 @@ void Renderer::Cleanup()
 	defaultTextureResources.textureImageAllocation = nullptr;
 
 	// 7) Opaque scene color and related descriptors
-	opaqueSceneColorSampler     = nullptr;
-	opaqueSceneColorImageView   = nullptr;
-	opaqueSceneColorImageMemory = nullptr;
-	opaqueSceneColorImage       = nullptr;
+	opaqueSceneColorSampler = nullptr;
+	opaqueSceneColorImages.clear();
+	opaqueSceneColorImageAllocations.clear();
+	opaqueSceneColorImageViews.clear();
+	opaqueSceneColorImageLayouts.clear();
 
 	// 7.5) Ray query output image and acceleration structures
 	rayQueryOutputImageView       = nullptr;

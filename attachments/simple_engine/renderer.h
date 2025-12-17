@@ -827,6 +827,7 @@ class Renderer
 	// Thread-safe: enqueue entities that need GPU-side resource preallocation.
 	// The actual Vulkan work will be performed on the render thread at the frame-start safe point.
 	void EnqueueEntityPreallocationBatch(const std::vector<Entity *> &entities);
+	void EnqueueInstanceBufferRecreation(Entity *entity);
 
 	/**
 	 * @brief Recreate the instance buffer for an entity that had its instances cleared.
@@ -1197,10 +1198,11 @@ class Renderer
 	void ProcessPendingMeshUploads();
 
 	// --- Pending entity GPU preallocation (enqueued by scene loader thread; executed on render thread) ---
-	std::mutex        pendingEntityPreallocMutex;
+	std::mutex            pendingEntityPreallocMutex;
 	std::vector<Entity *> pendingEntityPrealloc;
-	std::atomic<bool> pendingEntityPreallocQueued{false};
-	void              ProcessPendingEntityPreallocations();
+	std::vector<Entity *> pendingInstanceBufferRecreations;
+	std::atomic<bool>     pendingEntityPreallocQueued{false};
+	void                  ProcessPendingEntityPreallocations();
 
 	// Descriptor set layouts (declared before pools and sets)
 	vk::raii::DescriptorSetLayout descriptorSetLayout            = nullptr;

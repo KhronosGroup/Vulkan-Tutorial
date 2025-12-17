@@ -1772,46 +1772,68 @@ void Renderer::EnqueueEntityPreallocationBatch(const std::vector<Entity *> &enti
 	pendingEntityPreallocQueued.store(true, std::memory_order_relaxed);
 }
 
+void Renderer::EnqueueInstanceBufferRecreation(Entity *entity)
+{
+	if (!entity)
+		return;
+	{
+		std::lock_guard<std::mutex> lk(pendingEntityPreallocMutex);
+		pendingInstanceBufferRecreations.push_back(entity);
+	}
+	pendingEntityPreallocQueued.store(true, std::memory_order_relaxed);
+}
+
 void Renderer::ProcessPendingEntityPreallocations()
 {
 	if (!pendingEntityPreallocQueued.load(std::memory_order_relaxed))
 		return;
 
-	std::vector<Entity *> toProcess;
+	std::vector<Entity *> toPreallocate;
+	std::vector<Entity *> toRecreateInstances;
 	{
 		std::lock_guard<std::mutex> lk(pendingEntityPreallocMutex);
-		if (pendingEntityPrealloc.empty())
+		if (pendingEntityPrealloc.empty() && pendingInstanceBufferRecreations.empty())
 		{
 			pendingEntityPreallocQueued.store(false, std::memory_order_relaxed);
 			return;
 		}
-		toProcess.swap(pendingEntityPrealloc);
+		toPreallocate.swap(pendingEntityPrealloc);
+		toRecreateInstances.swap(pendingInstanceBufferRecreations);
 		pendingEntityPreallocQueued.store(false, std::memory_order_relaxed);
 	}
 
-	// De-dup to avoid repeated work if loader enqueues overlapping batches
-	std::sort(toProcess.begin(), toProcess.end());
-	toProcess.erase(std::unique(toProcess.begin(), toProcess.end()), toProcess.end());
+	// De-dup preallocations
+	std::sort(toPreallocate.begin(), toPreallocate.end());
+	toPreallocate.erase(std::unique(toPreallocate.begin(), toPreallocate.end()), toPreallocate.end());
 
 	std::vector<Entity *> batch;
-	batch.reserve(toProcess.size());
-	for (Entity *e : toProcess)
+	batch.reserve(toPreallocate.size());
+	for (Entity *e : toPreallocate)
 	{
 		if (!e || !e->IsActive())
 			continue;
-		// Only preallocate for entities that actually have renderable mesh data
 		if (!e->GetComponent<MeshComponent>())
 			continue;
 		batch.push_back(e);
 	}
-	if (batch.empty())
-		return;
 
-	// Execute GPU resource creation on the render thread at the safe point.
-	// Keep failures non-fatal so loading can continue; we'll retry on subsequent frames.
-	if (!preAllocateEntityResourcesBatch(batch))
+	if (!batch.empty())
 	{
-		std::cerr << "Warning: batch entity GPU preallocation failed; will retry" << std::endl;
+		if (!preAllocateEntityResourcesBatch(batch))
+		{
+			std::cerr << "Warning: batch entity GPU preallocation failed; will retry" << std::endl;
+		}
+	}
+
+	// Process instance buffer recreations
+	for (Entity *e : toRecreateInstances)
+	{
+		if (!e || !e->IsActive())
+			continue;
+		if (!recreateInstanceBuffer(e))
+		{
+			std::cerr << "Warning: failed to recreate instance buffer for entity " << e->GetName() << std::endl;
+		}
 	}
 }
 

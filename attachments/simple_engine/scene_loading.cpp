@@ -496,9 +496,9 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 
 							// Recreate the GPU instance buffer with a single identity instance
 							// The old buffer still had multiple instances, so we need to update it
-							if (renderer && !renderer->recreateInstanceBuffer(nodeEntity))
+							if (renderer)
 							{
-								std::cerr << "[Animation] Failed to recreate instance buffer for reused entity" << std::endl;
+								renderer->EnqueueInstanceBufferRecreation(nodeEntity);
 							}
 						}
 					}
@@ -546,9 +546,9 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 							}
 
 							// Pre-allocate resources for this new entity
-							if (renderer && !renderer->preAllocateEntityResources(nodeEntity))
+							if (renderer)
 							{
-								std::cerr << "[Animation] Failed to pre-allocate resources for " << entityName << std::endl;
+								renderer->EnqueueEntityPreallocationBatch({nodeEntity});
 							}
 
 							std::cout << "[Animation] Created new entity '" << entityName << "' for node " << nodeIndex << std::endl;

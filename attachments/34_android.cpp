@@ -1317,16 +1317,21 @@ class HelloTriangleApplication
 	{
 		static_cast<void>(device.waitForFences({*inFlightFences[frameIndex]}, VK_TRUE, UINT64_MAX));
 
-		uint32_t imageIndex;
-		try
-		{
-			auto [result, idx] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[frameIndex]);
-			imageIndex         = idx;
-		}
-		catch (vk::OutOfDateKHRError &)
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[frameIndex], nullptr);
+
+		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+		// here and does not need to be caught by an exception.
+		if (result == vk::Result::eErrorOutOfDateKHR)
 		{
 			recreateSwapChain();
 			return;
+		}
+		// On other success codes than eSuccess and eSuboptimalKHR we just throw an exception.
+		// On any error code, aquireNextImage already threw an exception.
+		if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+		{
+			assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
 		// Update uniform buffer with current transformation
@@ -1348,38 +1353,23 @@ class HelloTriangleApplication
 		      .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
 		queue.submit(submitInfo, *inFlightFences[frameIndex]);
 
-		try
+		const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
+		                                        .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
+		                                        .swapchainCount     = 1,
+		                                        .pSwapchains        = &*swapChain,
+		                                        .pImageIndices      = &imageIndex};
+		result = queue.presentKHR(presentInfoKHR);
+		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+		// here and does not need to be caught by an exception.
+		if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
 		{
-			const vk::PresentInfoKHR presentInfoKHR{
-			    .waitSemaphoreCount = 1,
-			    .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
-			    .swapchainCount     = 1,
-			    .pSwapchains        = &*swapChain,
-			    .pImageIndices      = &imageIndex};
-
-			vk::Result result = queue.presentKHR(presentInfoKHR);
-
-			if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
-			{
-				framebufferResized = false;
-				recreateSwapChain();
-			}
-			else if (result != vk::Result::eSuccess)
-			{
-				throw std::runtime_error("Failed to present swap chain image");
-			}
+			framebufferResized = false;
+			recreateSwapChain();
 		}
-		catch (const vk::SystemError &e)
+		else
 		{
-			if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR))
-			{
-				recreateSwapChain();
-				return;
-			}
-			else
-			{
-				throw;
-			}
+			// There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+			assert(result == vk::Result::eSuccess);
 		}
 
 		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;

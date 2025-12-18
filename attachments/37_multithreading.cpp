@@ -1201,13 +1201,19 @@ class MultithreadedApplication
 
 		// Acquire the next image
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[frameIndex], nullptr);
+
+		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+		// here and does not need to be caught by an exception.
 		if (result == vk::Result::eErrorOutOfDateKHR)
 		{
 			recreateSwapChain();
 			return;
 		}
+		// On other success codes than eSuccess and eSuboptimalKHR we just throw an exception.
+		// On any error code, aquireNextImage already threw an exception.
 		else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
 		{
+			assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
@@ -1326,15 +1332,17 @@ class MultithreadedApplication
 		    .pImageIndices      = &imageIndex};
 
 		result = queue.presentKHR(presentInfo);
-		if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
+		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+		// here and does not need to be caught by an exception.
+		if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
 		{
 			framebufferResized = false;
 			recreateSwapChain();
-			return;
 		}
-		else if (result != vk::Result::eSuccess)
+		else
 		{
-			throw std::runtime_error("failed to present swap chain image!");
+			// There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+			assert(result == vk::Result::eSuccess);
 		}
 
 		// Move to the next frame

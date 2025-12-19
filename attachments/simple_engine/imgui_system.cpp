@@ -165,13 +165,11 @@ void ImGuiSystem::NewFrame()
 
 	ImGui::NewFrame();
 
-	// Loading overlay: show only a fullscreen progress bar while the model
-	// itself is loading. Once the scene is ready and geometry is visible,
-	// we no longer block the view with a full-screen progress bar.
+	// Loading overlay: show a fullscreen progress bar while the initial scene is loading.
+	// The bar resets between phases (Textures -> Physics -> AS -> Finalizing) so users
+	// don't stare at a 100% bar while the engine is still doing work.
 	if (renderer)
 	{
-		const uint32_t scheduled    = renderer->GetTextureTasksScheduled();
-		const uint32_t completed    = renderer->GetTextureTasksCompleted();
 		const bool     modelLoading = renderer->IsLoading();
 		if (modelLoading)
 		{
@@ -202,11 +200,40 @@ void ImGuiSystem::NewFrame()
 				const float barY     = dispSize.y * 0.45f;
 				ImGui::SetCursorPos(ImVec2(barX, barY));
 				ImGui::BeginGroup();
-				float frac = (scheduled > 0) ? (float) completed / (float) scheduled : 0.0f;
+
+				// Phase-aware progress (resets between phases).
+				float frac = 0.0f;
+				auto  phase = renderer->GetLoadingPhase();
+				if (phase == Renderer::LoadingPhase::Textures)
+				{
+					const uint32_t scheduled = renderer->GetTextureTasksScheduled();
+					const uint32_t completed = renderer->GetTextureTasksCompleted();
+					frac = (scheduled > 0) ? (static_cast<float>(completed) / static_cast<float>(scheduled)) : 0.0f;
+				}
+				else if (phase == Renderer::LoadingPhase::AccelerationStructures)
+				{
+					frac = renderer->GetASBuildProgress();
+				}
+				else
+				{
+					frac = renderer->GetLoadingPhaseProgress();
+				}
 				ImGui::ProgressBar(frac, ImVec2(barWidth, 0.0f));
 				ImGui::Dummy(ImVec2(0.0f, 10.0f));
 				ImGui::SetCursorPosX(barX);
-				ImGui::Text("Loading scene...");
+				ImGui::Text("Loading: %s", renderer->GetLoadingPhaseName());
+				if (phase == Renderer::LoadingPhase::Textures)
+				{
+					const uint32_t scheduled = renderer->GetTextureTasksScheduled();
+					const uint32_t completed = renderer->GetTextureTasksCompleted();
+					ImGui::Text("Textures: %u/%u", completed, scheduled);
+				}
+				else if (phase == Renderer::LoadingPhase::AccelerationStructures)
+				{
+					const uint32_t done  = renderer->GetASBuildItemsDone();
+					const uint32_t total = renderer->GetASBuildItemsTotal();
+					ImGui::Text("%s (%u/%u, %.1fs)", renderer->GetASBuildStage(), done, total, renderer->GetASBuildElapsedSeconds());
+				}
 				ImGui::EndGroup();
 				ImGui::PopStyleVar();
 			}
@@ -226,6 +253,41 @@ void ImGuiSystem::NewFrame()
 		const uint32_t uploadTotal  = renderer->GetUploadJobsTotal();
 		const uint32_t uploadDone   = renderer->GetUploadJobsCompleted();
 		const bool     modelLoading = renderer->IsLoading();
+		const bool     showASBuild  = renderer->ShouldShowASBuildProgressInUI();
+
+		// Acceleration structure build can happen after initial load completes.
+		// If it takes a long time, show a compact progress window.
+		if (!modelLoading && showASBuild)
+		{
+			ImGuiIO     &io       = ImGui::GetIO();
+			const ImVec2 dispSize = io.DisplaySize;
+
+			const float  windowWidth  = std::min(320.0f, dispSize.x * 0.42f);
+			const float  windowHeight = 90.0f;
+			const ImVec2 winPos(dispSize.x - windowWidth - 10.0f, 10.0f);
+
+			ImGui::SetNextWindowPos(winPos, ImGuiCond_Always);
+			ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight));
+			ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize |
+			                         ImGuiWindowFlags_NoMove |
+			                         ImGuiWindowFlags_NoCollapse |
+			                         ImGuiWindowFlags_NoSavedSettings;
+
+			if (ImGui::Begin("##ASBuildStatus", nullptr, flags))
+			{
+				ImGui::Text("Building acceleration structures...");
+				const float asFrac = renderer->GetASBuildProgress();
+				ImGui::ProgressBar(asFrac, ImVec2(-1.0f, 0.0f));
+				const uint32_t done  = renderer->GetASBuildItemsDone();
+				const uint32_t total = renderer->GetASBuildItemsTotal();
+				ImGui::Text("%s (%u/%u, %.1fs)",
+				           renderer->GetASBuildStage(),
+				           done,
+				           total,
+				           renderer->GetASBuildElapsedSeconds());
+			}
+			ImGui::End();
+		}
 
 		if (!modelLoading && uploadTotal > 0 && uploadDone < uploadTotal)
 		{
@@ -234,7 +296,9 @@ void ImGuiSystem::NewFrame()
 
 			const float  windowWidth  = std::min(260.0f, dispSize.x * 0.35f);
 			const float  windowHeight = 120.0f;
-			const ImVec2 winPos(dispSize.x - windowWidth - 10.0f, 10.0f);
+			// If the AS build status window is visible, offset streaming window below it.
+			const float  yBase        = 10.0f + (showASBuild ? (90.0f + 10.0f) : 0.0f);
+			const ImVec2 winPos(dispSize.x - windowWidth - 10.0f, yBase);
 
 			ImGui::SetNextWindowPos(winPos, ImGuiCond_Always);
 			ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight));

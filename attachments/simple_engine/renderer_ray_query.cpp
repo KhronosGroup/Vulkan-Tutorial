@@ -50,6 +50,52 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 
 	try
 	{
+		const auto asStartCpu = std::chrono::steady_clock::now();
+
+		// --- UI progress instrumentation (for long AS builds) ---
+		// We update these frequently during BLAS/TLAS builds so the loading overlay
+		// can display meaningful progress if the build takes > ~10 seconds.
+		auto nowNs = []() -> uint64_t {
+			return static_cast<uint64_t>(
+			    std::chrono::duration_cast<std::chrono::nanoseconds>(
+			        std::chrono::steady_clock::now().time_since_epoch())
+			        .count());
+		};
+		auto setASUi = [&](bool active, const char *stage, float progress, uint32_t done, uint32_t total) {
+			asBuildUiActive.store(active, std::memory_order_relaxed);
+			asBuildUiStage.store(stage ? stage : "", std::memory_order_relaxed);
+			asBuildUiProgress.store(std::clamp(progress, 0.0f, 1.0f), std::memory_order_relaxed);
+			asBuildUiDone.store(done, std::memory_order_relaxed);
+			asBuildUiTotal.store(total, std::memory_order_relaxed);
+			// Also drive the main loading overlay progress while we're in the AS phase.
+			if (GetLoadingPhase() == LoadingPhase::AccelerationStructures)
+			{
+				SetLoadingPhaseProgress(progress);
+			}
+		};
+		// Start timer if not already running
+		if (asBuildUiStartNs.load(std::memory_order_relaxed) == 0)
+		{
+			asBuildUiStartNs.store(nowNs(), std::memory_order_relaxed);
+		}
+		setASUi(true, "AS: prepare", 0.0f, 0u, 0u);
+		struct ASBuildUiGuard
+		{
+			Renderer *r;
+			explicit ASBuildUiGuard(Renderer *rr) : r(rr) {}
+			~ASBuildUiGuard()
+			{
+				if (!r)
+					return;
+				r->asBuildUiActive.store(false, std::memory_order_relaxed);
+				r->asBuildUiStage.store("idle", std::memory_order_relaxed);
+				r->asBuildUiProgress.store(0.0f, std::memory_order_relaxed);
+				r->asBuildUiDone.store(0u, std::memory_order_relaxed);
+				r->asBuildUiTotal.store(0u, std::memory_order_relaxed);
+				r->asBuildUiStartNs.store(0u, std::memory_order_relaxed);
+			}
+		} asUiGuard(this);
+
 		// Large scenes can take seconds to build BLAS/TLAS. Keep the watchdog alive while we work.
 		auto lastKick = std::chrono::steady_clock::now();
 		auto kickWatchdog = [&]() {
@@ -234,12 +280,15 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 
 		if (uniqueMeshes.empty())
 		{
-			return true;
+			// Nothing ready yet (e.g., mesh uploads still pending). Treat as a transient
+			// condition so the caller can retry next frame without clearing the request.
+			setASUi(true, "AS: waiting on meshes", 0.0f, 0u, 0u);
+			return false;
 		}
 
 		// One concise build summary (no per-entity spam)
 		std::cout << "Building AS: uniqueMeshes=" << uniqueMeshes.size()
-		          << ", instances=" << renderableEntities.size()
+		          << ", entities=" << renderableEntities.size()
 		          << " (skipped inactive=" << skippedInactive
 		          << ", noMesh=" << skippedNoMesh
 		          << ", noRes=" << skippedNoRes
@@ -274,6 +323,10 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 		// Build BLAS for each unique mesh
 		blasStructures.resize(uniqueMeshes.size());
 
+		// Progress model: BLAS phase dominates. Treat TLAS + post buffers as a few extra steps.
+		const uint32_t totalSteps = static_cast<uint32_t>(uniqueMeshes.size()) + 3u;
+		setASUi(true, "AS: build BLAS", 0.0f, 0u, totalSteps);
+
 		// Keep scratch buffers alive until GPU execution completes (after fence wait)
 		// Destroying them early causes "VkBuffer was destroy" validation errors and crashes
 		std::vector<vk::raii::Buffer>                        scratchBuffers;
@@ -282,6 +335,12 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 		for (size_t i = 0; i < uniqueMeshes.size(); ++i)
 		{
 			kickWatchdog();
+			// Update UI progress (BLAS)
+			setASUi(true,
+			        "AS: build BLAS",
+			        totalSteps > 0 ? static_cast<float>(static_cast<uint32_t>(i)) / static_cast<float>(totalSteps) : 0.0f,
+			        static_cast<uint32_t>(i),
+			        totalSteps);
 
 			MeshComponent *meshComp = uniqueMeshes[i];
 			auto          &meshRes  = meshResources.at(meshComp);
@@ -387,6 +446,12 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 
 			// (Per-BLAS logging removed; keep logs quiet in production.)
 		}
+		// BLAS done
+		setASUi(true,
+		        "AS: build TLAS",
+		        totalSteps > 0 ? static_cast<float>(static_cast<uint32_t>(uniqueMeshes.size())) / static_cast<float>(totalSteps) : 0.0f,
+		        static_cast<uint32_t>(uniqueMeshes.size()),
+		        totalSteps);
 
 		// Barrier between BLAS and TLAS builds
 
@@ -685,8 +750,8 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 		scratchAllocations.push_back(std::move(tlasScratchAlloc));
 
 		// Ensure/update a persistent scratch buffer for TLAS UPDATE (refit)
-		// Allocate once sized to updateScratchSize
-		if (!*tlasUpdateScratchBuffer || !tlasUpdateScratchAllocation)
+		// Allocate once sized to updateScratchSize; recreate if needed for larger scenes
+		if (!*tlasUpdateScratchBuffer || !tlasUpdateScratchAllocation || tlasUpdateScratchAllocation->size < tlasSizeInfo.updateScratchSize)
 		{
 			auto [updBuf, updAlloc] = createBufferPooled(
 			    tlasSizeInfo.updateScratchSize,
@@ -732,25 +797,21 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 		}
 
 		// Wait with periodic watchdog kicks to avoid false hang detection on large scenes.
-		while (true)
-		{
-			vk::Result r = device.waitForFences({*fence}, VK_TRUE, /*timeout*/ 100'000'000ULL);        // 100ms
-			if (r == vk::Result::eSuccess)
-				break;
-			if (r == vk::Result::eTimeout)
-			{
-				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-				continue;
-			}
-			std::cerr << "Failed to wait for AS build fence: " << vk::to_string(r) << "\n";
-			return false;
-		}
+		(void) waitForFencesSafe(*fence, VK_TRUE);
+		// TLAS build completed on GPU
+		setASUi(true,
+		        "AS: upload buffers",
+		        totalSteps > 0 ? static_cast<float>(static_cast<uint32_t>(uniqueMeshes.size()) + 1u) / static_cast<float>(totalSteps) : 0.0f,
+		        static_cast<uint32_t>(uniqueMeshes.size()) + 1u,
+		        totalSteps);
 
 		// (Verbose TLAS composition dumps removed; keep logs quiet.)
 
-		// Record the counts we just built so we don't rebuild with smaller subsets later
-		lastASBuiltBLASCount     = blasStructures.size();
-		lastASBuiltInstanceCount = instanceCount;
+		// Record the counts we just built so we don't rebuild with smaller subsets later.
+		// Keep entity counts and TLAS instance counts separate to avoid unit mismatches.
+		lastASBuiltBLASCount             = blasStructures.size();
+		lastASBuiltInstanceCount         = renderableEntities.size();
+		lastASBuiltTlasInstanceCount     = instanceCount;
 
 		// Build geometry info buffer PER INSTANCE (same order as TLAS instances)
 		// geometryInfos already populated above in TLAS instance loop
@@ -776,6 +837,12 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 
 			// (Verbose geometry info buffer stats removed.)
 		}
+		// Post buffers done
+		setASUi(true,
+		        "AS: finalize",
+		        totalSteps > 0 ? static_cast<float>(static_cast<uint32_t>(uniqueMeshes.size()) + 2u) / static_cast<float>(totalSteps) : 1.0f,
+		        static_cast<uint32_t>(uniqueMeshes.size()) + 2u,
+		        totalSteps);
 
 		// Build material buffer with real materials from ModelLoader
 		{
@@ -783,6 +850,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 
 			// Collect unique materials with their indices from entities
 			std::map<uint32_t, std::string> materialIndexToName;
+			static constexpr uint32_t       kMaxSupportedMaterialIndex = 100000u;
 
 			size_t entityCount = 0;
 			for (Entity *entity : renderableEntities)
@@ -800,7 +868,13 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 					{
 						try
 						{
-							uint32_t matIndex = std::stoi(entityName.substr(numStart, numEnd - numStart));
+ 						uint32_t matIndex = std::stoi(entityName.substr(numStart, numEnd - numStart));
+ 						if (matIndex > kMaxSupportedMaterialIndex)
+ 						{
+ 							// Malformed entity name (or unexpected content) could yield a huge index.
+ 							// Skip to avoid allocating an enormous material table or writing out of bounds.
+ 							continue;
+ 						}
 
 							// Extract material name (everything after materialIndex_)
 							std::string materialName      = entityName.substr(numEnd + 1);
@@ -865,6 +939,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 			{
 				maxMaterialIndex = std::max(maxMaterialIndex, index);
 			}
+			maxMaterialIndex = std::min(maxMaterialIndex, kMaxSupportedMaterialIndex);
 
 			// Ensure minimum size of 100 materials for safety (matches original implementation)
 			uint32_t materialCount = std::max(maxMaterialIndex + 1, 100u);
@@ -884,6 +959,8 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 				size_t matProcessed = 0;
 				for (const auto &[index, materialName] : materialIndexToName)
 				{
+					if (index >= materials.size())
+						continue;
 					Material *sourceMat = modelLoader->GetMaterial(materialName);
 					if (sourceMat)
 					{
@@ -1037,11 +1114,35 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 			materialCountCPU = materials.size();
 		}
 
+		// The TLAS/material/geometry buffers and texture table contents may have changed.
+		// Mark ray query descriptor sets dirty so the render thread refreshes them at the next safe point.
+		const uint32_t allFramesMask = (MAX_FRAMES_IN_FLIGHT >= 32u) ? 0xFFFFFFFFu : ((1u << MAX_FRAMES_IN_FLIGHT) - 1u);
+		rayQueryDescriptorsDirtyMask.fetch_or(allFramesMask, std::memory_order_relaxed);
+
+		setASUi(true, "AS: done", 1.0f, totalSteps, totalSteps);
+		const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - asStartCpu).count();
+		std::cout << "AS build completed in " << (static_cast<double>(elapsedMs) / 1000.0)
+		          << "s (uniqueMeshes=" << uniqueMeshes.size()
+		          << ", entities=" << renderableEntities.size()
+		          << ", tlasInstances=" << instanceCount << ")\n";
 		return true;
 	}
 	catch (const std::exception &e)
 	{
-		std::cerr << "Failed to build acceleration structures: " << e.what() << std::endl;
+		const uint64_t startNs = asBuildUiStartNs.load(std::memory_order_relaxed);
+		if (startNs != 0)
+		{
+			const uint64_t nowNs = static_cast<uint64_t>(
+			    std::chrono::duration_cast<std::chrono::nanoseconds>(
+			        std::chrono::steady_clock::now().time_since_epoch())
+			        .count());
+			const double secs = (nowNs > startNs) ? (static_cast<double>(nowNs - startNs) / 1'000'000'000.0) : 0.0;
+			std::cerr << "Failed to build acceleration structures after " << secs << "s: " << e.what() << std::endl;
+		}
+		else
+		{
+			std::cerr << "Failed to build acceleration structures: " << e.what() << std::endl;
+		}
 		return false;
 	}
 }
@@ -1062,8 +1163,19 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
 		if (!instPtr)
 			return false;
 
+		auto lastKick = std::chrono::steady_clock::now();
+		auto kickWatchdog = [&]() {
+			auto now = std::chrono::steady_clock::now();
+			if (now - lastKick > std::chrono::milliseconds(200))
+			{
+				lastFrameUpdateTime.store(now, std::memory_order_relaxed);
+				lastKick = now;
+			}
+		};
+
 		for (uint32_t i = 0; i < tlasInstanceCount; ++i)
 		{
+			kickWatchdog();
 			const TlasInstanceRef &ref    = tlasInstanceOrder[i];
 			Entity                *entity = ref.entity;
 			if (!entity || !entity->IsActive())
@@ -1158,19 +1270,7 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
 			graphicsQueue.submit(submitInfo, *fence);
 		}
 		// Wait with periodic watchdog kicks to avoid false hang detection on long refits.
-		while (true)
-		{
-			vk::Result r = device.waitForFences({*fence}, VK_TRUE, /*timeout*/ 100'000'000ULL);        // 100ms
-			if (r == vk::Result::eSuccess)
-				break;
-			if (r == vk::Result::eTimeout)
-			{
-				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-				continue;
-			}
-			std::cerr << "Failed to wait for TLAS refit fence: " << vk::to_string(r) << "\n";
-			return false;
-		}
+		(void) waitForFencesSafe(*fence, VK_TRUE);
 		return true;
 	}
 	catch (const std::exception &e)
@@ -1191,6 +1291,10 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
 bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vector<Entity *> &entities)
 {
 	if (!rayQueryEnabled || !accelerationStructureEnabled)
+	{
+		return false;
+	}
+	if (frameIndex >= MAX_FRAMES_IN_FLIGHT)
 	{
 		return false;
 	}
@@ -1271,6 +1375,21 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
 	{
 		std::cerr << "TLAS not built - cannot update ray query descriptor sets\n";
 		return false;
+	}
+
+	// Avoid doing expensive updates every frame.
+	// Binding 6 is a large descriptor array; updating it each frame can stall the CPU badly.
+	if (rayQueryDescriptorsWritten.size() != MAX_FRAMES_IN_FLIGHT)
+	{
+		rayQueryDescriptorsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+	}
+	const uint32_t bitMask = (1u << frameIndex);
+	const bool     dirty   = (rayQueryDescriptorsDirtyMask.load(std::memory_order_relaxed) & bitMask) != 0u;
+	const bool     first   = !rayQueryDescriptorsWritten[frameIndex];
+	if (!dirty && !first)
+	{
+		// Nothing changed that requires descriptor rebind for this frame.
+		return true;
 	}
 
 	// Frame index alignment check: ensure we are updating descriptor set for the frame being recorded
@@ -1403,7 +1522,7 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
 
 		// Binding 6: Ray Query texture table (combined image samplers)
 		// IMPORTANT: Do NOT cache VkImageView/VkSampler handles across frames; textures can stream
-		// and their handles may be destroyed/recreated. Instead, rebuild image infos each update.
+		// and their handles may be destroyed/recreated.
 		if (rayQueryTexKeys.size() < RQ_SLOT_DEFAULT_EMISSIVE + 1 || rayQueryTexFallbackSlots.size() < RQ_SLOT_DEFAULT_EMISSIVE + 1)
 		{
 			// Should be seeded during AS build; if not, fall back to using the generic default texture in all slots.
@@ -1412,64 +1531,81 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
 			rayQueryTexCount = std::max<uint32_t>(rayQueryTexCount, static_cast<uint32_t>(rayQueryTexKeys.size()));
 		}
 
-		std::vector<vk::DescriptorImageInfo> rqArray(RQ_MAX_TEX, vk::DescriptorImageInfo{
-		                                                             .sampler     = *defaultTextureResources.textureSampler,
-		                                                             .imageView   = *defaultTextureResources.textureImageView,
-		                                                             .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal});
-
-		const uint32_t                      copyCount = std::min<uint32_t>(rayQueryTexCount, RQ_MAX_TEX);
-		std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
-
-		// Helper to fill a slot with a key (if ready) or fall back to its declared fallback slot.
-		auto fillSlot = [&](uint32_t slot) {
-			if (slot >= copyCount)
-				return;
-			const std::string &key = rayQueryTexKeys[slot];
-			if (!key.empty())
-			{
-				auto itTex = textureResources.find(key);
-				if (itTex != textureResources.end() && itTex->second.textureImageView != nullptr && itTex->second.textureSampler != nullptr)
-				{
-					rqArray[slot].sampler     = *itTex->second.textureSampler;
-					rqArray[slot].imageView   = *itTex->second.textureImageView;
-					rqArray[slot].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-					return;
-				}
-			}
-
-			// Not ready/missing: use slot-specific fallback.
-			uint32_t fb = (slot < rayQueryTexFallbackSlots.size()) ? rayQueryTexFallbackSlots[slot] : RQ_SLOT_DEFAULT_BASECOLOR;
-			if (fb >= copyCount)
-				fb = RQ_SLOT_DEFAULT_BASECOLOR;
-			const std::string &fbKey = (fb < rayQueryTexKeys.size()) ? rayQueryTexKeys[fb] : std::string{};
-			if (!fbKey.empty())
-			{
-				auto itTex = textureResources.find(fbKey);
-				if (itTex != textureResources.end() && itTex->second.textureImageView != nullptr && itTex->second.textureSampler != nullptr)
-				{
-					rqArray[slot].sampler     = *itTex->second.textureSampler;
-					rqArray[slot].imageView   = *itTex->second.textureImageView;
-					rqArray[slot].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-				}
-			}
-		};
-
-		// Fill all active slots.
-		for (uint32_t i = 0; i < copyCount; ++i)
+		const uint32_t copyCount = std::min<uint32_t>(rayQueryTexCount, RQ_MAX_TEX);
+		// First-time init writes the full array with defaults so the set is fully defined.
+		// Subsequent refreshes update only the active range [0, copyCount), which is much faster.
+		const bool initFullArray = first;
+		const uint32_t writeCount = initFullArray ? RQ_MAX_TEX : copyCount;
+		std::vector<vk::DescriptorImageInfo> rqArray(writeCount, vk::DescriptorImageInfo{
+		                                                     .sampler     = *defaultTextureResources.textureSampler,
+		                                                     .imageView   = *defaultTextureResources.textureImageView,
+		                                                     .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal});
+		if (copyCount > 0)
 		{
-			fillSlot(i);
+			// Fill active slots under a short-lived shared lock, then release before taking descriptorMutex.
+			std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+			auto                               fillSlot = [&](uint32_t slot) {
+				if (slot >= copyCount)
+					return;
+				const std::string &key = rayQueryTexKeys[slot];
+				if (!key.empty())
+				{
+					auto itTex = textureResources.find(key);
+					if (itTex != textureResources.end() && itTex->second.textureImageView != nullptr && itTex->second.textureSampler != nullptr)
+					{
+						rqArray[slot].sampler     = *itTex->second.textureSampler;
+						rqArray[slot].imageView   = *itTex->second.textureImageView;
+						rqArray[slot].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+						return;
+					}
+				}
+
+				// Not ready/missing: use slot-specific fallback.
+				uint32_t fb = (slot < rayQueryTexFallbackSlots.size()) ? rayQueryTexFallbackSlots[slot] : RQ_SLOT_DEFAULT_BASECOLOR;
+				if (fb >= copyCount)
+					fb = RQ_SLOT_DEFAULT_BASECOLOR;
+				const std::string &fbKey = (fb < rayQueryTexKeys.size()) ? rayQueryTexKeys[fb] : std::string{};
+				if (!fbKey.empty())
+				{
+					auto itTex = textureResources.find(fbKey);
+					if (itTex != textureResources.end() && itTex->second.textureImageView != nullptr && itTex->second.textureSampler != nullptr)
+					{
+						rqArray[slot].sampler     = *itTex->second.textureSampler;
+						rqArray[slot].imageView   = *itTex->second.textureImageView;
+						rqArray[slot].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+					}
+				}
+			};
+
+			for (uint32_t i = 0; i < copyCount; ++i)
+			{
+				// Kick watchdog occasionally during large descriptor table fills.
+				if ((i % 128u) == 0u)
+				{
+					lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+				}
+				fillSlot(i);
+			}
 		}
 
-		vk::WriteDescriptorSet texArrayWrite{};
-		texArrayWrite.dstSet          = *rayQueryDescriptorSets[frameIndex];
-		texArrayWrite.dstBinding      = 6;
-		texArrayWrite.dstArrayElement = 0;
-		texArrayWrite.descriptorCount = RQ_MAX_TEX;
-		texArrayWrite.descriptorType  = vk::DescriptorType::eCombinedImageSampler;
-		texArrayWrite.pImageInfo      = rqArray.data();
-		writes.push_back(texArrayWrite);
+		if (writeCount > 0)
+		{
+			vk::WriteDescriptorSet texArrayWrite{};
+			texArrayWrite.dstSet          = *rayQueryDescriptorSets[frameIndex];
+			texArrayWrite.dstBinding      = 6;
+			texArrayWrite.dstArrayElement = 0;
+			texArrayWrite.descriptorCount = writeCount;
+			texArrayWrite.descriptorType  = vk::DescriptorType::eCombinedImageSampler;
+			texArrayWrite.pImageInfo      = rqArray.data();
+			writes.push_back(texArrayWrite);
+		}
 
-		device.updateDescriptorSets(writes, nullptr);
+		{
+			std::lock_guard<std::mutex> lk(descriptorMutex);
+			device.updateDescriptorSets(writes, nullptr);
+		}
+		rayQueryDescriptorsWritten[frameIndex] = true;
+		rayQueryDescriptorsDirtyMask.fetch_and(~bitMask, std::memory_order_relaxed);
 
 		// No per-frame or one-shot debug prints here; keep logs quiet in production.
 

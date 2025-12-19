@@ -89,6 +89,25 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 
 	try
 	{
+		const auto loadStart = std::chrono::steady_clock::now();
+		std::cout << "[Loading] Begin: " << modelPath << std::endl;
+
+		// Loading large scenes can produce tens of thousands of entities.
+		// Avoid per-entity stdout spam (very slow on Windows consoles) and instead
+		// keep counters + print occasional summaries.
+		size_t physicsBodiesQueued  = 0;
+		size_t physicsBodiesSkipped = 0;
+		size_t physicsNoGeometry    = 0;
+		auto   maybeLogPhysicsProgress = [&]() {
+			const size_t total = physicsBodiesQueued + physicsBodiesSkipped + physicsNoGeometry;
+			// Log infrequently to keep visibility without tanking load time.
+			if (total > 0 && (total % 5000u) == 0u)
+			{
+				std::cout << "[Loading] Physics bodies: queued=" << physicsBodiesQueued
+				          << ", skipped=" << physicsBodiesSkipped
+				          << ", noGeometry=" << physicsNoGeometry << std::endl;
+			}
+		};
 		// Load the complete GLTF model with all textures and lighting on the main thread
 		Model *loadedModel = modelLoader->LoadGLTF(modelPath);
 		if (!loadedModel)
@@ -196,8 +215,21 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 		std::vector<Entity *> geometryEntities;
 		geometryEntities.reserve(materialMeshes.size());
 
-		for (const auto &materialMesh : materialMeshes)
+		// Phase: Physics (queue colliders / rigid bodies). This is CPU-side work that can
+		// take noticeable time even after textures have finished scheduling.
+		if (renderer)
 		{
+			renderer->SetLoadingPhase(Renderer::LoadingPhase::Physics);
+			renderer->SetLoadingPhaseProgress(0.0f);
+		}
+
+		for (size_t meshIdx = 0; meshIdx < materialMeshes.size(); ++meshIdx)
+		{
+			const auto &materialMesh = materialMeshes[meshIdx];
+			if (renderer && (meshIdx % 64u) == 0u)
+			{
+				renderer->SetLoadingPhaseProgress(materialMeshes.empty() ? 0.0f : (static_cast<float>(meshIdx) / static_cast<float>(materialMeshes.size())));
+			}
 			// Create an entity name based on model and material
 			std::string entityName = modelName + "_Material_" + std::to_string(materialMesh.materialIndex) +
 			                         "_" + materialMesh.materialName;
@@ -376,17 +408,19 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 							    0.15f,        // restitution
 							    0.5f          // friction
 							);
-							std::cout << "Queued physics body for near-ground geometry entity: " << entityName << std::endl;
+							++physicsBodiesQueued;
+							maybeLogPhysicsProgress();
 						}
 						else
 						{
-							std::cout << "Skipped physics body for high/remote entity: " << entityName
-							          << " (minY=" << minWS.y << ")" << std::endl;
+							++physicsBodiesSkipped;
+							maybeLogPhysicsProgress();
 						}
 					}
 					else
 					{
-						std::cerr << "Skipping physics body for entity (no geometry): " << entityName << std::endl;
+						++physicsNoGeometry;
+						maybeLogPhysicsProgress();
 					}
 				}
 			}
@@ -394,6 +428,10 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 			{
 				std::cerr << "Failed to create entity for material " << materialMesh.materialName << std::endl;
 			}
+		}
+		if (renderer)
+		{
+			renderer->SetLoadingPhaseProgress(1.0f);
 		}
 
 		// Pre-allocate Vulkan resources for all geometry entities in a single batched pass
@@ -404,6 +442,17 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 			// perform the GPU work safely at its frame-start safe point.
 			renderer->EnqueueEntityPreallocationBatch(geometryEntities);
 		}
+
+		// Final loading summary (useful for profiling, low-noise)
+		std::cout << "[Loading] Physics bodies summary: queued=" << physicsBodiesQueued
+		          << ", skipped=" << physicsBodiesSkipped
+		          << ", noGeometry=" << physicsNoGeometry << std::endl;
+
+		const auto loadEnd    = std::chrono::steady_clock::now();
+		const auto loadMs     = std::chrono::duration_cast<std::chrono::milliseconds>(loadEnd - loadStart).count();
+		const auto loadSecs   = static_cast<double>(loadMs) / 1000.0;
+		const bool loadFastOk = loadSecs <= 60.0;
+		std::cout << "[Loading] End: " << modelPath << " in " << loadSecs << "s" << (loadFastOk ? "" : " (SLOW)") << std::endl;
 
 		// Set up animations if the model has any
 		const std::vector<Animation> &animations = loadedModel->GetAnimations();
@@ -608,13 +657,15 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 		return false;
 	}
 
-	// Request acceleration structure build at next safe frame point
-	// Don't build here in background thread to avoid threading issues with command pools
-	if (renderer && renderer->GetRayQueryEnabled() && renderer->GetAccelerationStructureEnabled())
-	{
-		std::cout << "Requesting acceleration structure build for loaded scene..." << std::endl;
-		renderer->RequestAccelerationStructureBuild();
-	}
+		// Request acceleration structure build at next safe frame point
+		// Don't build here in background thread to avoid threading issues with command pools
+		if (renderer && renderer->GetRayQueryEnabled() && renderer->GetAccelerationStructureEnabled())
+		{
+			renderer->SetLoadingPhase(Renderer::LoadingPhase::AccelerationStructures);
+			renderer->SetLoadingPhaseProgress(0.0f);
+			std::cout << "Requesting acceleration structure build for loaded scene..." << std::endl;
+			renderer->RequestAccelerationStructureBuild();
+		}
 
 	return true;
 }

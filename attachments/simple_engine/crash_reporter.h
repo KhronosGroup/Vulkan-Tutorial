@@ -16,6 +16,7 @@
  */
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -25,10 +26,11 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 #ifdef _WIN32
-#	include <dbghelp.h>
 #	include <windows.h>
+#	include <dbghelp.h>
 #	pragma comment(lib, "dbghelp.lib")
 #elif defined(__APPLE__) || defined(__linux__)
 #	include <execinfo.h>
@@ -118,18 +120,7 @@ class CrashReporter
 	 */
 	void HandleCrash(const std::string &message)
 	{
-		std::lock_guard<std::mutex> lock(mutex);
-
-		LOG_FATAL("CrashReporter", "Crash detected: " + message);
-
-		// Generate minidump
-		GenerateMinidump(message);
-
-		// Call registered callbacks
-		for (const auto &callback : crashCallbacks)
-		{
-			callback(message);
-		}
+		HandleCrashInternal(message, nullptr);
 	}
 
 	/**
@@ -161,7 +152,7 @@ class CrashReporter
 	 * @brief Generate a minidump.
 	 * @param message The crash message.
 	 */
-	void GenerateMinidump(const std::string &message)
+	void GenerateMinidump(const std::string &message, void *platformExceptionPointers = nullptr)
 	{
 		// Get current time for filename
 		auto now  = std::chrono::system_clock::now();
@@ -171,12 +162,37 @@ class CrashReporter
 
 		// Create minidump filename
 		std::string filename = minidumpDir + "/" + appName + "_" + timeStr + ".dmp";
+		std::string report   = minidumpDir + "/" + appName + "_" + timeStr + ".txt";
 
-		LOG_INFO("CrashReporter", "Generating minidump: " + filename);
+		// Also write a small sidecar text file so users can quickly see the exception code/address
+		// without needing a debugger.
+		try
+		{
+			std::ofstream rep(report, std::ios::out | std::ios::trunc);
+			rep << "Crash Report for " << appName << " " << appVersion << "\n";
+			rep << "Timestamp: " << timeStr << "\n";
+			rep << "Message: " << message << "\n";
+#ifdef _WIN32
+			if (platformExceptionPointers)
+			{
+				auto *exPtrs = reinterpret_cast<EXCEPTION_POINTERS *>(platformExceptionPointers);
+				if (exPtrs && exPtrs->ExceptionRecord)
+				{
+					rep << "ExceptionCode: 0x" << std::hex << exPtrs->ExceptionRecord->ExceptionCode << std::dec << "\n";
+					rep << "ExceptionAddress: " << exPtrs->ExceptionRecord->ExceptionAddress << "\n";
+					rep << "ExceptionFlags: 0x" << std::hex << exPtrs->ExceptionRecord->ExceptionFlags << std::dec << "\n";
+				}
+			}
+#endif
+		}
+		catch (...)
+		{
+		}
 
 // Generate minidump based on platform
 #ifdef _WIN32
 		// Windows implementation
+		EXCEPTION_POINTERS *exPtrs = reinterpret_cast<EXCEPTION_POINTERS *>(platformExceptionPointers);
 		HANDLE hFile = CreateFileA(
 		    filename.c_str(),
 		    GENERIC_WRITE,
@@ -188,19 +204,19 @@ class CrashReporter
 
 		if (hFile != INVALID_HANDLE_VALUE)
 		{
-			MINIDUMP_EXCEPTION_INFORMATION exInfo;
+			MINIDUMP_EXCEPTION_INFORMATION exInfo{};
 			exInfo.ThreadId          = GetCurrentThreadId();
-			exInfo.ExceptionPointers = NULL;        // Would be set in a real exception handler
+			exInfo.ExceptionPointers = exPtrs;
 			exInfo.ClientPointers    = FALSE;
 
-			MiniDumpWriteDump(
-			    GetCurrentProcess(),
-			    GetCurrentProcessId(),
-			    hFile,
-			    MiniDumpNormal,
-			    &exInfo,
-			    NULL,
-			    NULL);
+			MINIDUMP_EXCEPTION_INFORMATION *exInfoPtr = exPtrs ? &exInfo : nullptr;
+			MiniDumpWriteDump(GetCurrentProcess(),
+			                  GetCurrentProcessId(),
+			                  hFile,
+			                  MiniDumpNormal,
+			                  exInfoPtr,
+			                  NULL,
+			                  NULL);
 
 			CloseHandle(hFile);
 		}
@@ -232,7 +248,10 @@ class CrashReporter
 		}
 #endif
 
-		LOG_INFO("CrashReporter", "Minidump generated: " + filename);
+		// Best-effort stderr note (stdout/stderr redirection will capture this even if DebugSystem isn't initialized)
+		std::fprintf(stderr, "[CrashReporter] Wrote minidump: %s\n", filename.c_str());
+		std::fprintf(stderr, "[CrashReporter] Wrote report:  %s\n", report.c_str());
+		std::fflush(stderr);
 	}
 
   private:
@@ -259,6 +278,80 @@ class CrashReporter
 	// Crash callbacks
 	std::unordered_map<int, std::function<void(const std::string &)>> crashCallbacks;
 	int                                                               nextCallbackId = 0;
+	std::atomic<bool>                                                 handlingCrash{false};
+
+#ifdef _WIN32
+	static bool ShouldCaptureException(EXCEPTION_POINTERS *exInfo, bool unhandled)
+	{
+		if (unhandled)
+			return true;
+		if (!exInfo || !exInfo->ExceptionRecord)
+			return false;
+		const DWORD code  = exInfo->ExceptionRecord->ExceptionCode;
+		const DWORD flags = exInfo->ExceptionRecord->ExceptionFlags;
+		// Ignore common first-chance C++ exceptions and breakpoint exceptions.
+		if (code == 0xE06D7363u /* MSVC C++ EH */ || code == 0x80000003u /* breakpoint */)
+			return false;
+		// Capture likely-fatal errors and non-continuable exceptions.
+		if ((flags & EXCEPTION_NONCONTINUABLE) != 0)
+			return true;
+		switch (code)
+		{
+			case 0xC0000409u: // STATUS_STACK_BUFFER_OVERRUN
+			case 0xC0000005u: // STATUS_ACCESS_VIOLATION
+			case 0xC000001Du: // STATUS_ILLEGAL_INSTRUCTION
+			case 0xC00000FDu: // STATUS_STACK_OVERFLOW
+			case 0xC0000374u: // STATUS_HEAP_CORRUPTION
+				return true;
+			default:
+				return false;
+		}
+	}
+#endif
+
+#ifdef _WIN32
+	void *vectoredHandlerHandle = nullptr;
+#endif
+
+	void HandleCrashInternal(const std::string &message, void *platformExceptionPointers)
+	{
+		bool expected = false;
+		if (!handlingCrash.compare_exchange_strong(expected, true))
+		{
+			// Already handling a crash; avoid recursion.
+			return;
+		}
+		std::lock_guard<std::mutex> lock(mutex);
+
+		std::string msg = message;
+		(void) platformExceptionPointers;
+
+#ifdef _WIN32
+		if (platformExceptionPointers)
+		{
+			auto *exPtrs = reinterpret_cast<EXCEPTION_POINTERS *>(platformExceptionPointers);
+			if (exPtrs && exPtrs->ExceptionRecord)
+			{
+				const DWORD code = exPtrs->ExceptionRecord->ExceptionCode;
+				void *addr       = exPtrs->ExceptionRecord->ExceptionAddress;
+				char buf[128];
+				std::snprintf(buf, sizeof(buf), " (code=0x%08lX, addr=%p)", static_cast<unsigned long>(code), addr);
+				msg += buf;
+			}
+		}
+#endif
+
+		LOG_FATAL("CrashReporter", "Crash detected: " + msg);
+
+		// Generate minidump
+		GenerateMinidump(msg, platformExceptionPointers);
+
+		// Call registered callbacks
+		for (const auto &callback : crashCallbacks)
+		{
+			callback.second(msg);
+		}
+	}
 
 	/**
 	 * @brief Install platform-specific crash handlers.
@@ -267,8 +360,16 @@ class CrashReporter
 	{
 #ifdef _WIN32
 		// Windows implementation
+		// Vectored handler runs before SEH/unhandled filters and is more likely to fire for fast-fail style crashes.
+		vectoredHandlerHandle = AddVectoredExceptionHandler(1, [](EXCEPTION_POINTERS *exInfo) -> LONG {
+			if (CrashReporter::ShouldCaptureException(exInfo, /*unhandled=*/false))
+			{
+				CrashReporter::GetInstance().HandleCrashInternal("Vectored exception", exInfo);
+			}
+			return EXCEPTION_CONTINUE_SEARCH;
+		});
 		SetUnhandledExceptionFilter([](EXCEPTION_POINTERS *exInfo) -> LONG {
-			CrashReporter::GetInstance().HandleCrash("Unhandled exception");
+			CrashReporter::GetInstance().HandleCrashInternal("Unhandled exception", exInfo);
 			return EXCEPTION_EXECUTE_HANDLER;
 		});
 #else
@@ -303,6 +404,11 @@ class CrashReporter
 #ifdef _WIN32
 		// Windows implementation
 		SetUnhandledExceptionFilter(NULL);
+		if (vectoredHandlerHandle)
+		{
+			RemoveVectoredExceptionHandler(vectoredHandlerHandle);
+			vectoredHandlerHandle = nullptr;
+		}
 #else
 		// Unix implementation
 		signal(SIGSEGV, SIG_DFL);

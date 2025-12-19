@@ -1114,6 +1114,31 @@ bool Renderer::createMeshResources(MeshComponent *meshComponent, bool deferUploa
 		auto it = meshResources.find(meshComponent);
 		if (it != meshResources.end())
 		{
+			// If we previously created this mesh with deferred uploads, but the caller now
+			// wants an immediate/ready mesh (e.g., during loading or before AS build),
+			// flush the pending staging copies right here.
+			if (!deferUpload)
+			{
+				MeshResources &res = it->second;
+				if ((res.vertexBufferSizeBytes > 0 && res.stagingVertexBuffer != nullptr && res.vertexBuffer != nullptr) ||
+				    (res.indexBufferSizeBytes > 0 && res.stagingIndexBuffer != nullptr && res.indexBuffer != nullptr))
+				{
+					if (res.vertexBufferSizeBytes > 0 && res.stagingVertexBuffer != nullptr && res.vertexBuffer != nullptr)
+					{
+						copyBuffer(res.stagingVertexBuffer, res.vertexBuffer, res.vertexBufferSizeBytes);
+						res.stagingVertexBuffer       = nullptr;
+						res.stagingVertexBufferMemory = nullptr;
+						res.vertexBufferSizeBytes     = 0;
+					}
+					if (res.indexBufferSizeBytes > 0 && res.stagingIndexBuffer != nullptr && res.indexBuffer != nullptr)
+					{
+						copyBuffer(res.stagingIndexBuffer, res.indexBuffer, res.indexBufferSizeBytes);
+						res.stagingIndexBuffer       = nullptr;
+						res.stagingIndexBufferMemory = nullptr;
+						res.indexBufferSizeBytes     = 0;
+					}
+				}
+			}
 			return true;
 		}
 
@@ -1210,6 +1235,13 @@ bool Renderer::createUniformBuffers(Entity *entity)
 	ensureThreadLocalVulkanInit();
 	try
 	{
+		// Kick watchdog periodically during heavy buffer creation (if called from a long loop)
+		static uint32_t bufferWatchdogCounter = 0;
+		if (++bufferWatchdogCounter % 50 == 0)
+		{
+			lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+		}
+
 		// Check if entity resources already exist
 		auto it = entityResources.find(entity);
 		if (it != entityResources.end())
@@ -1373,9 +1405,15 @@ bool Renderer::createDescriptorPool()
 // Create descriptor sets
 bool Renderer::createDescriptorSets(Entity *entity, const std::string &texturePath, bool usePBR)
 {
+	// Kick watchdog periodically during heavy descriptor creation (if called from a long loop)
+	static uint32_t descWatchdogCounter = 0;
+	if (++descWatchdogCounter % 50 == 0)
+	{
+		lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+	}
+
 	// Resolve alias before taking the shared lock to avoid nested shared_lock on the same mutex
 	const std::string                   resolvedTexturePath = ResolveTextureId(texturePath);
-	std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
 	try
 	{
 		auto entityIt = entityResources.find(entity);
@@ -1464,9 +1502,16 @@ bool Renderer::createDescriptorSets(Entity *entity, const std::string &texturePa
 				for (int j = 0; j < 5; j++)
 				{
 					const auto        resolvedBindingPath = ResolveTextureId(pbrTexturePaths[j]);
-					auto              textureIt           = textureResources.find(resolvedBindingPath);
-					TextureResources *texRes              = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
-					imageInfos[j]                         = {.sampler = *texRes->textureSampler, .imageView = *texRes->textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+					vk::Sampler   samplerHandle{};
+					vk::ImageView viewHandle{};
+					{
+						std::shared_lock<std::shared_mutex> lock(textureResourcesMutex);
+						auto                                textureIt = textureResources.find(resolvedBindingPath);
+						TextureResources *texRes = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
+						samplerHandle = *texRes->textureSampler;
+						viewHandle    = *texRes->textureImageView;
+					}
+					imageInfos[j] = {.sampler = samplerHandle, .imageView = viewHandle, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 					descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = static_cast<uint32_t>(j + 1), .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfos[j]});
 				}
 
@@ -1534,10 +1579,17 @@ bool Renderer::createDescriptorSets(Entity *entity, const std::string &texturePa
 			}
 			else
 			{        // Basic Pipeline
-				     // ... (this part remains the same)
-				auto                                  textureIt = textureResources.find(resolvedTexturePath);
-				TextureResources                     *texRes    = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
-				vk::DescriptorImageInfo               imageInfo{.sampler = *texRes->textureSampler, .imageView = *texRes->textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+			         // ... (this part remains the same)
+				vk::Sampler   samplerHandle{};
+				vk::ImageView viewHandle{};
+				{
+					std::shared_lock<std::shared_mutex> lock(textureResourcesMutex);
+					auto                                textureIt = textureResources.find(resolvedTexturePath);
+					TextureResources *texRes = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
+					samplerHandle = *texRes->textureSampler;
+					viewHandle    = *texRes->textureImageView;
+				}
+				vk::DescriptorImageInfo imageInfo{.sampler = samplerHandle, .imageView = viewHandle, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 				std::array<vk::WriteDescriptorSet, 2> descriptorWrites = {
 				    vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo},
 				    vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo}};
@@ -1635,18 +1687,34 @@ bool Renderer::preAllocateEntityResources(Entity *entity)
 // Pre-allocate Vulkan resources for a batch of entities, batching mesh uploads
 bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &entities)
 {
+	watchdogProgressLabel.store("Batch: ensureThreadLocalVulkanInit", std::memory_order_relaxed);
+	watchdogProgressIndex.store(0, std::memory_order_relaxed);
 	ensureThreadLocalVulkanInit();
 	try
 	{
 		// --- 1. For all entities, create mesh resources with deferred uploads ---
+		// Then, during initial loading (and while an AS build is pending), flush the queued
+		// uploads immediately in a single batched submit (much faster than per-mesh submits).
+		watchdogProgressLabel.store("Batch: createMeshResources loop", std::memory_order_relaxed);
 		std::vector<MeshComponent *> meshesNeedingUpload;
 		meshesNeedingUpload.reserve(entities.size());
+		const bool flushUploadsNow = IsLoading() || asBuildRequested.load(std::memory_order_relaxed);
 
+		uint32_t processedMeshes = 0;
+		uint32_t meshLoopIndex   = 0;
 		for (Entity *entity : entities)
 		{
+			watchdogProgressIndex.store(meshLoopIndex++, std::memory_order_relaxed);
+
 			if (!entity)
 			{
 				continue;
+			}
+
+			// Kick watchdog periodically during heavy mesh resource creation
+			if (++processedMeshes % 10 == 0)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 			}
 
 			auto meshComponent = entity->GetComponent<MeshComponent>();
@@ -1656,9 +1724,11 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &enti
 			}
 
 			// Ensure local AABB is available for debug/probes
+			watchdogProgressLabel.store("Batch: RecomputeLocalAABB", std::memory_order_relaxed);
 			meshComponent->RecomputeLocalAABB();
 
-			if (!createMeshResources(meshComponent, true))
+			watchdogProgressLabel.store("Batch: createMeshResources", std::memory_order_relaxed);
+			if (!createMeshResources(meshComponent, /*deferUpload=*/true))
 			{
 				std::cerr << "Failed to create mesh resources for entity (batch): "
 				          << entity->GetName() << std::endl;
@@ -1673,7 +1743,7 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &enti
 			MeshResources &res = it->second;
 
 			// Only schedule meshes that still have staged data pending upload
-			if (res.vertexBufferSizeBytes > 0 && res.indexBufferSizeBytes > 0)
+			if (res.vertexBufferSizeBytes > 0 || res.indexBufferSizeBytes > 0)
 			{
 				meshesNeedingUpload.push_back(meshComponent);
 			}
@@ -1682,15 +1752,32 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &enti
 		// --- 2. Defer all GPU copies to the render thread safe point ---
 		if (!meshesNeedingUpload.empty())
 		{
+			watchdogProgressLabel.store("Batch: EnqueueMeshUploads", std::memory_order_relaxed);
 			EnqueueMeshUploads(meshesNeedingUpload);
+			if (flushUploadsNow)
+			{
+				watchdogProgressLabel.store("Batch: Flush mesh uploads now", std::memory_order_relaxed);
+				ProcessPendingMeshUploads();
+			}
 		}
 
 		// --- 3. Create uniform buffers and descriptor sets per entity ---
+		watchdogProgressLabel.store("Batch: per-entity resources loop", std::memory_order_relaxed);
+		uint32_t processedResources = 0;
+		uint32_t resourceLoopIndex  = 0;
 		for (Entity *entity : entities)
 		{
+			watchdogProgressIndex.store(resourceLoopIndex++, std::memory_order_relaxed);
+
 			if (!entity)
 			{
 				continue;
+			}
+
+			// Kick watchdog periodically during heavy resource creation
+			if (++processedResources % 10 == 0)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 			}
 
 			auto meshComponent = entity->GetComponent<MeshComponent>();
@@ -1699,6 +1786,7 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &enti
 				continue;
 			}
 
+			watchdogProgressLabel.store("Batch: createUniformBuffers", std::memory_order_relaxed);
 			if (!createUniformBuffers(entity))
 			{
 				std::cerr << "Failed to create uniform buffers for entity (batch): "
@@ -1717,6 +1805,7 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &enti
 				}
 			}
 
+			watchdogProgressLabel.store("Batch: createDescriptorSets (basic)", std::memory_order_relaxed);
 			if (!createDescriptorSets(entity, texturePath, false))
 			{
 				std::cerr << "Failed to create basic descriptor sets for entity (batch): "
@@ -1724,6 +1813,7 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *> &enti
 				return false;
 			}
 
+			watchdogProgressLabel.store("Batch: createDescriptorSets (pbr)", std::memory_order_relaxed);
 			if (!createDescriptorSets(entity, texturePath, true))
 			{
 				std::cerr << "Failed to create PBR descriptor sets for entity (batch): "
@@ -1788,6 +1878,8 @@ void Renderer::ProcessPendingEntityPreallocations()
 	if (!pendingEntityPreallocQueued.load(std::memory_order_relaxed))
 		return;
 
+	watchdogProgressLabel.store("Prealloc: drain queues", std::memory_order_relaxed);
+
 	std::vector<Entity *> toPreallocate;
 	std::vector<Entity *> toRecreateInstances;
 	{
@@ -1803,6 +1895,7 @@ void Renderer::ProcessPendingEntityPreallocations()
 	}
 
 	// De-dup preallocations
+	watchdogProgressLabel.store("Prealloc: dedup", std::memory_order_relaxed);
 	std::sort(toPreallocate.begin(), toPreallocate.end());
 	toPreallocate.erase(std::unique(toPreallocate.begin(), toPreallocate.end()), toPreallocate.end());
 
@@ -1819,27 +1912,119 @@ void Renderer::ProcessPendingEntityPreallocations()
 
 	if (!batch.empty())
 	{
+		watchdogProgressLabel.store("Prealloc: preAllocateEntityResourcesBatch", std::memory_order_relaxed);
 		if (!preAllocateEntityResourcesBatch(batch))
 		{
 			std::cerr << "Warning: batch entity GPU preallocation failed; will retry" << std::endl;
 		}
 	}
 
-	// Process instance buffer recreations
-	for (Entity *e : toRecreateInstances)
+	// Process instance buffer recreations.
+	// Wait for GPU idle ONCE before processing the batch to safely destroy old buffers.
+	if (!toRecreateInstances.empty())
 	{
-		if (!e || !e->IsActive())
-			continue;
-		if (!recreateInstanceBuffer(e))
+		watchdogProgressLabel.store("Prealloc: wait other inFlightFences (before recreateInstanceBuffer)", std::memory_order_relaxed);
+		// IMPORTANT: We are called from the render thread at the frame-start safe point,
+		// *after* `inFlightFences[currentFrame]` was waited and then reset.
+		// Waiting on the current frame fence here would deadlock forever because it won't be
+		// signaled until we submit the current frame (which can't happen while we're blocked).
+		std::vector<vk::Fence> fencesToWait;
+		fencesToWait.reserve(inFlightFences.size() > 0 ? (inFlightFences.size() - 1) : 0);
+		for (uint32_t i = 0; i < static_cast<uint32_t>(inFlightFences.size()); ++i)
 		{
-			std::cerr << "Warning: failed to recreate instance buffer for entity " << e->GetName() << std::endl;
+			if (i == currentFrame)
+				continue;
+			if (inFlightFences[i] != nullptr && *inFlightFences[i] != vk::Fence{})
+			{
+				fencesToWait.push_back(*inFlightFences[i]);
+			}
+		}
+		if (!fencesToWait.empty())
+		{
+			(void) waitForFencesSafe(fencesToWait, VK_TRUE);
+		}
+		watchdogProgressLabel.store("Prealloc: recreateInstanceBuffer loop", std::memory_order_relaxed);
+		uint32_t processed = 0;
+		for (Entity *e : toRecreateInstances)
+		{
+			if (!e || !e->IsActive())
+				continue;
+
+			// Kick watchdog periodically during heavy batch processing
+			if (++processed % 10 == 0)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+			}
+
+			if (!recreateInstanceBuffer(e))
+			{
+				std::cerr << "Warning: failed to recreate instance buffer for entity " << e->GetName() << std::endl;
+			}
 		}
 	}
+
+	watchdogProgressLabel.store("Prealloc: done", std::memory_order_relaxed);
 }
 
 // Execute pending mesh uploads on the render thread after the per-frame fence wait
 void Renderer::ProcessPendingMeshUploads()
 {
+	// 0. Retire completed async upload batches (if timeline semaphore is available)
+	if (uploadsTimeline != nullptr && *uploadsTimeline != vk::Semaphore{})
+	{
+		uint64_t completedValue = 0;
+		try
+		{
+			// vk::raii::Device doesn't expose getSemaphoreCounterValue in all Vulkan-Hpp versions;
+			// use the underlying vk::Device handle.
+			completedValue = (*device).getSemaphoreCounterValue(*uploadsTimeline);
+		}
+		catch (...)
+		{
+			completedValue = 0;
+		}
+
+		bool anyCompleted = false;
+		while (true)
+		{
+			InFlightMeshUploadBatch completedBatch;
+			{
+				std::lock_guard<std::mutex> lk(inFlightMeshUploadsMutex);
+				if (inFlightMeshUploads.empty())
+					break;
+				if (inFlightMeshUploads.front().signalValue == 0 || inFlightMeshUploads.front().signalValue > completedValue)
+					break;
+				completedBatch = std::move(inFlightMeshUploads.front());
+				inFlightMeshUploads.pop_front();
+			}
+
+			// Clear staging once copies are complete
+			for (auto *meshComponent : completedBatch.meshes)
+			{
+				auto it = meshResources.find(meshComponent);
+				if (it == meshResources.end())
+					continue;
+				MeshResources &res            = it->second;
+				res.stagingVertexBuffer       = nullptr;
+				res.stagingVertexBufferMemory = nullptr;
+				res.vertexBufferSizeBytes     = 0;
+				res.stagingIndexBuffer        = nullptr;
+				res.stagingIndexBufferMemory  = nullptr;
+				res.indexBufferSizeBytes      = 0;
+			}
+
+			anyCompleted = true;
+		}
+
+		if (anyCompleted)
+		{
+			// Now that more meshes are READY (uploads finished), request a TLAS rebuild so
+			// non‑instanced and previously missing meshes are included in the acceleration structure.
+			asDevOverrideAllowRebuild = true;        // allow rebuild even if frozen
+			RequestAccelerationStructureBuild("uploads completed");
+		}
+	}
+
 	// Grab the list atomically
 	std::vector<MeshComponent *> toProcess;
 	{
@@ -1849,11 +2034,26 @@ void Renderer::ProcessPendingMeshUploads()
 		toProcess.swap(pendingMeshUploads);
 	}
 
+	// Build a quick lookup of meshes already in flight so we don't submit duplicate copies
+	std::unordered_set<MeshComponent *> inFlightMeshes;
+	{
+		std::lock_guard<std::mutex> lk(inFlightMeshUploadsMutex);
+		for (const auto &b : inFlightMeshUploads)
+		{
+			for (auto *m : b.meshes)
+			{
+				inFlightMeshes.insert(m);
+			}
+		}
+	}
+
 	// Filter to meshes that still have staged data
 	std::vector<MeshComponent *> needsCopy;
 	needsCopy.reserve(toProcess.size());
 	for (auto *meshComponent : toProcess)
 	{
+		if (inFlightMeshes.find(meshComponent) != inFlightMeshes.end())
+			continue;
 		auto it = meshResources.find(meshComponent);
 		if (it == meshResources.end())
 			continue;
@@ -1870,65 +2070,126 @@ void Renderer::ProcessPendingMeshUploads()
 	vk::CommandPoolCreateInfo poolInfo{
 	    .flags            = vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
 	    .queueFamilyIndex = queueFamilyIndices.graphicsFamily.value()};
-	vk::raii::CommandPool tempPool(device, poolInfo);
 
-	vk::CommandBufferAllocateInfo allocInfo{
-	    .commandPool        = *tempPool,
-	    .level              = vk::CommandBufferLevel::ePrimary,
-	    .commandBufferCount = 1};
-	vk::raii::CommandBuffers cbs(device, allocInfo);
-	vk::raii::CommandBuffer &cb = cbs[0];
-	cb.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-
-	for (auto *meshComponent : needsCopy)
+	// Prefer async submission via the uploads timeline semaphore to avoid blocking the render thread.
+	// However, during initial loading (and when an AS build is pending), we want mesh uploads to
+	// complete promptly so readiness can increase and the AS can be built within the target budget.
+	const bool forceSynchronous = IsLoading() || asBuildRequested.load(std::memory_order_relaxed);
+	const bool canSignalTimeline = (uploadsTimeline != nullptr && *uploadsTimeline != vk::Semaphore{}) && !forceSynchronous;
+	if (canSignalTimeline)
 	{
-		auto it = meshResources.find(meshComponent);
-		if (it == meshResources.end())
-			continue;
-		MeshResources &res = it->second;
-		if (res.vertexBufferSizeBytes > 0 && res.stagingVertexBuffer != nullptr && res.vertexBuffer != nullptr)
+		auto tempPool = std::make_unique<vk::raii::CommandPool>(device, poolInfo);
+		vk::CommandBufferAllocateInfo allocInfo{
+		    .commandPool        = **tempPool,
+		    .level              = vk::CommandBufferLevel::ePrimary,
+		    .commandBufferCount = 1};
+		auto cbs = std::make_unique<vk::raii::CommandBuffers>(device, allocInfo);
+		vk::raii::CommandBuffer &cb = (*cbs)[0];
+		cb.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+		for (auto *meshComponent : needsCopy)
 		{
-			vk::BufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = res.vertexBufferSizeBytes};
-			cb.copyBuffer(*res.stagingVertexBuffer, *res.vertexBuffer, region);
+			auto it = meshResources.find(meshComponent);
+			if (it == meshResources.end())
+				continue;
+			MeshResources &res = it->second;
+			if (res.vertexBufferSizeBytes > 0 && res.stagingVertexBuffer != nullptr && res.vertexBuffer != nullptr)
+			{
+				vk::BufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = res.vertexBufferSizeBytes};
+				cb.copyBuffer(*res.stagingVertexBuffer, *res.vertexBuffer, region);
+			}
+			if (res.indexBufferSizeBytes > 0 && res.stagingIndexBuffer != nullptr && res.indexBuffer != nullptr)
+			{
+				vk::BufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = res.indexBufferSizeBytes};
+				cb.copyBuffer(*res.stagingIndexBuffer, *res.indexBuffer, region);
+			}
 		}
-		if (res.indexBufferSizeBytes > 0 && res.stagingIndexBuffer != nullptr && res.indexBuffer != nullptr)
+
+		cb.end();
+
+		uint64_t signalValue = 0;
 		{
-			vk::BufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = res.indexBufferSizeBytes};
-			cb.copyBuffer(*res.stagingIndexBuffer, *res.indexBuffer, region);
+			std::lock_guard<std::mutex> lock(queueMutex);
+			vk::SubmitInfo                 submitInfo{};
+			vk::TimelineSemaphoreSubmitInfo timelineInfo{};        // keep alive through submit
+			signalValue = uploadTimelineLastSubmitted.fetch_add(1, std::memory_order_relaxed) + 1;
+			timelineInfo.signalSemaphoreValueCount = 1;
+			timelineInfo.pSignalSemaphoreValues    = &signalValue;
+			submitInfo.pNext                       = &timelineInfo;
+			submitInfo.commandBufferCount          = 1;
+			submitInfo.pCommandBuffers             = &*cb;
+			submitInfo.signalSemaphoreCount        = 1;
+			submitInfo.pSignalSemaphores           = &*uploadsTimeline;
+			graphicsQueue.submit(submitInfo, vk::Fence{});
+		}
+
+		InFlightMeshUploadBatch batch;
+		batch.signalValue    = signalValue;
+		batch.meshes         = std::move(needsCopy);
+		batch.commandPool    = std::move(tempPool);
+		batch.commandBuffers = std::move(cbs);
+		{
+			std::lock_guard<std::mutex> lk(inFlightMeshUploadsMutex);
+			inFlightMeshUploads.push_back(std::move(batch));
 		}
 	}
-
-	cb.end();
-
-	// Submit and wait on the GRAPHICS queue (single-threaded via queueMutex)
-	vk::SubmitInfo  submitInfo{.commandBufferCount = 1, .pCommandBuffers = &*cb};
-	vk::raii::Fence fence(device, vk::FenceCreateInfo{});
+	else
 	{
-		std::lock_guard<std::mutex> lock(queueMutex);
-		graphicsQueue.submit(submitInfo, *fence);
-	}
-	(void) device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+		// Fallback: submit and wait on the GRAPHICS queue (single-threaded via queueMutex)
+		vk::raii::CommandPool tempPool(device, poolInfo);
+		vk::CommandBufferAllocateInfo allocInfo{
+		    .commandPool        = *tempPool,
+		    .level              = vk::CommandBufferLevel::ePrimary,
+		    .commandBufferCount = 1};
+		vk::raii::CommandBuffers cbs(device, allocInfo);
+		vk::raii::CommandBuffer &cb = cbs[0];
+		cb.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
-	// Clear staging once copies are complete
-	for (auto *meshComponent : needsCopy)
-	{
-		auto it = meshResources.find(meshComponent);
-		if (it == meshResources.end())
-			continue;
-		MeshResources &res            = it->second;
-		res.stagingVertexBuffer       = nullptr;
-		res.stagingVertexBufferMemory = nullptr;
-		res.vertexBufferSizeBytes     = 0;
-		res.stagingIndexBuffer        = nullptr;
-		res.stagingIndexBufferMemory  = nullptr;
-		res.indexBufferSizeBytes      = 0;
-	}
+		for (auto *meshComponent : needsCopy)
+		{
+			auto it = meshResources.find(meshComponent);
+			if (it == meshResources.end())
+				continue;
+			MeshResources &res = it->second;
+			if (res.vertexBufferSizeBytes > 0 && res.stagingVertexBuffer != nullptr && res.vertexBuffer != nullptr)
+			{
+				vk::BufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = res.vertexBufferSizeBytes};
+				cb.copyBuffer(*res.stagingVertexBuffer, *res.vertexBuffer, region);
+			}
+			if (res.indexBufferSizeBytes > 0 && res.stagingIndexBuffer != nullptr && res.indexBuffer != nullptr)
+			{
+				vk::BufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = res.indexBufferSizeBytes};
+				cb.copyBuffer(*res.stagingIndexBuffer, *res.indexBuffer, region);
+			}
+		}
 
-	// Now that more meshes are READY (uploads finished), request a TLAS rebuild so
-	// non‑instanced and previously missing meshes are included in the acceleration structure.
-	// This is safe at the render‑thread safe point and avoids partial TLAS builds.
-	asDevOverrideAllowRebuild = true;        // allow rebuild even if frozen
-	RequestAccelerationStructureBuild("uploads completed");
+		cb.end();
+
+		vk::SubmitInfo  submitInfo{.commandBufferCount = 1, .pCommandBuffers = &*cb};
+		vk::raii::Fence fence(device, vk::FenceCreateInfo{});
+		{
+			std::lock_guard<std::mutex> lock(queueMutex);
+			graphicsQueue.submit(submitInfo, *fence);
+		}
+		(void) waitForFencesSafe(*fence, VK_TRUE);
+
+		for (auto *meshComponent : needsCopy)
+		{
+			auto it = meshResources.find(meshComponent);
+			if (it == meshResources.end())
+				continue;
+			MeshResources &res            = it->second;
+			res.stagingVertexBuffer       = nullptr;
+			res.stagingVertexBufferMemory = nullptr;
+			res.vertexBufferSizeBytes     = 0;
+			res.stagingIndexBuffer        = nullptr;
+			res.stagingIndexBufferMemory  = nullptr;
+			res.indexBufferSizeBytes      = 0;
+		}
+
+		asDevOverrideAllowRebuild = true;
+		RequestAccelerationStructureBuild("uploads completed");
+	}
 }
 
 // Recreate instance buffer for an entity (e.g., after clearing instances for animation)
@@ -1971,11 +2232,8 @@ bool Renderer::recreateInstanceBuffer(Entity *entity)
 			std::cerr << "Warning: Instance buffer allocation is not mapped" << std::endl;
 		}
 
-		// Wait for GPU to finish using the old instance buffer before destroying it.
-		// External synchronization required (VVL): serialize against queue submits/present.
-		WaitIdle();
-
-		// Replace the old instance buffer with the new one
+		// Replace the old instance buffer with the new one.
+		// Note: Caller must ensure GPU is idle before this method is called to safely destroy the old buffer.
 		resources.instanceBuffer           = std::move(instanceBuffer);
 		resources.instanceBufferAllocation = std::move(instanceBufferAllocation);
 		resources.instanceBufferMapped     = instanceMappedMemory;
@@ -2242,7 +2500,7 @@ void Renderer::copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuff
 			std::lock_guard<std::mutex> lock(queueMutex);
 			transferQueue.submit(submitInfo, *fence);
 		}
-		[[maybe_unused]] auto fenceResult2 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+		(void) waitForFencesSafe(*fence, VK_TRUE);
 	}
 	catch (const std::exception &e)
 	{
@@ -2486,12 +2744,12 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 				submitInfo.signalSemaphoreCount = 1;
 				submitInfo.pSignalSemaphores    = &*uploadsTimeline;
 			}
-			submitInfo.commandBufferCount = 1;
-			submitInfo.pCommandBuffers    = &*commandBuffer;
-			graphicsQueue.submit(submitInfo, *fence);
-		}
-		[[maybe_unused]] auto fenceResult3 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
-	}
+ 		submitInfo.commandBufferCount = 1;
+ 		submitInfo.pCommandBuffers    = &*commandBuffer;
+ 		graphicsQueue.submit(submitInfo, *fence);
+ 	}
+ 	(void) waitForFencesSafe(*fence, VK_TRUE);
+ }
 	catch (const std::exception &e)
 	{
 		std::cerr << "Failed to transition image layout: " << e.what() << std::endl;
@@ -2559,7 +2817,7 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
 			submitInfo.pCommandBuffers    = &*commandBuffer;
 			graphicsQueue.submit(submitInfo, *fence);
 		}
-		[[maybe_unused]] auto fenceResult4 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+		(void) waitForFencesSafe(*fence, VK_TRUE);
 	}
 	catch (const std::exception &e)
 	{
@@ -3375,9 +3633,9 @@ void Renderer::StartUploadsWorker(size_t workerCount)
     				submit.pCommandBuffers    = &*cb;
     				transferQueue.submit(submit, *fence);
     			}
-							device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+    			(void) waitForFencesSafe(*fence, VK_TRUE);
 
-							// Perf accounting for the batch
+    			// Perf accounting for the batch
 							uint64_t batchBytes = 0;
 							for (auto &it : items)
 								batchBytes += static_cast<uint64_t>(it.w) * it.h * 4ull;
@@ -3525,6 +3783,15 @@ void Renderer::OnTextureUploaded(const std::string &textureId)
 			continue;
 		MarkEntityDescriptorsDirty(entity);
 	}
+
+	// Ray Query uses a global texture table (binding 6) that may reference this texture.
+	// Mark the ray query descriptor sets dirty for all frames so the render-thread safe point
+	// can refresh the table when the texture becomes available.
+	if (rayQueryEnabled && accelerationStructureEnabled)
+	{
+		const uint32_t allFramesMask = (MAX_FRAMES_IN_FLIGHT >= 32u) ? 0xFFFFFFFFu : ((1u << MAX_FRAMES_IN_FLIGHT) - 1u);
+		rayQueryDescriptorsDirtyMask.fetch_or(allFramesMask, std::memory_order_relaxed);
+	}
 }
 
 void Renderer::MarkEntityDescriptorsDirty(Entity *entity)
@@ -3561,7 +3828,8 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 		descriptorRefreshPending.store(true, std::memory_order_relaxed);
 		return true;
 	}
-	std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+	// IMPORTANT: Do NOT hold `textureResourcesMutex` across this function.
+	// We may call `ResolveTextureId()` (which also locks it), and `std::shared_mutex` is not recursive.
 	auto                                entityIt = entityResources.find(entity);
 	if (entityIt == entityResources.end())
 		return false;
@@ -3643,10 +3911,17 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 
 		for (int j = 0; j < 5; ++j)
 		{
-			const auto        resolvedBindingPath = ResolveTextureId(pbrTexturePaths[j]);
-			auto              textureIt           = textureResources.find(resolvedBindingPath);
-			TextureResources *texRes              = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
-			imageInfos[j]                         = {.sampler = *texRes->textureSampler, .imageView = *texRes->textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+			const std::string resolvedBindingPath = ResolveTextureId(pbrTexturePaths[j]);
+			vk::Sampler       samplerHandle{};
+			vk::ImageView     viewHandle{};
+			{
+				std::shared_lock<std::shared_mutex> lock(textureResourcesMutex);
+				auto                                textureIt = textureResources.find(resolvedBindingPath);
+				TextureResources *texRes = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
+				samplerHandle            = *texRes->textureSampler;
+				viewHandle               = *texRes->textureImageView;
+			}
+			imageInfos[j] = {.sampler = samplerHandle, .imageView = viewHandle, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 			writes.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = static_cast<uint32_t>(j + 1), .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfos[j]});
 		}
 		// Ensure Forward+ light buffer (binding 6) is written for the current frame when available.
@@ -3668,10 +3943,17 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 	}
 	else
 	{
-		const std::string       resolvedTexturePath = ResolveTextureId(texturePath);
-		auto                    textureIt           = textureResources.find(resolvedTexturePath);
-		TextureResources       *texRes              = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
-		vk::DescriptorImageInfo imageInfo{.sampler = *texRes->textureSampler, .imageView = *texRes->textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+		const std::string resolvedTexturePath = ResolveTextureId(texturePath);
+		vk::Sampler       samplerHandle{};
+		vk::ImageView     viewHandle{};
+		{
+			std::shared_lock<std::shared_mutex> lock(textureResourcesMutex);
+			auto                                textureIt = textureResources.find(resolvedTexturePath);
+			TextureResources *texRes = (textureIt != textureResources.end()) ? &textureIt->second : &defaultTextureResources;
+			samplerHandle            = *texRes->textureSampler;
+			viewHandle               = *texRes->textureImageView;
+		}
+		vk::DescriptorImageInfo imageInfo{.sampler = samplerHandle, .imageView = viewHandle, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 		if (imagesOnly && !newlyAllocated)
 		{
 			std::array<vk::WriteDescriptorSet, 1> descriptorWrites = {
@@ -3732,10 +4014,18 @@ void Renderer::ProcessDirtyDescriptorsForFrame(uint32_t frameIndex)
 		}
 	}
 
+	uint32_t processed = 0;
 	for (Entity *entity : toProcess)
 	{
 		if (!entity)
 			continue;
+
+		// Kick watchdog periodically during heavy descriptor processing
+		if (++processed % 10 == 0)
+		{
+			lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+		}
+
 		auto meshComponent = entity->GetComponent<MeshComponent>();
 		if (!meshComponent)
 			continue;
@@ -3796,8 +4086,15 @@ void Renderer::ProcessPendingTextureJobs(uint32_t maxJobs,
 	remaining.reserve(jobs.size());
 
 	uint32_t processed = 0;
+	uint32_t watchdogCounter = 0;
 	for (auto &job : jobs)
 	{
+		// Kick watchdog periodically during heavy texture processing
+		if (++watchdogCounter % 10 == 0)
+		{
+			lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+		}
+
 		const bool isCritical = (job.priority == PendingTextureJob::Priority::Critical);
 		if (processed < maxJobs &&
 		    ((isCritical && includeCritical) || (!isCritical && includeNonCritical)))
@@ -3971,7 +4268,7 @@ void Renderer::uploadImageFromStaging(vk::Buffer                              st
 
 			transferQueue.submit(submit, *fence);
 		}
-		[[maybe_unused]] auto fenceResult5 = device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+		(void) waitForFencesSafe(*fence, VK_TRUE);
 
 		// Perf accounting
 		auto t1 = std::chrono::steady_clock::now();
@@ -4079,5 +4376,5 @@ void Renderer::generateMipmaps(vk::Image  image,
  	submit.pCommandBuffers    = &*cb;
 		graphicsQueue.submit(submit, *fence);
 	}
-	(void) device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+	(void) waitForFencesSafe(*fence, VK_TRUE);
 }

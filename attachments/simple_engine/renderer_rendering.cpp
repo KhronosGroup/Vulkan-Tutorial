@@ -279,7 +279,7 @@ bool Renderer::createReflectionResources(uint32_t width, uint32_t height)
 				std::lock_guard<std::mutex> lock(queueMutex);
 				graphicsQueue.submit(submit, *fence);
 			}
-			(void) device.waitForFences({*fence}, VK_TRUE, UINT64_MAX);
+			(void) waitForFencesSafe(*fence, VK_TRUE);
 		}
 
 		return true;
@@ -722,9 +722,7 @@ void Renderer::recreateSwapChain()
 	}
 	if (!allFences.empty())
 	{
-		if (device.waitForFences(allFences, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess)
-		{
-		}
+		(void) waitForFencesSafe(allFences, VK_TRUE);
 	}
 
 	// Wait for the device to be idle before recreating the swap chain
@@ -759,9 +757,7 @@ void Renderer::recreateSwapChain()
 	// Wait for all command buffers to complete before clearing resources
 	for (const auto &fence : inFlightFences)
 	{
-		if (device.waitForFences(*fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess)
-		{
-		}
+		(void) waitForFencesSafe(*fence, VK_TRUE);
 	}
 
 	// Clear all entity descriptor sets since they're now invalid (allocated from the old pool)
@@ -785,6 +781,8 @@ void Renderer::recreateSwapChain()
 	// Clear ray query descriptor sets - they reference the old output image which will be destroyed
 	// Must clear before recreating to avoid descriptor set corruption
 	rayQueryDescriptorSets.clear();
+	rayQueryDescriptorsWritten.clear();
+	rayQueryDescriptorsDirtyMask.store(0u, std::memory_order_relaxed);
 
 	// Destroy ray query output image resources - they're sized to old swapchain dimensions
 	rayQueryOutputImageView       = nullptr;
@@ -1118,6 +1116,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 {
 	// Update watchdog timestamp to prove frame is progressing
 	lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+	watchdogProgressLabel.store("Render: frame begin", std::memory_order_relaxed);
 
 	static bool firstRenderLogged = false;
 	if (!firstRenderLogged)
@@ -1147,31 +1146,24 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 	// Wait for the previous frame's work on this frame slot to complete
 	// Use a finite timeout loop so we can keep the watchdog alive during long GPU work
 	// (e.g., acceleration structure builds/refits can legitimately take seconds on large scenes).
-	while (true)
-	{
-		vk::Result r = device.waitForFences({*inFlightFences[currentFrame]}, VK_TRUE, /*timeout*/ 100'000'000ULL);        // 100ms
-		if (r == vk::Result::eSuccess)
-			break;
-		if (r == vk::Result::eTimeout)
-		{
-			lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-			continue;
-		}
-		std::cerr << "Warning: Failed to wait for fence on frame " << currentFrame << ": " << vk::to_string(r) << std::endl;
-		return;
-	}
+	watchdogProgressLabel.store("Render: wait inFlightFence", std::memory_order_relaxed);
+	(void) waitForFencesSafe(*inFlightFences[currentFrame], VK_TRUE);
 
 	// Reset the fence immediately after successful wait, before any new work
+	watchdogProgressLabel.store("Render: reset inFlightFence", std::memory_order_relaxed);
 	device.resetFences(*inFlightFences[currentFrame]);
 
 	// Execute any pending GPU uploads (enqueued by worker/loading threads) on the render thread
 	// at this safe point to ensure all Vulkan submits happen on a single thread.
 	// This prevents validation/GPU-AV PostSubmit crashes due to cross-thread queue usage.
+	watchdogProgressLabel.store("Render: ProcessPendingMeshUploads", std::memory_order_relaxed);
 	ProcessPendingMeshUploads();
 	// Execute any pending per-entity GPU resource preallocation requested by the scene loader.
 	// This prevents background threads from mutating `entityResources`/`meshResources` concurrently
 	// with rendering (which can corrupt unordered_map internals and crash).
+	watchdogProgressLabel.store("Render: ProcessPendingEntityPreallocations", std::memory_order_relaxed);
 	ProcessPendingEntityPreallocations();
+	watchdogProgressLabel.store("Render: after ProcessPendingEntityPreallocations", std::memory_order_relaxed);
 
 	// Process deferred AS deletion queue at safe point (after fence wait)
 	// Increment frame counters and delete AS structures that are no longer in use
@@ -1193,11 +1185,15 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			}
 		}
 	}
+	watchdogProgressLabel.store("Render: after pendingASDeletions", std::memory_order_relaxed);
 
 	// Opportunistically request AS rebuild when more meshes become ready than in the last built AS.
 	// This makes the TLAS grow as streaming/allocations complete, then settle (no rebuild spam).
-	if (rayQueryEnabled && accelerationStructureEnabled)
+	// NOTE: This scan can be relatively heavy and is not needed for the default startup path.
+	// Only run it when opportunistic rebuilds are enabled.
+	if (rayQueryEnabled && accelerationStructureEnabled && asOpportunisticRebuildEnabled)
 	{
+		watchdogProgressLabel.store("Render: AS readiness scan", std::memory_order_relaxed);
 			size_t readyRenderableCount = 0;
 			size_t readyUniqueMeshCount = 0;
 			{
@@ -1254,7 +1250,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			}
 			readyUniqueMeshCount = meshToBLASProbe.size();
 		}
-		if (asOpportunisticRebuildEnabled && !asFrozen && (readyRenderableCount > lastASBuiltInstanceCount || readyUniqueMeshCount > lastASBuiltBLASCount) && !asBuildRequested.load(std::memory_order_relaxed))
+		if (!asFrozen && (readyRenderableCount > lastASBuiltInstanceCount || readyUniqueMeshCount > lastASBuiltBLASCount) && !asBuildRequested.load(std::memory_order_relaxed))
 		{
 			std::cout << "AS rebuild requested: counts increased (built instances=" << lastASBuiltInstanceCount
 			          << ", ready instances=" << readyRenderableCount
@@ -1277,33 +1273,48 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			}
 		}
 
-		// If in Ray Query static-only mode and TLAS not yet built post-load, request a one-time build now
-		if (currentRenderMode == RenderMode::RayQuery && IsRayQueryStaticOnly() && !IsLoading() && !*tlasStructure.handle && !asBuildRequested.load(std::memory_order_relaxed))
-		{
-			RequestAccelerationStructureBuild("static-only initial build");
-		}
+	}
+
+	// If in Ray Query static-only mode and TLAS not yet built post-load, request a one-time build now.
+	// (Does not require a readiness scan.)
+	if (rayQueryEnabled && accelerationStructureEnabled && currentRenderMode == RenderMode::RayQuery && IsRayQueryStaticOnly() && !IsLoading() &&
+	    !*tlasStructure.handle && !asBuildRequested.load(std::memory_order_relaxed))
+	{
+		RequestAccelerationStructureBuild("static-only initial build");
 	}
 
 	// Check if acceleration structure build was requested (e.g., after scene loading or counts grew)
 	// Build at this safe frame point to avoid threading issues
+	watchdogProgressLabel.store("Render: AS build request check", std::memory_order_relaxed);
 	if (asBuildRequested.load(std::memory_order_acquire))
 	{
-		// Defer TLAS/BLAS build while the scene is loading to avoid partial builds (e.g., only animated fans)
-		if (IsLoading())
+		watchdogProgressLabel.store("Render: AS build request handling", std::memory_order_relaxed);
+		// Low-noise one-time diagnostic to confirm the render thread observes the request.
+		// (Helps debug cases where the app prints the request message but AS logic never runs.)
+		static bool loggedASRequestObserved = false;
+		if (!loggedASRequestObserved)
 		{
-			// Keep the request flag set; we'll build once loading completes
-			static uint32_t asDeferredLoadingCounter = 0;
-			if ((asDeferredLoadingCounter++ % 120u) == 0u)
-			{
-				std::cout << "AS build deferred: scene still loading" << std::endl;
-			}
+			const uint64_t reqNs = asBuildRequestStartNs.load(std::memory_order_relaxed);
+			std::cout << "AS build request observed on render thread (loading=" << (IsLoading() ? "true" : "false")
+			          << ", reqNs=" << reqNs << ")" << std::endl;
+			loggedASRequestObserved = true;
+		}
+
+		// Defer TLAS/BLAS build while the scene loader is still active to avoid partial builds.
+		// IMPORTANT: Do NOT use IsLoading() here; IsLoading() also includes the post-load
+		// "finalizing" stage, and deferring on that would deadlock the AS build forever.
+		if (IsSceneLoaderActive())
+		{
+			// Keep the request flag set; we'll build once the loader (and critical textures) finish.
 		}
 		else if (asFrozen && !asDevOverrideAllowRebuild)
 		{
 			// Ignore rebuilds while frozen to avoid wiping TLAS during animation playback
 			std::cout << "AS rebuild request ignored (frozen). Reason: " << lastASBuildRequestReason << "\n";
 			asBuildRequested.store(false, std::memory_order_release);
+			asBuildRequestStartNs.store(0, std::memory_order_relaxed);
 			watchdogSuppressed.store(false, std::memory_order_relaxed);
+			loggedASRequestObserved = false;
 		}
 		else
 			{
@@ -1311,6 +1322,10 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				size_t totalRenderableEntities = 0;
 				size_t readyRenderableCount    = 0;
 				size_t readyUniqueMeshCount    = 0;
+				size_t missingMeshResources    = 0;
+				size_t pendingUploadsCount     = 0;
+				size_t nullBuffersCount        = 0;
+				size_t zeroIndicesCount        = 0;
 				{
 					auto lastKick = std::chrono::steady_clock::now();
 					auto kickWatchdog = [&]() {
@@ -1340,24 +1355,36 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 					if (!meshComp)
 						continue;
 					totalRenderableEntities++;
-					try
-					{
-						auto it = meshResources.find(meshComp);
-						if (it == meshResources.end())
+						try
+						{
+							auto it = meshResources.find(meshComp);
+							if (it == meshResources.end())
+							{
+								missingMeshResources++;
+								continue;
+							}
+							const auto &res = it->second;
+							// STRICT readiness here too: uploads finished
+							if (res.vertexBufferSizeBytes != 0 || res.indexBufferSizeBytes != 0)
+							{
+								pendingUploadsCount++;
+								continue;
+							}
+							if (!*res.vertexBuffer || !*res.indexBuffer)
+							{
+								nullBuffersCount++;
+								continue;
+							}
+							if (res.indexCount == 0)
+							{
+								zeroIndicesCount++;
+								continue;
+							}
+						}
+						catch (...)
+						{
 							continue;
-						const auto &res = it->second;
-						// STRICT readiness here too: uploads finished
-						if (res.vertexBufferSizeBytes != 0 || res.indexBufferSizeBytes != 0)
-							continue;
-						if (!*res.vertexBuffer || !*res.indexBuffer)
-							continue;
-						if (res.indexCount == 0)
-							continue;
-					}
-					catch (...)
-					{
-						continue;
-					}
+						}
 					readyRenderableCount++;
 					if (meshToBLASProbe.find(meshComp) == meshToBLASProbe.end())
 					{
@@ -1367,20 +1394,32 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				readyUniqueMeshCount = meshToBLASProbe.size();
 			}
 			const double readiness      = (totalRenderableEntities > 0) ? static_cast<double>(readyRenderableCount) / static_cast<double>(totalRenderableEntities) : 0.0;
-			const double buildThreshold = 0.95;        // build only when ~full scene is ready
-			if (readiness < buildThreshold && !asDevOverrideAllowRebuild)
-			{
-				static uint32_t asDeferredReadinessCounter = 0;
-				if ((asDeferredReadinessCounter++ % 120u) == 0u)
+			const double buildThreshold = 0.95;        // prefer building when ~full scene is ready
+
+			// Bounded deferral: avoid getting stuck forever waiting for perfect readiness.
+			// After a short timeout from the original request, build with the best available data.
+			const uint64_t reqNs = asBuildRequestStartNs.load(std::memory_order_relaxed);
+			const uint64_t nowNs = static_cast<uint64_t>(
+			    std::chrono::duration_cast<std::chrono::nanoseconds>(
+			        std::chrono::steady_clock::now().time_since_epoch())
+			        .count());
+			const double  maxDeferralSeconds = 15.0;
+			const bool    deferralTimedOut   = (reqNs != 0) && (nowNs > reqNs) &&
+			                              (static_cast<double>(nowNs - reqNs) / 1'000'000'000.0) >= maxDeferralSeconds;
+
+				if (readiness < buildThreshold && !asDevOverrideAllowRebuild && !deferralTimedOut)
 				{
-					std::cout << "AS build deferred: readiness " << readyRenderableCount << "/" << totalRenderableEntities
-					          << " entities (" << static_cast<int>(readiness * 100.0) << "%), uniqueMeshesReady="
-					          << readyUniqueMeshCount << std::endl;
+					// Intentionally no stdout spam here (Windows consoles are slow and there's no user-facing benefit).
+					// Keep the request flag set; try again next frame
 				}
-				// Keep the request flag set; try again next frame
-			}
 			else
 			{
+				if (deferralTimedOut && readiness < buildThreshold && !asDevOverrideAllowRebuild)
+				{
+					std::cout << "AS build forced after " << maxDeferralSeconds
+					          << "s deferral (readiness " << readyRenderableCount << "/" << totalRenderableEntities
+					          << ", uniqueMeshesReady=" << readyUniqueMeshCount << ")\n";
+				}
 				struct WatchdogSuppressGuard
 				{
 					std::atomic<bool> &flag;
@@ -1417,71 +1456,74 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 					}
 					if (!fencesToWait.empty())
 					{
-						while (true)
-						{
-							vk::Result r = device.waitForFences(fencesToWait, VK_TRUE, /*timeout*/ 100'000'000ULL);        // 100ms
-							if (r == vk::Result::eSuccess)
-								break;
-							if (r == vk::Result::eTimeout)
-							{
-								lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-								continue;
-							}
-							std::cerr << "Warning: waitForFences failed before AS build: " << vk::to_string(r) << std::endl;
-							break;
-						}
+						(void) waitForFencesSafe(fencesToWait, VK_TRUE);
 					}
 				}
 
-				if (buildAccelerationStructures(entities))
-				{
-					asBuildRequested.store(false, std::memory_order_release);
-					// AS build request resolved; restore normal watchdog sensitivity.
-					watchdogSuppressed.store(false, std::memory_order_relaxed);
-					// Freeze only when the built TLAS is "full" (>=95% of static opaque renderables)
-					if (asFreezeAfterFullBuild)
-					{
-						const double threshold = 0.95;
-						if (totalRenderableEntities > 0 && static_cast<double>(lastASBuiltInstanceCount) >= threshold * static_cast<double>(totalRenderableEntities))
-						{
-							asFrozen = true;
-							std::cout << "AS frozen after full build (instances=" << lastASBuiltInstanceCount
-							          << "/" << totalRenderableEntities << ")" << std::endl;
-						}
-						else
-						{
-							std::cout << "AS not frozen yet (built instances=" << lastASBuiltInstanceCount
-							          << ", total renderables=" << totalRenderableEntities << ")" << std::endl;
-						}
-					}
-					// One-line TLAS summary with device address
-					if (*tlasStructure.handle)
-					{
-						if (IsRayQueryStaticOnly())
-						{
-							std::cout << "TLAS ready (static-only): instances=" << lastASBuiltInstanceCount
-							          << ", BLAS=" << lastASBuiltBLASCount
-							          << ", addr=0x" << std::hex << tlasStructure.deviceAddress << std::dec << std::endl;
-						}
-						else
-						{
-							std::cout << "TLAS ready: instances=" << lastASBuiltInstanceCount
-							          << ", BLAS=" << lastASBuiltBLASCount
-							          << ", addr=0x" << std::hex << tlasStructure.deviceAddress << std::dec << std::endl;
-						}
-					}
-				}
+ 				watchdogProgressLabel.store("Render: buildAccelerationStructures", std::memory_order_relaxed);
+ 				if (buildAccelerationStructures(entities))
+ 				{
+ 					watchdogProgressLabel.store("Render: after buildAccelerationStructures", std::memory_order_relaxed);
+ 					asBuildRequested.store(false, std::memory_order_release);
+ 					asBuildRequestStartNs.store(0, std::memory_order_relaxed);
+ 					// AS build request resolved; restore normal watchdog sensitivity.
+ 					watchdogSuppressed.store(false, std::memory_order_relaxed);
+ 					// Transition the loading UI to a finalizing phase (descriptor cold-init, etc.).
+ 					if (IsLoading())
+ 					{
+ 						SetLoadingPhase(LoadingPhase::Finalizing);
+ 						SetLoadingPhaseProgress(0.0f);
+ 					}
+ 					loggedASRequestObserved = false;
+
+ 					// Freeze only when the built AS covers essentially the full set of renderable entities.
+ 					// NOTE: `lastASBuiltInstanceCount` is an ENTITY count; TLAS instance count (instancing) is tracked separately.
+ 					if (asFreezeAfterFullBuild)
+ 					{
+ 						const double threshold = 0.95;
+ 						if (totalRenderableEntities > 0 &&
+ 						    static_cast<double>(lastASBuiltInstanceCount) >= threshold * static_cast<double>(totalRenderableEntities))
+ 						{
+ 							asFrozen = true;
+ 						}
+ 					}
+
+ 					// One concise TLAS summary with consistent units.
+ 					if (*tlasStructure.handle)
+ 					{
+ 						if (IsRayQueryStaticOnly())
+ 						{
+ 							std::cout << "TLAS ready (static-only): tlasInstances=" << lastASBuiltTlasInstanceCount
+ 							          << ", entities=" << lastASBuiltInstanceCount
+ 							          << ", BLAS=" << lastASBuiltBLASCount
+ 							          << ", addr=0x" << std::hex << tlasStructure.deviceAddress << std::dec << std::endl;
+ 						}
+ 						else
+ 						{
+ 							std::cout << "TLAS ready: tlasInstances=" << lastASBuiltTlasInstanceCount
+ 							          << ", entities=" << lastASBuiltInstanceCount
+ 							          << ", BLAS=" << lastASBuiltBLASCount
+ 							          << ", addr=0x" << std::hex << tlasStructure.deviceAddress << std::dec << std::endl;
+ 						}
+ 					}
+ 				}
 				else
 				{
 					if (!accelerationStructureEnabled || !rayQueryEnabled)
 					{
 						// Permanent failure due to lack of support; do not retry.
 						asBuildRequested.store(false, std::memory_order_release);
+						asBuildRequestStartNs.store(0, std::memory_order_relaxed);
 						watchdogSuppressed.store(false, std::memory_order_relaxed);
+						loggedASRequestObserved = false;
 					}
 					else
 					{
-						std::cout << "Failed to build acceleration structures, will retry next frame" << std::endl;
+						// If nothing is ready yet (e.g., mesh uploads still pending), don't spam logs.
+						if (readyRenderableCount > 0 || readyUniqueMeshCount > 0)
+						{
+							std::cout << "Failed to build acceleration structures, will retry next frame" << std::endl;
+						}
 					}
 				}
 				// Reset dev override after one use
@@ -1492,11 +1534,31 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 
 	// Safe point: the previous work referencing this frame's descriptor sets is complete.
 	// Apply any deferred descriptor set updates for entities whose textures finished streaming.
+	watchdogProgressLabel.store("Render: ProcessDirtyDescriptorsForFrame", std::memory_order_relaxed);
 	ProcessDirtyDescriptorsForFrame(currentFrame);
+	watchdogProgressLabel.store("Render: after ProcessDirtyDescriptorsForFrame", std::memory_order_relaxed);
 
 	// Safe point pre-pass: ensure descriptor sets exist for all visible entities this frame
 	// and initialize only binding 0 (UBO) for the current frame if not already done.
 	{
+		watchdogProgressLabel.store("Render: per-entity descriptor cold-init", std::memory_order_relaxed);
+		// If we're in the loading overlay's Finalizing phase, estimate how many entities
+		// will be processed so we can update a meaningful progress fraction.
+		size_t totalToInit = 0;
+		if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing)
+		{
+			for (Entity *entity : entities)
+			{
+				if (!entity || !entity->IsActive())
+					continue;
+				if (!entity->GetComponent<MeshComponent>())
+					continue;
+				if (entityResources.find(entity) == entityResources.end())
+					continue;
+				++totalToInit;
+			}
+			SetLoadingPhaseProgress(0.0f);
+		}
 		uint32_t entityProcessCount = 0;
 		for (Entity *entity : entities)
 		{
@@ -1509,11 +1571,17 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			if (entityIt == entityResources.end())
 				continue;
 
-			// Update watchdog every 100 entities to prevent false hang detection during heavy descriptor creation
+			// Update watchdog more frequently during heavy descriptor set initialization
+			// large scenes can have thousands of entities needing cold-init.
 			entityProcessCount++;
-			if (entityProcessCount % 100 == 0)
+			watchdogProgressIndex.store(entityProcessCount, std::memory_order_relaxed);
+			if (entityProcessCount % 10 == 0)
 			{
 				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+				if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing && totalToInit > 0)
+				{
+					SetLoadingPhaseProgress(static_cast<float>(entityProcessCount) / static_cast<float>(totalToInit));
+				}
 			}
 
 			// Determine a reasonable base texture path for initial descriptor writes
@@ -1533,6 +1601,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 
 			// Ensure ONLY binding 0 (UBO) is written for the CURRENT frame's PBR set once.
 			// Avoid touching image bindings here to keep per-frame descriptor churn minimal.
+			watchdogProgressLabel.store("ColdInit: PBR UBO", std::memory_order_relaxed);
 			updateDescriptorSetsForFrame(entity,
 			                             texPath,
 			                             /*usePBR=*/true,
@@ -1542,6 +1611,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 
 			// Basic/Phong pipeline also needs a per-frame UBO init at the safe point.
 			// Descriptor sets for non-current frames are allocated but may not be initialized yet.
+			watchdogProgressLabel.store("ColdInit: Basic UBO", std::memory_order_relaxed);
 			updateDescriptorSetsForFrame(entity,
 			                             texPath,
 			                             /*usePBR=*/false,
@@ -1559,6 +1629,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			}
 			if (!entityIt->second.pbrImagesWritten[currentFrame])
 			{
+				watchdogProgressLabel.store("ColdInit: PBR images", std::memory_order_relaxed);
 				updateDescriptorSetsForFrame(entity,
 				                             texPath,
 				                             /*usePBR=*/true,
@@ -1574,6 +1645,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			}
 			if (!entityIt->second.basicImagesWritten[currentFrame])
 			{
+				watchdogProgressLabel.store("ColdInit: Basic images", std::memory_order_relaxed);
 				updateDescriptorSetsForFrame(entity,
 				                             texPath,
 				                             /*usePBR=*/false,
@@ -1583,6 +1655,27 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				entityIt->second.basicImagesWritten[currentFrame] = true;
 			}
 		}
+		watchdogProgressLabel.store("Render: after per-entity descriptor cold-init", std::memory_order_relaxed);
+		if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing)
+		{
+			SetLoadingPhaseProgress(1.0f);
+		}
+	}
+
+	// If the scene loader has finished and there are no remaining blocking tasks,
+	// hide the fullscreen loading overlay.
+	if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing)
+	{
+		const bool loaderDone = !loadingFlag.load(std::memory_order_relaxed);
+		const bool criticalDone = (criticalJobsOutstanding.load(std::memory_order_relaxed) == 0u);
+		const bool noASPending = !asBuildRequested.load(std::memory_order_relaxed);
+		const bool noPreallocPending = !pendingEntityPreallocQueued.load(std::memory_order_relaxed);
+		const bool noDirtyEntities = descriptorDirtyEntities.empty();
+		const bool noDeferredDescOps = !descriptorRefreshPending.load(std::memory_order_relaxed);
+		if (loaderDone && criticalDone && noASPending && noPreallocPending && noDirtyEntities && noDeferredDescOps)
+		{
+			MarkInitialLoadComplete();
+		}
 	}
 
 	// Safe point: flush any descriptor updates that were deferred while a command buffer
@@ -1590,14 +1683,22 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 	// update-after-bind on pending frames.
 	if (descriptorRefreshPending.load(std::memory_order_relaxed))
 	{
+		watchdogProgressLabel.store("Render: flush deferred descriptor ops", std::memory_order_relaxed);
 		std::vector<PendingDescOp> ops;
 		{
 			std::lock_guard<std::mutex> lk(pendingDescMutex);
 			ops.swap(pendingDescOps);
 			descriptorRefreshPending.store(false, std::memory_order_relaxed);
 		}
+		uint32_t opCount = 0;
 		for (auto &op : ops)
 		{
+			// Kick watchdog periodically during potentially heavy descriptor update bursts
+			if ((++opCount % 50u) == 0u)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+			}
+
 			if (op.frameIndex == currentFrame)
 			{
 				// Now not recording; safe to apply updates for this frame
@@ -1611,6 +1712,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				descriptorRefreshPending.store(true, std::memory_order_relaxed);
 			}
 		}
+		watchdogProgressLabel.store("Render: after deferred descriptor ops", std::memory_order_relaxed);
 	}
 
 	// Safe point: handle any pending reflection resource (re)creation and per-frame descriptor refreshes
@@ -1654,10 +1756,12 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 	vk::ResultValue<uint32_t> result{{}, 0};
 	try
 	{
+		watchdogProgressLabel.store("Render: acquireNextImage", std::memory_order_relaxed);
 		result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[acquireSemaphoreIndex]);
 	}
 	catch (const vk::OutOfDateKHRError &)
 	{
+		watchdogProgressLabel.store("Render: acquireNextImage out-of-date", std::memory_order_relaxed);
 		// Swapchain is out of date (e.g., window resized) before we could
 		// query the result. Trigger recreation and exit this frame cleanly.
 		framebufferResized.store(true, std::memory_order_relaxed);
@@ -1676,6 +1780,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 	}
 
 	imageIndex = result.value;
+	watchdogProgressLabel.store("Render: acquired swapchain image", std::memory_order_relaxed);
 
 	if (result.result == vk::Result::eErrorOutOfDateKHR || result.result == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed))
 	{
@@ -1753,7 +1858,9 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 	{
 		if (*tlasStructure.handle)
 		{
+			watchdogProgressLabel.store("Render: updateRayQueryDescriptorSets", std::memory_order_relaxed);
 			updateRayQueryDescriptorSets(currentFrame, entities);
+			watchdogProgressLabel.store("Render: after updateRayQueryDescriptorSets", std::memory_order_relaxed);
 		}
 	}
 
@@ -1849,15 +1956,8 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				refitTopLevelAS(entities);
 			}
 
-			// Update descriptors for this frame. If it fails (e.g., stale/invalid sets), skip ray query safely.
-			if (!updateRayQueryDescriptorSets(currentFrame, entities))
-			{
-				std::cerr << "Ray Query descriptor update failed; skipping ray query this frame\n";
-			}
-			else
-			{
-				// Bind ray query compute pipeline
-				commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eCompute, *rayQueryPipeline);
+			// Bind ray query compute pipeline
+			commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eCompute, *rayQueryPipeline);
 
 				// Bind descriptor set
 				commandBuffers[currentFrame].bindDescriptorSets(
@@ -2037,7 +2137,6 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 
 				// Ray query rendering complete - set flag to skip rasterization code path
 				rayQueryRenderedThisFrame = true;
-			}
 		}
 	}
 

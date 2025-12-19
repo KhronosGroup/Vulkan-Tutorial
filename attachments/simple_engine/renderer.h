@@ -21,6 +21,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -282,6 +283,18 @@ class Renderer
 	void WaitIdle();
 
 	/**
+	 * @brief Wait for fences with periodic watchdog kicks to prevent false hang detection.
+	 * Must be called from the render thread.
+	 */
+	vk::Result waitForFencesSafe(const std::vector<vk::Fence> &fences, vk::Bool32 waitAll, uint64_t timeoutNs = 100'000'000ULL);
+
+	/**
+	 * @brief Wait for fences with periodic watchdog kicks to prevent false hang detection.
+	 * Must be called from the render thread. Overload for a single fence.
+	 */
+	vk::Result waitForFencesSafe(vk::Fence fence, vk::Bool32 waitAll, uint64_t timeoutNs = 100'000'000ULL);
+
+	/**
 	 * @brief Dispatch a compute shader.
 	 * @param groupCountX The number of local workgroups to dispatch in the X dimension.
 	 * @param groupCountY The number of local workgroups to dispatch in the Y dimension.
@@ -468,6 +481,47 @@ class Renderer
 		return uploadJobsCompleted.load();
 	}
 
+	// --- Acceleration structure build progress (for UI) ---
+	// Exposed so the loading overlay can show meaningful progress when
+	// BLAS/TLAS builds take a long time (>= ~10 seconds).
+	bool IsASBuildInProgress() const
+	{
+		return asBuildUiActive.load(std::memory_order_relaxed);
+	}
+	float GetASBuildProgress() const
+	{
+		return asBuildUiProgress.load(std::memory_order_relaxed);
+	}
+	uint32_t GetASBuildItemsDone() const
+	{
+		return asBuildUiDone.load(std::memory_order_relaxed);
+	}
+	uint32_t GetASBuildItemsTotal() const
+	{
+		return asBuildUiTotal.load(std::memory_order_relaxed);
+	}
+	const char *GetASBuildStage() const
+	{
+		return asBuildUiStage.load(std::memory_order_relaxed);
+	}
+	double GetASBuildElapsedSeconds() const
+	{
+		const uint64_t start = asBuildUiStartNs.load(std::memory_order_relaxed);
+		if (start == 0)
+			return 0.0;
+		const uint64_t now = static_cast<uint64_t>(
+		    std::chrono::duration_cast<std::chrono::nanoseconds>(
+		        std::chrono::steady_clock::now().time_since_epoch())
+		        .count());
+		if (now <= start)
+			return 0.0;
+		return static_cast<double>(now - start) / 1'000'000'000.0;
+	}
+	bool ShouldShowASBuildProgressInUI() const
+	{
+		return IsASBuildInProgress() && GetASBuildElapsedSeconds() >= 10.0;
+	}
+
 	// Block until all currently-scheduled texture tasks have completed.
 	// Intended for use during initial scene loading so that descriptor
 	// creation sees the final textureResources instead of fallbacks.
@@ -495,22 +549,80 @@ class Renderer
 	// outstanding critical texture uploads (e.g., baseColor/albedo).
 	// Loading state: show blocking loading overlay only until the initial scene is ready.
 	// Background streaming may continue after that without blocking the scene.
+	enum class LoadingPhase : uint32_t
+	{
+		Scene = 0,
+		Textures,
+		Physics,
+		AccelerationStructures,
+		Finalizing
+	};
+	LoadingPhase GetLoadingPhase() const
+	{
+		return static_cast<LoadingPhase>(loadingPhase.load(std::memory_order_relaxed));
+	}
+	const char *GetLoadingPhaseName() const
+	{
+		switch (GetLoadingPhase())
+		{
+			case LoadingPhase::Scene:
+				return "Scene";
+			case LoadingPhase::Textures:
+				return "Textures";
+			case LoadingPhase::Physics:
+				return "Physics";
+			case LoadingPhase::AccelerationStructures:
+				return "Acceleration Structures";
+			case LoadingPhase::Finalizing:
+				return "Finalizing";
+			default:
+				return "Loading";
+		}
+	}
+	float GetLoadingPhaseProgress() const
+	{
+		return std::clamp(loadingPhaseProgress.load(std::memory_order_relaxed), 0.0f, 1.0f);
+	}
+	void SetLoadingPhase(LoadingPhase phase)
+	{
+		loadingPhase.store(static_cast<uint32_t>(phase), std::memory_order_relaxed);
+		loadingPhaseProgress.store(0.0f, std::memory_order_relaxed);
+	}
+	void SetLoadingPhaseProgress(float v)
+	{
+		loadingPhaseProgress.store(std::clamp(v, 0.0f, 1.0f), std::memory_order_relaxed);
+	}
+	void MarkInitialLoadComplete()
+	{
+		initialLoadComplete.store(true, std::memory_order_relaxed);
+		SetLoadingPhase(LoadingPhase::Finalizing);
+		loadingPhaseProgress.store(1.0f, std::memory_order_relaxed);
+	}
 	bool IsLoading() const
 	{
-		return (loadingFlag.load() || criticalJobsOutstanding.load() > 0) && !initialLoadComplete.load();
+		// Keep the blocking overlay visible until the engine has finished
+		// post-load blockers (AS build, descriptor cold-init, etc.).
+		return (loadingFlag.load(std::memory_order_relaxed) || criticalJobsOutstanding.load(std::memory_order_relaxed) > 0u ||
+		        !initialLoadComplete.load(std::memory_order_relaxed));
+	}
+	// True only while the model/scene is still being constructed or while critical
+	// texture jobs remain outstanding. This excludes the "finalizing" stage where
+	// the render thread may still be doing post-load work (AS build, descriptor init).
+	//
+	// IMPORTANT: Do NOT use critical texture completion as a gate for starting TLAS/BLAS builds.
+	// AS builds depend on geometry buffers and instance transforms, not on texture readiness.
+	bool IsSceneLoaderActive() const
+	{
+		return loadingFlag.load(std::memory_order_relaxed);
 	}
 	void SetLoading(bool v)
 	{
-		loadingFlag.store(v);
-		if (!v)
-		{
-			// Mark initial load complete; non-critical streaming can continue in background.
-			initialLoadComplete.store(true);
-		}
-		else
+		loadingFlag.store(v, std::memory_order_relaxed);
+		if (v)
 		{
 			// New load cycle starting
-			initialLoadComplete.store(false);
+			initialLoadComplete.store(false, std::memory_order_relaxed);
+			SetLoadingPhase(LoadingPhase::Scene);
 		}
 	}
 
@@ -734,6 +846,18 @@ class Renderer
 	{
 		if (!accelerationStructureEnabled || !rayQueryEnabled)
 			return;
+		// Record when the request was made so the render loop can enforce a bounded deferral
+		// policy (avoid getting stuck waiting for “perfect” readiness forever).
+		// NOTE: `asBuildRequested` may already be true due to other triggers; still ensure
+		// the request timestamp is armed so the timeout logic can work.
+		if (asBuildRequestStartNs.load(std::memory_order_relaxed) == 0)
+		{
+			const uint64_t nowNs = static_cast<uint64_t>(
+			    std::chrono::duration_cast<std::chrono::nanoseconds>(
+			        std::chrono::steady_clock::now().time_since_epoch())
+			        .count());
+			asBuildRequestStartNs.store(nowNs, std::memory_order_relaxed);
+		}
 		// Allow AS build to take longer than the watchdog threshold (large scenes in Debug).
 		watchdogSuppressed.store(true, std::memory_order_relaxed);
 		asBuildRequested.store(true, std::memory_order_release);
@@ -743,6 +867,14 @@ class Renderer
 	{
 		if (!accelerationStructureEnabled || !rayQueryEnabled)
 			return;
+		if (asBuildRequestStartNs.load(std::memory_order_relaxed) == 0)
+		{
+			const uint64_t nowNs = static_cast<uint64_t>(
+			    std::chrono::duration_cast<std::chrono::nanoseconds>(
+			        std::chrono::steady_clock::now().time_since_epoch())
+			        .count());
+			asBuildRequestStartNs.store(nowNs, std::memory_order_relaxed);
+		}
 		if (reason)
 			lastASBuildRequestReason = reason;
 		else
@@ -1055,6 +1187,11 @@ class Renderer
 	vk::raii::Pipeline                   rayQueryPipeline            = nullptr;
 	vk::raii::DescriptorSetLayout        rayQueryDescriptorSetLayout = nullptr;
 	std::vector<vk::raii::DescriptorSet> rayQueryDescriptorSets;
+	// Track when the ray query descriptor set for each frame has been written.
+	// Updating binding 6 (large texture table) can be expensive; avoid doing it every frame.
+	std::vector<bool> rayQueryDescriptorsWritten;        // size = MAX_FRAMES_IN_FLIGHT
+	// Bitmask of frames whose ray query descriptor set needs a refresh (e.g., after TLAS rebuild or texture upload).
+	std::atomic<uint32_t> rayQueryDescriptorsDirtyMask{0};
 
 	// Dedicated ray query UBO (one per frame in flight) - separate from entity UBOs
 	std::vector<vk::raii::Buffer>                        rayQueryUniformBuffers;
@@ -1196,6 +1333,16 @@ class Renderer
 	std::mutex                         pendingMeshUploadsMutex;
 	std::vector<class MeshComponent *> pendingMeshUploads;        // meshes with staged data to copy
 
+	struct InFlightMeshUploadBatch
+	{
+		uint64_t                              signalValue = 0;
+		std::vector<class MeshComponent *>    meshes;
+		std::unique_ptr<vk::raii::CommandPool>    commandPool;
+		std::unique_ptr<vk::raii::CommandBuffers> commandBuffers;
+	};
+	std::mutex                         inFlightMeshUploadsMutex;
+	std::deque<InFlightMeshUploadBatch> inFlightMeshUploads;
+
 	// Enqueue mesh uploads collected on background/loading threads
 	void EnqueueMeshUploads(const std::vector<class MeshComponent *> &meshes);
 	// Execute pending mesh uploads on the render thread (called from Render after fence wait)
@@ -1311,6 +1458,9 @@ class Renderer
 	std::atomic<uint32_t> uploadJobsCompleted{0};
 	// When true, initial scene load is complete and the loading overlay should be hidden
 	std::atomic<bool> initialLoadComplete{false};
+	// Loading-phase UI state (atomic because ImGui may query at any point)
+	std::atomic<uint32_t> loadingPhase{static_cast<uint32_t>(LoadingPhase::Scene)};
+	std::atomic<float>    loadingPhaseProgress{0.0f};
 
 	// Performance counters for texture uploads
 	std::atomic<uint64_t> bytesUploadedTotal{0};
@@ -1355,6 +1505,15 @@ class Renderer
 	std::atomic<uint32_t> textureTasksScheduled{0};
 	std::atomic<uint32_t> textureTasksCompleted{0};
 	std::atomic<bool>     loadingFlag{false};
+
+	// Acceleration structure build UI progress (written on render thread).
+	// Kept as atomics because ImGui can query at any point during the frame.
+	std::atomic<bool>        asBuildUiActive{false};
+	std::atomic<float>       asBuildUiProgress{0.0f};
+	std::atomic<uint32_t>    asBuildUiDone{0};
+	std::atomic<uint32_t>    asBuildUiTotal{0};
+	std::atomic<const char *> asBuildUiStage{"idle"};
+	std::atomic<uint64_t>    asBuildUiStartNs{0};
 
 	// Default texture resources (used when no texture is provided)
 	TextureResources defaultTextureResources;
@@ -1485,12 +1644,17 @@ class Renderer
 	std::atomic<bool> descriptorSetsValid{true};
 	// Request flag for acceleration structure build (set by loading thread, cleared by render thread)
 	std::atomic<bool> asBuildRequested{false};
+	// Timestamp of the most recent AS build request (steady_clock ns). Used to prevent infinite deferral.
+	std::atomic<uint64_t> asBuildRequestStartNs{0};
 
 	// Track last successfully built AS sizes to avoid rebuilding with a smaller subset
 	// (e.g., during incremental streaming where not all meshes are ready yet).
 	// We only accept AS builds that are monotonically non-decreasing in counts.
 	size_t lastASBuiltBLASCount     = 0;
+	// NOTE: This is the number of renderable ENTITIES included in the AS build (not TLAS instances).
 	size_t lastASBuiltInstanceCount = 0;
+	// TLAS instance count (includes per-mesh instancing). Used for logging and shader bounds.
+	size_t lastASBuiltTlasInstanceCount = 0;
 
 	// Freeze TLAS rebuilds after a full build to prevent regressions (e.g., animation-only TLAS)
 	bool asFreezeAfterFullBuild = true;         // enable freezing behavior
@@ -1561,6 +1725,10 @@ class Renderer
 	// === Watchdog system to detect application hangs ===
 	// Atomic timestamp updated every frame - watchdog thread checks if stale
 	std::atomic<std::chrono::steady_clock::time_point> lastFrameUpdateTime;
+	// Low-noise progress marker to pinpoint where the render thread stalled when the watchdog fires
+	std::atomic<const char *>                          watchdogProgressLabel{"init"};
+	// Optional numeric marker to help pinpoint stalls inside large loops
+	std::atomic<uint32_t>                              watchdogProgressIndex{0};
 	std::thread                                        watchdogThread;
 	std::atomic<bool>                                  watchdogRunning{false};
 	// Some operations (notably BLAS/TLAS builds in Debug on large scenes) can legitimately take

@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #include "camera_component.h"
+#include "crash_reporter.h"
 #include "engine.h"
 #include "scene_loading.h"
 #include "transform_component.h"
@@ -63,6 +64,7 @@ void SetupScene(Engine *engine)
 	if (auto *renderer = engine->GetRenderer())
 	{
 		renderer->SetLoading(true);
+		renderer->SetLoadingPhase(Renderer::LoadingPhase::Textures);
 	}
 	std::thread([engine] {
 		LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
@@ -107,6 +109,10 @@ int main(int, char *[])
 {
 	try
 	{
+		// Enable minidump generation for Release-only crashes (e.g., stack cookie failures / fast-fail).
+		// Writes dumps under the current working directory (the build/run directory).
+		CrashReporter::GetInstance().Initialize("crashes", "SimpleEngine", "1.0.0");
+
 		// Create the engine
 		Engine engine;
 
@@ -122,11 +128,14 @@ int main(int, char *[])
 		// Run the engine
 		engine.Run();
 
+		CrashReporter::GetInstance().Cleanup();
+
 		return 0;
 	}
 	catch (const std::exception &e)
 	{
 		std::cerr << "Exception: " << e.what() << std::endl;
+		CrashReporter::GetInstance().Cleanup();
 		return 1;
 	}
 }

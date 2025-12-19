@@ -560,13 +560,11 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 
 					// Load texture data (embedded or external)
 					const auto &image = gltfModel.images[imageIndex];
-					std::cout << "    Image data size: " << image.image.size() << ", URI: " << image.uri << std::endl;
 					if (!image.image.empty())
 					{
 						// Always use memory-based upload (KTX2 already decoded by SetImageLoader)
 						renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true);
 						material->albedoTexturePath = textureId;
-						std::cout << "    Scheduled base color texture upload from memory: " << textureId << std::endl;
 					}
 					else if (!image.uri.empty())
 					{
@@ -575,7 +573,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						renderer->RegisterTextureAlias(textureId, filePath);
 						renderer->LoadTextureAsync(filePath, true);
 						material->albedoTexturePath = textureId;
-						std::cout << "    Scheduled base color KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
 					}
 					else
 					{
@@ -602,7 +599,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 					{
 						// Load embedded texture data asynchronously
 						renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
-						std::cout << "    Scheduled embedded metallic-roughness texture upload: " << textureId << std::endl;
 					}
 					else if (!image.uri.empty())
 					{
@@ -611,7 +607,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						renderer->RegisterTextureAlias(textureId, filePath);
 						renderer->LoadTextureAsync(filePath);
 						material->metallicRoughnessTexturePath = textureId;
-						std::cout << "    Scheduled metallic-roughness KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
 					}
 					else
 					{
@@ -659,8 +654,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 					{
 						renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
 						material->normalTexturePath = textureId;
-						std::cout << "    Scheduled normal texture upload from memory: " << textureId
-						          << " (" << image.width << "x" << image.height << ")" << std::endl;
 					}
 					else if (!image.uri.empty())
 					{
@@ -669,7 +662,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						renderer->RegisterTextureAlias(textureId, filePath);
 						renderer->LoadTextureAsync(filePath);
 						material->normalTexturePath = textureId;
-						std::cout << "    Scheduled normal KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
 					}
 					else
 					{
@@ -696,8 +688,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 					{
 						// Schedule embedded texture upload
 						renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
-						std::cout << "    Scheduled embedded occlusion texture upload: " << textureId
-						          << " (" << image.width << "x" << image.height << ")" << std::endl;
 					}
 					else if (!image.uri.empty())
 					{
@@ -706,7 +696,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						renderer->RegisterTextureAlias(textureId, filePath);
 						renderer->LoadTextureAsync(filePath);
 						material->occlusionTexturePath = textureId;
-						std::cout << "    Scheduled occlusion KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
 					}
 					else
 					{
@@ -733,8 +722,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 					{
 						// Schedule embedded texture upload
 						renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
-						std::cout << "    Scheduled embedded emissive texture upload: " << textureId
-						          << " (" << image.width << "x" << image.height << ")" << std::endl;
 					}
 					else if (!image.uri.empty())
 					{
@@ -743,7 +730,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						renderer->RegisterTextureAlias(textureId, filePath);
 						renderer->LoadTextureAsync(filePath);
 						material->emissiveTexturePath = textureId;
-						std::cout << "    Scheduled emissive KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
 					}
 					else
 					{
@@ -810,7 +796,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 								// Schedule async load; libktx decoding will occur on renderer worker threads
 								renderer->LoadTextureAsync(texIdOrPath, true);
 								mat->albedoTexturePath = texIdOrPath;
-								std::cout << "    Scheduled base color KTX2 file load (KHR_specGloss): " << texIdOrPath << std::endl;
 							}
 							if (mat->albedoTexturePath.empty() && !image.image.empty())
 							{
@@ -818,7 +803,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 								texIdOrPath = "gltf_baseColor_" + std::to_string(texIndex);
 								renderer->LoadTextureFromMemoryAsync(texIdOrPath, image.image.data(), image.width, image.height, image.component, true);
 								mat->albedoTexturePath = texIdOrPath;
-								std::cout << "    Scheduled base color texture upload from memory (KHR_specGloss): " << texIdOrPath << std::endl;
 							}
 						}
 					}
@@ -866,14 +850,13 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 				// Ensure the file exists before attempting to load
 				if (std::filesystem::exists(cand))
 				{
-					// Schedule async load; libktx decoding will occur on renderer worker threads
-					renderer->LoadTextureAsync(cand, true);
-					mat->albedoTexturePath = cand;
-					std::cout << "    Scheduled derived base color KTX2 load from normal sibling: " << cand << std::endl;
-					break;
-				}
-			}
-		}
+								// Schedule async load; libktx decoding will occur on renderer worker threads
+								renderer->LoadTextureAsync(cand, true);
+								mat->albedoTexturePath = cand;
+								break;
+							}
+						}
+					}
 	}
 
 	// Secondary heuristic: scan glTF images for base color by material-name match when still missing
@@ -918,7 +901,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 			{
 				renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
 				mat->albedoTexturePath = textureId;
-				std::cout << "    Scheduled base color upload from memory (by name): " << textureId << std::endl;
 				break;
 			}
 			else
@@ -926,7 +908,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 				// Fallback: offload KTX2 file load to renderer threads
 				renderer->LoadTextureAsync(textureId);
 				mat->albedoTexturePath = textureId;
-				std::cout << "    Scheduled base color KTX2 load from file (by name): " << textureId << std::endl;
 				break;
 			}
 		}
@@ -1614,12 +1595,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 							{
 								renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true);
 								loadedTextures.insert(textureId);
-								std::cout << "      Scheduled baseColor texture upload: " << textureId
-								          << " (" << image.width << "x" << image.height << ")" << std::endl;
-							}
-							else
-							{
-								std::cout << "      Using cached baseColor texture: " << textureId << std::endl;
 							}
 						}
 						else
@@ -1661,7 +1636,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 								renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
 								materialMesh.baseColorTexturePath = textureId;
 								materialMesh.texturePath          = textureId;
-								std::cout << "      Scheduled baseColor upload from memory (heuristic): " << textureId << std::endl;
 							}
 							else
 							{
@@ -1669,7 +1643,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 								renderer->LoadTextureAsync(textureId, true);
 								materialMesh.baseColorTexturePath = textureId;
 								materialMesh.texturePath          = textureId;
-								std::cout << "      Scheduled baseColor KTX2 load from file (heuristic): " << textureId << std::endl;
 							}
 							break;
 						}
@@ -1695,8 +1668,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						{
 							// Load embedded texture data
 							renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
-							std::cout << "      Scheduled embedded normal texture: " << textureId
-							          << " (" << image.width << "x" << image.height << ")" << std::endl;
 						}
 						else if (!image.uri.empty())
 						{
@@ -1705,7 +1676,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 							renderer->RegisterTextureAlias(textureId, filePath);
 							renderer->LoadTextureAsync(filePath);
 							materialMesh.normalTexturePath = textureId;
-							std::cout << "    Scheduled normal KTX2 load from file: " << filePath << " (alias for " << textureId << ")" << std::endl;
 						}
 						else
 						{
@@ -1732,7 +1702,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 							{
 								renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
 								materialMesh.normalTexturePath = textureId;
-								std::cout << "      Scheduled normal upload from memory (heuristic): " << textureId << std::endl;
 							}
 							else
 							{
@@ -1758,13 +1727,11 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 
 						// Load texture data (embedded or external)
 						const auto &image = gltfModel.images[texture.source];
-						if (!image.image.empty())
-						{
-							renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
-							materialMesh.metallicRoughnessTexturePath = textureId;
-							std::cout << "      Scheduled metallic-roughness texture upload: " << textureId
-							          << " (" << image.width << "x" << image.height << ")" << std::endl;
-						}
+							if (!image.image.empty())
+							{
+								renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+								materialMesh.metallicRoughnessTexturePath = textureId;
+							}
 						else
 						{
 							std::cerr << "      Warning: No decoded bytes for metallic-roughness texture index " << texIndex << std::endl;
@@ -1850,7 +1817,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 							{
 								renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
 								materialMesh.occlusionTexturePath = textureId;
-								std::cout << "      Scheduled occlusion upload from memory (heuristic): " << textureId << std::endl;
 							}
 							else
 							{
@@ -1880,15 +1846,12 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						{
 							// Load embedded texture data
 							renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
-							std::cout << "      Scheduled embedded emissive texture: " << textureId
-							          << " (" << image.width << "x" << image.height << ")" << std::endl;
 						}
 						else if (!image.uri.empty())
 						{
 							// Record external texture file path (loaded later by renderer)
 							std::string texturePath          = baseTexturePath + image.uri;
 							materialMesh.emissiveTexturePath = texturePath;
-							std::cout << "      External emissive texture path: " << texturePath << std::endl;
 						}
 					}
 				}
@@ -1909,7 +1872,6 @@ bool ModelLoader::ParseGLTF(const std::string &filename, Model *model)
 						{
 							std::string texturePath          = baseTexturePath + imageUri;
 							materialMesh.emissiveTexturePath = texturePath;
-							std::cout << "      Found external emissive texture for " << materialName << ": " << texturePath << std::endl;
 							break;
 						}
 					}

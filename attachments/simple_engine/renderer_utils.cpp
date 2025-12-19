@@ -336,8 +336,72 @@ vk::Extent2D Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabi
 // Wait for device to be idle
 void Renderer::WaitIdle()
 {
+	// 1. Wait for all in-flight fences safely first
+	std::vector<vk::Fence> allFences;
+	allFences.reserve(inFlightFences.size());
+	for (const auto &fence : inFlightFences)
+	{
+		if (fence != nullptr && *fence != vk::Fence{})
+		{
+			allFences.push_back(*fence);
+		}
+	}
+	if (!allFences.empty())
+	{
+		(void) waitForFencesSafe(allFences, VK_TRUE);
+	}
+
+	// 2. Also wait for uploads timeline semaphore if it exists
+	if (uploadsTimeline != nullptr && *uploadsTimeline != vk::Semaphore{})
+	{
+		uint64_t target = uploadTimelineLastSubmitted.load(std::memory_order_relaxed);
+		while (true)
+		{
+			vk::SemaphoreWaitInfo waitInfo{};
+			waitInfo.semaphoreCount = 1;
+			waitInfo.pSemaphores    = &*uploadsTimeline;
+			waitInfo.pValues        = &target;
+
+			vk::Result r = device.waitSemaphores(waitInfo, 100'000'000ULL);        // 100ms
+			if (r == vk::Result::eSuccess)
+				break;
+			if (r == vk::Result::eTimeout)
+			{
+				lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+				continue;
+			}
+			break;        // Other error
+		}
+	}
+
+	// 3. Final blocking wait to ensure absolute idle
 	// External synchronization: ensure no queue submits/presents overlap a full device idle.
 	// This is required for VVL cleanliness when other threads may hold or use queues.
 	std::lock_guard<std::mutex> lock(queueMutex);
 	device.waitIdle();
+}
+
+vk::Result Renderer::waitForFencesSafe(const std::vector<vk::Fence> &fences, vk::Bool32 waitAll, uint64_t timeoutNs)
+{
+	if (fences.empty())
+		return vk::Result::eSuccess;
+
+	while (true)
+	{
+		vk::Result r = device.waitForFences(fences, waitAll, timeoutNs);
+		if (r == vk::Result::eSuccess)
+			return vk::Result::eSuccess;
+		if (r == vk::Result::eTimeout)
+		{
+			// Kick watchdog while we wait
+			lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+			continue;
+		}
+		return r;
+	}
+}
+
+vk::Result Renderer::waitForFencesSafe(vk::Fence fence, vk::Bool32 waitAll, uint64_t timeoutNs)
+{
+	return waitForFencesSafe(std::vector<vk::Fence>{fence}, waitAll, timeoutNs);
 }

@@ -53,10 +53,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
 // Watchdog thread function - monitors frame updates and aborts if application hangs
 static void WatchdogThreadFunc(std::atomic<std::chrono::steady_clock::time_point> *lastFrameTime,
                                std::atomic<bool>                                  *running,
-                               std::atomic<bool>                                  *suppressed)
+                               std::atomic<bool>                                  *suppressed,
+                               std::atomic<const char *>                          *progressLabel,
+                               std::atomic<uint32_t>                              *progressIndex)
 {
-	std::cout << "[Watchdog] Started - will abort if no frame updates for 5+ seconds\n";
-
 	while (running->load(std::memory_order_relaxed))
 	{
 		std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -68,20 +68,39 @@ static void WatchdogThreadFunc(std::atomic<std::chrono::steady_clock::time_point
 
 		// Check if frame timestamp was updated recently.
 		// Some operations (e.g., BLAS/TLAS builds in Debug on large scenes) can legitimately take
-		// much longer than 5 seconds. When suppressed, allow a longer grace period.
+		// much longer than 5 or 10 seconds. When suppressed, allow a longer grace period.
 		auto now        = std::chrono::steady_clock::now();
 		auto lastUpdate = lastFrameTime->load(std::memory_order_relaxed);
 		auto elapsed    = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdate).count();
-		const int64_t allowedSeconds = (suppressed && suppressed->load(std::memory_order_relaxed)) ? 60 : 5;
+		const int64_t allowedSeconds = (suppressed && suppressed->load(std::memory_order_relaxed)) ? 60 : 10;
 
 		if (elapsed >= allowedSeconds)
 		{
-			// APPLICATION HAS HUNG - no frame updates for 5+ seconds
+			// APPLICATION HAS HUNG - no frame updates for 10+ seconds
+			const char *label = nullptr;
+			if (progressLabel)
+			{
+				label = progressLabel->load(std::memory_order_relaxed);
+			}
+			uint32_t idx = 0;
+			if (progressIndex)
+			{
+				idx = progressIndex->load(std::memory_order_relaxed);
+			}
+
 			std::cerr << "\n\n";
 			std::cerr << "========================================\n";
 			std::cerr << "WATCHDOG: APPLICATION HAS HUNG!\n";
 			std::cerr << "========================================\n";
 			std::cerr << "Last frame update was " << elapsed << " seconds ago.\n";
+			if (label && label[0] != '\0')
+			{
+				std::cerr << "Last progress marker: " << label << "\n";
+			}
+			if (progressIndex)
+			{
+				std::cerr << "Progress index: " << idx << "\n";
+			}
 			std::cerr << "The render loop is not progressing.\n";
 			std::cerr << "Aborting to generate stack trace...\n";
 			std::cerr << "========================================\n\n";
@@ -344,7 +363,9 @@ bool Renderer::Initialize(const std::string &appName, bool enableValidationLayer
 	// Start watchdog thread to detect application hangs
 	lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 	watchdogRunning.store(true, std::memory_order_relaxed);
-	watchdogThread = std::thread(WatchdogThreadFunc, &lastFrameUpdateTime, &watchdogRunning, &watchdogSuppressed);
+	watchdogThread = std::thread(WatchdogThreadFunc, &lastFrameUpdateTime, &watchdogRunning, &watchdogSuppressed, &watchdogProgressLabel, &watchdogProgressIndex);
+
+	std::cout << "[Watchdog] Started - will abort if no frame updates for 10+ seconds\n";
 
 	initialized = true;
 	return true;
@@ -989,8 +1010,15 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		if (indexingFeaturesSupported.descriptorBindingUpdateUnusedWhilePending)
 			indexingFeaturesEnable.descriptorBindingUpdateUnusedWhilePending = vk::True;
 
+		// Helper to check if an extension is enabled (using string comparison)
+		auto hasExtension = [&](const char *name) {
+			return std::find_if(deviceExtensions.begin(), deviceExtensions.end(), [&](const char *ext) {
+				       return std::strcmp(ext, name) == 0;
+			       }) != deviceExtensions.end();
+		};
+
 		// Prepare Robustness2 features if the extension is enabled and device supports
-		auto                                     hasRobust2 = std::find(deviceExtensions.begin(), deviceExtensions.end(), VK_EXT_ROBUSTNESS_2_EXTENSION_NAME) != deviceExtensions.end();
+		auto                                     hasRobust2 = hasExtension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME);
 		vk::PhysicalDeviceRobustness2FeaturesEXT robust2Enable{};
 		if (hasRobust2)
 		{
@@ -1003,7 +1031,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		}
 
 		// Prepare Dynamic Rendering Local Read features if extension is enabled and supported
-		auto                                                   hasLocalRead = std::find(deviceExtensions.begin(), deviceExtensions.end(), VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME) != deviceExtensions.end();
+		auto                                                   hasLocalRead = hasExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
 		vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR localReadEnable{};
 		if (hasLocalRead && localReadSupported.dynamicRenderingLocalRead)
 		{
@@ -1011,7 +1039,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		}
 
 		// Prepare Shader Tile Image features if extension is enabled and supported
-		auto                                         hasTileImage = std::find(deviceExtensions.begin(), deviceExtensions.end(), VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME) != deviceExtensions.end();
+		auto                                         hasTileImage = hasExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME);
 		vk::PhysicalDeviceShaderTileImageFeaturesEXT tileImageEnable{};
 		if (hasTileImage)
 		{
@@ -1024,7 +1052,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		}
 
 		// Prepare Acceleration Structure features if extension is enabled and supported
-		auto                                               hasAccelerationStructure = std::find(deviceExtensions.begin(), deviceExtensions.end(), VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) != deviceExtensions.end();
+		auto                                               hasAccelerationStructure = hasExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
 		vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureEnable{};
 		if (hasAccelerationStructure && accelerationStructureSupported.accelerationStructure)
 		{
@@ -1032,7 +1060,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		}
 
 		// Prepare Ray Query features if extension is enabled and supported
-		auto                                  hasRayQuery = std::find(deviceExtensions.begin(), deviceExtensions.end(), VK_KHR_RAY_QUERY_EXTENSION_NAME) != deviceExtensions.end();
+		auto                                  hasRayQuery = hasExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 		vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryEnable{};
 		if (hasRayQuery && rayQuerySupported.rayQuery)
 		{

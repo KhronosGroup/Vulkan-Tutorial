@@ -1,0 +1,88 @@
+name: SimpleEngine CI
+
+on:
+  push:
+    paths:
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/simple_engine_ci.yml'
+  pull_request:
+    paths:
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/simple_engine_ci.yml'
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: attachments/simple_engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC dev environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Ninja
+        if: runner.os == 'Windows'
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\VulkanSDK") {
+            Write-Host "Using cached Vulkan SDK"
+          } else {
+            Write-Host "Downloading Vulkan SDK installer..."
+            choco install -y aria2
+            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+            Write-Host "Installing Vulkan SDK (minimal components)..."
+            Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
+          }
+
+          $vulkanPath = ""
+          if (Test-Path "C:\VulkanSDK") {
+            $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $vulkanPath) {
+            throw "Vulkan SDK not found after install"
+          }
+
+          "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libvulkan-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+
+      - name: Set up vcpkg (manifest)
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: 'attachments/simple_engine/vcpkg.json'
+          runVcpkgInstall: true
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="${{ steps.runvcpkg.outputs.vcpkgRootDir }}/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --target SimpleEngine --parallel 4

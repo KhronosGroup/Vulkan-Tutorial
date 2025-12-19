@@ -211,7 +211,7 @@ ignore for now.
 
 [,c++]
 ----
-auto extension = context.enumerateInstanceExtensionProperties();
+auto extensions = context.enumerateInstanceExtensionProperties();
 ----
 
 Each `VkExtensionProperties` struct contains the name and version of an

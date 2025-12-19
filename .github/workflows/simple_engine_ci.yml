@@ -80,37 +80,29 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y wget gnupg ca-certificates
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo apt-get install -y curl ca-certificates xz-utils
 
-          # Pick the correct LunarG repo list for the runner's Ubuntu codename.
-          codename=""
-          if [ -f /etc/os-release ]; then
-            . /etc/os-release
-            codename="${VERSION_CODENAME:-}"
-          fi
-          if [ -z "$codename" ] && command -v lsb_release >/dev/null 2>&1; then
-            codename="$(lsb_release -sc)"
-          fi
-          if [ -z "$codename" ]; then
-            codename="jammy"
-          fi
+          echo "Downloading Vulkan SDK from LunarG..."
+          # Use the official LunarG download endpoint (latest Linux tarball).
+          # We avoid distro packages so this matches what students are expected to do.
+          SDK_TGZ="${RUNNER_TEMP}/vulkansdk-linux.tar.xz"
+          curl -L --fail -o "$SDK_TGZ" "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz"
 
-          listUrl="https://packages.lunarg.com/vulkan/lunarg-vulkan-${codename}.list"
-          listPath="/etc/apt/sources.list.d/lunarg-vulkan-${codename}.list"
-          if ! sudo wget -qO "$listPath" "$listUrl"; then
-            echo "Warning: failed to fetch ${listUrl}; falling back to jammy list"
-            codename="jammy"
-            listUrl="https://packages.lunarg.com/vulkan/lunarg-vulkan-${codename}.list"
-            listPath="/etc/apt/sources.list.d/lunarg-vulkan-${codename}.list"
-            sudo wget -qO "$listPath" "$listUrl"
+          SDK_DIR="${RUNNER_TEMP}/VulkanSDK"
+          rm -rf "$SDK_DIR"
+          mkdir -p "$SDK_DIR"
+          tar -xJf "$SDK_TGZ" -C "$SDK_DIR"
+
+          # The tarball extracts into a versioned subdirectory.
+          VULKAN_SDK_PATH="$(find "$SDK_DIR" -maxdepth 1 -type d -name '1.*' | sort -r | head -n 1)"
+          if [ -z "${VULKAN_SDK_PATH:-}" ]; then
+            echo "Failed to locate extracted Vulkan SDK directory under $SDK_DIR" >&2
+            exit 1
           fi
 
-          sudo apt-get update
-          sudo apt-get install -y vulkan-sdk
-
-          # We configure with Ninja on Linux; ensure it's available.
-          sudo apt-get install -y ninja-build
+          echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
+          echo "$VULKAN_SDK_PATH/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
 
       # Use the engine's dependency install scripts instead of calling vcpkg directly in CI.
       - name: Bootstrap vcpkg (Windows)

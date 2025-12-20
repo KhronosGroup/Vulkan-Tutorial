@@ -132,9 +132,39 @@ jobs:
             exit 1
           fi
 
-          echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
-          echo "$VULKAN_SDK_PATH/bin" >> "$GITHUB_PATH"
-          echo "CMAKE_PREFIX_PATH=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
+          # Most LunarG tarballs have the actual sysroot under `x86_64/`.
+          # We want `VULKAN_SDK` to point at the directory that contains `include/`, `lib/`, `bin/`.
+          SDK_SYSROOT="$VULKAN_SDK_PATH"
+          if [ -d "$VULKAN_SDK_PATH/x86_64" ]; then
+            SDK_SYSROOT="$VULKAN_SDK_PATH/x86_64"
+          fi
+
+          echo "VULKAN_SDK=$SDK_SYSROOT" >> "$GITHUB_ENV"
+          echo "$SDK_SYSROOT/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$SDK_SYSROOT" >> "$GITHUB_ENV"
+
+          # Force CMake's FindVulkan to use the SDK headers/libs instead of runner system headers.
+          echo "Vulkan_INCLUDE_DIR=$SDK_SYSROOT/include" >> "$GITHUB_ENV"
+          if [ -f "$SDK_SYSROOT/lib/libvulkan.so" ]; then
+            echo "Vulkan_LIBRARY=$SDK_SYSROOT/lib/libvulkan.so" >> "$GITHUB_ENV"
+          elif [ -f "$SDK_SYSROOT/lib/libvulkan.so.1" ]; then
+            echo "Vulkan_LIBRARY=$SDK_SYSROOT/lib/libvulkan.so.1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Vulkan SDK diagnostics (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "VULKAN_SDK=$VULKAN_SDK"
+          echo "Vulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR:-}"
+          echo "Vulkan_LIBRARY=${Vulkan_LIBRARY:-}"
+          if [ -f "${VULKAN_SDK}/include/vulkan/vulkan.hpp" ]; then
+            echo "Using SDK vulkan.hpp at: ${VULKAN_SDK}/include/vulkan/vulkan.hpp"
+            head -n 5 "${VULKAN_SDK}/include/vulkan/vulkan.hpp" || true
+          else
+            echo "WARNING: SDK vulkan.hpp not found under ${VULKAN_SDK}/include/vulkan/vulkan.hpp" >&2
+          fi
 
       # Use the engine's dependency install scripts instead of calling vcpkg directly in CI.
       - name: Bootstrap vcpkg (Windows)
@@ -179,11 +209,21 @@ jobs:
       - name: Configure (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_COMPILER=clang
-          -DCMAKE_CXX_COMPILER=clang++
+        run: |
+          set -euo pipefail
+          extra_args=()
+          if [ -n "${Vulkan_INCLUDE_DIR:-}" ]; then
+            extra_args+=("-DVulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR}")
+          fi
+          if [ -n "${Vulkan_LIBRARY:-}" ]; then
+            extra_args+=("-DVulkan_LIBRARY=${Vulkan_LIBRARY}")
+          fi
+
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            "${extra_args[@]}"
 
       - name: Build
         run: cmake --build build --target SimpleEngine --parallel 4

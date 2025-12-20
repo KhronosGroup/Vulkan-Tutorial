@@ -60,15 +60,18 @@ The `createSyncObjects` function should be changed to create all the objects:
 [,c++]
 ----
 void createSyncObjects() {
-    presentCompleteSemaphores.clear();
-    renderFinishedSemaphores.clear();
-    inFlightFences.clear();
+		assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
-        renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
-        inFlightFences.emplace_back(device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
-    }
+		for (size_t i = 0; i < swapChainImages.size(); i++)
+		{
+			renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+		}
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+			inFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
+		}
 }
 ----
 
@@ -77,7 +80,7 @@ We will use a frame index for that purpose:
 
 [,c++]
 ----
-uint32_t currentFrame = 0;
+uint32_t frameIndex 0;
 ----
 
 The `drawFrame` function can now be modified to use the right objects:
@@ -85,27 +88,27 @@ The `drawFrame` function can now be modified to use the right objects:
 [,c++]
 ----
 void drawFrame() {
-    while ( vk::Result::eTimeout == device.waitForFences( inFlightFences[currentFrame], vk::True, UINT64_MAX ) )
-            ;
-    auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, presentCompleteSemaphores[currentFrame], nullptr );
+		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}	
+		device.resetFences(*inFlightFences[frameIndex]);
 
-    device.resetFences( inFlightFences[currentFrame] );
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
-    ...
+		commandBuffers[frameIndex].reset();
+		recordCommandBuffer(imageIndex);
 
-    commandBuffers[currentFrame].reset();
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
-
-    ...
-
-    vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-    const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphores[currentFrame],
-                        .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame],
-                        .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame] };
-
-    ...
-
-    graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]);
+		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+		                                  .pWaitSemaphores      = &*presentCompleteSemaphores[frameIndex],
+		                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+		                                  .commandBufferCount   = 1,
+		                                  .pCommandBuffers      = &*commandBuffers[frameIndex],
+		                                  .signalSemaphoreCount = 1,
+		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
+		queue.submit(submitInfo, *inFlightFences[frameIndex]);
 }
 ----
 
@@ -116,7 +119,7 @@ Of course, we shouldn't forget to advance to the next frame every time:
 void drawFrame() {
     ...
 
-    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 ----
 

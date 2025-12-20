@@ -1,0 +1,533 @@
+:pp: {plus}{plus}
+
+= Tooling: Crash Handling and GPU Crash Dumps
+
+== Crash Handling in Vulkan Applications
+
+Even with thorough testing and debugging, crashes can still occur in production environments. When they do, having robust crash handling mechanisms can help you diagnose and fix issues quickly. This chapter focuses on practical GPU crash diagnostics (e.g., NVIDIA Nsight Aftermath, AMD Radeon GPU Detective) and clarifies the role and limitations of OS process minidumps, which usually lack GPU state and are rarely sufficient to root-cause graphics/device-lost issues on their own.
+
+=== Understanding Crashes in Vulkan Applications
+
+Vulkan applications can crash for various reasons:
+
+1. *API Usage Errors*: Incorrect use of the Vulkan API that validation layers would catch in debug builds
+2. *Driver Bugs*: Issues in the GPU driver that may only manifest with specific hardware or workloads
+3. *Resource Management Issues*: Memory leaks, double frees, or accessing destroyed resources
+4. *Shader Errors*: Runtime errors in shaders that cause the GPU to hang
+5. *System-Level Issues*: Out of memory conditions, system instability, etc.
+
+Let's explore how to handle these crashes and gather diagnostic information.
+
+=== Implementing Basic Crash Handling
+
+First, let's implement a basic crash handler that can catch unhandled exceptions and segmentation faults:
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+// Global state for crash handling
+namespace crash_handler {
+    std::string app_name;
+    std::string crash_log_path;
+    bool initialized = false;
+
+    // Log basic system information
+    void log_system_info(std::ofstream& log) {
+        log << "Application: " << app_name << std::endl;
+        log << "Timestamp: " << std::chrono::system_clock::now() << std::endl;
+
+        // Log OS information
+        #if defined(_WIN32)
+        log << "OS: Windows" << std::endl;
+        #elif defined(__linux__)
+        log << "OS: Linux" << std::endl;
+        #elif defined(__APPLE__)
+        log << "OS: macOS" << std::endl;
+        #else
+        log << "OS: Unknown" << std::endl;
+        #endif
+
+        // Log CPU information
+        log << "CPU Cores: " << std::thread::hardware_concurrency() << std::endl;
+
+        // Log memory information
+        #if defined(_WIN32)
+        MEMORYSTATUSEX mem_info;
+        mem_info.dwLength = sizeof(MEMORYSTATUSEX);
+        GlobalMemoryStatusEx(&mem_info);
+        log << "Total Physical Memory: " << mem_info.ullTotalPhys / (1024 * 1024) << " MB" << std::endl;
+        log << "Available Memory: " << mem_info.ullAvailPhys / (1024 * 1024) << " MB" << std::endl;
+        #elif defined(__linux__)
+        // Linux-specific memory info code
+        #elif defined(__APPLE__)
+        // macOS-specific memory info code
+        #endif
+    }
+
+    // Log Vulkan-specific information
+    void log_vulkan_info(std::ofstream& log, vk::raii::PhysicalDevice* physical_device = nullptr) {
+        if (physical_device) {
+            auto properties = physical_device->getProperties();
+            log << "GPU: " << properties.deviceName << std::endl;
+            log << "Driver Version: " << properties.driverVersion << std::endl;
+            log << "Vulkan API Version: "
+                << VK_VERSION_MAJOR(properties.apiVersion) << "."
+                << VK_VERSION_MINOR(properties.apiVersion) << "."
+                << VK_VERSION_PATCH(properties.apiVersion) << std::endl;
+        } else {
+            log << "No Vulkan physical device information available" << std::endl;
+        }
+    }
+
+    // Handler for unhandled exceptions
+    void handle_exception(const std::exception& e, vk::raii::PhysicalDevice* physical_device = nullptr) {
+        try {
+            std::ofstream log(crash_log_path, std::ios::app);
+            log << "==== Crash Report ====" << std::endl;
+            log_system_info(log);
+            log_vulkan_info(log, physical_device);
+
+            log << "Exception: " << e.what() << std::endl;
+            log << "==== End of Crash Report ====" << std::endl << std::endl;
+
+            log.close();
+        } catch (...) {
+            // Last resort if we can't even write to the log
+            std::cerr << "Failed to write crash log" << std::endl;
+        }
+    }
+
+    // Signal handler for segfaults, etc.
+    void signal_handler(int signal) {
+        try {
+            std::ofstream log(crash_log_path, std::ios::app);
+            log << "==== Crash Report ====" << std::endl;
+            log_system_info(log);
+
+            log << "Signal: " << signal << " (";
+            switch (signal) {
+                case SIGSEGV: log << "SIGSEGV - Segmentation fault"; break;
+                case SIGILL: log << "SIGILL - Illegal instruction"; break;
+                case SIGFPE: log << "SIGFPE - Floating point exception"; break;
+                case SIGABRT: log << "SIGABRT - Abort"; break;
+                default: log << "Unknown signal"; break;
+            }
+            log << ")" << std::endl;
+
+            log << "==== End of Crash Report ====" << std::endl << std::endl;
+
+            log.close();
+        } catch (...) {
+            // Last resort if we can't even write to the log
+            std::cerr << "Failed to write crash log" << std::endl;
+        }
+
+        // Re-raise the signal for the default handler
+        signal(signal, SIG_DFL);
+        raise(signal);
+    }
+
+    // Initialize the crash handler
+    void initialize(const std::string& application_name, const std::string& log_path) {
+        if (initialized) return;
+
+        app_name = application_name;
+        crash_log_path = log_path;
+
+        // Set up signal handlers
+        signal(SIGSEGV, signal_handler);
+        signal(SIGILL, signal_handler);
+        signal(SIGFPE, signal_handler);
+        signal(SIGABRT, signal_handler);
+
+        initialized = true;
+    }
+}
+
+// Example usage in main application
+int main() {
+    try {
+        // Initialize crash handler
+        crash_handler::initialize("MyVulkanApp", "crash_log.txt");
+
+        // Initialize Vulkan
+        vk::raii::Context context;
+        auto instance = create_instance(context);
+        auto physical_device = select_physical_device(instance);
+        auto device = create_device(physical_device);
+
+        // Main application loop
+        while (true) {
+            try {
+                // Render frame
+                render_frame(device);
+            } catch (const vk::SystemError& e) {
+                // Handle Vulkan errors that we can recover from
+                std::cerr << "Vulkan error: " << e.what() << std::endl;
+            }
+        }
+    } catch (const std::exception& e) {
+        // Handle unrecoverable exceptions
+        crash_handler::handle_exception(e);
+        return 1;
+    }
+
+    return 0;
+}
+----
+
+=== GPU Crash Diagnostics (Vulkan)
+
+While OS process minidumps capture CPU-side state, GPU crashes (device lost, TDRs, hangs) require GPU-specific crash dumps to be actionable. In practice, you’ll want to integrate vendor tooling that can record GPU execution state around the fault.
+
+==== NVIDIA: Nsight Aftermath (Vulkan)
+
+Overview:
+
+- Collects GPU crash dumps with information about the last executed draw/dispatch, bound pipeline/shaders, markers, and resource identifiers.
+- Works alongside your Vulkan app; you analyze dumps with NVIDIA tools to pinpoint the failing work and shader.
+
+Practical steps:
+
+1. Enable object names and labels
+   - Use VK_EXT_debug_utils to name pipelines, shaders, images, buffers, and to insert command buffer labels for major passes and draw/dispatch groups. These names surface in crash reports and greatly aid triage.
+2. Add frame/work markers
+   - Insert meaningful labels before/after critical rendering phases. If available on your target, also use vendor checkpoint/marker extensions (e.g., VK_NV_device_diagnostic_checkpoints) to provide fine-grained breadcrumbs.
+3. Build shaders with unique IDs and optional debug info
+   - Ensure each pipeline/shader can be correlated (e.g., include a stable hash/UUID in your pipeline cache and application logs). Keep the mapping from IDs to source for analysis.
+4. Initialize and enable GPU crash dumps
+   - Integrate the Nsight Aftermath Vulkan SDK per NVIDIA’s documentation. Register a callback to receive crash dump data, write it to disk, and include your marker string table for symbolication.
+5. Handle device loss
+   - On VK_ERROR_DEVICE_LOST (or Windows TDR), flush any in-memory marker logs, persist the crash dump, and then terminate cleanly. Attempting to continue rendering is undefined.
+
+References: NVIDIA Nsight Aftermath SDK and documentation.
+
+==== AMD: Radeon GPU Detective (RGD)
+
+- AMD provides tools to capture and analyze GPU crash information on RDNA hardware. Similar principles apply: enable object names, label command buffers, and preserve pipeline/shader identifiers so RGD can point back to your content.
+- See AMD Radeon GPU Detective and related documentation for Vulkan integration and analysis workflows.
+
+==== Vendor-agnostic groundwork that helps all tools
+
+- Name everything via VK_EXT_debug_utils.
+- Insert command buffer labels at meaningful boundaries (frame, pass, material batch, etc.).
+- Persist build/version, driver, Vulkan API/UUID, and pipeline cache UUID in your logs and crash artifacts.
+- Implement robust device lost handling: stop submitting, free/teardown safely, write artifacts, exit.
+
+=== Generating Minidumps
+
+Use OS process minidumps to capture CPU-side call stacks, threads, and memory snapshots at the time of a crash. For graphics issues and device loss, they rarely contain the GPU execution state you need—treat minidumps as a complement to GPU crash dumps, not a replacement.
+
+Below is a brief outline for generating minidumps with platform APIs (useful for correlating CPU context with a GPU crash):
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+
+namespace crash_handler {
+    std::string app_name;
+    std::string dump_path;
+    bool initialized = false;
+
+    #if defined(_WIN32)
+    // Windows implementation using Windows Error Reporting (WER)
+    LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS* exception_pointers) {
+        // Create a unique filename for the minidump
+        std::string filename = dump_path + "\\" + app_name + "_" +
+            std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".dmp";
+
+        // Create the minidump file
+        HANDLE file = CreateFileA(
+            filename.c_str(),
+            GENERIC_WRITE,
+            0,
+            nullptr,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr
+        );
+
+        if (file != INVALID_HANDLE_VALUE) {
+            // Initialize minidump info
+            MINIDUMP_EXCEPTION_INFORMATION exception_info;
+            exception_info.ThreadId = GetCurrentThreadId();
+            exception_info.ExceptionPointers = exception_pointers;
+            exception_info.ClientPointers = FALSE;
+
+            // Write the minidump
+            MiniDumpWriteDump(
+                GetCurrentProcess(),
+                GetCurrentProcessId(),
+                file,
+                MiniDumpWithFullMemory,  // Dump type
+                &exception_info,
+                nullptr,
+                nullptr
+            );
+
+            CloseHandle(file);
+
+            std::cerr << "Minidump written to: " << filename << std::endl;
+        } else {
+            std::cerr << "Failed to create minidump file" << std::endl;
+        }
+
+        // Continue with normal exception handling
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    void initialize(const std::string& application_name, const std::string& minidump_path) {
+        if (initialized) return;
+
+        app_name = application_name;
+        dump_path = minidump_path;
+
+        // Create the dump directory if it doesn't exist
+        CreateDirectoryA(dump_path.c_str(), nullptr);
+
+        // Set up the exception handler
+        SetUnhandledExceptionFilter(windows_exception_handler);
+
+        initialized = true;
+    }
+
+    #elif defined(__linux__)
+    // Linux implementation using Google Breakpad
+    // Note: This requires linking against the Google Breakpad library
+
+    #include "client/linux/handler/exception_handler.h"
+
+    // Callback for when a minidump is generated
+    static bool minidump_callback(const google_breakpad::MinidumpDescriptor& descriptor,
+                                 void* context, bool succeeded) {
+        std::cerr << "Minidump generated: " << descriptor.path() << std::endl;
+        return succeeded;
+    }
+
+    google_breakpad::ExceptionHandler* exception_handler = nullptr;
+
+    void initialize(const std::string& application_name, const std::string& minidump_path) {
+        if (initialized) return;
+
+        app_name = application_name;
+        dump_path = minidump_path;
+
+        // Create the dump directory if it doesn't exist
+        std::filesystem::create_directories(dump_path);
+
+        // Set up the exception handler
+        google_breakpad::MinidumpDescriptor descriptor(dump_path);
+        exception_handler = new google_breakpad::ExceptionHandler(
+            descriptor,
+            nullptr,
+            minidump_callback,
+            nullptr,
+            true,
+            -1
+        );
+
+        initialized = true;
+    }
+
+    #elif defined(__APPLE__)
+    // macOS implementation using Google Breakpad
+    // Similar to Linux implementation
+    #endif
+}
+----
+
+=== Analyzing Minidumps
+
+Minidumps are best used to understand CPU-side state around a crash (e.g., which thread faulted, call stacks leading to vkQueueSubmit/vkQueuePresent, allocator misuse) and to correlate with a GPU crash dump from vendor tools. Here’s a brief workflow on different platforms:
+
+==== Windows
+
+On Windows, you can use Visual Studio or WinDbg to analyze minidumps:
+
+1. *Visual Studio*:
+   - Open Visual Studio
+   - Go to File > Open > File and select the .dmp file
+   - Visual Studio will load the minidump and show the call stack at the time of the crash
+
+2. *WinDbg*:
+   - Open WinDbg
+   - Open the minidump file
+   - Use commands like `.ecxr` to examine the exception context record
+   - Use `k` to view the call stack
+
+==== Linux and macOS
+
+On Linux and macOS, you can use tools like GDB or LLDB to analyze minidumps generated by Google Breakpad:
+
+1. *Using minidump_stackwalk* (part of Google Breakpad):
+   ```
+   minidump_stackwalk minidump_file.dmp /path/to/symbols > stacktrace.txt
+   ```
+
+2. *Using GDB*:
+   ```
+   gdb /path/to/executable
+   (gdb) core-file /path/to/minidump
+   (gdb) bt
+   ```
+
+=== Vulkan-Specific Crash Information
+
+For Vulkan applications, it's helpful to include additional information in your crash reports:
+
+[source,cpp]
+----
+void log_vulkan_detailed_info(std::ofstream& log, vk::raii::PhysicalDevice& physical_device,
+                             vk::raii::Device& device) {
+    // Log physical device properties
+    auto properties = physical_device.getProperties();
+    log << "GPU: " << properties.deviceName << std::endl;
+    log << "Driver Version: " << properties.driverVersion << std::endl;
+    log << "Vulkan API Version: "
+        << VK_VERSION_MAJOR(properties.apiVersion) << "."
+        << VK_VERSION_MINOR(properties.apiVersion) << "."
+        << VK_VERSION_PATCH(properties.apiVersion) << std::endl;
+
+    // Log memory usage
+    auto memory_properties = physical_device.getMemoryProperties();
+    log << "Memory Heaps:" << std::endl;
+    for (uint32_t i = 0; i < memory_properties.memoryHeapCount; i++) {
+        log << "  Heap " << i << ": "
+            << (memory_properties.memoryHeaps[i].size / (1024 * 1024)) << " MB";
+        if (memory_properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
+            log << " (Device Local)";
+        }
+        log << std::endl;
+    }
+
+    // Log enabled extensions
+    auto extensions = device.enumerateDeviceExtensionProperties();
+    log << "Enabled Extensions:" << std::endl;
+    for (const auto& ext : extensions) {
+        log << "  " << ext.extensionName << " (version " << ext.specVersion << ")" << std::endl;
+    }
+
+    // Log current pipeline cache state
+    // This can be useful for diagnosing shader-related crashes
+    try {
+        auto pipeline_cache_data = device.getPipelineCacheData();
+        log << "Pipeline Cache Size: " << pipeline_cache_data.size() << " bytes" << std::endl;
+    } catch (const vk::SystemError& e) {
+        log << "Failed to get pipeline cache data: " << e.what() << std::endl;
+    }
+}
+----
+
+=== Integrating with Telemetry Systems
+
+For production applications, you might want to automatically upload crash reports to a telemetry system for analysis:
+
+[source,cpp]
+----
+import std;
+import vulkan_raii;
+#include <curl/curl.h>
+
+namespace crash_handler {
+    // ... existing code ...
+
+    std::string telemetry_url;
+    bool telemetry_enabled = false;
+
+    // Upload a minidump to the telemetry server
+    bool upload_minidump(const std::string& minidump_path) {
+        if (!telemetry_enabled || telemetry_url.empty()) {
+            return false;
+        }
+
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            std::cerr << "Failed to initialize curl" << std::endl;
+            return false;
+        }
+
+        // Set up the form data
+        curl_mime* form = curl_mime_init(curl);
+
+        // Add the minidump file
+        curl_mimepart* field = curl_mime_addpart(form);
+        curl_mime_name(field, "minidump");
+        curl_mime_filedata(field, minidump_path.c_str());
+
+        // Add application information
+        field = curl_mime_addpart(form);
+        curl_mime_name(field, "product");
+        curl_mime_data(field, app_name.c_str(), CURL_ZERO_TERMINATED);
+
+        // Add version information
+        field = curl_mime_addpart(form);
+        curl_mime_name(field, "version");
+        curl_mime_data(field, "1.0.0", CURL_ZERO_TERMINATED);  // Replace with your version
+
+        // Set up the request
+        curl_easy_setopt(curl, CURLOPT_URL, telemetry_url.c_str());
+        curl_easy_setopt(curl, CURLOPT_MIMEPOST, form);
+
+        // Perform the request
+        CURLcode res = curl_easy_perform(curl);
+
+        // Clean up
+        curl_mime_free(form);
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK) {
+            std::cerr << "Failed to upload minidump: " << curl_easy_strerror(res) << std::endl;
+            return false;
+        }
+
+        return true;
+    }
+
+    // Enable telemetry
+    void enable_telemetry(const std::string& url) {
+        telemetry_url = url;
+        telemetry_enabled = true;
+
+        // Initialize curl
+        curl_global_init(CURL_GLOBAL_ALL);
+    }
+
+    // Disable telemetry
+    void disable_telemetry() {
+        telemetry_enabled = false;
+
+        // Clean up curl
+        curl_global_cleanup();
+    }
+}
+----
+
+=== Best Practices for Crash Handling (Vulkan/GPU-focused)
+
+To make crash data actionable for graphics issues, prefer these concrete steps:
+
+1. Name and label aggressively
+   - Use VK_EXT_debug_utils to name all objects and insert command buffer labels at pass/material boundaries and before large draw/dispatch batches. Persist a small in-memory ring buffer of recent labels for inclusion in crash artifacts.
+2. Prepare for device loss
+   - Implement a central handler for VK_ERROR_DEVICE_LOST. Stop submitting work, flush logs/markers, request vendor GPU crash dump data, and exit. Avoid attempting recovery in the same process unless you have a robust reinitialization path.
+3. Capture GPU crash dumps on supported hardware
+   - Integrate NVIDIA Nsight Aftermath and/or AMD RGD depending on your target audience. Ship with crash dumps enabled in development/beta builds; provide a toggle for users.
+4. Make builds symbol-friendly
+   - Keep a mapping from pipeline/shader hashes to source/IR/SPIR-V and build IDs. Enable shader debug info where feasible for diagnosis builds.
+5. Record environment info
+   - Log driver version, Vulkan version, GPU name/PCI ID, pipeline cache UUID, app build/version, and relevant feature toggles. Include this alongside minidumps and GPU crash dumps.
+6. Reproduce deterministically
+   - Provide a way to disable background variability (e.g., async streaming) and to replay a captured sequence of commands/scenes to reproduce the crash locally.
+7. Respect privacy and distribution concerns
+   - Clearly document what crash data is collected (minidumps, GPU crash dumps, logs) and require opt‑in for uploads. Strip user-identifiable data.
+
+=== Conclusion
+
+Robust crash handling is essential for maintaining a high-quality Vulkan application. Combine vendor GPU crash dumps (Aftermath, RGD, etc.) with CPU-side minidumps and thorough logging to quickly diagnose and fix issues in production. Treat minidumps as complementary context; the actionable details for graphics faults typically come from GPU crash dump tooling.
+
+In the next section, we'll explore Vulkan extensions for robustness, which can reduce undefined behavior and help prevent crashes in the first place.
+
+link:03_debugging_and_renderdoc.adoc[Previous: Debugging with VK_KHR_debug_utils and RenderDoc] | link:05_extensions.adoc[Next: Vulkan Extensions for Robustness]

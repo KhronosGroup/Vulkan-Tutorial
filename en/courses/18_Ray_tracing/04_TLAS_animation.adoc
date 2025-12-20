@@ -1,0 +1,282 @@
+= TLAS Animation
+
+*Objective*: Ensure shadows update when the object animates by rebuilding the TLAS with updated instance transforms each frame.
+
+To account for the object's animation, we need to update the TLAS whenever the object moves or changes.
+This involves updating the instance transforms and rebuilding the TLAS.
+We will do this in the `updateTopLevelAS()` function, which is called every frame with the current model matrix.
+
+== Task 6: Update the TLAS for animations
+
+First we need to update the instance transforms with the current model matrix. This is done by iterating over the `instances` vector and setting the transform for each instance, then update the instances buffer.
+
+[,c{pp}]
+----
+vk::TransformMatrixKHR tm{};
+auto &M = model;
+tm.matrix = std::array<std::array<float,4>,3>{{
+        std::array<float,4>{M[0][0], M[1][0], M[2][0], M[3][0]},
+        std::array<float,4>{M[0][1], M[1][1], M[2][1], M[3][1]},
+        std::array<float,4>{M[0][2], M[1][2], M[2][2], M[3][2]}
+}};
+
+// TASK06: update the instances to use the new transform matrix.
+for (auto & instance : instances) {
+        instance.setTransform(tm);
+}
+----
+
+Next, we need to prepare the geometry data for the TLAS build. This is similar to what we did when creating the TLAS, but now we will use the updated instance buffer. We also need to change the build `mode` to `eUpdate`, and define a source TLAS as well as a destination TLAS. This instructs the implementation to update the existing TLAS in-place instead of creating a new one. This is more efficient when only minor changes (like transforms) have occurred:
+
+[,c{pp}]
+----
+        // Prepare the geometry (instance) data
+        auto instancesData = vk::AccelerationStructureGeometryInstancesDataKHR{
+            .arrayOfPointers = vk::False,
+            .data = instanceAddr
+        };
+
+        vk::AccelerationStructureGeometryDataKHR geometryData(instancesData);
+
+        vk::AccelerationStructureGeometryKHR tlasGeometry{
+            .geometryType = vk::GeometryTypeKHR::eInstances,
+            .geometry = geometryData
+        };
+
+        // TASK06: Note the new parameters to re-build the TLAS in-place
+        vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildGeometryInfo{
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+            .flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+            .mode = vk::BuildAccelerationStructureModeKHR::eUpdate,
+            .srcAccelerationStructure = tlas,
+            .dstAccelerationStructure = tlas,
+            .geometryCount = 1,
+            .pGeometries = &tlasGeometry
+        };
+
+        vk::BufferDeviceAddressInfo scratchAddressInfo{ .buffer = *tlasScratchBuffer };
+        vk::DeviceAddress scratchAddr = device.getBufferAddressKHR(scratchAddressInfo);
+        tlasBuildGeometryInfo.scratchData.deviceAddress = scratchAddr;
+----
+
+We may keep re-using the same scratch buffer. Note that another implementation hint is needed, in the form of the flag `eAllowUpdate`, to specify that we intend to update this TLAS. We also need to revisit the `createAccelerationStructures()` function to add this flag the first time we create the TLAS:
+
+[,c{pp}]
+----
+        vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildGeometryInfo{
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+            .flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate, // <---- TASK06
+            .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+            .geometryCount = 1,
+            .pGeometries = &tlasGeometry
+        };
+----
+
+Next, we need to prepare the build range for the TLAS. This is similar to what we did when creating the TLAS:
+
+[,c{pp}]
+----
+        // Prepare the build range for the TLAS
+        vk::AccelerationStructureBuildRangeInfoKHR tlasRangeInfo{
+            .primitiveCount = primitiveCount,
+            .primitiveOffset = 0,
+            .firstVertex = 0,
+            .transformOffset = 0
+        };
+----
+
+Finally, we can issue the command to rebuild the TLAS. A main change is required here though, regarding synchronization. Since we are calling `updateTopLevelAS()` every frame, we need a pre-build memory barrier to ensure that any previous writes to the acceleration structure transfers, or shader reads of previous frames, are completed before the build begins:
+
+[,c{pp}]
+----
+        // Re-build the TLAS
+        auto cmd = beginSingleTimeCommands();
+
+        // Pre-build barrier
+        vk::MemoryBarrier preBarrier {
+            .srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR | vk::AccessFlagBits::eTransferWrite | vk::AccessFlagBits::eShaderRead,
+            .dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eAccelerationStructureWriteKHR
+        };
+
+        cmd->pipelineBarrier(
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR | vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eFragmentShader, // srcStageMask
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // dstStageMask
+            {}, // dependencyFlags
+            preBarrier, // memoryBarriers
+            {}, // bufferMemoryBarriers
+            {} // imageMemoryBarriers
+        );
+
+        cmd->buildAccelerationStructuresKHR({ tlasBuildGeometryInfo }, { &tlasRangeInfo });
+----
+
+Similarly, we need a post-build barrier to ensure that all writes to the acceleration structure during the build are visible to subsequent reads or shader accesses:
+
+[,c{pp}]
+----
+        // Post-build barrier
+        vk::MemoryBarrier postBarrier {
+            .srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR,
+            .dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eShaderRead
+        };
+
+        cmd->pipelineBarrier(
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // srcStageMask
+            vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR | vk::PipelineStageFlagBits::eFragmentShader, // dstStageMask
+            {}, // dependencyFlags
+            postBarrier, // memoryBarriers
+            {}, // bufferMemoryBarriers
+            {} // imageMemoryBarriers
+        );
+
+        endSingleTimeCommands(*cmd);
+----
+
+These barriers are crucial for correct synchronization, preventing race conditions and ensuring the acceleration structure is in a valid state for ray tracing shaders.
+
+Verify that the function is called in `drawFrame()` after the model matrix is updated:
+
+[,c{pp}]
+----
+        updateUniformBuffer(frameIndex);
+        // TASK06: Update the TLAS with the current model matrix
+        updateTopLevelAS(ubo.model);
+----
+
+Re-build and run using:
+
+[,c{pp}]
+----
+#define LAB_TASK_LEVEL 6
+----
+
+Now the shadows should correctly update since the acceleration structure and geometry animations are in sync:
+
+image::../../../images/38_TASK07_shadows_dynamic.gif[]
+
+For reference, here is how the full shader should look like at this stage:
+
+.Click to reveal the shader
+[%collapsible]
+====
+[,slang]
+----
+struct VSInput {
+    float3 inPosition;
+    float3 inColor;
+    float2 inTexCoord;
+    float3 inNormal;
+};
+
+struct UniformBuffer {
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+    float3   cameraPos;
+};
+[[vk::binding(0,0)]]
+ConstantBuffer<UniformBuffer> ubo;
+
+// TASK05: Acceleration structure binding
+[[vk::binding(1,0)]]
+RaytracingAccelerationStructure accelerationStructure;
+
+[[vk::binding(2,0)]]
+StructuredBuffer<uint> indexBuffer;
+
+[[vk::binding(3,0)]]
+StructuredBuffer<float2> uvBuffer;
+
+struct InstanceLUT {
+    uint materialID;
+    uint indexBufferOffset;
+};
+[[vk::binding(4,0)]]
+StructuredBuffer<InstanceLUT> instanceLUTBuffer;
+
+struct VSOutput
+{
+    float4 pos : SV_Position;
+    float3 fragColor;
+    float2 fragTexCoord;
+    float3 fragNormal;
+    float3 worldPos;
+};
+
+[shader("vertex")]
+VSOutput vertMain(VSInput input) {
+    VSOutput output;
+    output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 1.0))));
+    output.fragColor = input.inColor;
+    output.fragTexCoord = input.inTexCoord;
+    output.fragNormal = input.inNormal;
+    output.worldPos = mul(ubo.model, float4(input.inPosition, 1.0)).xyz;
+    return output;
+}
+
+[[vk::binding(0,1)]]
+SamplerState textureSampler;
+
+[[vk::binding(1,1)]]
+Texture2D<float4> textures[];
+
+struct PushConstant {
+    uint materialIndex;
+};
+[push_constant]
+PushConstant pc;
+
+static const float3 lightDir = float3(-6.0, 0.0, 6.0);
+
+// Small epsilon to avoid self-intersection
+static const float EPSILON = 0.01;
+
+// TASK05: Implement ray query shadows
+bool in_shadow(float3 P)
+{
+    // Build the shadow ray from the world position toward the light
+    RayDesc shadowRayDesc;
+    shadowRayDesc.Origin = P;
+    shadowRayDesc.Direction = normalize(lightDir);
+    shadowRayDesc.TMin = EPSILON;
+    shadowRayDesc.TMax = 1e4;
+
+    // Initialize a ray query for shadows
+    RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> sq;
+    let rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+
+    sq.TraceRayInline(accelerationStructure, rayFlags, 0xFF, shadowRayDesc);
+
+    sq.Proceed();
+
+    // If the shadow ray intersects an opaque triangle, we consider the pixel in shadow
+    bool hit = (sq.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
+
+    return hit;
+}
+
+[shader("fragment")]
+float4 fragMain(VSOutput vertIn) : SV_TARGET {
+   float4 baseColor = textures[pc.materialIndex].Sample(textureSampler, vertIn.fragTexCoord);
+
+   float3 P = vertIn.worldPos;
+
+   bool inShadow = in_shadow(P);
+
+   // Darken if in shadow
+   if (inShadow) {
+       baseColor.rgb *= 0.2;
+   }
+
+   return baseColor;
+}
+----
+====
+
+NOTE: Ray Query vs Ray Tracing Pipeline: Notice how we added a ray tracing effect (shadows) directly in the fragment shader. We did not need a separate ray generation shader or any new pipeline. This is the power of ray queries (also known as inline ray tracing): we integrate ray traversal into our existing rendering pipeline. This keeps the shader logic unified and avoids extra GPU shader launches. On many mobile GPUs, this approach is not only more convenient but necessary: as mentioned, current mobile devices mostly support ray queries and not the full ray pipeline, and they run ray queries efficiently in fragment shaders. This is a key reason we focus on ray queries in this lab.
+
+== Navigation
+- Previous: xref:./03_Ray_query_shadows.adoc[Ray query shadows]
+- Next: xref:./05_Shadow_transparency.adoc[Shadow transparency]

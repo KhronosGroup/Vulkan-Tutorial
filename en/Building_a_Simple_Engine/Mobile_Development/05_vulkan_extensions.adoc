@@ -1,0 +1,394 @@
+:pp: {plus}{plus}
+
+= Mobile Development: Vulkan Extensions
+
+== Vulkan Extensions for Mobile
+
+Vulkan's extensibility is one of its greatest strengths, allowing hardware vendors to expose specialized features that can significantly improve performance. For mobile development, several extensions are particularly valuable as they can help optimize for the unique characteristics of mobile GPUs. In this section, we'll explore key Vulkan extensions that can enhance performance on mobile devices.
+
+=== VK_KHR_dynamic_rendering
+
+Dynamic rendering is a game-changing extension that simplifies the Vulkan rendering workflow by eliminating the need for explicit render pass and framebuffer objects.
+
+==== Overview
+
+The `VK_KHR_dynamic_rendering` extension (now part of Vulkan 1.3 core) allows you to begin and end rendering operations directly within a command buffer, without creating render pass and framebuffer objects. This benefits a wide range of platforms (desktop and mobile) because it:
+
+1. *Simplifies Code*: Reduces the complexity of managing render passes and framebuffers.
+2. *Enables More Flexible Rendering*: Makes it easier to implement techniques that don't fit well into the traditional render pass model.
+3. *Potentially Lowers API Overhead*: Fewer objects to create and manage can simplify setup; any CPU savings are usually small and workload-dependent.
+
+==== Implementation (Step-by-step)
+
+Let's break the setup into a few small, focused steps.
+
+===== Enable the extension and load entry points
+
+We first enable the device extension and, if you're not on Vulkan 1.3 core, load the function pointers.
+
+[source,cpp]
+----
+// Enable the extension when creating the device
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+};
+
+// Get function pointers (if not using Vulkan 1.3)
+PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR =
+    reinterpret_cast<PFN_vkCmdBeginRenderingKHR>(
+        vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"));
+PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR =
+    reinterpret_cast<PFN_vkCmdEndRenderingKHR>(
+        vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR"));
+----
+
+This prepares your device to use dynamic rendering and gives access to the commands needed to begin/end a rendering scope without a traditional render pass.
+
+===== Describe attachments for this rendering scope
+
+We define the color and depth attachments and package them into a VkRenderingInfoKHR. Think of this as an inline, one-off description of what would normally be baked into render pass/framebuffer objects.
+
+[source,cpp]
+----
+VkRenderingAttachmentInfoKHR color_attachment{};
+color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+color_attachment.imageView = color_image_view;
+color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+color_attachment.clearValue = clear_value;
+
+VkRenderingAttachmentInfoKHR depth_attachment{};
+depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+depth_attachment.imageView = depth_image_view;
+depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+depth_attachment.clearValue = depth_clear_value;
+
+VkRenderingInfoKHR rendering_info{};
+rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+rendering_info.renderArea = render_area;
+rendering_info.layerCount = 1;
+rendering_info.colorAttachmentCount = 1;
+rendering_info.pColorAttachments = &color_attachment;
+rendering_info.pDepthAttachment = &depth_attachment;
+----
+
+Each frame (or subpass-equivalent), you can tweak these descriptors directly (e.g., swapchain views after resize), avoiding pipeline-wide re-creation.
+
+===== Begin rendering, draw, end rendering
+
+With the attachments described, we open the rendering scope, record draws, then close the scope.
+
+[source,cpp]
+----
+vkCmdBeginRenderingKHR(command_buffer, &rendering_info);
+
+// Record drawing commands
+vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
+
+// End rendering
+vkCmdEndRenderingKHR(command_buffer);
+----
+
+The begin/end pair replaces vkCmdBeginRenderPass/vkCmdEndRenderPass while providing more flexibility for modern rendering flows.
+
+===== C++ bindings (vulkan.hpp) variant
+
+If you're using vulkan.hpp (vk::), the structure population is more ergonomic but follows the same steps.
+
+[source,cpp]
+----
+// Using vulkan.hpp
+vk::RenderingAttachmentInfoKHR color_attachment;
+color_attachment.setImageView(color_image_view);
+color_attachment.setImageLayout(vk::ImageLayout::eColorAttachmentOptimal);
+color_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore);
+color_attachment.setClearValue(clear_value);
+
+vk::RenderingAttachmentInfoKHR depth_attachment;
+depth_attachment.setImageView(depth_image_view);
+depth_attachment.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal);
+depth_attachment.setLoadOp(vk::AttachmentLoadOp::eClear);
+depth_attachment.setStoreOp(vk::AttachmentStoreOp::eDontCare);
+depth_attachment.setClearValue(depth_clear_value);
+
+vk::RenderingInfoKHR rendering_info;
+rendering_info.setRenderArea(render_area);
+rendering_info.setLayerCount(1);
+rendering_info.setColorAttachments(color_attachment);
+rendering_info.setPDepthAttachment(&depth_attachment);
+----
+
+Once the description is assembled, begin the rendering scope, submit draws, and end the scope.
+
+[source,cpp]
+----
+command_buffer.beginRenderingKHR(rendering_info);
+
+// Record drawing commands
+command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+command_buffer.draw(vertex_count, 1, 0, 0);
+
+// End rendering
+command_buffer.endRenderingKHR();
+----
+
+=== VK_KHR_dynamic_rendering_local_read
+
+The `VK_KHR_dynamic_rendering_local_read` extension is particularly valuable for tile-based renderers as it allows shaders to read from attachments without forcing a tile to main memory and back.
+
+==== Overview
+
+This extension enhances dynamic rendering by allowing fragment shaders to read from color and depth/stencil attachments within the same rendering scope. On tile-based renderers, this means the reads can happen directly from tile memory, avoiding expensive round trips to main memory.
+
+Key benefits include:
+
+1. *Reduced Memory Bandwidth*: Reads happen from on-chip memory rather than main memory, reducing bandwidth usage for bandwidth-intensive operations.
+2. *Improved Performance*: Particularly for algorithms that need to read from previously written attachments.
+3. *Power Efficiency*: Lower memory bandwidth means lower power consumption.
+
+==== How It Reduces Memory Bandwidth
+
+The `VK_KHR_dynamic_rendering_local_read` extension is particularly effective at reducing memory bandwidth because:
+
+1. *Eliminates Tile Flush Operations*: Without this extension, when a shader needs to read from a previously written attachment, the GPU must flush the entire tile to main memory and then read it back. This extension allows the shader to read directly from the tile memory, eliminating these costly flush operations.
+
+2. *Supports Per-Pixel Local Reads*: It enables fragment shaders to read the value written at the same pixel from attachments within the current rendering scope/tile. This suits per-pixel operations (e.g., tone mapping or reading depth/previous color).
+
+3. *Bandwidth Reduction Measurements*: In real-world applications, this extension has been shown to reduce memory bandwidth for workloads that benefit from per-pixel local reads. The benefit is workload- and GPU-dependent.
+
+4. *Practical Example*: Consider a deferred rendering pipeline that needs to read G-buffer data at the same pixel for lighting. Without this extension, the G-buffer would need to be written to main memory and then read back for the lighting pass. With this extension, the lighting pass can read directly from the G-buffer in tile memory, saving bandwidth.
+
+==== Implementation
+
+To use this extension:
+
+[source,cpp]
+----
+// Enable the extension when creating the device
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME
+};
+
+// Create a pipeline that reads from attachments
+vk::PipelineRenderingCreateInfoKHR rendering_create_info;
+rendering_create_info.setColorAttachmentCount(1);
+rendering_create_info.setColorAttachmentFormats(color_format);
+rendering_create_info.setDepthAttachmentFormat(depth_format);
+
+// Set up the attachment local read info
+vk::AttachmentSampleCountInfoAMD sample_count_info;
+sample_count_info.setColorAttachmentSamples(vk::SampleCountFlagBits::e1);
+sample_count_info.setDepthStencilAttachmentSamples(vk::SampleCountFlagBits::e1);
+
+vk::RenderingAttachmentLocationInfoKHR location_info;
+location_info.setColorAttachmentLocations(0);  // Location 0 for the color attachment
+
+vk::RenderingInputAttachmentIndexInfoKHR input_index_info;
+input_index_info.setColorInputAttachmentIndices(0);  // Index 0 for the color attachment
+
+// Create the graphics pipeline
+vk::GraphicsPipelineCreateInfo pipeline_info;
+pipeline_info.setPNext(&rendering_create_info);
+// ... set other pipeline creation parameters
+
+// In your fragment shader, you can now read from the attachment
+// using subpassLoad() or texture sampling with the appropriate extension
+// Fragment shader example (GLSL):
+// #extension GL_EXT_shader_tile_image : require
+// layout(location = 0) out vec4 outColor;
+// layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput inputColor;
+// void main() {
+//     vec4 color = subpassLoad(inputColor);
+//     outColor = color * 2.0;  // Double the brightness
+// }
+----
+
+=== VK_EXT_shader_tile_image
+
+The `VK_EXT_shader_tile_image` extension provides direct access to tile memory in shaders, which can significantly improve performance on tile-based renderers.
+
+==== Overview
+
+This extension allows shaders to:
+
+1. *Access Tile Memory Directly*: Read and write to the current tile's memory without going through main memory.
+2. *Perform Tile-Local Operations*: Execute operations that stay entirely within the tile memory.
+3. *Optimize Bandwidth-Intensive Algorithms*: Particularly beneficial for post-processing effects.
+4. *Reduce Memory Bandwidth*: Helps lower memory bandwidth by keeping data in tile-local memory during multi-pass workloads.
+
+==== How It Reduces Memory Bandwidth
+
+The `VK_EXT_shader_tile_image` extension is particularly effective at reducing memory bandwidth for these reasons:
+
+1. *Tile-Based Architecture Optimization*: Mobile GPUs typically use tile-based rendering, where the screen is divided into small tiles that are processed independently. This extension takes full advantage of this architecture by allowing shaders to work directly with the tile data in fast on-chip memory.
+
+2. *Eliminates Intermediate Memory Transfers*: Without this extension, multi-pass rendering requires writing results to main memory after each pass and reading them back for the next pass. With `VK_EXT_shader_tile_image`, these intermediate results can stay in tile memory, eliminating these costly transfers.
+
+3. *Bandwidth Savings Measurements*: Testing on various mobile GPUs has shown meaningful bandwidth reductions for complex multi-pass pipelines; actual gains are workload- and GPU-dependent.
+
+4. *Practical Applications*:
+   - *Image Processing Filters*: Applying multiple filters (blur, sharpen, color correction) can be done without leaving tile memory.
+   - *Deferred Rendering*: G-buffer data can be kept in tile memory for the lighting pass.
+   - *Shadow Mapping*: Shadow calculations can be performed more efficiently by keeping depth information in tile memory.
+
+5. *Power Efficiency*: The reduction in memory bandwidth directly translates to lower power consumption, which is critical for mobile devices. Tests have shown up to 20% power savings for graphics-intensive applications.
+
+==== Implementation
+
+To use this extension:
+
+[source,cpp]
+----
+// Enable the extension when creating the device
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME
+};
+
+// When creating your shader module, make sure your shader uses the extension
+// GLSL example:
+// #extension GL_EXT_shader_tile_image : require
+//
+// layout(tile_image, set = 0, binding = 0) uniform tileImageColor { vec4 color; } tileColor;
+//
+// void main() {
+//     // Read from tile memory
+//     vec4 current_color = tileColor.color;
+//
+//     // Process the color
+//     vec4 new_color = process(current_color);
+//
+//     // Write back to tile memory
+//     tileColor.color = new_color;
+// }
+----
+
+=== Combining Extensions for Maximum Performance
+
+For the best mobile performance, consider using these extensions together:
+
+[source,cpp]
+----
+// Enable all relevant extensions
+std::vector<const char*> device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME,
+    VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME
+};
+
+// Check which extensions are supported
+auto available_extensions = physical_device.enumerateDeviceExtensionProperties();
+std::vector<const char*> supported_extensions;
+
+for (const auto& requested_ext : device_extensions) {
+    for (const auto& available_ext : available_extensions) {
+        if (strcmp(requested_ext, available_ext.extensionName) == 0) {
+            supported_extensions.push_back(requested_ext);
+            break;
+        }
+    }
+}
+
+// Create device with supported extensions
+vk::DeviceCreateInfo device_create_info;
+device_create_info.setPEnabledExtensionNames(supported_extensions);
+// ... set other device creation parameters
+vk::Device device = physical_device.createDevice(device_create_info);
+
+// Now you can use the supported extensions in your rendering code
+// ...
+----
+
+=== Device Extension Support
+
+Different mobile vendors and devices vary in which Vulkan extensions they expose. Understanding per-device support helps you pick features safely at runtime.
+
+==== Device Extension Support Details
+
+Different mobile GPU vendors have varying levels of support for Vulkan extensions:
+
+* *Dynamic Rendering Support*: Many mobile GPUs have optimized
+implementations of `VK_KHR_dynamic_rendering`. This can lead to significant performance improvements compared to traditional render passes, especially on tile-based renderers.
+
+* *Tile-Based Optimizations*: On tile-based GPUs (e.g., Mali, PowerVR), `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are effective because they keep reads and writes in tile memory. See the extension sections above for details; benefits are workload- and GPU-dependent.
+
+* *Checking for Extension Support (EXT/KHR) on the current device*:
+
+[source,cpp]
+----
+// Common vendor IDs (used here only for labeling/logging output)
+const uint32_t VENDOR_ID_QUALCOMM = 0x5143; // Adreno
+const uint32_t VENDOR_ID_ARM = 0x13B5;      // Mali
+const uint32_t VENDOR_ID_IMAGINATION = 0x1010; // PowerVR
+const uint32_t VENDOR_ID_HUAWEI = 0x19E5;   // Kirin
+const uint32_t VENDOR_ID_APPLE = 0x106B;    // Apple
+
+bool log_device_extension_support(vk::PhysicalDevice physical_device) {
+    vk::PhysicalDeviceProperties props = physical_device.getProperties();
+    std::string vendor_name;
+
+    // Identify vendor for display purposes only
+    switch (props.vendorID) {
+        case VENDOR_ID_QUALCOMM: vendor_name = "Qualcomm"; break;
+        case VENDOR_ID_ARM: vendor_name = "ARM Mali"; break;
+        case VENDOR_ID_IMAGINATION: vendor_name = "PowerVR"; break;
+        case VENDOR_ID_HUAWEI: vendor_name = "Huawei"; break;
+        case VENDOR_ID_APPLE: vendor_name = "Apple"; break;
+        default: vendor_name = "Unknown"; break;
+    }
+
+    // Check for widely useful EXT/KHR extensions on this device
+    auto available_extensions = physical_device.enumerateDeviceExtensionProperties();
+    bool has_dynamic_rendering = false;
+    bool has_dynamic_rendering_local_read = false;
+    bool has_shader_tile_image = false;
+
+    for (const auto& ext : available_extensions) {
+        std::string ext_name = ext.extensionName;
+        if (ext_name == VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) {
+            has_dynamic_rendering = true;
+        } else if (ext_name == VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME) {
+            has_dynamic_rendering_local_read = true;
+        } else if (ext_name == VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME) {
+            has_shader_tile_image = true;
+        }
+    }
+
+    // Log the extension support
+    std::cout << vendor_name << " device detected with extension support:" << std::endl;
+    std::cout << "  Dynamic Rendering: " << (has_dynamic_rendering ? "Yes" : "No") << std::endl;
+    std::cout << "  Dynamic Rendering Local Read: " << (has_dynamic_rendering_local_read ? "Yes" : "No") << std::endl;
+    std::cout << "  Shader Tile Image: " << (has_shader_tile_image ? "Yes" : "No") << std::endl;
+
+    return has_dynamic_rendering || has_dynamic_rendering_local_read || has_shader_tile_image;
+}
+----
+
+* *Platform-Specific Optimizations*: When developing for mobile devices,
+consider these optimizations:
+   - Prioritize the use of dynamic rendering over traditional render passes on tile-based renderers
+   - Use tile-based extensions whenever available
+   - Test different configurations to find the optimal settings for various device models
+
+=== Best Practices for Using Extensions
+
+1. *Check for Support*: Always check if an extension is supported before using it.
+
+2. *Fallback Paths*: Implement fallback paths for when extensions aren't available.
+
+3. *Test on Real Devices*: Extensions may behave differently across vendors and devices. Test on a variety of hardware from different manufacturers.
+
+4. *Stay Updated*: Keep track of new extensions that could benefit mobile performance, as mobile GPU vendors continue to enhance their Vulkan support.
+
+In the next section, we'll conclude our exploration of mobile development with a summary of key takeaways and best practices.
+
+link:04_rendering_approaches.adoc[Previous: Rendering Approaches] | link:06_conclusion.adoc[Next: Conclusion]

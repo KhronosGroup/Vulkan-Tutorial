@@ -267,13 +267,17 @@ Create a new function `updateUniformBuffer` and add a call to it from the `drawF
 void drawFrame() {
     ...
 
-    updateUniformBuffer(currentFrame);
+    updateUniformBuffer(frameIndex);
 
     ...
 
-    const vk::SubmitInfo submitInfo{ .waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore[currentFrame],
-                            .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffers[currentFrame],
-                            .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore[currentFrame] };
+		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+		                                  .pWaitSemaphores      = &*presentCompleteSemaphores[frameIndex],
+		                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+		                                  .commandBufferCount   = 1,
+		                                  .pCommandBuffers      = &*commandBuffers[frameIndex],
+		                                  .signalSemaphoreCount = 1,
+		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
 
     ...
 }

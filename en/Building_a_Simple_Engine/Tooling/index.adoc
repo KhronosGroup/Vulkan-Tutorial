@@ -1,0 +1,15 @@
+:pp: {plus}{plus}
+
+= Tooling
+
+This chapter covers essential tooling and techniques for developing, debugging, and distributing Vulkan applications, with a focus on using modern C++20 modules and the vk::raii namespace.
+
+* xref:01_introduction.adoc[Introduction]
+* xref:02_cicd.adoc[CI/CD for Vulkan Projects]
+* xref:03_debugging_and_renderdoc.adoc[Debugging with VK_KHR_debug_utils and RenderDoc]
+* xref:04_crash_minidump.adoc[Crash Handling and Minidumps]
+* xref:05_extensions.adoc[Vulkan Extensions for Robustness]
+* xref:06_packaging_and_distribution.adoc[Packaging and Distribution]
+* xref:07_conclusion.adoc[Conclusion]
+
+xref:../Subsystems/06_conclusion.adoc[Previous: Subsystems Conclusion] | link:../index.html[Back to Building a Simple Engine]

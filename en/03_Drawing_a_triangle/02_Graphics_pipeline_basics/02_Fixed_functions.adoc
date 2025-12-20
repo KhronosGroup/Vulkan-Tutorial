@@ -244,9 +244,9 @@ In our case, we only have one framebuffer:
 
 [,c++]
 ----
-vk::PipelineColorBlendAttachmentState colorBlendAttachment;
-colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-colorBlendAttachment.blendEnable = vk::False;
+vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+    .blendEnable    = vk::False,	    
+    .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 ----
 
 This per-framebuffer struct allows you to configure the first way of color blending.

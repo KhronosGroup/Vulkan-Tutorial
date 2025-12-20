@@ -10,7 +10,7 @@ We'll use this third coordinate to place a square over the current square to see
 
 == 3D geometry
 
-Change the `Vertex` struct to use a 3D vector for the position, and update the `format` in the corresponding `VkVertexInputAttributeDescription`:
+Change the `Vertex` struct to use a 3D vector for the position, and update the `format` in the corresponding `vk::VertexInputAttributeDescription`:
 
 [,c++]
 ----
@@ -23,9 +23,9 @@ struct Vertex {
 
     static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions() {
         return {
-            vk::VertexInputAttributeDescription( 0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos) ),
-            vk::VertexInputAttributeDescription( 1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color) ),
-            vk::VertexInputAttributeDescription( 2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord) )
+            vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos)),
+            vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)),
+            vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord))
         };
 
         ...
@@ -33,12 +33,14 @@ struct Vertex {
 };
 ----
 
-Next, update the vertex shader to accept and transform 3D coordinates as input.
-Remember to recompile it afterward!
+Next, update the vertex shader to accept and transform 3D coordinates as input by changing the type for `inPosition` from `float2` to `float3`:
 
 [,glsl]
 ----
-float3 inPosition;
+struct VSInput {
+    float3 inPosition;
+    ...
+};
 
 ...
 
@@ -51,6 +53,8 @@ VSOutput vertMain(VSInput input) {
     return output;
 }
 ----
+
+Remember to recompile the shader afterwards!
 
 Lastly, update the `vertices` container to include Z coordinates:
 
@@ -156,20 +160,20 @@ void createDepthResources() {
 Creating a depth image is fairly straightforward.
 It should have the same resolution as the color attachment, defined by the swap chain extent, an image usage appropriate for a depth attachment, optimal tiling and device local memory.
 The only question is: what is the right format for a depth image?
-The format must contain a depth component, indicated by `_D??_` in the `VK_FORMAT_`.
+The format must contain a depth component, indicated by `_D??_` in the `vk::Format`.
 
 Unlike the texture image, we don't necessarily need a specific format, because we won't be directly accessing the texels from the program.
 It just needs to have a reasonable accuracy, at least 24 bits is common in real-world applications.
 There are several formats that fit this requirement:
 
-* `VK_FORMAT_D32_SFLOAT`: 32-bit float for depth
-* `VK_FORMAT_D32_SFLOAT_S8_UINT`: 32-bit signed float for depth and 8 bit stencil component
-* `VK_FORMAT_D24_UNORM_S8_UINT`: 24-bit float for depth and 8 bit stencil component
+* `vk::Format::eD32Sfloat`: 32-bit float for depth
+* `vk::Format::eD32SfloatS8Uint`: 32-bit signed float for depth and 8 bit stencil component
+* `vk::Format::eD24UnormS8Uint`: 24-bit float for depth and 8 bit stencil component
 
 The stencil component is used for https://en.wikipedia.org/wiki/Stencil_buffer[stencil tests], which is an additional test that can be combined with depth testing.
 We'll look at this in a future chapter.
 
-We could simply go for the `VK_FORMAT_D32_SFLOAT` format, because support for it is extremely common (see the hardware database), but it's nice to add some extra flexibility to our application where possible.
+We could simply go for the `vk::Format::eD32Sfloat` format, because support for it is extremely common (see the hardware database), but it's nice to add some extra flexibility to our application where possible.
 We're going to write a function `findSupportedFormat` that takes a list of candidate formats in order from most desirable to least desirable, and checks which is the first one that is supported:
 
 [,c++]
@@ -180,7 +184,7 @@ vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::Im
 ----
 
 The support of a format depends on the tiling mode and usage, so we must also include these as parameters.
-The support of a format can be queried using the `vkGetPhysicalDeviceFormatProperties` function:
+The support of a format can be queried using the `physicalDevice.getFormatProperties` function:
 
 [,c++]
 ----
@@ -189,7 +193,7 @@ for (const auto format : candidates) {
 }
 ----
 
-The `VkFormatProperties` struct contains three fields:
+The `vk::FormatProperties` struct contains three fields:
 
 * `linearTilingFeatures`: Use cases that are supported with linear tiling
 * `optimalTilingFeatures`: Use cases that are supported with optimal tiling
@@ -240,7 +244,7 @@ VkFormat findDepthFormat() {
 }
 ----
 
-Make sure to use the `VK_FORMAT_FEATURE_` flag instead of `VK_IMAGE_USAGE_` in this case.
+Make sure to use the `vk::FormatFeatureFlagBits` instead of `vk::ImageUsageFlagBits` in this case.
 All of these candidate formats contain a depth component, but the latter two also contain a stencil component.
 We won't be using that yet, but we do need to take that into account when performing layout transitions on images with these formats.
 Add a simple helper function that tells us if the chosen depth format contains a stencil component:
@@ -267,13 +271,15 @@ createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, vk::Imag
 depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
 ----
 
-However, the `createImageView` function currently assumes that the subresource is always the `VK_IMAGE_ASPECT_COLOR_BIT`, so we will need to turn that field into a parameter:
+However, the `createImageView` function currently assumes that the subresource is always the `vk::ImageAspectFlagBits::eColor`, so we will need to turn that field into a parameter:
 
 [,c++]
 ----
 vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
     ...
-    viewInfo.subresourceRange.aspectMask = aspectFlags;
+    vk::ImageViewCreateInfo viewInfo{
+                ...
+                .subresourceRange = {aspectFlags, 0, 1, 0, 1}};
     ...
 }
 ----
@@ -290,168 +296,122 @@ textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::
 ----
 
 That's it for creating the depth image.
-We don't need to map it or copy another image to it, because we're going to clear it at the start of the render pass like the color attachment.
+We don't need to map it or copy another image to it, because we're going to clear it at the start of our command buffer like the color attachment.
 
-=== Explicitly transitioning the depth image
+== Command buffer
 
-We don't need to explicitly transition the layout of the image to a depth attachment because we'll take care of this in the render pass.
-However, for completeness, I'll still describe the process in this section.
-You may skip it if you like.
+=== Clear values
 
-Make a call to `transitionImageLayout` at the end of the `createDepthResources` function like so:
-
-[,c++]
-----
-transitionImageLayout(depthImage, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-----
-
-The undefined layout can be used as initial layout, because there are no existing depth image contents that matter.
-We need to update some logic in `transitionImageLayout` to use the right subresource aspect:
+Because we now have multiple attachments that will be cleared to `vk::AttachmentLoadOp::eClear` (color and depth), we also need to specify multiple clear values.
+Go to `recordCommandBuffer` and create and add an additional `vk::ClearValue` variable called `clearDepth`:
 
 [,c++]
 ----
-if (newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
-    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
-
-    if (hasStencilComponent(format)) {
-        barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-} else {
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-}
-----
-
-Although we're not using the stencil component, we do need to include it in the layout transitions of the depth image.
-
-Finally, add the correct access masks and pipeline stages:
-
-[,c++]
-----
-if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-} else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-} else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-} else {
-    throw std::invalid_argument("unsupported layout transition!");
-}
-----
-
-The depth buffer will be read from to perform depth tests to see if a fragment is visible, and will be written to when a new fragment is drawn.
-The reading happens in the `VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT` stage and the writing in the `VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT`.
-You should pick the earliest pipeline stage that matches the specified operations, so that it is ready for usage as depth attachment when it needs to be.
-
-== Render pass
-
-We're now going to modify `createRenderPass` to include a depth attachment.
-First specify the `VkAttachmentDescription`:
-
-[,c++]
-----
-vk::AttachmentDescription depthAttachment({}, findDepthFormat(), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-    vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-    vk::ImageLayout::eDepthStencilAttachmentOptimal);
-----
-
-The `format` should be the same as the depth image itself.
-This time we don't care about storing the depth data (`storeOp`), because it will not be used after drawing has finished.
-This may allow the hardware to perform additional optimizations.
-Just like the color buffer, we don't care about the previous depth contents, so we can use `VK_IMAGE_LAYOUT_UNDEFINED` as `initialLayout`.
-
-[,c++]
-----
-vk::AttachmentReference depthAttachmentRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
-----
-
-Add a reference to the attachment for the first (and only) subpass:
-
-[,c++]
-----
-vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, 0, {}, 1, &colorAttachmentRef, {}, &depthAttachmentRef);
-----
-
-Unlike color attachments, a subpass can only use a single depth (+stencil) attachment.
-It wouldn't really make any sense to do depth tests on multiple buffers.
-
-[,c++]
-----
- std::array attachments = {colorAttachment, depthAttachment};
- vk::RenderPassCreateInfo renderPassInfo({}, attachments, subpass, dependency);
-----
-
-Next, update the `VkSubpassDependency` struct to refer to both attachments.
-
-[,c++]
-----
-vk::SubpassDependency dependency(vk::SubpassExternal, {},
-                    vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eLateFragmentTests,
-                    vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                    vk::AccessFlagBits::eDepthStencilAttachmentWrite,
-                    vk::AccessFlagBits::eDepthStencilAttachmentWrite | vk::AccessFlagBits::eColorAttachmentWrite
-                    );
-----
-
-Finally, we need to extend our subpass dependencies to make sure that there is no conflict between the transitioning of the depth image and it being cleared as part of its load operation.
-The depth image is first accessed in the early fragment test pipeline stage and because we have a load operation that _clears_, we should specify the access mask for writes.
-
-== Framebuffer
-
-The next step is to modify the framebuffer creation to bind the depth image to the depth attachment.
-Go to `createFramebuffers` and specify the depth image view as second attachment:
-
-[,c++]
-----
-svk::ImageView attachments[] = { view, *depthImageView };
-vk::FramebufferCreateInfo framebufferCreateInfo( {}, *renderPass, attachments, swapChainExtent.width, swapChainExtent.height, 1 );
-----
-
-The color attachment differs for every swap chain image, but the same depth image can be used by all of them because only a single subpass is running at the same time due to our semaphores.
-
-You'll also need to move the call to `createFramebuffers` to make sure that it is called after the depth image view has actually been created:
-
-[,c++]
-----
-void initVulkan() {
-    ...
-    createDepthResources();
-    createFramebuffers();
-    ...
-}
-----
-
-== Clear values
-
-Because we now have multiple attachments with `VK_ATTACHMENT_LOAD_OP_CLEAR`, we also need to specify multiple clear values.
-Go to `recordCommandBuffer` and create an array of `VkClearValue` structs:
-
-[,c++]
-----
-vk::ClearValue clearColor[2] = { vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f), vk::ClearDepthStencilValue(1.0f, 0) };
-vk::RenderPassBeginInfo renderPassInfo( *renderPass, swapChainFramebuffers[imageIndex], {{0, 0}, swapChainExtent}, clearColor);
+vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
 ----
 
 The range of depths in the depth buffer is `0.0` to `1.0` in Vulkan, where `1.0` lies at the far view plane and `0.0` at the near view plane.
 The initial value at each point in the depth buffer should be the furthest possible depth, which is `1.0`.
 
-Note that the order of `clearValues` should be identical to the order of your attachments.
+=== Dynamic rendering
+
+Now that we have our depth image set up, we need to make use of it in `recordCommandBuffer`.
+This will be part of dynamic rendering and is similar to setting up our color output image.
+
+First specify a new rendering attachment for the depth image:
+
+[,c++]
+----
+vk::RenderingAttachmentInfo depthAttachmentInfo = {
+    .imageView   = depthImageView,
+    .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+    .loadOp      = vk::AttachmentLoadOp::eClear,
+    .storeOp     = vk::AttachmentStoreOp::eDontCare,
+    .clearValue  = clearDepth};
+----
+
+And add it to the dynamic rendering info structure:
+
+[,c++]
+----
+vk::RenderingInfo renderingInfo = {
+    ...
+    .pDepthAttachment     = &depthAttachmentInfo};
+----
+
+=== Explicitly transitioning the depth image
+
+Just like the color attachment, the depth attachment needs to be in the correct layout for the intended use case. For this we need to issue an additional barriers to ensure that the depth image can be used as a depth attachment during rendering.
+The depth image is first accessed in the early fragment test pipeline stage and because we have a load operation that _clears_, we should specify the access mask for writes.
+
+As we now deal with an additional image type (depth), first add a new argument to the `transition_image_layout` function for the image aspect:
+
+[,c++]
+----
+void transition_image_layout(
+    ...
+    vk::ImageAspectFlags    image_aspect_flags)
+{
+    vk::ImageMemoryBarrier2 barrier = {
+        ...
+        .subresourceRange    = {
+            .aspectMask     = image_aspect_flags,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1}};
+}
+----
+
+Now add new image layout transition at the start of the command buffer in `recordCommandBuffer`:
+
+[,c++]
+----
+commandBuffers[currentFrame].begin({});
+// Transition for the color attachment
+transition_image_layout(
+    ...
+    vk::ImageAspectFlagBits::eColor);
+// New transition for the depth image
+transition_image_layout(
+    *depthImage,
+    vk::ImageLayout::eUndefined,
+    vk::ImageLayout::eDepthAttachmentOptimal,
+    vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+    vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+    vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+    vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+    vk::ImageAspectFlagBits::eDepth);
+----
+
+Unlike as with the color image we don't need multiple barriers here. As we don't care for the contents of the depth attachment once the frame is finished, we can always translate from `k::ImageLayout::eUndefined`. What's special about this layout, is the fact that you can always use it as a source without having to care what happens before.
+
+Also make sure you adjust all other calls to the `transition_image_layout` function call to pass the correct image aspect:
+
+[,c++]
+----
+// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+transition_image_layout(
+    ...
+    // Also need to specify this for color images
+    vk::ImageAspectFlagBits::eColor);
+----
 
 == Depth and stencil state
 
 The depth attachment is ready to be used now, but depth testing still needs to be enabled in the graphics pipeline.
-It is configured through the `VkPipelineDepthStencilStateCreateInfo` struct:
+It is configured through the `PipelineDepthStencilStateCreateInfo` struct:
+
+[,c++]
+----
+vk::PipelineDepthStencilStateCreateInfo depthStencil{
+    .depthTestEnable       = vk::True,
+    .depthWriteEnable      = vk::True,
+    .depthCompareOp        = vk::CompareOp::eLess,
+    .depthBoundsTestEnable = vk::False,
+    .stencilTestEnable     = vk::False};
+----
 
 The `depthTestEnable` field specifies if the depth of new fragments should be compared to the depth buffer to see if they should be discarded.
 The `depthWriteEnable` field specifies if the new depth of fragments that pass the depth test should actually be written to the depth buffer.
@@ -466,8 +426,19 @@ We won't be using this functionality.
 The last three fields configure stencil buffer operations, which we also won't be using in this tutorial.
 If you want to use these operations, then you will have to make sure that the format of the depth/stencil image contains a stencil component.
 
-Update the `VkGraphicsPipelineCreateInfo` struct to reference the depth stencil state we just filled in.
-A depth stencil state must always be specified if the render pass contains a depth stencil attachment.
+A depth stencil state must always be specified if the dynamic rendering setup contains a depth stencil attachment:
+
+Update the `pipelineCreateInfoChain` structure chain to reference the depth stencil state we just filled in and also add a reference to the depth format we're using:
+
+[,c++]
+----
+vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+    {.stageCount          = 2,
+        ...
+        .pDepthStencilState  = &depthStencil,
+        ...
+    {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format, .depthAttachmentFormat = depthFormat}};
+----
 
 If you run your program now, then you should see that the fragments of the geometry are now correctly ordered:
 
@@ -487,14 +458,12 @@ void recreateSwapChain() {
         glfwWaitEvents();
     }
 
-    vkDeviceWaitIdle(device);
+    device.waitIdle(device);
 
     cleanupSwapChain();
-
     createSwapChain();
     createImageViews();
     createDepthResources();
-    createFramebuffers();
 }
 ----
 

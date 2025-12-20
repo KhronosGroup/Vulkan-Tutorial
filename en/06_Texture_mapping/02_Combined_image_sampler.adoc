@@ -58,8 +58,8 @@ Go to the `createDescriptorSets` function.
 [,c++]
 ----
 for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vk::DescriptorBufferInfo bufferInfo(uniformBuffers[i], 0, sizeof(UniformBufferObject));
-    vk::DescriptorImageInfo imageInfo( textureSampler, textureImageView, vk::ImageLayout::eShaderReadOnlyOptimal );
+    vk::DescriptorBufferInfo bufferInfo{ .buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject) };
+    vk::DescriptorImageInfo imageInfo{ .sampler = textureSampler, .imageView = textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
     ...
 }
@@ -71,8 +71,10 @@ This is where the objects from the previous chapter come together.
 [,c++]
 ----
 std::array descriptorWrites{
-    vk::WriteDescriptorSet( descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufferInfo ),
-    vk::WriteDescriptorSet( descriptorSets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &imageInfo)
+    vk::WriteDescriptorSet{ .dstSet = descriptorSets[i], .dstBinding = 0, .dstArrayElement = 0, .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo },
+    vk::WriteDescriptorSet{ .dstSet = descriptorSets[i], .dstBinding = 1, .dstArrayElement = 0, .descriptorCount = 1, 
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo }
 };
 device.updateDescriptorSets(descriptorWrites, {});
 ----
@@ -223,7 +225,7 @@ You can also manipulate the texture colors using the vertex colors:
 ----
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
-   return vec4(vertIn.fragColor * texture.Sample(vertIn.fragTexCoord).rgb, 1.0);
+   return float4(vertIn.fragColor * texture.Sample(vertIn.fragTexCoord).rgb, 1.0);
 }
 ----
 

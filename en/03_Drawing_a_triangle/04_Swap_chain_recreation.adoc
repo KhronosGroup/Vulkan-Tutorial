@@ -87,7 +87,7 @@ Usually happens after a window resize.
 
 [,c++]
 ----
-auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphores[currentFrame], nullptr );
+auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr );
 
 if (result == vk::Result::eErrorOutOfDateKHR) {
     recreateSwapChain();
@@ -108,17 +108,48 @@ Both `VK_SUCCESS` and `VK_SUBOPTIMAL_KHR` are considered "success" return codes.
 ----
 result = presentQueue.presentKHR( presentInfoKHR );
 if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
-    framebufferResized = false;
     recreateSwapChain();
 } else if (result != vk::Result::eSuccess) {
     throw std::runtime_error("failed to present swap chain image!");
 }
 
-currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 ----
 
 The `vkQueuePresentKHR` function returns the same values with the same meaning.
 In this case, we will also recreate the swap chain if it is suboptimal, because we want the best possible result.
+
+[,c++]
+----
+try
+{
+    const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
+    result = queue.presentKHR(presentInfoKHR);
+    if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
+    {
+        framebufferResized = false;
+        recreateSwapChain();
+    }
+    else if (result != vk::Result::eSuccess)
+    {
+        throw std::runtime_error("failed to present swap chain image!");
+    }
+}
+catch (const vk::SystemError &e)
+{
+    if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR))
+    {
+        recreateSwapChain();
+        return;
+    }
+    else
+    {
+        throw;
+    }
+}
+----
+
+Recent versions of Vulkan-hpp throw exceptions on unsuccessful return codes. To handle exceptions thrown by `vkQueuePresentKHR`, catch `vk::SystemError` and check the error code as shown above.
 
 == Fixing a deadlock
 
@@ -136,10 +167,10 @@ The beginning of `drawFrame` should now look like this:
 
 [,c++]
 ----
-vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+vkWaitForFences(device, 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
 uint32_t imageIndex;
-VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
 
 if (result == VK_ERROR_OUT_OF_DATE_KHR) {
     recreateSwapChain();
@@ -149,7 +180,7 @@ if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 }
 
 // Only reset the fence if we are submitting work
-vkResetFences(device, 1, &inFlightFences[currentFrame]);
+vkResetFences(device, 1, &inFlightFences[frameIndex]);
 ----
 
 == Handling resizes explicitly
@@ -169,7 +200,7 @@ The `drawFrame` function should then be modified to also check for this flag:
 
 [,c++]
 ----
-if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
+if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
     framebufferResized = false;
     recreateSwapChain();
 } else if (result != vk::Result::eSuccess) {

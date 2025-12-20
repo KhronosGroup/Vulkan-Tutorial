@@ -13,3 +13,22 @@ convert.py
 
 **/build/*
 **/vcpkg_installed/*
+attachments/build/**
+attachments/android/.gradle/**
+attachments/android/.idea
+attachments/android/.gradle/**
+attachments/android/app/.cxx/**
+attachments/android/app/build/**
+local.properties
+
+attachments/simple_engine/build/**
+attachments/simple_engine/Assets/**
+attachments/simple_engine/android/.gradle/**
+attachments/simple_engine/android/.idea
+attachments/simple_engine/android/.gradle/**
+attachments/simple_engine/android/app/.cxx/**
+attachments/simple_engine/android/app/build/**
+attachments/simple_engine/android/app/build/**
+attachments/simple_engine/android/gradle/wrapper/**
+attachments/simple_engine/android/gradlew
+attachments/simple_engine/android/gradlew.bat

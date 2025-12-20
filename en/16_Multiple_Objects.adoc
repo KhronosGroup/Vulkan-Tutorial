@@ -257,7 +257,7 @@ void updateUniformBuffers() {
         };
 
         // Copy the UBO data to the mapped memory
-        memcpy(gameObject.uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+        memcpy(gameObject.uniformBuffersMapped[frameIndex], &ubo, sizeof(ubo));
     }
 }
 ----
@@ -274,22 +274,22 @@ void recordCommandBuffer(uint32_t imageIndex) {
     // ... (beginning of the method remains the same)
 
     // Bind vertex and index buffers (shared by all objects)
-    commandBuffers[currentFrame].bindVertexBuffers(0, *vertexBuffer, {0});
-    commandBuffers[currentFrame].bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
+    commandBuffers[frameIndex].bindVertexBuffers(0, *vertexBuffer, {0});
+    commandBuffers[frameIndex].bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
 
     // Draw each object with its own descriptor set
     for (const auto& gameObject : gameObjects) {
         // Bind the descriptor set for this object
-        commandBuffers[currentFrame].bindDescriptorSets(
+        commandBuffers[frameIndex].bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics,
             *pipelineLayout,
             0,
-            *gameObject.descriptorSets[currentFrame],
+            *gameObject.descriptorSets[frameIndex],
             nullptr
         );
 
         // Draw the object
-        commandBuffers[currentFrame].drawIndexed(indices.size(), 1, 0, 0, 0);
+        commandBuffers[frameIndex].drawIndexed(indices.size(), 1, 0, 0, 0);
     }
 
     // ... (end of the method remains the same)

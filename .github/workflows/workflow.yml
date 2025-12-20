@@ -97,10 +97,13 @@ jobs:
 
               tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
 
-              echo "VULKAN_SDK=$PWD/$VULKAN_VERSION/x86_64" >> $GITHUB_ENV
-              echo "PATH=$PWD/$VULKAN_VERSION/x86_64/bin:$PATH" >> $GITHUB_ENV
-              echo "LD_LIBRARY_PATH=$PWD/$VULKAN_VERSION/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-              echo "VK_LAYER_PATH=$PWD/$VULKAN_VERSION/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
+              # Create/refresh a stable symlink to the latest SDK to avoid version-pinned paths in caches
+              ln -sfn "$PWD/$VULKAN_VERSION" "$PWD/latest"
+
+              echo "VULKAN_SDK=$PWD/latest/x86_64" >> $GITHUB_ENV
+              echo "PATH=$PWD/latest/x86_64/bin:$PATH" >> $GITHUB_ENV
+              echo "LD_LIBRARY_PATH=$PWD/latest/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+              echo "VK_LAYER_PATH=$PWD/latest/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
 
               cd ..
             deps-install: |
@@ -154,7 +157,14 @@ jobs:
 
               $vulkanPath = ""
               if (Test-Path "C:\VulkanSDK") {
-                $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+                # Prefer the 'Latest' junction if present, else pick the highest version folder
+                if (Test-Path "C:\VulkanSDK\Latest") {
+                  $vulkanPath = "C:\VulkanSDK\Latest"
+                } elseif (Test-Path "C:\VulkanSDK\latest") {
+                  $vulkanPath = "C:\VulkanSDK\latest"
+                } else {
+                  $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Where-Object { $_.PSIsContainer } | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+                }
               }
               if (-not $vulkanPath) {
                 if (Test-Path "C:\VulkanSDK\latest") {
@@ -356,24 +366,20 @@ jobs:
 
       - name: Cache build artifacts (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v3
-        with:
-          path: |
-            ${{github.workspace}}/attachments/build
-          key: ${{ runner.os }}-build-msvc-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.hpp') }}
-          restore-keys: |
-            ${{ runner.os }}-build-msvc-${{ hashFiles('**/CMakeLists.txt', 'scripts/install_dependencies_windows.bat') }}-
-            ${{ runner.os }}-build-msvc-${{ hashFiles('**/CMakeLists.txt') }}-
-            ${{ runner.os }}-build-msvc-
+        run: echo "Skipping build directory caching to avoid stale SDK paths"
 
       - name: Configure CMake with MSVC (Windows)
         working-directory: ${{github.workspace}}/attachments
         if: runner.os == 'Windows'
         run: |
+          # Ensure we always start from a clean configure to avoid stale paths
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+
           cmake -B build -DCMAKE_BUILD_TYPE=Release `
             -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
             -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
             -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK" `
+            -DCMAKE_PROGRAM_PATH="$env:VULKAN_SDK\Bin" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
@@ -398,13 +404,7 @@ jobs:
 
       - name: Cache build artifacts (Ubuntu)
         if: runner.os == 'Linux'
-        uses: actions/cache@v3
-        with:
-          path: ${{github.workspace}}/attachments/build
-          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/*.cpp') }}-${{ hashFiles('**/*.h') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt') }}-
-            ${{ runner.os }}-build-
+        run: echo "Skipping build directory caching to avoid stale SDK paths"
 
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/attachments
@@ -412,6 +412,9 @@ jobs:
         run: |
           export CC="clang"
           export CXX="clang++"
+
+          # Ensure we always start from a clean configure to avoid stale paths
+          rm -rf build
 
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_SCAN_FOR_MODULES=ON \

@@ -1,0 +1,786 @@
+= PBR Lighting Implementation
+
+In this section, we'll implement a Physically Based Rendering (PBR) shader based on the concepts we've explored in the previous sections. This shader will use the metallic-roughness workflow that's compatible with glTF models and push constants for material properties. We'll examine the shader implementation and then discuss how to integrate it with our engine.
+
+== Implementing the PBR Shader
+
+Let's create a PBR shader, which we'll name `pbr.slang`. This shader implements the metallic-roughness workflow that we've discussed, making it compatible with glTF models. It uses push constants for material properties and uniform buffers for transformation matrices and light information.
+
+We'll break this shader into three distinct sections to better understand its architecture:
+
+=== Section 1: Shader Setup Code - CPU-GPU Communication
+
+This section establishes the communication interface between the CPU application and GPU shader. It defines the data structures and bindings that allow the CPU to pass information to the GPU efficiently.
+
+[source,slang]
+----
+// Combined vertex and fragment shader for PBR rendering
+
+// Input from vertex buffer - Data sent per vertex from CPU
+struct VSInput {
+    float3 Position : POSITION;     // 3D position in model space
+    float3 Normal : NORMAL;         // Surface normal for lighting calculations
+    float2 UV : TEXCOORD0;          // Texture coordinates for material sampling
+    float4 Tangent : TANGENT;       // Tangent vector for normal mapping (w component = handedness)
+};
+
+// Output from vertex shader / Input to fragment shader - Interpolated data
+struct VSOutput {
+    float4 Position : SV_POSITION; // Required clip space position for rasterization
+    float3 WorldPos : POSITION;    // World space position for lighting calculations
+    float3 Normal : NORMAL;        // World space normal (interpolated)
+    float2 UV : TEXCOORD0;         // Texture coordinates (interpolated)
+    float4 Tangent : TANGENT;      // World space tangent (interpolated)
+};
+
+// Uniform buffer - Global data shared across all vertices/fragments
+struct UniformBufferObject {
+    float4x4 model;                     // Model-to-world transformation matrix
+    float4x4 view;                      // World-to-camera transformation matrix
+    float4x4 proj;                      // Camera-to-clip space projection matrix
+    float4 lightPositions[4];           // Light positions in world space
+    float4 lightColors[4];              // Light intensities and colors
+    float4 camPos;                      // Camera position for view-dependent effects
+    float exposure;                     // HDR exposure control
+    float gamma;                        // Gamma correction value (typically 2.2)
+    float prefilteredCubeMipLevels;     // IBL prefiltered environment map mip levels
+    float scaleIBLAmbient;              // IBL ambient contribution scale
+};
+
+// Push constants - Fast, small data updated frequently per material/object
+struct PushConstants {
+    float4 baseColorFactor;             // Base color tint/multiplier
+    float metallicFactor;               // Metallic property multiplier
+    float roughnessFactor;              // Surface roughness multiplier
+    int baseColorTextureSet;            // Texture binding index for base color (-1 = none)
+    int physicalDescriptorTextureSet;   // Texture binding for metallic/roughness
+    int normalTextureSet;               // Texture binding for normal maps
+    int occlusionTextureSet;            // Texture binding for ambient occlusion
+    int emissiveTextureSet;             // Texture binding for emissive maps
+    float alphaMask;                    // Alpha masking enable flag
+    float alphaMaskCutoff;              // Alpha cutoff threshold
+};
+
+// Mathematical constants
+static const float PI = 3.14159265359;
+
+// Resource bindings - Connect CPU resources to GPU shader registers
+[[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
+[[vk::binding(1, 0)]] Texture2D baseColorMap;
+[[vk::binding(1, 0)]] SamplerState baseColorSampler;
+[[vk::binding(2, 0)]] Texture2D metallicRoughnessMap;
+[[vk::binding(2, 0)]] SamplerState metallicRoughnessSampler;
+[[vk::binding(3, 0)]] Texture2D normalMap;
+[[vk::binding(3, 0)]] SamplerState normalSampler;
+[[vk::binding(4, 0)]] Texture2D occlusionMap;
+[[vk::binding(4, 0)]] SamplerState occlusionSampler;
+[[vk::binding(5, 0)]] Texture2D emissiveMap;
+[[vk::binding(5, 0)]] SamplerState emissiveSampler;
+
+[[vk::push_constant]] PushConstants material;
+----
+
+**Key Concepts Explained:**
+
+The vertex input layout defines how vertex data is structured in GPU memory, with semantic annotations like POSITION and NORMAL telling the GPU how to interpret each data component. This structured approach allows the graphics pipeline to efficiently process vertex attributes and pass them through the rendering stages.
+
+When it comes to data management, we use two primary mechanisms: uniform buffers and push constants. Uniform buffers are larger, read-only memory blocks that efficiently store data shared across many draw calls, making them perfect for transformation matrices and lighting information that remain constant across multiple objects. Push constants, on the other hand, are smaller (typically limited to 128 bytes or less) but much faster for frequently changing per-object data like material properties, making them ideal for our material system.
+
+The resource binding syntax using `pass:[[[vk::binding(x, y)]]]` creates the essential link between CPU resources and GPU shader registers. The first number represents the binding index, while the second specifies the descriptor set, allowing us to organize and efficiently access textures, samplers, and other resources from within our shaders.
+
+Finally, the interpolation system works seamlessly in the background, where data in our `VSOutput` structure gets automatically interpolated across triangle surfaces by the GPU's rasterization hardware, ensuring smooth transitions of attributes like normals and texture coordinates across the rendered surface.
+
+=== Section 2: Helper Functions - PBR Mathematics
+
+This section contains the mathematical foundation of Physically Based Rendering. These functions implement the Cook-Torrance microfacet BRDF model, which approximates how light interacts with real-world materials at a microscopic level.
+
+[source,slang]
+----
+// Normal Distribution Function (D) - GGX/Trowbridge-Reitz Distribution
+// Describes the statistical distribution of microfacet orientations
+float DistributionGGX(float NdotH, float roughness) {
+    float a = roughness * roughness;        // Remapping for more perceptual linearity
+    float a2 = a * a;
+    float NdotH2 = NdotH * NdotH;
+
+    float nom = a2;                         // Numerator: concentration factor
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;             // Normalization factor
+
+    return nom / denom;                     // Normalized distribution
+}
+
+// Geometry Function (G) - Smith's method with Schlick-GGX approximation
+// Models self-shadowing and masking between microfacets
+float GeometrySmith(float NdotV, float NdotL, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;               // Direct lighting remapping
+
+    // Geometry obstruction from view direction (masking)
+    float ggx1 = NdotV / (NdotV * (1.0 - k) + k);
+    // Geometry obstruction from light direction (shadowing)
+    float ggx2 = NdotL / (NdotL * (1.0 - k) + k);
+
+    return ggx1 * ggx2;                     // Combined masking-shadowing
+}
+
+// Fresnel Reflectance (F) - Schlick's approximation
+// Models how reflectance changes with viewing angle
+float3 FresnelSchlick(float cosTheta, float3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+----
+
+**Mathematical Concepts & References:**
+
+The foundation of our PBR implementation rests on microfacet theory, which recognizes that real surfaces consist of countless microscopic facets with varying orientations. Rather than trying to model each individual facet, the BRDF statistically represents their collective behavior, allowing us to achieve realistic lighting without the computational complexity of simulating every surface detail. This approach was thoroughly explored in Walter et al.'s seminal 2007 paper "Microfacet Models for Refraction through Rough Surfaces," which you can find at link:https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf[their comprehensive BSDF documentation].
+
+Our choice of the GGX distribution function, also known as Trowbridge-Reitz, stems from its ability to produce realistic highlight shapes with longer tails compared to older models like Blinn-Phong. This distribution function has become the standard in modern real-time rendering because it closely matches measured material data and provides the natural falloff that we observe in real-world materials. Eric Heitz's 2014 work "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs" provides deep insights into why this distribution works so well in practice.
+
+The Smith geometry function plays a crucial role by accounting for the statistical correlation between masking (when the viewer can't see a microfacet) and shadowing (when light can't reach a microfacet). This might seem like a technical detail, but it prevents energy gain at grazing angles where naive models become unrealistically bright, ensuring our materials look believable under all viewing conditions.
+
+The Fresnel effect captures a phenomenon we see every day: materials become more reflective at grazing angles, like water appearing mirror-like when viewed from the side. Schlick's approximation gives us this essential behavior while trading some accuracy for the performance we need in real-time applications. The F0 parameter represents reflectance at normal incidence (0° viewing angle), allowing us to control how reflective different materials appear when viewed head-on.
+
+Finally, energy conservation ensures that the sum of reflected and transmitted light never exceeds the incident light, maintaining physical plausibility. This principle guides how we balance diffuse and specular components, ensuring our materials look consistent and believable under varying lighting conditions.
+
+**Further Reading:**
+
+For deeper exploration of these concepts, "Real-Time Rendering, 4th Edition" Chapter 9 on Physically Based Shading provides comprehensive coverage of the theory and practice. The online "PBR Book" by Pharr, Jakob, and Humphreys at https://pbr-book.org/ offers an exhaustive mathematical treatment of physically based rendering. For practical implementation insights, Epic Games' "Real Shading in Unreal Engine 4" presentation from the link:https://blog.selfshadow.com/publications/s2013-shading-course/[2013 Shading Course] demonstrates how these concepts translate into production-ready code.
+
+=== Section 3: Vertex and Fragment Shader Main Bodies
+
+This section contains the actual shader entry points that execute for each vertex and fragment (pixel). The vertex shader transforms geometry, while the fragment shader implements the full PBR lighting model.
+
+[source,slang]
+----
+// Vertex shader entry point - Executes once per vertex
+[[shader("vertex")]]
+VSOutput VSMain(VSInput input)
+{
+    VSOutput output;
+
+    // Transform vertex position through the rendering pipeline
+    // Model -> World -> Camera -> Clip space transformation chain
+    float4 worldPos = mul(ubo.model, float4(input.Position, 1.0));
+    output.Position = mul(ubo.proj, mul(ubo.view, worldPos));
+
+    // Pass world position for fragment lighting calculations
+    // Fragment shader needs world space position to calculate light vectors
+    output.WorldPos = worldPos.xyz;
+
+    // Transform normal from model space to world space
+    // Use only rotation/scale part of model matrix (upper-left 3x3)
+    // Normalize to ensure unit length after transformation
+    output.Normal = normalize(mul((float3x3)ubo.model, input.Normal));
+
+    // Pass through texture coordinates unchanged
+    // UV coordinates are typically in [0,1] range and don't need transformation
+    output.UV = input.UV;
+
+    // Pass tangent vector for normal mapping
+    // Will be used in fragment shader to construct tangent-space basis
+    output.Tangent = input.Tangent;
+
+    return output;
+}
+
+// Fragment shader entry point - Executes once per pixel
+[[shader("fragment")]]
+float4 PSMain(VSOutput input) : SV_TARGET
+{
+    // === MATERIAL PROPERTY SAMPLING ===
+    // Sample base color texture and apply material color factor
+    float4 baseColor = baseColorMap.Sample(baseColorSampler, input.UV) * material.baseColorFactor;
+
+    // Sample metallic-roughness texture (metallic=B channel, roughness=G channel)
+    // glTF standard: metallic stored in blue, roughness in green
+    float2 metallicRoughness = metallicRoughnessMap.Sample(metallicRoughnessSampler, input.UV).bg;
+    float metallic = metallicRoughness.x * material.metallicFactor;
+    float roughness = metallicRoughness.y * material.roughnessFactor;
+
+    // Sample ambient occlusion (typically stored in red channel)
+    float ao = occlusionMap.Sample(occlusionSampler, input.UV).r;
+
+    // Sample emissive texture for self-illuminating materials
+    float3 emissive = emissiveMap.Sample(emissiveSampler, input.UV).rgb;
+
+    // === NORMAL CALCULATION ===
+    // Start with interpolated surface normal
+    float3 N = normalize(input.Normal);
+
+    // Apply normal mapping if texture is available
+    if (material.normalTextureSet >= 0) {
+        // Sample normal map and convert from [0,1] to [-1,1] range
+        float3 tangentNormal = normalMap.Sample(normalSampler, input.UV).xyz * 2.0 - 1.0;
+
+        // Construct tangent-space to world-space transformation matrix (TBN)
+        float3 T = normalize(input.Tangent.xyz);              // Tangent
+        float3 B = normalize(cross(N, T)) * input.Tangent.w;  // Bitangent (w = handedness)
+        float3x3 TBN = float3x3(T, B, N);                     // Tangent-Bitangent-Normal matrix
+
+        // Transform normal from tangent space to world space
+        N = normalize(mul(tangentNormal, TBN));
+    }
+
+    // === LIGHTING SETUP ===
+    // Calculate view direction (camera to fragment)
+    float3 V = normalize(ubo.camPos.xyz - input.WorldPos);
+
+    // Calculate reflection vector for environment mapping
+    float3 R = reflect(-V, N);
+
+    // === PBR MATERIAL SETUP ===
+    // Calculate F0 (reflectance at normal incidence)
+    // Non-metals: low reflectance (~0.04), Metals: colored reflectance from base color
+    float3 F0 = float3(0.04, 0.04, 0.04);  // Dielectric default
+    F0 = lerp(F0, baseColor.rgb, metallic); // Lerp to metallic behavior
+
+    // Initialize outgoing radiance accumulator
+    float3 Lo = float3(0.0, 0.0, 0.0);
+
+    // === DIRECT LIGHTING LOOP ===
+    // Calculate contribution from each light source
+    for (int i = 0; i < 4; i++) {
+        float3 lightPos = ubo.lightPositions[i].xyz;
+        float3 lightColor = ubo.lightColors[i].rgb;
+
+        // Calculate light direction and attenuation
+        float3 L = normalize(lightPos - input.WorldPos);      // Light direction
+        float distance = length(lightPos - input.WorldPos);   // Distance for falloff
+        float attenuation = 1.0 / (distance * distance);     // Inverse square falloff
+        float3 radiance = lightColor * attenuation;           // Attenuated light color
+
+        // Calculate half vector (between view and light directions)
+        float3 H = normalize(V + L);
+
+        // === BRDF EVALUATION ===
+        // Calculate all necessary dot products for BRDF terms
+        float NdotL = max(dot(N, L), 0.0);  // Lambertian falloff
+        float NdotV = max(dot(N, V), 0.0);  // View angle
+        float NdotH = max(dot(N, H), 0.0);  // Half vector for specular
+        float HdotV = max(dot(H, V), 0.0);  // For Fresnel calculation
+
+        // Evaluate Cook-Torrance BRDF components
+        float D = DistributionGGX(NdotH, roughness);    // Normal distribution
+        float G = GeometrySmith(NdotV, NdotL, roughness); // Geometry function
+        float3 F = FresnelSchlick(HdotV, F0);           // Fresnel reflectance
+
+        // Calculate specular BRDF
+        float3 numerator = D * G * F;
+        float denominator = 4.0 * NdotV * NdotL + 0.0001; // Prevent division by zero
+        float3 specular = numerator / denominator;
+
+        // === ENERGY CONSERVATION ===
+        // Fresnel term represents specular reflection ratio
+        float3 kS = F;                          // Specular contribution
+        float3 kD = float3(1.0, 1.0, 1.0) - kS; // Diffuse contribution (energy conservation)
+        kD *= 1.0 - metallic;                   // Metals have no diffuse reflection
+
+        // === RADIANCE ACCUMULATION ===
+        // Combine diffuse (Lambertian) and specular (Cook-Torrance) terms
+        // Multiply by incident radiance and cosine foreshortening
+        Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
+    }
+
+    // === AMBIENT AND EMISSIVE ===
+    // Add simple ambient lighting (should be replaced with IBL in production)
+    float3 ambient = float3(0.03, 0.03, 0.03) * baseColor.rgb * ao;
+
+    // Combine all lighting contributions
+    float3 color = ambient + Lo + emissive;
+
+    // === HDR TONE MAPPING AND GAMMA CORRECTION ===
+    // Apply Reinhard tone mapping to compress HDR values to [0,1] range
+    color = color / (color + float3(1.0, 1.0, 1.0));
+
+    // Apply gamma correction for sRGB display (inverse gamma)
+    color = pow(color, float3(1.0 / ubo.gamma, 1.0 / ubo.gamma, 1.0 / ubo.gamma));
+
+    // Output final color with original alpha
+    return float4(color, baseColor.a);
+}
+----
+
+**Vertex Shader Objectives:**
+
+The vertex shader serves as the first stage of our rendering pipeline, with its primary responsibility being geometric transformation. It converts vertex positions through the standard MVP (Model-View-Projection) matrix pipeline, systematically transforming coordinates from model space to world space, then to camera space, and finally to clip space in preparation for rasterization. This transformation chain ensures that our 3D geometry appears correctly positioned and projected for the viewer.
+
+Beyond basic transformation, the vertex shader handles crucial attribute processing by transforming normals from model space to world space and passing through texture coordinates and tangent vectors that the fragment shader will need. This attribute processing ensures that lighting calculations in the fragment shader receive properly transformed surface information, while texture coordinates and tangent vectors maintain their relationships for accurate material sampling and normal mapping.
+
+The vertex shader also performs essential data preparation by setting up interpolated values that the fragment shader requires for lighting calculations. These interpolated values, such as world positions and transformed normals, get automatically interpolated across triangle surfaces by the GPU's rasterization hardware, providing smooth transitions that enable realistic per-pixel lighting in the subsequent fragment stage.
+
+**Fragment Shader Objectives:**
+
+The fragment shader represents the heart of our PBR implementation, beginning with comprehensive material sampling that extracts surface properties like color, roughness, and metallic values from texture maps. This sampling process reads multiple texture channels according to the glTF standard, combining texture data with material parameters passed through push constants to determine the final surface characteristics for each pixel.
+
+Normal mapping reconstruction forms another critical objective, where the fragment shader takes encoded normal information from normal maps and reconstructs detailed surface normals that simulate fine geometric detail without requiring additional geometry. This process involves sampling the normal map, transforming the values from texture space to world space using the tangent-bitangent-normal matrix, and applying the resulting detailed normals to lighting calculations.
+
+The core PBR lighting implementation brings together all these elements using the Cook-Torrance microfacet model with proper energy conservation. This involves evaluating the distribution, geometry, and Fresnel terms of the BRDF, carefully balancing diffuse and specular contributions to ensure physically plausible results across all viewing angles and material types.
+
+Finally, post-processing operations convert the HDR linear lighting results into display-appropriate sRGB values through tone mapping and gamma correction. This final stage compresses the high dynamic range values generated by realistic lighting calculations into the limited range that displays can show, while maintaining visual fidelity and preventing the harsh clipping that would otherwise occur with bright highlights.
+
+**Key Implementation Details:**
+
+Our implementation carefully follows established conventions and best practices to ensure compatibility and visual quality. We adhere to the glTF texture channel convention where metallic information uses the blue channel and roughness uses the green channel, enabling seamless integration with standard 3D authoring tools and asset pipelines. This convention ensures that materials created in external tools will render correctly without requiring texture channel remapping or custom import procedures.
+
+Energy conservation remains paramount throughout our implementation, with careful attention paid to ensuring that diffuse plus specular contributions never exceed unity through the kS/kD relationship. This physical constraint prevents materials from appearing to emit more light than they receive, maintaining believable appearance across different lighting conditions and viewing angles while avoiding the artificial brightness that can plague non-physically-based approaches.
+
+Numerical stability considerations appear throughout the implementation, with small epsilon values added to prevent division by zero in BRDF calculations and careful handling of edge cases where mathematical operations might produce undefined results. These seemingly minor details prove crucial for robust rendering that handles extreme material parameters and unusual viewing angles without producing artifacts or rendering failures.
+
+The HDR pipeline architecture ensures that all lighting calculations occur in linear space, preserving the full dynamic range of realistic lighting throughout the computation stages and only applying gamma correction at the final output stage. This approach maintains maximum precision and accuracy in the lighting calculations while ensuring that the final image appears correct on standard sRGB displays.
+
+This shader implements the PBR lighting model with the metallic-roughness workflow, but the goal here is not just to show "what" the code does — it's to explain "why" each piece exists.
+
+== Understanding the "Why" behind the shader
+
+=== Why these BRDF terms (D, G, F)
+
+The Normal Distribution Function (D) serves as the statistical heart of our microfacet model, determining how many surface microfacets are oriented to reflect light directly toward the viewer. This function explains why rough surfaces produce broader, dimmer highlights while smooth surfaces create tight, bright reflections. We chose the GGX distribution because it matches measured material data remarkably well and produces the natural long tails in highlights that we observe in real-world materials, avoiding the artificial cutoff that plagued older distribution functions like Blinn-Phong.
+
+The Geometry function (G) addresses a crucial physical reality: microfacets cast shadows on each other and can be hidden from view depending on the surface roughness and viewing angle. Without proper geometric consideration, highlights become unrealistically bright as roughness increases because we'd be ignoring the natural self-shadowing and masking that occurs on rough surfaces. Smith's approach with our roughness-derived k parameter provides an efficient yet physically plausible solution that maintains energy conservation across all viewing conditions.
+
+Fresnel reflectance (F) captures one of the most fundamental optical phenomena we encounter daily: surfaces become more reflective at grazing angles, just as you can see your reflection clearly in water when looking across its surface but hardly at all when looking straight down. Schlick's approximation gives us this essential angle-dependent behavior with minimal computational cost, while the F0 parameter allows us to control how reflective materials appear when viewed head-on, distinguishing between different material types.
+
+Energy conservation ties these components together by ensuring that the sum of reflected light never exceeds the incident light, maintaining physical plausibility. When more light reflects specularly (kS), correspondingly less can reflect diffusely (kD = 1 - kS), creating the natural balance that keeps materials looking believable across different lighting conditions and viewing angles while preventing the artificial brightness that can make rendered scenes look unrealistic.
+
+=== Why the metallic-roughness
+
+The metallic-roughness workflow has become the industry standard primarily due to its adoption by the glTF specification, which standardizes this approach with metallic information stored in the blue channel and roughness in the green channel by convention. This standardization creates a seamless ecosystem where assets created in any glTF-compliant tool will render consistently across different engines and applications, eliminating the texture channel confusion that plagued earlier workflows and enabling true asset interoperability.
+
+From an artistic perspective, this workflow proves remarkably intuitive because it presents artists with just two conceptual dials to control: metalness (distinguishing between non-metals and metals) and roughness (controlling the surface finish from perfectly smooth to completely rough), plus the base color. This simplification allows artists to focus on the visual intent rather than getting lost in complex parameter interactions, while still providing the full range of material appearances found in the real world.
+
+The workflow also handles F0 behavior correctly by encoding the fundamental difference between metallic and non-metallic materials. Non-metals typically have low F0 values around 0.02 to 0.08 (we use 0.04 as a reasonable default), while metals derive their colored specular reflectance directly from the base color. Our lerp(F0, baseColor, metallic) operation elegantly encodes this physical distinction, automatically transitioning from the achromatic reflectance of dielectrics to the colored reflectance of conductors as the metallic parameter increases.
+
+=== Why normal, occlusion, and emissive maps
+Normal mapping represents one of the most powerful techniques in modern real-time rendering, allowing us to add high-frequency surface detail without increasing geometric complexity. By storing surface perturbations as RGB values in a texture, we can simulate fine details like scratches, rivets, or fabric weaves that would be prohibitively expensive to model with actual geometry. The magic happens in tangent space, where we reconstruct the perturbed normal vector N from the tangent-bitangent-normal (TBN) matrix, ensuring that lighting calculations respond to these small-scale surface features as if they were real geometric details.
+- Ambient occlusion (AO): Dampens indirect light in crevices the global model doesn’t capture. We multiply the ambient/IBL term by AO to avoid overly flat shading.
+- Emissive: Lets materials glow independent of lighting (e.g., LEDs, screens) and contributes additively so it’s visible even in darkness.
+
+=== Why HDR, exposure, and tone mapping
+- Realistic light intensities create values far beyond [0,1] (e.g., sunlit surfaces, bright emitters). If we write those directly to an 8-bit display, they clip at 1.0, crushing detail and producing ugly, step-like highlights.
+- Working in HDR (linear float) preserves detail through the lighting pipeline. Only at the end do we compress dynamic range using a tone mapper to fit the display.
+- In this chapter we use simple Reinhard: color / (color + 1). It’s robust and artifact-free, good as a baseline. Alternatives you might adopt later:
+  * ACES (RRT/ODT): Filmic with good color preservation across extremes; widely used.
+  * Hable/Uncharted2 (“Filmic”): Nice highlight roll-off, tunable via curve parameters.
+  * Reinhard with exposure: Multiply color by an exposure before compressing to shift middle gray.
+- Exposure parameter (ubo.exposure): Conceptually shifts scene brightness so midtones sit well under your chosen tone mapper. Even if the snippet shows a fixed operator, you can pre-scale color by exposure to support dynamic auto-exposure.
+- Gamma correction (ubo.gamma): Displays are non-linear (approx 2.2). Lighting must happen in linear space, then we apply pow(color, 1/gamma) right before writing to the sRGB framebuffer. Skipping this causes washed-out or too-dark images.
+- Pipeline note: Prefer sRGB formats for color attachments when presenting. If writing to an sRGB swapchain image, do gamma in shader OR use sRGB formats so hardware handles it — not both. Do exactly one.
+
+=== Practical tuning checklist
+- If highlights look “plasticky” everywhere, roughness may be too low or kD not reduced by metallic; verify kD *= (1 - metallic).
+- If everything clips to white, add/adjust exposure and switch to ACES or Filmic tone mapping.
+- If colors shift in highlights, check that tone mapping happens in linear space and gamma is applied only once.
+- If normal maps look inverted or seams appear, verify tangent handedness (TBN), normal map channel order, and normal map space.
+- If ambient looks flat, confirm AO is applied to ambient/IBL but not to direct specular.
+
+== Extending the Renderer
+
+Now that we have our PBR shader, we need to extend our renderer to support it. We'll need to:
+
+1. Add a new pipeline for our PBR shader
+2. Add support for push constants
+3. Update the uniform buffer to include light information
+
+Let's start by adding a new function to create the PBR pipeline. This process involves several distinct steps, each serving a specific purpose in configuring the Vulkan graphics pipeline for physically based rendering.
+
+=== Shader Module Creation and Stage Setup
+
+First, we load our compiled shader and set up the programmable stages of the graphics pipeline. Vulkan requires us to explicitly specify which shader stages we'll use and their entry points.
+
+[source,cpp]
+----
+bool Renderer::createPBRPipeline() {
+    try {
+        // Load our compiled PBR shader from disk
+        // The .spv file contains both vertex and fragment shader code compiled by slangc
+        auto shaderCode = readFile("shaders/pbr.spv");
+
+        // Create a shader module - this is Vulkan's container for shader bytecode
+        // The shader module acts as a wrapper around the SPIR-V bytecode that GPU drivers understand
+        vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
+
+        // Configure the vertex shader stage
+        // This tells Vulkan which shader stage this module serves and its entry point function
+        vk::PipelineShaderStageCreateInfo vertShaderStageInfo;
+        vertShaderStageInfo.setStage(vk::ShaderStageFlagBits::eVertex)
+                          .setModule(*shaderModule)
+                          .setPName("VSMain");  // Must match the vertex shader function name
+
+        // Configure the fragment shader stage
+        // Same module, different entry point - this is how combined shaders work
+        vk::PipelineShaderStageCreateInfo fragShaderStageInfo;
+        fragShaderStageInfo.setStage(vk::ShaderStageFlagBits::eFragment)
+                          .setModule(*shaderModule)
+                          .setPName("PSMain");  // Must match the fragment shader function name
+
+        std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages = {vertShaderStageInfo, fragShaderStageInfo};
+----
+
+The entry point names ("VSMain" and "PSMain") must exactly match the function names in our shader code. This explicit binding system gives us fine-grained control over which functions serve which pipeline stages, and it's particularly useful when working with shader libraries that contain multiple variations of vertex or fragment shaders.
+
+=== Vertex Input Configuration
+
+The vertex input state defines how vertex data flows from our vertex buffers into the vertex shader. This configuration must precisely match the vertex format expected by our PBR shader.
+
+[source,cpp]
+----
+        // Configure how vertex data is structured and fed to the vertex shader
+        vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+
+        // Define the vertex buffer binding - describes the overall vertex structure
+        // This tells Vulkan the total size of each vertex and how vertices are arranged
+        vk::VertexInputBindingDescription bindingDescription;
+        bindingDescription.setBinding(0)                        // Binding point 0
+                         .setStride(sizeof(float) * 14)         // Total vertex size: pos(3) + normal(3) + uv(2) + tangent(4) + bitangent(2)
+                         .setInputRate(vk::VertexInputRate::eVertex); // Data advances per vertex (not per instance)
+
+        // Define individual vertex attributes - each corresponds to an input in our vertex shader
+        std::array<vk::VertexInputAttributeDescription, 5> attributeDescriptions;
+
+        // Position attribute: 3D coordinates in model space
+        attributeDescriptions[0].setBinding(0)                  // From binding 0
+                               .setLocation(0)                  // Shader input location 0
+                               .setFormat(vk::Format::eR32G32B32Sfloat)  // Three 32-bit floats (RGB)
+                               .setOffset(0);                   // Start of vertex data
+
+        // Normal attribute: surface normal for lighting calculations
+        attributeDescriptions[1].setBinding(0)
+                               .setLocation(1)                  // Shader input location 1
+                               .setFormat(vk::Format::eR32G32B32Sfloat)
+                               .setOffset(sizeof(float) * 3);   // After position
+
+        // Texture coordinate attribute: UV mapping coordinates
+        attributeDescriptions[2].setBinding(0)
+                               .setLocation(2)                  // Shader input location 2
+                               .setFormat(vk::Format::eR32G32Sfloat)     // Two 32-bit floats (RG)
+                               .setOffset(sizeof(float) * 6);   // After position + normal
+
+        // Tangent attribute: tangent vector for normal mapping (includes handedness in W)
+        attributeDescriptions[3].setBinding(0)
+                               .setLocation(3)                  // Shader input location 3
+                               .setFormat(vk::Format::eR32G32B32A32Sfloat)   // Four 32-bit floats (RGBA)
+                               .setOffset(sizeof(float) * 8);   // After position + normal + UV
+
+        // Bitangent attribute: completes the tangent space basis
+        attributeDescriptions[4].setBinding(0)
+                               .setLocation(4)                  // Shader input location 4
+                               .setFormat(vk::Format::eR32G32Sfloat)
+                               .setOffset(sizeof(float) * 12);  // After all previous attributes
+
+        // Connect the binding and attribute descriptions to the vertex input state
+        vertexInputInfo.setVertexBindingDescriptionCount(1)
+                      .setPVertexBindingDescriptions(&bindingDescription)
+                      .setVertexAttributeDescriptionCount(static_cast<uint32_t>(attributeDescriptions.size()))
+                      .setPVertexAttributeDescriptions(attributeDescriptions.data());
+----
+
+The vertex input configuration serves as a contract between our vertex buffer data and the vertex shader inputs. Each attribute description maps a specific piece of vertex data to a shader input location, with precise format and offset specifications. This explicit mapping system ensures that the GPU correctly interprets our vertex data regardless of how it's packed in memory.
+
+The stride calculation (14 floats) reflects our comprehensive vertex format that supports full PBR rendering: position for geometry, normals for basic lighting, UV coordinates for texture sampling, and tangent vectors for normal mapping. The tangent vector includes a fourth component (W) that stores handedness information, which is crucial for correctly reconstructing the bitangent vector in cases where the tangent space might be flipped.
+
+The offset calculations ensure that each attribute starts at the correct byte position within each vertex. This precise alignment is for performance, as misaligned vertex data can cause significant performance penalties on some GPU architectures.
+
+=== Input Assembly and Primitive Processing
+
+The input assembly stage determines how vertices are grouped into geometric primitives and how the GPU should interpret the vertex stream.
+
+[source,cpp]
+----
+        // Configure input assembly - how vertices become triangles
+        vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
+        inputAssembly.setTopology(vk::PrimitiveTopology::eTriangleList)  // Every 3 vertices form a triangle
+                    .setPrimitiveRestartEnable(false);                    // Don't use primitive restart indices
+----
+
+Triangle lists represent the most straightforward and commonly used primitive topology for complex 3D models. In this mode, every group of three consecutive vertices defines a complete triangle, providing maximum flexibility for representing arbitrary geometry. While other topologies like triangle strips or fans can be more memory-efficient for certain geometric patterns, triangle lists avoid the complexity of degenerate triangles and vertex ordering constraints that can arise with more compact representations.
+
+Primitive restart functionality allows special index values to signal the end of one primitive and the beginning of another, but this feature adds complexity that's unnecessary for most PBR rendering scenarios. By disabling it, we ensure predictable behavior and avoid potential performance penalties associated with index buffer scanning.
+
+=== Viewport and Dynamic State Configuration
+
+The viewport state manages the transformation from normalized device coordinates to screen coordinates, while dynamic state configuration allows certain pipeline parameters to be changed without recreating the entire pipeline.
+
+[source,cpp]
+----
+        // Configure viewport and scissor state
+        // We'll set actual viewport and scissor rectangles dynamically at render time
+        vk::PipelineViewportStateCreateInfo viewportState;
+        viewportState.setViewportCount(1)       // Single viewport (most common case)
+                    .setScissorCount(1);        // Single scissor rectangle
+
+        // Define which pipeline state can be changed dynamically
+        // This improves performance by avoiding pipeline recreation for common changes
+        std::vector<vk::DynamicState> dynamicStates = {
+            vk::DynamicState::eViewport,        // Viewport can change (window resize, camera changes)
+            vk::DynamicState::eScissor          // Scissor rectangle can change (UI clipping, effects)
+        };
+
+        vk::PipelineDynamicStateCreateInfo dynamicState;
+        dynamicState.setDynamicStateCount(static_cast<uint32_t>(dynamicStates.size()))
+                   .setPDynamicStates(dynamicStates.data());
+----
+
+Dynamic state configuration represents a key optimization in modern Vulkan applications. By marking viewport and scissor as dynamic, we avoid the expensive pipeline recreation that would otherwise be required for common operations like window resizing or camera adjustments. The GPU driver can efficiently update these parameters at command recording time rather than requiring a completely new pipeline state object.
+
+The single viewport approach covers the vast majority of rendering scenarios. Multi-viewport rendering is primarily used for specialized applications like VR stereo rendering or certain shadow mapping techniques, but single-viewport rendering provides optimal performance for standard PBR applications.
+
+=== Rasterization Configuration
+
+The rasterization stage converts geometric primitives into fragments (potential pixels) and applies various geometric processing options that affect how triangles are converted to pixels.
+
+[source,cpp]
+----
+        // Configure rasterization - how triangles become pixels
+        vk::PipelineRasterizationStateCreateInfo rasterizer;
+        rasterizer.setDepthClampEnable(false)                           // Don't clamp depth values (standard behavior)
+                 .setRasterizerDiscardEnable(false)                     // Don't discard primitives before rasterization
+                 .setPolygonMode(vk::PolygonMode::eFill)                // Fill triangles (not wireframe or points)
+                 .setLineWidth(1.0f)                                    // Line width (only relevant for wireframe)
+                 .setCullMode(vk::CullModeFlagBits::eBack)              // Cull back-facing triangles
+                 .setFrontFace(vk::FrontFace::eCounterClockwise)        // Counter-clockwise vertices = front-facing
+                 .setDepthBiasEnable(false);                            // No depth bias (used for shadow mapping)
+----
+
+The rasterization configuration directly impacts both rendering performance and visual quality. Back-face culling provides a significant performance boost by eliminating triangles that face away from the camera, effectively halving the fragment processing workload for typical closed meshes. The counter-clockwise winding order follows the standard convention used by most 3D modeling tools and asset pipelines.
+
+Fill mode produces solid triangles appropriate for PBR rendering, though wireframe mode can be useful for debugging geometry or creating special visual effects. The line width setting only affects wireframe rendering, but some graphics drivers require it to be specified even when using fill mode.
+
+Depth bias (also known as polygon offset) is commonly used in shadow mapping to prevent self-shadowing artifacts, but it's unnecessary for standard forward rendering and can introduce its own artifacts if used inappropriately.
+
+=== Multisampling and Anti-Aliasing
+
+The multisampling configuration determines how the GPU handles anti-aliasing to reduce visual artifacts from geometric edges.
+
+[source,cpp]
+----
+        // Configure multisampling - anti-aliasing settings
+        vk::PipelineMultisampleStateCreateInfo multisampling;
+        multisampling.setSampleShadingEnable(false)                     // Disable per-sample shading
+                    .setRasterizationSamples(vk::SampleCountFlagBits::e1); // No multisampling (1 sample per pixel)
+----
+
+This configuration disables multisampling anti-aliasing (MSAA) for simplicity and performance. While MSAA can significantly improve visual quality by reducing aliasing artifacts on geometric edges, it also substantially increases memory bandwidth requirements and fragment processing costs. For learning purposes and initial implementations, single-sample rendering provides a good balance between performance and complexity.
+
+In production applications, you might enable MSAA by increasing the sample count to 4x or 8x, depending on performance requirements and target hardware capabilities. Per-sample shading, when enabled, runs the fragment shader once per sample rather than once per pixel, providing the highest quality anti-aliasing at the cost of proportionally increased fragment processing time.
+
+=== Phase 7: Depth Testing and Z-Buffer Configuration
+
+The depth and stencil state configuration controls how fragments interact with the depth buffer to achieve proper depth sorting and occlusion.
+
+[source,cpp]
+----
+        // Configure depth and stencil testing
+        vk::PipelineDepthStencilStateCreateInfo depthStencil;
+        depthStencil.setDepthTestEnable(true)                           // Enable depth testing for proper occlusion
+                   .setDepthWriteEnable(true)                           // Write depth values to depth buffer
+                   .setDepthCompareOp(vk::CompareOp::eLess)             // Fragment passes if its depth is less (closer)
+                   .setDepthBoundsTestEnable(false)                     // Don't use depth bounds testing
+                   .setStencilTestEnable(false);                        // Don't use stencil testing
+----
+
+Depth testing forms the foundation of proper 3D rendering by ensuring that closer objects occlude more distant ones. The "less than" comparison function works with the standard depth buffer convention where smaller depth values represent closer fragments. This configuration writes depth values for each rendered fragment, building up the depth buffer that subsequent draw calls can use for occlusion testing.
+
+Depth bounds testing and stencil testing are advanced features used for specific rendering techniques like light volume optimization or complex compositing operations. For standard PBR rendering, they add unnecessary complexity without providing benefits, so we disable them to maintain optimal performance.
+
+=== Phase 8: Color Blending and Transparency
+
+The color blend state determines how new fragments combine with existing color values in the framebuffer, enabling transparency and various compositing effects.
+
+[source,cpp]
+----
+        // Configure color blending - how new pixels combine with existing ones
+        vk::PipelineColorBlendAttachmentState colorBlendAttachment;
+        colorBlendAttachment.setColorWriteMask(
+            vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |     // Write all color channels
+            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA)
+                           .setBlendEnable(true)                                    // Enable alpha blending
+                           .setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)      // New fragment's alpha
+                           .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)  // One minus new fragment's alpha
+                           .setColorBlendOp(vk::BlendOp::eAdd)                      // Add source and destination
+                           .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)           // Preserve new alpha
+                           .setDstAlphaBlendFactor(vk::BlendFactor::eZero)          // Ignore old alpha
+                           .setAlphaBlendOp(vk::BlendOp::eAdd);                     // Add alpha values
+
+        vk::PipelineColorBlendStateCreateInfo colorBlending;
+        colorBlending.setLogicOpEnable(false)                                     // Don't use logical operations
+                    .setAttachmentCount(1)                                        // Single color attachment
+                    .setPAttachments(&colorBlendAttachment);
+----
+
+This blend configuration implements standard alpha transparency using the classic "over" compositing operation. The formula `(srcAlpha * newColor) + ((1 - srcAlpha) * oldColor)` produces natural-looking transparency effects where fully opaque fragments (alpha = 1) completely replace the background, while partially transparent fragments blend proportionally.
+
+The separate alpha blending configuration preserves the alpha channel properly for potential multi-pass rendering or post-processing effects. By setting source alpha factor to one and destination alpha factor to zero, we ensure that the final alpha value comes entirely from the new fragment, which is typically the desired behavior for transparency effects.
+
+=== Phase 9: Pipeline Layout and Resource Binding
+
+The pipeline layout defines how resources like textures, uniform buffers, and push constants are organized and accessed by the shaders.
+
+[source,cpp]
+----
+        // Configure push constants for fast material property updates
+        vk::PushConstantRange pushConstantRange;
+        pushConstantRange.setStageFlags(vk::ShaderStageFlagBits::eFragment)      // Only fragment shader uses these
+                        .setOffset(0)                                             // Start at beginning
+                        .setSize(sizeof(PushConstantBlock));                      // Size of our material data
+
+        // Create the pipeline layout - defines resource organization
+        vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+        pipelineLayoutInfo.setSetLayoutCount(1)                                  // Single descriptor set
+                         .setPSetLayouts(&*descriptorSetLayout)                  // Our texture/uniform bindings
+                         .setPushConstantRangeCount(1)                           // One push constant block
+                         .setPPushConstantRanges(&pushConstantRange);
+
+        // Create the pipeline layout object
+        pbrPipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+----
+
+The pipeline layout serves as a contract between the application and shaders regarding resource organization. Push constants provide the fastest path for updating small amounts of data (like material properties) between draw calls, as they bypass the memory hierarchy and are directly accessible to shader cores. The 128-byte limit on push constants in most implementations makes them perfect for per-material data but unsuitable for larger datasets.
+
+The descriptor set layout reference connects our pipeline to the texture and uniform buffer bindings we established earlier. This separation of concerns allows the same descriptor set layout to be used across multiple pipelines while maintaining clean resource organization.
+
+=== Phase 10: Final Pipeline Creation and Dynamic Rendering Setup
+
+The final phase assembles all configuration states into a complete graphics pipeline and sets up dynamic rendering compatibility for modern Vulkan applications.
+
+[source,cpp]
+----
+        // Assemble the complete graphics pipeline
+        vk::GraphicsPipelineCreateInfo pipelineInfo;
+        pipelineInfo.setStageCount(static_cast<uint32_t>(shaderStages.size()))   // Number of shader stages
+                   .setPStages(shaderStages.data())                               // Shader stage configurations
+                   .setPVertexInputState(&vertexInputInfo)                        // Vertex format
+                   .setPInputAssemblyState(&inputAssembly)                        // Primitive topology
+                   .setPViewportState(&viewportState)                             // Viewport configuration
+                   .setPRasterizationState(&rasterizer)                           // Rasterization settings
+                   .setPMultisampleState(&multisampling)                          // Anti-aliasing settings
+                   .setPDepthStencilState(&depthStencil)                          // Depth/stencil testing
+                   .setPColorBlendState(&colorBlending)                           // Blending configuration
+                   .setPDynamicState(&dynamicState)                               // Dynamic state settings
+                   .setLayout(*pbrPipelineLayout)                                 // Resource layout
+                   .setRenderPass(nullptr)                                        // Using dynamic rendering
+                   .setSubpass(0)                                                 // Subpass index
+                   .setBasePipelineHandle(nullptr);                               // No base pipeline
+
+        // Configure for dynamic rendering (modern Vulkan approach)
+        vk::PipelineRenderingCreateInfo renderingInfo;
+        renderingInfo.setColorAttachmentCount(1)                                 // Single color target
+                    .setPColorAttachmentFormats(&swapChainImageFormat)           // Match swapchain format
+                    .setDepthAttachmentFormat(findDepthFormat());                // Depth buffer format
+        pipelineInfo.setPNext(&renderingInfo);
+
+        // Create the final graphics pipeline
+        pbrPipeline = device.createGraphicsPipeline(nullptr, pipelineInfo);
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error creating PBR pipeline: " << e.what() << std::endl;
+        return false;
+    }
+}
+----
+
+The pipeline creation represents the culmination of all our configuration work, where Vulkan validates the entire pipeline specification and compiles it into an optimized form suitable for GPU execution. The dynamic rendering configuration replaces the traditional render pass system with a more flexible approach that allows render targets to be specified at command recording time rather than pipeline creation time.
+
+This flexibility proves particularly valuable for applications that need to render to different targets (like shadow maps, reflection textures, or post-processing buffers) using the same pipeline. The format specifications ensure that the pipeline generates output compatible with our target render surfaces.
+
+The exception handling provides essential feedback during development, as pipeline creation failures can result from subtle configuration mismatches or resource compatibility issues that are difficult to debug without proper error reporting.
+
+This function creates a new pipeline for our PBR shader, including support for push constants. We'll also need to update our uniform buffer to include light information:
+
+[source,cpp]
+----
+// Update uniform buffer
+void Renderer::updateUniformBuffer(uint32_t currentFrame, Entity* entity, CameraComponent* camera) {
+    // Get the transform component from the entity
+    auto transform = entity->GetComponent<TransformComponent>();
+    if (!transform) {
+        std::cerr << "Entity does not have a transform component" << std::endl;
+        return;
+    }
+
+    // Create the uniform buffer object
+    UniformBufferObject ubo{};
+
+    // Set the model matrix from the entity's transform
+    ubo.model = transform->GetModelMatrix();
+
+    // Set the view and projection matrices from the camera
+    if (camera) {
+        ubo.view = camera->GetViewMatrix();
+        ubo.proj = camera->GetProjectionMatrix();
+    } else {
+        // Default view and projection matrices if no camera is provided
+        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+        ubo.proj[1][1] *= -1; // Flip Y coordinate for Vulkan
+    }
+
+    // Set up lights
+    // Light 1: White light from above
+    ubo.lightPositions[0] = glm::vec4(0.0f, 5.0f, 5.0f, 1.0f);
+    ubo.lightColors[0] = glm::vec4(300.0f, 300.0f, 300.0f, 1.0f);
+
+    // Light 2: Blue light from the left
+    ubo.lightPositions[1] = glm::vec4(-5.0f, 0.0f, 0.0f, 1.0f);
+    ubo.lightColors[1] = glm::vec4(0.0f, 0.0f, 300.0f, 1.0f);
+
+    // Light 3: Red light from the right
+    ubo.lightPositions[2] = glm::vec4(5.0f, 0.0f, 0.0f, 1.0f);
+    ubo.lightColors[2] = glm::vec4(300.0f, 0.0f, 0.0f, 1.0f);
+
+    // Light 4: Green light from behind
+    ubo.lightPositions[3] = glm::vec4(0.0f, -5.0f, 0.0f, 1.0f);
+    ubo.lightColors[3] = glm::vec4(0.0f, 300.0f, 0.0f, 1.0f);
+
+    // Set camera position for view-dependent effects
+    ubo.camPos = glm::vec4(camera ? camera->GetPosition() : glm::vec3(2.0f, 2.0f, 2.0f), 1.0f);
+
+    // Set PBR parameters
+    ubo.exposure = 4.5f;
+    ubo.gamma = 2.2f;
+    ubo.prefilteredCubeMipLevels = 1.0f;
+    ubo.scaleIBLAmbient = 1.0f;
+
+    // Copy the uniform buffer object to the device memory using vk::raii
+    // With vk::raii, we can use the mapped memory directly
+    memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
+}
+----
+
+Finally, we need to add support for pushing material properties to the shader:
+
+[source,cpp]
+----
+// Push material properties to shader
+void Renderer::pushMaterialProperties(vk::CommandBuffer commandBuffer, const Model* model, uint32_t materialIndex) {
+    // Get material from the model
+    const Material& material = model->materials[materialIndex];
+
+    // Define push constants
+    PushConstantBlock pushConstants{};
+    pushConstants.baseColorFactor = material.baseColorFactor;
+    pushConstants.metallicFactor = material.metallicFactor;
+    pushConstants.roughnessFactor = material.roughnessFactor;
+    pushConstants.baseColorTextureSet = material.baseColorTextureIndex;
+    pushConstants.physicalDescriptorTextureSet = material.metallicRoughnessTextureIndex;
+    pushConstants.normalTextureSet = material.normalTextureIndex;
+    pushConstants.occlusionTextureSet = material.occlusionTextureIndex;
+    pushConstants.emissiveTextureSet = material.emissiveTextureIndex;
+    pushConstants.alphaMask = material.alphaMode == AlphaMode::MASK ? 1.0f : 0.0f;
+    pushConstants.alphaMaskCutoff = material.alphaCutoff;
+
+    // Push constants to shader using vk::raii
+    commandBuffer.pushConstants(
+        *pbrPipelineLayout,
+        vk::ShaderStageFlagBits::eFragment,
+        0,
+        sizeof(PushConstantBlock),
+        &pushConstants
+    );
+}
+----
+
+In the next section, we'll integrate our lighting implementation with the rest of the Vulkan rendering pipeline.
+
+link:03_push_constants.adoc[Previous: Push Constants] | link:05_vulkan_integration.adoc[Next: Vulkan Integration]

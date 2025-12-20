@@ -30,7 +30,7 @@ VkPhysicalDevice handle added as a new class member.
 
 [,c++]
 ----
-vk::raii::PhysicalDevice physicalDevice;
+vk::raii::PhysicalDevice physicalDevice = nullptr;
 ----
 
 Listing the graphics cards is very similar to listing extensions and starts with
@@ -59,7 +59,7 @@ add to that function.
 [,c++]
 ----
 for (const auto& device : devices) {
-    physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(device);
+    physicalDevice = device;
     break;
 }
 ----
@@ -93,14 +93,15 @@ function would look like this:
 
 [,c++]
 ----
-bool isDeviceSuitable(VkPhysicalDevice device) {
-    auto deviceProperties = device.getProperties();
-    auto deviceFeatures = device.getFeatures();
-    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu &&
-           deviceFeatures.geometryShader) {
-        physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(device);
-        break;
-   }
+bool isDeviceSuitable(vk::raii::PhysicalDevice physicalDevice) {
+    auto deviceProperties = physicalDevice.getProperties();
+    auto deviceFeatures = physicalDevice.getFeatures();
+
+    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && deviceFeatures.geometryShader) {
+        return true;
+    }
+
+    return false;
 }
 ----
 
@@ -117,7 +118,7 @@ something like that as follows:
 ...
 
 void pickPhysicalDevice() {
-    auto devices = vk::raii::PhysicalDevices( *instance );
+    auto devices = vk::raii::PhysicalDevices( instance );
     if (devices.empty()) {
         throw std::runtime_error( "failed to find GPUs with Vulkan support!" );
     }
@@ -146,7 +147,7 @@ void pickPhysicalDevice() {
 
     // Check if the best candidate is suitable at all
     if (candidates.rbegin()->first > 0) {
-        physicalDevice = std::make_unique<vk::raii::PhysicalDevice>(candidates.rbegin()->second);
+        physicalDevice = candidates.rbegin()->second;
     } else {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
@@ -189,7 +190,6 @@ void pickPhysicalDevice() {
                 found = found &&  extensionIter != extensions.end();
             }
             isSuitable = isSuitable && found;
-            printf("\n");
             if (isSuitable) {
                 physicalDevice = device;
             }
@@ -219,9 +219,9 @@ could look like this:
 
 [,c++]
 ----
-uint32_t findQueueFamilies(VkPhysicalDevice device) {
+uint32_t findQueueFamilies(vk::raii::PhysicalDevice physicalDevice) {
     // find the index of the first queue family that supports graphics
-    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice->getQueueFamilyProperties();
+    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
     // get the first index into queueFamilyProperties which supports graphics
     auto graphicsQueueFamilyProperty =

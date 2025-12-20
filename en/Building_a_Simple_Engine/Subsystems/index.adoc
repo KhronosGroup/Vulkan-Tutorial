@@ -1,0 +1,14 @@
+:pp: {plus}{plus}
+
+= Subsystems
+
+This chapter covers the implementation of critical engine subsystems - Audio and Physics - with a focus on leveraging Vulkan's compute capabilities for enhanced performance.
+
+* link:01_introduction.adoc[Introduction]
+* link:02_audio_basics.adoc[Audio Basics]
+* link:03_vulkan_audio.adoc[Vulkan for Audio Processing]
+* link:04_physics_basics.adoc[Physics Basics]
+* link:05_vulkan_physics.adoc[Vulkan for Physics Simulation]
+* link:06_conclusion.adoc[Conclusion]
+
+link:../Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | link:../index.html[Back to Building a Simple Engine]

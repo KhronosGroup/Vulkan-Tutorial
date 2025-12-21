@@ -132,15 +132,28 @@ jobs:
             exit 1
           fi
 
-          # Most LunarG tarballs have the actual sysroot under `x86_64/`.
-          # We want `VULKAN_SDK` to point at the directory that contains `include/`, `lib/`, `bin/`.
+          # LunarG Linux tarballs commonly have:
+          # - tools in:            <version>/bin (often includes slangc)
+          # - headers/libs in:     <version>/x86_64/{include,lib}
+          # We set VULKAN_SDK to the version root for tool discovery, and use VULKAN_SDK_SYSROOT
+          # to point CMake's FindVulkan at the correct include/lib paths.
           SDK_SYSROOT="$VULKAN_SDK_PATH"
           if [ -d "$VULKAN_SDK_PATH/x86_64" ]; then
             SDK_SYSROOT="$VULKAN_SDK_PATH/x86_64"
           fi
 
-          echo "VULKAN_SDK=$SDK_SYSROOT" >> "$GITHUB_ENV"
-          echo "$SDK_SYSROOT/bin" >> "$GITHUB_PATH"
+          echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
+          echo "VULKAN_SDK_SYSROOT=$SDK_SYSROOT" >> "$GITHUB_ENV"
+
+          # Ensure SDK tools are on PATH regardless of whether they're in <version>/bin or <version>/x86_64/bin.
+          if [ -d "$VULKAN_SDK_PATH/bin" ]; then
+            echo "$VULKAN_SDK_PATH/bin" >> "$GITHUB_PATH"
+          fi
+          if [ -d "$SDK_SYSROOT/bin" ]; then
+            echo "$SDK_SYSROOT/bin" >> "$GITHUB_PATH"
+          fi
+
+          # Prefer the sysroot for FindVulkan so we don't accidentally pick up runner system headers.
           echo "CMAKE_PREFIX_PATH=$SDK_SYSROOT" >> "$GITHUB_ENV"
 
           # Force CMake's FindVulkan to use the SDK headers/libs instead of runner system headers.
@@ -151,19 +164,35 @@ jobs:
             echo "Vulkan_LIBRARY=$SDK_SYSROOT/lib/libvulkan.so.1" >> "$GITHUB_ENV"
           fi
 
+          # If slangc exists, capture its full path so we can pass it directly to CMake.
+          if command -v slangc >/dev/null 2>&1; then
+            echo "SLANGC_EXECUTABLE=$(command -v slangc)" >> "$GITHUB_ENV"
+          fi
+
       - name: Vulkan SDK diagnostics (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           echo "VULKAN_SDK=$VULKAN_SDK"
+          echo "VULKAN_SDK_SYSROOT=${VULKAN_SDK_SYSROOT:-}"
           echo "Vulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR:-}"
           echo "Vulkan_LIBRARY=${Vulkan_LIBRARY:-}"
+          echo "SLANGC_EXECUTABLE=${SLANGC_EXECUTABLE:-}"
+          echo "PATH=$PATH"
+          echo "which slangc: $(command -v slangc || echo 'NOT FOUND')"
+          if command -v slangc >/dev/null 2>&1; then
+            slangc --version || slangc --help || true
+          fi
           if [ -f "${VULKAN_SDK}/include/vulkan/vulkan.hpp" ]; then
             echo "Using SDK vulkan.hpp at: ${VULKAN_SDK}/include/vulkan/vulkan.hpp"
             head -n 5 "${VULKAN_SDK}/include/vulkan/vulkan.hpp" || true
           else
             echo "WARNING: SDK vulkan.hpp not found under ${VULKAN_SDK}/include/vulkan/vulkan.hpp" >&2
+            if [ -n "${VULKAN_SDK_SYSROOT:-}" ] && [ -f "${VULKAN_SDK_SYSROOT}/include/vulkan/vulkan.hpp" ]; then
+              echo "Found sysroot vulkan.hpp at: ${VULKAN_SDK_SYSROOT}/include/vulkan/vulkan.hpp"
+              head -n 5 "${VULKAN_SDK_SYSROOT}/include/vulkan/vulkan.hpp" || true
+            fi
           fi
 
       # Use the engine's dependency install scripts instead of calling vcpkg directly in CI.
@@ -217,6 +246,9 @@ jobs:
           fi
           if [ -n "${Vulkan_LIBRARY:-}" ]; then
             extra_args+=("-DVulkan_LIBRARY=${Vulkan_LIBRARY}")
+          fi
+          if [ -n "${SLANGC_EXECUTABLE:-}" ]; then
+            extra_args+=("-DSLANGC_EXECUTABLE=${SLANGC_EXECUTABLE}")
           fi
 
           cmake -S . -B build -G Ninja \

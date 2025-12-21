@@ -96,7 +96,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y curl ca-certificates xz-utils
+          # `spirv-opt` is required by `slangc` for SPIR-V downstream optimization on Linux.
+          # Prefer the SDK-provided tools when present, but install a system fallback to make CI robust.
+          sudo apt-get install -y curl ca-certificates xz-utils spirv-tools
 
           echo "Downloading Vulkan SDK from LunarG..."
           # Use the official LunarG download endpoint (latest Linux tarball).
@@ -169,6 +171,17 @@ jobs:
             echo "SLANGC_EXECUTABLE=$(command -v slangc)" >> "$GITHUB_ENV"
           fi
 
+          # Ensure SDK-shipped shared libraries (e.g. slang-glslang-*) can be located at runtime.
+          # Also provide a small compatibility shim for Slang's attempt to load `pthread`.
+          compat_dir="${RUNNER_TEMP}/slang-compat"
+          mkdir -p "$compat_dir"
+          pthread_path="$(ldconfig -p | awk '/libpthread\.so\.0/{print $NF; exit 0}' || true)"
+          if [ -n "${pthread_path:-}" ] && [ -f "$pthread_path" ]; then
+            ln -sf "$pthread_path" "$compat_dir/libpthread.so"
+          fi
+
+          echo "LD_LIBRARY_PATH=$compat_dir:${SDK_SYSROOT}/lib:${VULKAN_SDK_PATH}/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
       - name: Vulkan SDK diagnostics (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -179,8 +192,13 @@ jobs:
           echo "Vulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR:-}"
           echo "Vulkan_LIBRARY=${Vulkan_LIBRARY:-}"
           echo "SLANGC_EXECUTABLE=${SLANGC_EXECUTABLE:-}"
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
           echo "PATH=$PATH"
           echo "which slangc: $(command -v slangc || echo 'NOT FOUND')"
+          echo "which spirv-opt: $(command -v spirv-opt || echo 'NOT FOUND')"
+          if command -v spirv-opt >/dev/null 2>&1; then
+            spirv-opt --version || true
+          fi
           if command -v slangc >/dev/null 2>&1; then
             slangc --version || slangc --help || true
           fi

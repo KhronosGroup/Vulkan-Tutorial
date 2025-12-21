@@ -187,7 +187,6 @@ function (add_chapter CHAPTER_NAME)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders
                   ${EXECUTABLE_DIR}/shaders
-          COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders
           COMMENT "${CHAPTER_NAME}: Copying shaders to executable directory (Visual Studio)"
         )
         add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})
@@ -200,7 +199,6 @@ function (add_chapter CHAPTER_NAME)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models
                   ${EXECUTABLE_DIR}/models
-          COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models
           COMMENT "${CHAPTER_NAME}: Copying models to executable directory (Visual Studio)"
         )
         add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})
@@ -213,7 +211,6 @@ function (add_chapter CHAPTER_NAME)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures
                   ${EXECUTABLE_DIR}/textures
-          COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures
           COMMENT "${CHAPTER_NAME}: Copying textures to executable directory (Visual Studio)"
         )
         add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})

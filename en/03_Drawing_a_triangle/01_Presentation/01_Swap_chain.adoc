@@ -383,7 +383,8 @@ vk::SwapchainCreateInfoKHR swapChainCreateInfo{
     .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
     .presentMode = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR( *surface )),
     .clipped = true,
-    .oldSwapchain = nullptr };
+    .oldSwapchain = nullptr 
+};
 ----
 
 The `imageArrayLayers` specifies the number of layers each image consists of.

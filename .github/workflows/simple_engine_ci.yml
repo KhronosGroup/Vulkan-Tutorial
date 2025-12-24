@@ -337,6 +337,8 @@ jobs:
 
           # build tinygltf
           if [ ! -f "${LOCAL_INSTALL}/lib/cmake/tinygltf/tinygltfConfig.cmake" ]; then
+            # Clean up any partial/failed clones before re-attempting
+            rm -rf "${WORK_ROOT}/tinygltf" "${WORK_ROOT}/tinygltf-build"
             git clone --depth 1 https://github.com/syoyo/tinygltf.git "${WORK_ROOT}/tinygltf"
             cmake -S "${WORK_ROOT}/tinygltf" -B "${WORK_ROOT}/tinygltf-build" -G Ninja \
               -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
@@ -348,6 +350,8 @@ jobs:
 
           # build ktx
           if [ ! -f "${LOCAL_INSTALL}/lib/cmake/KTX/KTXConfig.cmake" ]; then
+            # Clean up any partial/failed clones before re-attempting
+            rm -rf "${WORK_ROOT}/KTX-Software" "${WORK_ROOT}/KTX-Software-build"
             git clone --depth 1 --branch v4.3.2 https://github.com/KhronosGroup/KTX-Software.git "${WORK_ROOT}/KTX-Software"
             cmake -S "${WORK_ROOT}/KTX-Software" -B "${WORK_ROOT}/KTX-Software-build" -G Ninja \
               -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \

@@ -216,6 +216,6 @@ In this section, we've integrated our PBR implementation with the rest of the Vu
 
 This approach provides a solid foundation for rendering physically accurate materials, which we'll apply in the Loading_Models chapter when we load and render glTF models. It also gives us the flexibility to modify and extend the material properties as needed for our specific rendering requirements.
 
-In the next section, we'll wrap up this chapter with a conclusion and discuss potential improvements and extensions to our lighting system.
+In the next section, we'll explore how to add high-quality shadows using Vulkan Ray Query.
 
-link:04_lighting_implementation.adoc[Previous: Lighting Implementation] | link:06_conclusion.adoc[Next: Conclusion]
+link:04_lighting_implementation.adoc[Previous: Lighting Implementation] | link:07_shadows.adoc[Next: Shadows]

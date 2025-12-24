@@ -1,10 +1,10 @@
 = Conclusion
 
-In this chapter, we've explored the fundamentals of lighting and materials in 3D rendering and introduced Physically Based Rendering (PBR) using the metallic-roughness workflow. We've covered the theory behind PBR and implemented a shader that can be used with glTF models. We've also learned how to use push constants to efficiently pass material properties to our shaders.
+In this chapter, we've explored the fundamentals of lighting and materials in 3D rendering and introduced Physically Based Rendering (PBR) using the metallic-roughness workflow. We've covered the theory behind PBR, implemented a shader that can be used with glTF models, and added high-quality shadows using Vulkan Ray Query. We've also learned how to use push constants to efficiently pass material properties to our shaders.
 
 == What We've Learned
 
-This chapter has taken you through the essential concepts needed to implement physically-based rendering in a Vulkan engine. We introduced the metallic‑roughness PBR workflow, mapped glTF material properties to shader inputs, and used push constants to drive per‑draw material parameters without descriptor churn. You saw how the BRDF pieces cooperate to conserve energy and produce plausible lighting, and how to plug the shader into a vk::raii‑based pipeline so models render correctly end‑to‑end.
+This chapter has taken you through the essential concepts needed to implement physically-based rendering in a Vulkan engine. We introduced the metallic‑roughness PBR workflow, mapped glTF material properties to shader inputs, and used push constants to drive per‑draw material parameters without descriptor churn. You saw how the BRDF pieces cooperate to conserve energy and produce plausible lighting, and how to plug the shader into a vk::raii‑based pipeline so models render correctly end‑to‑end. Finally, we integrated hardware-accelerated ray-traced shadows for improved realism.
 
 == Making it click: a mental model of this PBR pipeline
 
@@ -31,7 +31,7 @@ This mental model helps you predict how a change to any input will echo through 
 
 == Potential Improvements
 
-Our PBR pass is a solid baseline. The most impactful upgrades are image‑based lighting (environment maps for ambient/indirect), shadowing, and a few material extensions (e.g., clear coat or anisotropy). On the performance side, consider clustered forward or a deferred path when light counts grow. If you build an HDR chain, bloom and a more filmic tone mapper (ACES/Hable) round out the presentation.
+Our PBR pass is a solid baseline. The most impactful upgrades are image‑based lighting (environment maps for ambient/indirect) and a few material extensions (e.g., clear coat or anisotropy). On the performance side, consider clustered forward or a deferred path when light counts grow. If you build an HDR chain, bloom and a more filmic tone mapper (ACES/Hable) round out the presentation.
 
 == Next Steps
 
@@ -41,4 +41,4 @@ Remember that lighting is a complex topic with many approaches and techniques. T
 
 In the next chapter, we'll explore GUI implementation, which will allow us to create interactive user interfaces for our applications.
 
-link:05_vulkan_integration.adoc[Previous: Vulkan Integration] | link:../GUI/01_introduction.adoc[Next: GUI - Introduction]
+link:07_shadows.adoc[Previous: Shadows] | link:../GUI/01_introduction.adoc[Next: GUI - Introduction]

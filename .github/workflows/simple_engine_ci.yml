@@ -28,13 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Clang + Ninja (Linux)
+      - name: Install Clang + Ninja + ccache (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang ninja-build
+          sudo apt-get install -y clang ninja-build ccache
 
       - name: Select Clang toolchain (Linux)
         if: runner.os == 'Linux'
@@ -48,12 +48,39 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Set up Ninja
+      - name: Set up Ninja + sccache
         if: runner.os == 'Windows'
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        shell: pwsh
+        run: |
+          choco install -y ninja sccache
+          "SCCACHE_DIR=$env:LOCALAPPDATA\Mozilla\sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: ccache (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-ccache-
+
+      - name: sccache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: ${{ runner.os }}-sccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-sccache-
+
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        id: cache-vulkan-windows
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
 
       - name: Install Vulkan SDK (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.cache-vulkan-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -90,6 +117,14 @@ jobs:
           "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Cache Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-vulkan-linux
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
+
       - name: Install Vulkan SDK (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -100,32 +135,37 @@ jobs:
           # Prefer the SDK-provided tools when present, but install a system fallback to make CI robust.
           sudo apt-get install -y curl ca-certificates xz-utils spirv-tools
 
-          echo "Downloading Vulkan SDK from LunarG..."
-          # Use the official LunarG download endpoint (latest Linux tarball).
-          SDK_TGZ="${RUNNER_TEMP}/vulkansdk-linux.tar.xz"
-
-          download_ok=0
-          for url in \
-            "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz" \
-            "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz" \
-            "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz?Human=true" \
-            "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz?Human=true"
-          do
-            echo "Attempting: $url"
-            if curl -L --fail -o "$SDK_TGZ" "$url"; then
-              download_ok=1
-              break
-            fi
-          done
-          if [ "$download_ok" -ne 1 ]; then
-            echo "Failed to download Vulkan SDK from LunarG (all endpoints returned non-200)." >&2
-            exit 1
-          fi
-
           SDK_DIR="${RUNNER_TEMP}/VulkanSDK"
-          rm -rf "$SDK_DIR"
-          mkdir -p "$SDK_DIR"
-          tar -xJf "$SDK_TGZ" -C "$SDK_DIR"
+
+          if [ "${{ steps.cache-vulkan-linux.outputs.cache-hit }}" != "true" ]; then
+            echo "Downloading Vulkan SDK from LunarG..."
+            # Use the official LunarG download endpoint (latest Linux tarball).
+            SDK_TGZ="${RUNNER_TEMP}/vulkansdk-linux.tar.xz"
+
+            download_ok=0
+            for url in \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz?Human=true" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz?Human=true"
+            do
+              echo "Attempting: $url"
+              if curl -L --fail -o "$SDK_TGZ" "$url"; then
+                download_ok=1
+                break
+              fi
+            done
+            if [ "$download_ok" -ne 1 ]; then
+              echo "Failed to download Vulkan SDK from LunarG (all endpoints returned non-200)." >&2
+              exit 1
+            fi
+
+            rm -rf "$SDK_DIR"
+            mkdir -p "$SDK_DIR"
+            tar -xJf "$SDK_TGZ" -C "$SDK_DIR"
+          else
+            echo "Using cached Vulkan SDK from $SDK_DIR"
+          fi
 
           # The tarball extracts into a versioned subdirectory.
           VULKAN_SDK_PATH="$(find "$SDK_DIR" -maxdepth 1 -type d -name '1.*' | sort -r | head -n 1)"
@@ -214,8 +254,18 @@ jobs:
           fi
 
       # Use the engine's dependency install scripts instead of calling vcpkg directly in CI.
-      - name: Bootstrap vcpkg (Windows)
+      - name: Cache vcpkg (Windows)
         if: runner.os == 'Windows'
+        id: cache-vcpkg-windows
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/vcpkg
+            ${{ runner.temp }}/vcpkg-cache
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('attachments/simple_engine/vcpkg.json') }}
+
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows' && steps.cache-vcpkg-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -232,18 +282,72 @@ jobs:
           "$vcpkgRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Set vcpkg env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          "VCPKG_INSTALLATION_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vcpkgRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-cache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
           call install_dependencies_windows.bat
 
+      - name: Cache dependencies (Linux)
+        if: runner.os == 'Linux'
+        id: cache-deps-linux
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.cache/simple_engine_deps
+            /home/runner/.local
+          key: ${{ runner.os }}-deps-v1
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          chmod +x ./install_dependencies_linux.sh
-          ./install_dependencies_linux.sh
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git ninja-build pkg-config \
+            ca-certificates curl zip unzip tar \
+            libglfw3-dev libglm-dev libopenal-dev \
+            nlohmann-json3-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxi-dev \
+            zlib1g-dev libpng-dev libzstd-dev
+
+          WORK_ROOT="/home/runner/.cache/simple_engine_deps"
+          LOCAL_INSTALL="/home/runner/.local"
+          mkdir -p "${WORK_ROOT}"
+
+          # build tinygltf
+          if [ ! -f "${LOCAL_INSTALL}/lib/cmake/tinygltf/tinygltfConfig.cmake" ]; then
+            git clone --depth 1 https://github.com/syoyo/tinygltf.git "${WORK_ROOT}/tinygltf"
+            cmake -S "${WORK_ROOT}/tinygltf" -B "${WORK_ROOT}/tinygltf-build" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+              -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF -DTINYGLTF_BUILD_GL_EXAMPLES=OFF \
+              -DTINYGLTF_BUILD_STB_IMAGE=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}"
+            cmake --build "${WORK_ROOT}/tinygltf-build" --parallel
+            cmake --install "${WORK_ROOT}/tinygltf-build"
+          fi
+
+          # build ktx
+          if [ ! -f "${LOCAL_INSTALL}/lib/cmake/KTX/KTXConfig.cmake" ]; then
+            git clone --depth 1 --branch v4.3.2 https://github.com/KhronosGroup/KTX-Software.git "${WORK_ROOT}/KTX-Software"
+            cmake -S "${WORK_ROOT}/KTX-Software" -B "${WORK_ROOT}/KTX-Software-build" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+              -DKTX_FEATURE_TESTS=OFF -DKTX_FEATURE_TOOLS=OFF \
+              -DKTX_FEATURE_VULKAN=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}" \
+              -DVulkan_INCLUDE_DIR="${Vulkan_INCLUDE_DIR}"
+            cmake --build "${WORK_ROOT}/KTX-Software-build" --parallel
+            cmake --install "${WORK_ROOT}/KTX-Software-build"
+          fi
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
@@ -252,6 +356,8 @@ jobs:
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE"
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'
@@ -273,10 +379,23 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_PREFIX_PATH="/home/runner/.local;${VULKAN_SDK_SYSROOT}" \
             "${extra_args[@]}"
 
       - name: Build
         run: cmake --build build --target SimpleEngine --parallel 4
+
+      - name: Cache stats
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache -s
+          fi
+          if command -v sccache >/dev/null 2>&1; then
+            sccache -s
+          fi
 
       - name: Test
         run: ctest --test-dir build --output-on-failure

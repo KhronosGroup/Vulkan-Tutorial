@@ -84,27 +84,31 @@ jobs:
           key: ${{ runner.os }}-vulkan-sdk
 
       - name: Install Vulkan SDK (Windows)
-        if: runner.os == 'Windows' && steps.cache-vulkan-windows.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            throw "Chocolatey is required on windows-latest runners"
-          }
+          if ("${{ steps.cache-vulkan-windows.outputs.cache-hit }}" -ne "true") {
+            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+              throw "Chocolatey is required on windows-latest runners"
+            }
 
-          if (Test-Path "C:\VulkanSDK") {
-            Write-Host "Using existing Vulkan SDK at C:\VulkanSDK"
+            if (Test-Path "C:\VulkanSDK") {
+              Write-Host "Using existing Vulkan SDK at C:\VulkanSDK"
+            } else {
+              Write-Host "Downloading Vulkan SDK installer..."
+              choco install -y aria2
+              $installer = Join-Path $env:TEMP "vulkan-sdk.exe"
+              aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+
+              Write-Host "Installing Vulkan SDK (silent, default feature set)..."
+              # NOTE: Do not pass --components here. LunarG has changed component IDs over time,
+              # and specifying them can cause 'Component(s) not found' failures.
+              Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+            }
           } else {
-            Write-Host "Downloading Vulkan SDK installer..."
-            choco install -y aria2
-            $installer = Join-Path $env:TEMP "vulkan-sdk.exe"
-            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
-
-            Write-Host "Installing Vulkan SDK (silent, default feature set)..."
-            # NOTE: Do not pass --components here. LunarG has changed component IDs over time,
-            # and specifying them can cause 'Component(s) not found' failures.
-            Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+            Write-Host "Vulkan SDK cache hit. Setting up environment..."
           }
 
           $vulkanPath = ""
@@ -112,14 +116,28 @@ jobs:
             $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
           }
           if (-not $vulkanPath) {
-            throw "Vulkan SDK not found after install"
+            throw "Vulkan SDK not found after install/cache restore"
           }
 
+          Write-Host "Found Vulkan SDK at: $vulkanPath"
           "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Vulkan SDK diagnostics (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "VULKAN_SDK: $env:VULKAN_SDK"
+          Write-Host "Vulkan_INCLUDE_DIR: $env:Vulkan_INCLUDE_DIR"
+          Write-Host "Vulkan_LIBRARY: $env:Vulkan_LIBRARY"
+          if (Test-Path "$env:Vulkan_INCLUDE_DIR\vulkan\vulkan.hpp") {
+            Write-Host "vulkan.hpp found"
+          } else {
+            Write-Warning "vulkan.hpp NOT found at $env:Vulkan_INCLUDE_DIR\vulkan\vulkan.hpp"
+          }
 
       - name: Cache Vulkan SDK (Linux)
         if: runner.os == 'Linux'
@@ -365,12 +383,21 @@ jobs:
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE"
-          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+        run: |
+          $extraArgs = @()
+          if ($env:Vulkan_INCLUDE_DIR) {
+            $extraArgs += "-DVulkan_INCLUDE_DIR=$env:Vulkan_INCLUDE_DIR"
+          }
+          if ($env:Vulkan_LIBRARY) {
+            $extraArgs += "-DVulkan_LIBRARY=$env:Vulkan_LIBRARY"
+          }
+
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            $extraArgs
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'

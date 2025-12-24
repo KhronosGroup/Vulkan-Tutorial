@@ -18,6 +18,7 @@
 
 #include <array>
 #include <glm/glm.hpp>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -259,10 +260,15 @@ class MeshComponent final : public Component
 	std::vector<Vertex>   vertices;
 	std::vector<uint32_t> indices;
 
-	// Cached local-space AABB
+	// Cached local-space AABB (encompassing all instances)
 	glm::vec3 localAABBMin{0.0f};
 	glm::vec3 localAABBMax{0.0f};
 	bool      localAABBValid = false;
+
+	// Cached base mesh AABB (vertices only)
+	glm::vec3 meshAABBMin{0.0f};
+	glm::vec3 meshAABBMax{0.0f};
+	bool      meshAABBValid = false;
 
 	// All PBR texture paths for this mesh
 	std::string texturePath;                         // Primary texture path (baseColor) - kept for backward compatibility
@@ -289,26 +295,8 @@ class MeshComponent final : public Component
 	{}
 
 	// Local AABB utilities
-	void RecomputeLocalAABB()
-	{
-		if (vertices.empty())
-		{
-			localAABBMin   = glm::vec3(0.0f);
-			localAABBMax   = glm::vec3(0.0f);
-			localAABBValid = false;
-			return;
-		}
-		glm::vec3 minB = vertices[0].position;
-		glm::vec3 maxB = vertices[0].position;
-		for (const auto &v : vertices)
-		{
-			minB = glm::min(minB, v.position);
-			maxB = glm::max(maxB, v.position);
-		}
-		localAABBMin   = minB;
-		localAABBMax   = maxB;
-		localAABBValid = true;
-	}
+	void RecomputeLocalAABB();
+	void RecomputeMeshAABB();
 	[[nodiscard]] bool HasLocalAABB() const
 	{
 		return localAABBValid;
@@ -321,6 +309,14 @@ class MeshComponent final : public Component
 	{
 		return localAABBMax;
 	}
+	[[nodiscard]] glm::vec3 GetBaseMeshAABBMin() const
+	{
+		return meshAABBMin;
+	}
+	[[nodiscard]] glm::vec3 GetBaseMeshAABBMax() const
+	{
+		return meshAABBMax;
+	}
 
 	/**
 	 * @brief Set the vertices of the mesh.
@@ -328,7 +324,9 @@ class MeshComponent final : public Component
 	 */
 	void SetVertices(const std::vector<Vertex> &newVertices)
 	{
-		vertices = newVertices;
+		vertices       = newVertices;
+		meshAABBValid  = false;
+		localAABBValid = false;
 		RecomputeLocalAABB();
 	}
 
@@ -447,6 +445,7 @@ class MeshComponent final : public Component
 	{
 		instances.emplace_back(transform, materialIndex);
 		isInstanced = instances.size() > 1;
+		RecomputeLocalAABB();
 	}
 
 	/**
@@ -457,6 +456,7 @@ class MeshComponent final : public Component
 	{
 		instances   = newInstances;
 		isInstanced = instances.size() > 1;
+		RecomputeLocalAABB();
 	}
 
 	/**
@@ -493,6 +493,7 @@ class MeshComponent final : public Component
 	{
 		instances.clear();
 		isInstanced = false;
+		RecomputeLocalAABB();
 	}
 
 	/**
@@ -506,6 +507,7 @@ class MeshComponent final : public Component
 		if (index < instances.size())
 		{
 			instances[index] = InstanceData(transform, materialIndex);
+			RecomputeLocalAABB();
 		}
 	}
 

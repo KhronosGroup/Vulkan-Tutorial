@@ -17,6 +17,8 @@
 
 // Fullscreen composite pass: samples the off-screen opaque color and writes to swapchain
 
+import tonemapping_utils;
+
 struct VSOut {
     float4 Position : SV_POSITION;
     float2 UV       : TEXCOORD0;
@@ -47,34 +49,26 @@ struct Push {
 };
 [[vk::push_constant]] Push pushConsts;
 
-float3 tonemapReinhard(float3 x)
-{
-    return x / (1.0 + x);
-}
-
-float3 applyExposure(float3 x, float exposure)
-{
-    return 1.0 - exp(-x * max(exposure, 0.0001));
-}
-
-float3 linearToGamma(float3 x, float gamma)
-{
-    float inv = (gamma > 0.0) ? (1.0 / gamma) : (1.0 / 2.2);
-    return pow(max(x, 0.0), inv);
-}
-
 // Export entrypoint for fragment stage
 [shader("fragment")] float4 PSMain(VSOut i) : SV_TARGET
 {
     float4 c = sceneColor.Sample(i.UV);
     float3 color = c.rgb;
-    // Simple exposure; optional reinhard if desired later
-    color = applyExposure(color, pushConsts.exposure);
+
+    // Apply exposure and filmic tonemapping
+    color *= pushConsts.exposure;
+
+    // Uncharted2 / Hable filmic tonemap, canonical form
+    float3 t = Hable_Filmic_Tonemapping::Uncharted2Tonemap(color);
+    float3 w = Hable_Filmic_Tonemapping::Uncharted2Tonemap(float3(1,1,1) * Hable_Filmic_Tonemapping::W);
+    color = t / max(w, float3(1e-6, 1e-6, 1e-6));
 
     // If the attachment is NOT SRGB, encode gamma here. When it is SRGB,
     // the hardware will encode at store so we keep color in linear space.
     if (pushConsts.outputIsSRGB == 0) {
-        color = linearToGamma(color, pushConsts.gamma);
+        color = pow(max(color, 0.0), float3(1.0 / pushConsts.gamma));
+    } else {
+        color = saturate(color);
     }
     return float4(color, 1.0);
 }

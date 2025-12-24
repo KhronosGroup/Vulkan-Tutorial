@@ -23,10 +23,11 @@ struct LightData {
     [[vk::offset(0)]]   float4 position;
     [[vk::offset(16)]]  float4 color;
     [[vk::offset(32)]]  column_major float4x4 lightSpaceMatrix;
-    [[vk::offset(96)]]  int   lightType;
-    [[vk::offset(100)]] float range;
-    [[vk::offset(104)]] float innerConeAngle;
-    [[vk::offset(108)]] float outerConeAngle;
+    [[vk::offset(96)]]  float4 direction;
+    [[vk::offset(112)]] int   lightType;
+    [[vk::offset(116)]] float range;
+    [[vk::offset(120)]] float innerConeAngle;
+    [[vk::offset(124)]] float outerConeAngle;
 };
 
 // Uniform buffer object

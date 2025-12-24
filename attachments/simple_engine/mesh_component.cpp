@@ -17,6 +17,90 @@
 #include "mesh_component.h"
 #include "model_loader.h"
 #include <cmath>
+#include <limits>
+
+// Helper to transform an AABB by a matrix
+static void transformAABBLocal(const glm::mat4 &M,
+                               const glm::vec3 &localMin,
+                               const glm::vec3 &localMax,
+                               glm::vec3       &outMin,
+                               glm::vec3       &outMax)
+{
+	const glm::vec3 c = 0.5f * (localMin + localMax);
+	const glm::vec3 e = 0.5f * (localMax - localMin);
+
+	const glm::vec3 worldCenter = glm::vec3(M * glm::vec4(c, 1.0f));
+	const glm::mat3 A            = glm::mat3(M);
+	const glm::mat3 AbsA         = glm::mat3(glm::abs(A[0]), glm::abs(A[1]), glm::abs(A[2]));
+	const glm::vec3 worldExtents = AbsA * e;
+
+	outMin = worldCenter - worldExtents;
+	outMax = worldCenter + worldExtents;
+}
+
+void MeshComponent::RecomputeMeshAABB()
+{
+	if (meshAABBValid)
+		return;
+
+	if (vertices.empty())
+	{
+		meshAABBMin   = glm::vec3(0.0f);
+		meshAABBMax   = glm::vec3(0.0f);
+		meshAABBValid = false;
+		return;
+	}
+	glm::vec3 minB = vertices[0].position;
+	glm::vec3 maxB = vertices[0].position;
+	for (const auto &v : vertices)
+	{
+		minB = glm::min(minB, v.position);
+		maxB = glm::max(maxB, v.position);
+	}
+	meshAABBMin   = minB;
+	meshAABBMax   = maxB;
+	meshAABBValid = true;
+}
+
+void MeshComponent::RecomputeLocalAABB()
+{
+	// First ensure base mesh AABB is up to date
+	RecomputeMeshAABB();
+
+	if (!meshAABBValid)
+	{
+		localAABBMin   = glm::vec3(0.0f);
+		localAABBMax   = glm::vec3(0.0f);
+		localAABBValid = false;
+		return;
+	}
+
+	if (instances.empty())
+	{
+		// No instances: local AABB is just the mesh AABB
+		localAABBMin   = meshAABBMin;
+		localAABBMax   = meshAABBMax;
+		localAABBValid = true;
+	}
+	else
+	{
+		// Union of all transformed instance AABBs
+		glm::vec3 fullMin(std::numeric_limits<float>::max());
+		glm::vec3 fullMax(-std::numeric_limits<float>::max());
+
+		for (const auto &inst : instances)
+		{
+			glm::vec3 instMin, instMax;
+			transformAABBLocal(inst.modelMatrix, meshAABBMin, meshAABBMax, instMin, instMax);
+			fullMin = glm::min(fullMin, instMin);
+			fullMax = glm::max(fullMax, instMax);
+		}
+
+		localAABBMin   = fullMin;
+		localAABBMax   = fullMax;
+		localAABBValid = true;
+	}
+}
 
 // Most of the MeshComponent class implementation is in the header file
 // This file is mainly for any methods that might need additional implementation

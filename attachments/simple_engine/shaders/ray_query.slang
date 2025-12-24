@@ -107,7 +107,14 @@ struct RayQueryUniforms {
     [[vk::offset(252)]] int enableThickGlass;     // 0/1 toggle for thick-glass attenuation
     [[vk::offset(256)]] float thicknessClamp;     // max thickness in meters (safety clamp)
     [[vk::offset(260)]] float absorptionScale;    // scales sigma_a (1=as-is)
-    [[vk::offset(264)]] int _pad1;                // reserved
+    // Ray Query shadows: 0/1 enable (wired from C++ as `enableRayQueryShadows`)
+    [[vk::offset(264)]] int _pad1;
+    // Ray Query soft shadows (area-light approximation)
+    [[vk::offset(268)]] int shadowSampleCount;    // 1 = hard shadows (single shadow ray)
+    [[vk::offset(272)]] float shadowSoftness;     // 0 = hard; otherwise scales effective light radius (see shader)
+    [[vk::offset(276)]] float reflectionIntensity; // user control
+    [[vk::offset(280)]] float _padShadow1;
+    [[vk::offset(284)]] float _padShadow2;
 };
 
 // Compute shader descriptor bindings
@@ -159,7 +166,35 @@ struct HitInfo {
     uint materialIndex;  // Resolved/clamped material index used
 };
 
-static const float RQ_RAY_EPS = 0.001;
+static const float RQ_RAY_EPS = 0.002;
+
+uint rqHash(uint v)
+{
+    // Thomas Wang 32-bit integer hash
+    v = (v ^ 61u) ^ (v >> 16u);
+    v *= 9u;
+    v = v ^ (v >> 4u);
+    v *= 0x27d4eb2du;
+    v = v ^ (v >> 15u);
+    return v;
+}
+
+float rqRand01(inout uint state)
+{
+    state = rqHash(state);
+    // 24-bit mantissa-ish
+    return float(state & 0x00FFFFFFu) * (1.0 / 16777216.0);
+}
+
+float2 rqSampleDisk(inout uint state)
+{
+    // Uniform disk sampling
+    float u1 = rqRand01(state);
+    float u2 = rqRand01(state);
+    float r = sqrt(max(u1, 0.0));
+    float a = 6.28318530718 * u2;
+    return float2(cos(a), sin(a)) * r;
+}
 
 float3 skyColor(float3 dir) {
     float t = saturate(0.5 * (dir.y + 1.0));
@@ -178,12 +213,9 @@ float computeTextureLOD(float3 worldPos, float roughness) {
     return max(lod, 0.0);
 }
 
-float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit) {
+float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inout uint rngState) {
     float3 base = max(hit.color, 0.0);
     int maxBounces = clamp(ubo._pad0, 0, 10);
-    if (maxBounces <= 0) {
-        return base;
-    }
 
     float3 N = hit.normal;
     float3 V = normalize(-rayDir);
@@ -200,25 +232,33 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit) {
     float opacity = clamp(hit.opacity, 0.0, 1.0);
     float blendTransmission = (hit.alphaMode == 2) ? (1.0 - opacity) : 0.0;
     float physicalTransmission = clamp(hit.transmission, 0.0, 1.0);
+
+    // Many scenes tag architectural glass via a material hint (`hit.isGlass`) even when
+    // `KHR_materials_transmission` is not authored. Provide a robust fallback so glass
+    // does not turn black and so interior lighting remains visible through windows.
+    float glassTransmission = 0.0;
+    if (hit.isGlass) {
+        glassTransmission = max(physicalTransmission, (1.0 - opacity));
+        if (glassTransmission < 0.01) {
+            glassTransmission = 0.90;
+        }
+    }
+
     float T = 0.0;
     if (ubo.enableRayQueryTransparency != 0 && !hit.isLiquid) {
-        // Do not force large T for glass; rely on authored/heuristic transmission.
-        // This avoids energy gain that can make glass appear opaque/overbright.
-        T = max(physicalTransmission, blendTransmission);
+        T = max(physicalTransmission, max(blendTransmission, glassTransmission));
     }
 
     // Reflection ray (chain up to maxBounces)
     float3 reflCol = float3(0.0, 0.0, 0.0);
     bool doRefl = (ubo.enableRayQueryReflections != 0) && (Fr > 1e-4);
     if (doRefl) {
-        float3 ro = hit.worldPos;
+        float3 ro = hit.worldPos + hit.normal * RQ_RAY_EPS;
         float3 rd = normalize(reflect(rayDir, N));
-        // Bias along the secondary ray direction to avoid self-intersection.
-        ro += rd * RQ_RAY_EPS;
 
         float3 last = skyColor(rd);
         for (int b = 0; b < maxBounces; ++b) {
-            HitInfo rh = traceRay(ro, rd, RQ_RAY_EPS, 10000.0);
+            HitInfo rh = traceRay(ro, rd, RQ_RAY_EPS, 10000.0, rngState);
             last = rh.hit ? max(rh.color, 0.0) : skyColor(rd);
             if (!rh.hit) {
                 break;
@@ -226,104 +266,116 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit) {
             // Next bounce
             float3 Nr = normalize(rh.normal);
             rd = normalize(reflect(rd, Nr));
-            ro = rh.worldPos + rd * RQ_RAY_EPS;
+            ro = rh.worldPos + Nr * RQ_RAY_EPS;
         }
-        reflCol = last;
+        reflCol = last * ubo.reflectionIntensity;
     }
 
-    // Transmission ray:
-    // - Physical transmission / glass: thin refraction ray
-    // - Alpha BLEND with no physical transmission: straight-through ray (no refraction)
-    float3 thruCol = float3(0.0, 0.0, 0.0);
+    // Transmission ray (iterative loop to support multiple layers)
+    float3 thruCol = skyColor(rayDir);
     bool doThru = (T > 1e-4);
     if (doThru) {
-        float3 thruDir = rayDir;
+        float3 curRd = rayDir;
+        float3 curRo = hit.worldPos;
+        float3 accumTint = float3(1.0);
+        HitInfo curHit = hit;
 
-        if (physicalTransmission > 1e-4 || hit.isGlass) {
-            // Thin refraction for glass/transmission
-            float3 Nn = N;
-            float eta = 1.0 / max(hit.ior, 1.0);
-            // Determine if we're entering or exiting based on ray direction vs normal
-            if (dot(rayDir, N) > 0.0) {
-                Nn = -N;
-                eta = max(hit.ior, 1.0);
-            }
-            float3 refrDir;
-            if (refract(rayDir, Nn, eta, refrDir)) {
-                thruDir = normalize(refrDir);
-            } else {
-                // Total internal reflection
-                doThru = false;
-            }
-        }
+        for (int bounce = 0; bounce < maxBounces + 1; ++bounce) {
+            float curPhysT = clamp(curHit.transmission, 0.0, 1.0);
+            float curOpacity = clamp(curHit.opacity, 0.0, 1.0);
+            float curGlassT = curHit.isGlass ? max(curPhysT, 1.0 - curOpacity) : 0.0;
+            if (curHit.isGlass && curGlassT < 0.01) curGlassT = 0.9;
+            float curT = max(curPhysT, max((curHit.alphaMode == 2 ? 1.0 - curOpacity : 0.0), curGlassT));
 
-        if (doThru) {
-            // We want the transmitted view of the scene BEYOND the glass exit surface,
-            // not the color of the glass backface itself. So:
-            // 1) Trace from just inside the entry point to find the exit surface on the same instance
-            // 2) If found, trace again from just beyond the exit point to sample the true background
-            // 3) If not found, fall back to the first trace color (behaves like thin surface)
-
-            float3 startPos = hit.worldPos + thruDir * RQ_RAY_EPS;
-            HitInfo firstHit = traceRay(startPos, thruDir, RQ_RAY_EPS, 10000.0);
-
-            // Attempt to find exit on the same instance (backface)
-            HitInfo exitHit = traceRay(startPos, thruDir, RQ_RAY_EPS, 10000.0);
-            bool haveExitSameInstance = exitHit.hit && (exitHit.instanceId == hit.instanceId);
-
-            // Sample the scene beyond the exit if available, otherwise use firstHit
-            if (haveExitSameInstance) {
-                float3 exitPos = exitHit.worldPos + thruDir * RQ_RAY_EPS;
-                HitInfo beyond = traceRay(exitPos, thruDir, RQ_RAY_EPS, 10000.0);
-                thruCol = beyond.hit ? max(beyond.color, 0.0) : skyColor(thruDir);
-            } else {
-                thruCol = firstHit.hit ? max(firstHit.color, 0.0) : skyColor(thruDir);
+            if (curT < 1e-4) {
+                thruCol = accumTint * curHit.color;
+                break;
             }
 
-            // Base color tint (thin-glass default behavior)
-            if (hit.isGlass || physicalTransmission > 1e-4) {
-                thruCol *= clamp(hit.baseColor, 0.0, 1.0);
+            float3 nextRd = curRd;
+            bool refracts = (curPhysT > 1e-4 || curHit.isGlass);
+            if (refracts) {
+                float3 Nn = curHit.normal;
+                float eta = 1.0 / max(curHit.ior, 1.0);
+                // Determine if we're entering or exiting based on ray direction vs normal
+                if (dot(curRd, curHit.normal) > 0.0) {
+                    Nn = -curHit.normal;
+                    eta = max(curHit.ior, 1.0);
+                }
+                float3 refrDir;
+                if (refract(curRd, Nn, eta, refrDir)) {
+                    nextRd = normalize(refrDir);
+                } else {
+                    // Total internal reflection
+                    thruCol = float3(0, 0, 0);
+                    break;
+                }
             }
+
+            // Accumulate tint for refractive surfaces
+            if (refracts) {
+                float3 tint = max(clamp(curHit.baseColor, 0.0, 1.0), float3(0.5, 0.5, 0.5));
+                accumTint *= tint;
+            }
+
+            // Trace from just inside the entry point to reduce self-hits.
+            float3 startPos = curHit.worldPos + nextRd * (4.0 * RQ_RAY_EPS);
 
             // Volumetric absorption for THICK glass (skip for thin-walled)
-            if (ubo.enableThickGlass != 0 && !hit.thinWalled && (hit.isGlass || physicalTransmission > 1e-4)) {
-                float thickness = 0.0;
-                if (haveExitSameInstance) {
-                    thickness = distance(exitHit.worldPos, hit.worldPos);
-                } else {
-                    // Fallback small thickness if not watertight
-                    thickness = 0.01; // 1 cm
-                }
-                // Clamp to avoid over-darkening from outliers
-                thickness = min(thickness, max(0.0, ubo.thicknessClamp));
-
-                if (thickness > 1e-6) {
-                    // Convert absorptionColor to sigma_a using Beer–Lambert: C = exp(-sigma*D) => sigma = -ln(C)/D
-                    uint mi = min(hit.materialIndex, (uint)max(0, ubo.materialCount-1));
-                    MaterialData m = materialBuffer[mi];
-                    float3 C = saturate(m.absorptionColor);
-                    float D = max(m.absorptionDistance, 1e-4);
-                    float3 sigma_a = -log(max(C, 1e-3)) / D;
-                    sigma_a *= max(ubo.absorptionScale, 0.0);
-                    float3 Tvol = exp(-sigma_a * thickness);
-                    thruCol *= saturate(Tvol);
+            if (ubo.enableThickGlass != 0 && !curHit.thinWalled && refracts) {
+                HitInfo exitHit = traceRay(startPos, nextRd, (4.0 * RQ_RAY_EPS), 10000.0, rngState);
+                bool haveExitSameSurface = exitHit.hit &&
+                                          (exitHit.instanceId == curHit.instanceId) &&
+                                          (exitHit.materialIndex == curHit.materialIndex);
+                if (haveExitSameSurface) {
+                    float thickness = min(distance(exitHit.worldPos, curHit.worldPos), max(0.0, ubo.thicknessClamp));
+                    if (thickness > 1e-6) {
+                        uint mi = min(curHit.materialIndex, (uint)max(0, ubo.materialCount-1));
+                        MaterialData m = materialBuffer[mi];
+                        float3 C = saturate(m.absorptionColor);
+                        float D = max(m.absorptionDistance, 1e-4);
+                        float3 sigma_a = -log(max(C, 1e-3)) / D;
+                        sigma_a *= max(ubo.absorptionScale, 0.0);
+                        accumTint *= saturate(exp(-sigma_a * thickness));
+                    }
+                    startPos = exitHit.worldPos + nextRd * (4.0 * RQ_RAY_EPS);
                 }
             }
 
-            // Refractive radiance compensation to mitigate perceived amplification.
-            // Our refract() call used eta = n1/n2. Scale transmitted radiance by
-            // min(1, (n2/n1)^2) = min(1, 1/(eta^2)) when ENTERING a denser medium.
-            // Do not amplify when exiting; clamp to 1.0 to avoid brightening.
-            {
-                // Recreate the n1/n2 used for refract(): if ray is entering (front-face), eta = n1/n2 = 1/ior; else eta = ior
-                bool entering = (dot(rayDir, N) < 0.0);
-                float eta_n1_over_n2 = entering ? (1.0 / max(hit.ior, 1.0)) : max(hit.ior, 1.0);
+            // Trace the scene beyond this layer
+            HitInfo nextHit = traceRay(startPos, nextRd, RQ_RAY_EPS, 10000.0, rngState);
+            if (!nextHit.hit) {
+                thruCol = accumTint * skyColor(nextRd);
+                break;
+            }
+
+            // Assume opaque for now; check if we should continue looping
+            thruCol = accumTint * nextHit.color;
+
+            float nPhysT = clamp(nextHit.transmission, 0.0, 1.0);
+            float nOpacity = clamp(nextHit.opacity, 0.0, 1.0);
+            float nGlassT = nextHit.isGlass ? max(nPhysT, 1.0 - nOpacity) : 0.0;
+            if (nextHit.isGlass && nGlassT < 0.01) nGlassT = 0.9;
+            float nT = max(nPhysT, max((nextHit.alphaMode == 2 ? 1.0 - nOpacity : 0.0), nGlassT));
+
+            // Stop if the next hit is opaque or we reached max bounces
+            if (nT < 1e-4 || bounce == maxBounces) {
+                break;
+            }
+
+            // Refractive radiance compensation (mitigate amplification)
+            if (refracts) {
+                bool entering = (dot(curRd, curHit.normal) < 0.0);
+                float eta_ratio = entering ? (1.0 / max(curHit.ior, 1.0)) : max(curHit.ior, 1.0);
                 if (entering) {
-                    float invEta2 = 1.0 / max(eta_n1_over_n2 * eta_n1_over_n2, 1e-4);
-                    float transScale = clamp(invEta2, 0.0, 1.0);
-                    thruCol *= transScale;
+                    float invEta2 = 1.0 / max(eta_ratio * eta_ratio, 1e-4);
+                    accumTint *= clamp(invEta2, 0.0, 1.0);
                 }
             }
+
+            // Move to the next transmissive layer
+            curHit = nextHit;
+            curRd = nextRd;
         }
     }
 
@@ -346,12 +398,13 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit) {
             return base * opacity + mixed * (1.0 - opacity);
         }
 
-        // Glass/transmission path: return the energy-conserving mixture directly.
-        return mixed;
+        // Glass/transmission path: return the energy-conserving mixture directly,
+        // plus direct surface highlights (specular + emissive) from the glass surface.
+        return mixed + base;
     }
 
     // Opaque: add a controlled reflection contribution (avoids double-counting too much)
-    float reflWeight = Fr * (1.0 - clamp(hit.roughness, 0.0, 1.0));
+    float reflWeight = doRefl ? (Fr * (1.0 - clamp(hit.roughness, 0.0, 1.0))) : 0.0;
     return lerp(base, reflCol, reflWeight);
 }
 
@@ -393,6 +446,65 @@ float computeBaseColorAlpha(MaterialData material, uint instIndex, uint primitiv
     return alpha;
 }
 
+// Shadow query: returns true when there is an occluder between origin and tMax along direction.
+// - MASK materials are alpha-tested against alphaCutoff.
+// - BLEND materials are treated as non-occluding for shadows.
+bool traceShadowOccluded(float3 origin, float3 direction, float tMin, float tMax) {
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = direction;
+    ray.TMin = tMin;
+    ray.TMax = tMax;
+
+    RayQuery<RAY_FLAG_NONE> q;
+    uint mask = 0xFF;
+    // Force non-opaque so we can decide in-shader whether a candidate occludes.
+    // This is required so transmissive / glass materials do not fully block shadow rays.
+    q.TraceRayInline(
+        tlas,
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_FORCE_NON_OPAQUE,
+        mask,
+        ray
+    );
+
+    int maxIterations = 1000;
+    int iteration = 0;
+    while (q.Proceed() && iteration < maxIterations) {
+        iteration++;
+
+        if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE) {
+            uint instIndex = q.CandidateInstanceID();
+            if (instIndex < uint(max(0, ubo.geometryInfoCount))) {
+                GeometryInfo geoInfoC = geometryInfoBuffer[instIndex];
+                uint materialIndexC = 0u;
+                if (ubo.materialCount > 0) {
+                    materialIndexC = min(geoInfoC.materialIndex, (uint)(ubo.materialCount - 1));
+                }
+                MaterialData matC = materialBuffer[materialIndexC];
+
+                bool accept = true;
+
+                // Treat transmissive surfaces as non-occluding for shadows.
+                // NOTE: This includes "opaque-but-glass" materials (alphaMode==OPAQUE with isGlass hint).
+                bool transmissive = (matC.isGlass != 0) || (matC.transmissionFactor > 0.01);
+                if (transmissive || matC.alphaMode == 2) {
+                    accept = false;
+                } else if (matC.alphaMode == 1) {
+                    float alpha = computeBaseColorAlpha(matC, instIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
+                    accept = (alpha >= matC.alphaCutoff);
+                }
+
+                if (accept) {
+                    q.CommitNonOpaqueTriangleHit();
+                    break;
+                }
+            }
+        }
+    }
+
+    return (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
+}
+
 // Calculate refraction direction using Snell's law
 // Returns true if refraction occurs, false if total internal reflection
 bool refract(float3 I, float3 N, float eta, out float3 refracted) {
@@ -407,7 +519,7 @@ bool refract(float3 I, float3 N, float eta, out float3 refracted) {
 }
 
 // Perform ray query and return hit information with proper vertex normals and material properties
-HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
+HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout uint rngState) {
     HitInfo result;
     result.hit = false;
     result.t = tMax;
@@ -722,33 +834,116 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
         }
 
         // --- Direct lighting (GGX) ---
-        float3 V = normalize(ubo.camPos.xyz - result.worldPos);
+        float3 V = normalize(-direction);
+        N = result.normal;
+        // Flip normal for backfaces so lighting works inside single-sided rooms
+        if (dot(N, V) < 0.0) {
+            N = -N;
+            result.normal = N;
+        }
+
+        // Effective transmission for diffuse scaling (to avoid over-brightening transmissive surfaces)
+        float T_diff = clamp(material.transmissionFactor, 0.0, 1.0);
+        if (material.isGlass != 0) T_diff = max(T_diff, 0.9);
+        if (material.alphaMode == 2) T_diff = max(T_diff, 1.0 - clamp(baseColor.a, 0.0, 1.0));
+
         float3 diffuseLighting = float3(0.0, 0.0, 0.0);
         float3 specularLighting = float3(0.0, 0.0, 0.0);
 
+        const bool shadowsEnabled = (ubo._pad1 != 0);
         int lc = max(ubo.lightCount, 0);
         for (int li = 0; li < lc; ++li) {
             LightData light = lightBuffer[li];
-            float3 L;
-            float3 radiance;
-            if (light.lightType == 1) {
-                L = normalize(-light.position.xyz);
-                radiance = light.color.rgb;
-            } else {
-                float3 toLight = light.position.xyz - result.worldPos;
-                float d = length(toLight);
-                L = (d > 1e-5) ? (toLight / d) : float3(0, 0, 1);
-                if (light.lightType == 3) {
-                    float r = max(light.range, 0.001);
-                    float att = 1.0 / (1.0 + (d / r) * (d / r));
-                    radiance = light.color.rgb * att;
-                } else {
-                    radiance = light.color.rgb / max(d * d, 0.0001);
-                }
+
+            // Determine whether to use multi-sample soft shadows for this light.
+            // Directional shadows stay hard for now.
+            int samples = 1;
+            float softness = max(ubo.shadowSoftness, 0.0);
+            int reqSamples = max(ubo.shadowSampleCount, 1);
+            if (shadowsEnabled && reqSamples > 1 && softness > 0.0 && light.lightType != 1) {
+                samples = min(reqSamples, 32);
             }
-            float rawDot = dot(N, L);
-            float NdotL = (light.lightType == 3) ? abs(rawDot) : max(rawDot, 0.0);
-            if (NdotL > 0.0) {
+
+            // Build a stable-ish RNG for this light
+            uint lightRng = rqHash(rngState ^ (uint(li) * 747796405u) ^ rqHash(asuint(result.worldPos.x) + 31u * asuint(result.worldPos.y)));
+
+            float3 diffAcc = float3(0.0, 0.0, 0.0);
+            float3 specAcc = float3(0.0, 0.0, 0.0);
+
+            for (int si = 0; si < samples; ++si) {
+                float3 L;
+                float3 radiance;
+                float tMaxShadow = 10000.0;
+
+                if (light.lightType == 1) {
+                    // Directional
+                    L = normalize(-light.position.xyz);
+                    radiance = light.color.rgb;
+                } else {
+                    // Point/spot/emissive
+                    float3 lightPos = light.position.xyz;
+
+                    float3 toCenter = lightPos - result.worldPos;
+                    float dCenter = length(toCenter);
+                    float3 Lcenter = (dCenter > 1e-5) ? (toCenter / dCenter) : float3(0, 0, 1);
+
+                    // Effective area-light radius (in meters) as a function of range.
+                    // `shadowSoftness` is authored as a fraction of `light.range`.
+                    float lightRadius = softness * max(light.range, 0.0);
+                    lightRadius = clamp(lightRadius, 0.0, 2.0);
+
+                    float3 samplePos = lightPos;
+                    if (samples > 1 && lightRadius > 0.0) {
+                        float3 up = (abs(Lcenter.y) < 0.999) ? float3(0, 1, 0) : float3(1, 0, 0);
+                        float3 T = normalize(cross(up, Lcenter));
+                        float3 B = cross(Lcenter, T);
+                        float2 d = rqSampleDisk(lightRng);
+                        samplePos = lightPos + (T * d.x + B * d.y) * lightRadius;
+                    }
+
+                    float3 toLight = samplePos - result.worldPos;
+                    float d = length(toLight);
+                    L = (d > 1e-5) ? (toLight / d) : float3(0, 0, 1);
+                    tMaxShadow = max(d - RQ_RAY_EPS, RQ_RAY_EPS);
+
+                    float attenuation = 1.0;
+                    if (light.lightType == 3) {
+                        float r = max(light.range, 0.001);
+                        attenuation = 1.0 / (1.0 + (d / r) * (d / r));
+                    } else {
+                        attenuation = 1.0 / max(d * d, 0.0001);
+                        // GLTF style range attenuation
+                        if (light.range > 0.0) {
+                            attenuation *= pow(saturate(1.0 - pow(d / light.range, 4.0)), 2.0);
+                        }
+                    }
+                    radiance = light.color.rgb * attenuation;
+
+                    if (light.lightType == 2) {
+                        // Spot light cone attenuation
+                        float3 D = normalize(light.direction.xyz);
+                        float cd = dot(D, -L);
+                        float cosInner = cos(light.innerConeAngle);
+                        float cosOuter = cos(light.outerConeAngle);
+                        float spotAttenuation = saturate((cd - cosOuter) / max(cosInner - cosOuter, 0.0001));
+                        spotAttenuation *= spotAttenuation;
+                        radiance *= spotAttenuation;
+                    }
+                }
+
+                float rawDot = dot(N, L);
+                float NdotL = (light.lightType == 3) ? abs(rawDot) : max(rawDot, 0.0);
+                if (NdotL <= 0.0) {
+                    continue;
+                }
+
+                float visibility = 1.0;
+                if (shadowsEnabled) {
+                    float3 shadowOrigin = result.worldPos + N * RQ_RAY_EPS;
+                    bool occluded = traceShadowOccluded(shadowOrigin, L, RQ_RAY_EPS, tMaxShadow);
+                    visibility = occluded ? 0.0 : 1.0;
+                }
+
                 float3 H = normalize(V + L);
                 float NdotV = max(dot(N, V), 0.0);
                 float NdotH = max(dot(N, H), 0.0);
@@ -757,13 +952,21 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
                 float G = GeometrySmith(NdotV, NdotL, roughness);
                 float3 F = FresnelSchlick(HdotV, F0);
                 float3 spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);
-                float3 kD = (1.0 - F) * (1.0 - metallic);
-                specularLighting += spec * radiance * NdotL;
-                diffuseLighting += (kD * albedo / PI) * radiance * NdotL;
+                float3 kD = (1.0 - F) * (1.0 - metallic) * (1.0 - T_diff);
+
+                specAcc += spec * radiance * NdotL * visibility;
+                diffAcc += (kD * albedo / PI) * radiance * NdotL * visibility;
             }
+
+            float inv = (samples > 1) ? (1.0 / float(samples)) : 1.0;
+            specularLighting += specAcc * inv;
+            diffuseLighting += diffAcc * inv;
         }
 
-        float3 ambient = albedo * (ubo.scaleIBLAmbient) * ao;
+        // Avoid ambient "fill" on glass/transmissive surfaces; it can make them look opaque/frosted.
+        // Keep ambient for opaque materials to retain basic IBL/ambient parity.
+        bool treatAsTransmissive = (material.isGlass != 0) || (material.transmissionFactor > 0.01) || (material.alphaMode == 2);
+        float3 ambient = treatAsTransmissive ? float3(0.0, 0.0, 0.0) : (albedo * (0.1 * ubo.scaleIBLAmbient) * ao);
         float3 color = ambient + diffuseLighting + specularLighting + emissive;
 
         result.color = color;
@@ -772,7 +975,8 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax) {
         result.transmission = material.transmissionFactor;
         result.isGlass = (material.isGlass != 0);
         result.alphaMode = material.alphaMode;
-        result.opacity = clamp(material.alpha, 0.0, 1.0);
+        // Keep texture-derived alpha/opacity (baseColor factor * baseColor texture).
+        result.opacity = clamp(baseColor.a, 0.0, 1.0);
         result.thinWalled = (material.thinWalled != 0);
     }
     
@@ -820,10 +1024,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 rayOrigin = ubo.camPos.xyz;
     float3 rayDir = normalize(farWorld - nearWorld);
     
-    HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0);
+    uint rngState = rqHash(pixelCoord.x + 4099u * pixelCoord.y + 131071u);
+    HitInfo hit = traceRay(rayOrigin, rayDir, 0.0001, 10000.0, rngState);
     
     if (hit.hit) {
-        float3 c = shadeWithSecondaryRays(rayOrigin, rayDir, hit);
+        float3 c = shadeWithSecondaryRays(rayOrigin, rayDir, hit, rngState);
         // Output linear HDR-ish color; composite pass will apply exposure/gamma.
         outputImage[pixelCoord] = float4(c, 1.0);
 

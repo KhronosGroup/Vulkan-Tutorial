@@ -93,6 +93,7 @@ struct LightData
 	alignas(16) glm::vec4 position;                // Light position (w component used for direction vs position)
 	alignas(16) glm::vec4 color;                   // Light color and intensity
 	alignas(16) glm::mat4 lightSpaceMatrix;        // Light space matrix for shadow mapping
+	alignas(16) glm::vec4 direction;               // Light direction (for directional/spotlights)
 	alignas(4) int lightType;                      // 0=Point, 1=Directional, 2=Spot, 3=Emissive
 	alignas(4) float range;                        // Light range
 	alignas(4) float innerConeAngle;               // For spotlights
@@ -169,18 +170,23 @@ struct RayQueryUniformBufferObject
 	alignas(4) int geometryInfoCount;
     alignas(4) int materialCount;
     alignas(4) int _pad0; // used for rayQueryMaxBounces
-    // Thick-glass controls (RQ-only)
-    alignas(4) int enableThickGlass;          // 0/1 toggle
-    alignas(4) float thicknessClamp;          // max thickness in meters
-    alignas(4) float absorptionScale;         // scales sigma_a
-    alignas(4) int _pad1;                     // reserved
-};
+   	// Thick-glass controls (RQ-only)
+   	alignas(4) int enableThickGlass;          // 0/1 toggle
+   	alignas(4) float thicknessClamp;          // max thickness in meters
+   	alignas(4) float absorptionScale;         // scales sigma_a
+   	alignas(4) int _pad1;                     // Ray Query: enable hard shadows for direct lighting (0/1)
+   	// Ray Query soft shadows (area-light approximation)
+   	alignas(4) int   shadowSampleCount;        // 1 = hard shadows; >1 = multi-sample
+   	alignas(4) float shadowSoftness;           // 0 = hard; otherwise scales effective light radius (fraction of range)
+   	alignas(4) float reflectionIntensity;      // User control for glass reflection strength
+   	alignas(4) float _padShadow[2]{};
+      };
 
-static_assert(sizeof(RayQueryUniformBufferObject) == 272, "RayQueryUniformBufferObject size must match shader layout");
-static_assert(offsetof(RayQueryUniformBufferObject, model) == 0);
-static_assert(offsetof(RayQueryUniformBufferObject, view) == 64);
-static_assert(offsetof(RayQueryUniformBufferObject, proj) == 128);
-static_assert(offsetof(RayQueryUniformBufferObject, camPos) == 192);
+   static_assert(sizeof(RayQueryUniformBufferObject) == 288, "RayQueryUniformBufferObject size must match shader layout");
+   static_assert(offsetof(RayQueryUniformBufferObject, model) == 0);
+   static_assert(offsetof(RayQueryUniformBufferObject, view) == 64);
+   static_assert(offsetof(RayQueryUniformBufferObject, proj) == 128);
+   static_assert(offsetof(RayQueryUniformBufferObject, camPos) == 192);
 static_assert(offsetof(RayQueryUniformBufferObject, exposure) == 208);
 static_assert(offsetof(RayQueryUniformBufferObject, gamma) == 212);
 static_assert(offsetof(RayQueryUniformBufferObject, scaleIBLAmbient) == 216);
@@ -195,6 +201,8 @@ static_assert(offsetof(RayQueryUniformBufferObject, enableThickGlass) == 252);
 static_assert(offsetof(RayQueryUniformBufferObject, thicknessClamp) == 256);
 static_assert(offsetof(RayQueryUniformBufferObject, absorptionScale) == 260);
 static_assert(offsetof(RayQueryUniformBufferObject, _pad1) == 264);
+static_assert(offsetof(RayQueryUniformBufferObject, shadowSampleCount) == 268);
+static_assert(offsetof(RayQueryUniformBufferObject, shadowSoftness) == 272);
 
 /**
  * @brief Structure for PBR material properties.
@@ -891,7 +899,7 @@ class Renderer
 	bool buildAccelerationStructures(const std::vector<Entity *> &entities);
 
 	// Refit/UPDATE the TLAS with latest entity transforms (no rebuild)
-	bool refitTopLevelAS(const std::vector<Entity *> &entities);
+	bool refitTopLevelAS(const std::vector<Entity *> &entities, CameraComponent *camera);
 
 	/**
 	 * @brief Update ray query descriptor sets with current resources.
@@ -1003,9 +1011,15 @@ class Renderer
 	float gamma               = 2.2f;        // Gamma correction value
 	float exposure            = 1.2f;        // HDR exposure value (default tuned to avoid washout)
 	float reflectionIntensity = 1.0f;        // User control for glass reflection strength
+	// Raster shadows (experimental): use ray queries in the raster PBR fragment shader.
+	// Wired through `UniformBufferObject.padding2` to avoid UBO layout churn.
+	bool enableRasterRayQueryShadows = false;
 
 	// Ray Query tuning
-	int rayQueryMaxBounces = 1;        // 0 = no secondary rays, 1 = one-bounce reflection/refraction
+	int  rayQueryMaxBounces = 1;            // 0 = no secondary rays, 1 = one-bounce reflection/refraction
+	bool enableRayQueryShadows = true;      // Hard shadows for Ray Query direct lighting (shadow rays)
+	int  rayQueryShadowSampleCount = 1;     // 1 = hard; >1 enables soft-shadow sampling in the shader
+	float rayQueryShadowSoftness = 0.0f;    // 0 = hard; otherwise scales effective light radius (fraction of range)
 	// Thick-glass controls (RQ-only)
 	bool  enableThickGlass             = true;
 	float thickGlassAbsorptionScale    = 1.0f;
@@ -1562,6 +1576,13 @@ class Renderer
 		// real textures or shared defaults to avoid per-frame "black" flashes.
 		std::vector<bool> pbrImagesWritten;          // size = MAX_FRAMES_IN_FLIGHT
 		std::vector<bool> basicImagesWritten;        // size = MAX_FRAMES_IN_FLIGHT
+
+		// Tracks whether the remaining required bindings in the PBR set 0 layout have
+		// been written at least once for each frame.
+		// This includes bindings like Forward+ tile buffers (7/8), reflection sampler (10),
+		// and TLAS (11). These bindings are required by the pipeline layout and must be
+		// valid before any draw that uses the PBR/glass pipelines.
+		std::vector<bool> pbrFixedBindingsWritten;        // size = MAX_FRAMES_IN_FLIGHT
 
 		// Cached material lookup/classification for raster rendering.
 		// Avoids per-frame string parsing of entity names ("_Material_") and repeated

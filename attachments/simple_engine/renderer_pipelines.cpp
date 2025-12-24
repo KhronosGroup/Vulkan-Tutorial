@@ -159,12 +159,19 @@ bool Renderer::createPBRDescriptorSetLayout()
 		        .descriptorType     = vk::DescriptorType::eCombinedImageSampler,
 		        .descriptorCount    = 1,
 		        .stageFlags         = vk::ShaderStageFlagBits::eFragment,
+		        .pImmutableSamplers = nullptr},
+		    // Binding 11: TLAS (ray-query shadows in raster fragment shader)
+		    vk::DescriptorSetLayoutBinding{
+		        .binding            = 11,
+		        .descriptorType     = vk::DescriptorType::eAccelerationStructureKHR,
+		        .descriptorCount    = 1,
+		        .stageFlags         = vk::ShaderStageFlagBits::eFragment,
 		        .pImmutableSamplers = nullptr}};
 
 		// Create a descriptor set layout
 		// Descriptor indexing: set per-binding flags for UPDATE_AFTER_BIND on UBO (0) and sampled images (1..5)
 		vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
-		std::array<vk::DescriptorBindingFlags, 11>    bindingFlags{};
+		std::array<vk::DescriptorBindingFlags, 12>    bindingFlags{};
 		if (descriptorIndexingEnabled)
 		{
 			bindingFlags[0] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;

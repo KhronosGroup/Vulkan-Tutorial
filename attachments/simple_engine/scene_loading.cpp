@@ -249,13 +249,7 @@ bool LoadGLTFModel(Engine *engine, const std::string &modelPath,
 
 				if (materialMesh.GetInstanceCount() > 0)
 				{
-					const std::vector<InstanceData> &instances = materialMesh.instances;
-					for (const auto &instanceData : instances)
-					{
-						// Reconstruct the transformation matrix from InstanceData column vectors
-						glm::mat4 instanceMatrix = instanceData.getModelMatrix();
-						mesh->AddInstance(instanceMatrix, static_cast<uint32_t>(materialMesh.materialIndex));
-					}
+					mesh->SetInstances(materialMesh.instances);
 				}
 
 				// Set ALL PBR texture paths for this material

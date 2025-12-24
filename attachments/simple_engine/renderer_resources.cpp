@@ -1476,6 +1476,10 @@ bool Renderer::createDescriptorSets(Entity *entity, const std::string &texturePa
 				// Build descriptor writes dynamically to avoid writing unused bindings
 				std::vector<vk::WriteDescriptorSet>    descriptorWrites;
 				std::array<vk::DescriptorImageInfo, 5> imageInfos;
+				// Keep additional descriptor infos alive until updateDescriptorSets completes.
+				vk::DescriptorImageInfo reflInfo;
+				vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
+				vk::AccelerationStructureKHR tlasHandleValue{};
 				// CRITICAL FIX: Buffer infos must remain in scope until updateDescriptorSets completes.
 				// Previously these were declared inside nested scopes, causing dangling pointers
 				// when descriptorWrites held pointers to them after they went out of scope.
@@ -1572,6 +1576,37 @@ bool Renderer::createDescriptorSets(Entity *entity, const std::string &texturePa
 				descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = 7, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &headersInfo});
 				descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = 8, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &indicesInfo});
 
+				// Binding 10: reflection sampler (planar reflections)
+				// Always bind a safe fallback (default texture) so the descriptor is valid.
+				reflInfo = vk::DescriptorImageInfo{.sampler = *defaultTextureResources.textureSampler,
+				                               .imageView = *defaultTextureResources.textureImageView,
+				                               .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+				descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i],
+				                           .dstBinding = 10,
+				                           .descriptorCount = 1,
+				                           .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+				                           .pImageInfo = &reflInfo});
+
+				// Binding 11: TLAS (ray-query shadows in raster fragment shader)
+				// The PBR pipeline layout always declares this binding; it must be written before any draw.
+				// Bind the current TLAS when AS is enabled.
+				if (accelerationStructureEnabled)
+				{
+					vk::AccelerationStructureKHR h = *tlasStructure.handle;
+					if (h)
+						tlasHandleValue = h;
+				}
+				tlasInfo.accelerationStructureCount = 1;
+				tlasInfo.pAccelerationStructures    = &tlasHandleValue;
+				vk::WriteDescriptorSet tlasWrite{};
+				tlasWrite.dstSet          = *targetDescriptorSets[i];
+				tlasWrite.dstBinding      = 11;
+				tlasWrite.dstArrayElement = 0;
+				tlasWrite.descriptorCount = 1;
+				tlasWrite.descriptorType  = vk::DescriptorType::eAccelerationStructureKHR;
+				tlasWrite.pNext           = &tlasInfo;
+				descriptorWrites.push_back(tlasWrite);
+
 				{
 					std::lock_guard<std::mutex> lk(descriptorMutex);
 					device.updateDescriptorSets(descriptorWrites, {});
@@ -1647,6 +1682,7 @@ bool Renderer::preAllocateEntityResources(Entity *entity)
 				it->second.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 				it->second.pbrImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 				it->second.basicImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+				it->second.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 			}
 		}
 
@@ -3149,6 +3185,14 @@ void Renderer::refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex)
 		vk::DescriptorImageInfo reflInfo{};
 		reflInfo = vk::DescriptorImageInfo{.sampler = *defaultTextureResources.textureSampler, .imageView = *defaultTextureResources.textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
+		// Binding 11: TLAS (for raster ray-query shadows)
+		// Raster PBR shaders can statically declare/use `tlas` even when ray-query mode is disabled,
+		// so the descriptor must be written whenever acceleration structures are enabled.
+		vk::AccelerationStructureKHR                   tlasHandleValue = accelerationStructureEnabled ? *tlasStructure.handle : vk::AccelerationStructureKHR{};
+		vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
+		tlasInfo.accelerationStructureCount = 1;
+		tlasInfo.pAccelerationStructures    = &tlasHandleValue;
+
 		for (auto &kv : entityResources)
 		{
 			auto &res = kv.second;
@@ -3185,6 +3229,17 @@ void Renderer::refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex)
 			}
 			// Binding 10: reflection sampler - ALWAYS bind (required by layout)
 			writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 10, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &reflInfo});
+
+			// Binding 11: TLAS - ALWAYS bind (required by layout when ray query/AS is enabled)
+			// If TLAS is not built yet, the handle will be null; the shader must not trace when disabled.
+			vk::WriteDescriptorSet tlasWrite{};
+			tlasWrite.dstSet          = *res.pbrDescriptorSets[frameIndex];
+			tlasWrite.dstBinding      = 11;
+			tlasWrite.dstArrayElement = 0;
+			tlasWrite.descriptorCount = 1;
+			tlasWrite.descriptorType  = vk::DescriptorType::eAccelerationStructureKHR;
+			tlasWrite.pNext           = &tlasInfo;
+			writes.push_back(tlasWrite);
 		}
 
 		if (!writes.empty())
@@ -3243,6 +3298,7 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
 			}
 
 			lightData[i].color = glm::vec4(light.color * light.intensity, 1.0f);
+			lightData[i].direction = glm::vec4(light.direction, 0.0f);
 
 			// Calculate light space matrix for shadow mapping
 			glm::mat4 lightProjection, lightView;
@@ -3869,6 +3925,10 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 	{
 		entityIt->second.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
 	}
+	if (entityIt->second.pbrFixedBindingsWritten.size() != MAX_FRAMES_IN_FLIGHT)
+	{
+		entityIt->second.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+	}
 
 	if (usePBR)
 	{
@@ -3877,6 +3937,86 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 		// to avoid update-after-bind hazards.
 		std::vector<vk::WriteDescriptorSet>    writes;
 		std::array<vk::DescriptorImageInfo, 5> imageInfos;
+		// Helper: ensure required PBR layout bindings (7/8/10/11) are written at least once per frame.
+		// IMPORTANT: descriptor infos must remain alive until `updateDescriptorSets` is called.
+		vk::DescriptorBufferInfo                   headersInfo{};
+		vk::DescriptorBufferInfo                   indicesInfo{};
+		vk::DescriptorImageInfo                    reflInfo{};
+		vk::AccelerationStructureKHR               tlasHandleValue{};
+		vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
+		vk::WriteDescriptorSet                     tlasWrite{};
+		const bool needFixedWrites = !entityIt->second.pbrFixedBindingsWritten[frameIndex];
+		auto appendPbrFixedWrites = [&](std::vector<vk::WriteDescriptorSet> &dstWrites) {
+			if (!needFixedWrites)
+				return;
+
+			// Binding 7/8: Forward+ tile buffers (must be valid even when Forward+ is disabled)
+			if (forwardPlusPerFrame.empty())
+			{
+				forwardPlusPerFrame.resize(MAX_FRAMES_IN_FLIGHT);
+			}
+			vk::Buffer headersBuf{};
+			vk::Buffer indicesBuf{};
+			if (frameIndex < forwardPlusPerFrame.size())
+			{
+				auto &f = forwardPlusPerFrame[frameIndex];
+				if (!(f.tileHeaders == nullptr))
+					headersBuf = *f.tileHeaders;
+				if (!(f.tileLightIndices == nullptr))
+					indicesBuf = *f.tileLightIndices;
+				if (!headersBuf)
+				{
+					vk::DeviceSize minSize = sizeof(uint32_t) * 4;        // Single TileHeader
+					auto [buf, alloc]      = createBufferPooled(minSize,
+					                                            vk::BufferUsageFlagBits::eStorageBuffer,
+					                                            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+					f.tileHeaders          = std::move(buf);
+					f.tileHeadersAlloc     = std::move(alloc);
+					if (f.tileHeadersAlloc && f.tileHeadersAlloc->mappedPtr)
+					{
+						std::memset(f.tileHeadersAlloc->mappedPtr, 0, minSize);
+					}
+					headersBuf = *f.tileHeaders;
+				}
+				if (!indicesBuf)
+				{
+					vk::DeviceSize minSize  = sizeof(uint32_t) * 4;
+					auto [buf, alloc]       = createBufferPooled(minSize,
+					                                             vk::BufferUsageFlagBits::eStorageBuffer,
+					                                             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+					f.tileLightIndices      = std::move(buf);
+					f.tileLightIndicesAlloc = std::move(alloc);
+					if (f.tileLightIndicesAlloc && f.tileLightIndicesAlloc->mappedPtr)
+					{
+						std::memset(f.tileLightIndicesAlloc->mappedPtr, 0, minSize);
+					}
+					indicesBuf = *f.tileLightIndices;
+				}
+			}
+			headersInfo = vk::DescriptorBufferInfo{.buffer = headersBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+			indicesInfo = vk::DescriptorBufferInfo{.buffer = indicesBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+			dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 7, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &headersInfo});
+			dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 8, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &indicesInfo});
+
+			// Binding 10: reflection sampler (always bind safe fallback)
+			reflInfo = vk::DescriptorImageInfo{.sampler = *defaultTextureResources.textureSampler,
+			                               .imageView = *defaultTextureResources.textureImageView,
+			                               .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+			dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 10, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &reflInfo});
+
+			// Binding 11: TLAS (ray-query shadows in raster PBR fragment shader)
+			tlasHandleValue = accelerationStructureEnabled ? *tlasStructure.handle : vk::AccelerationStructureKHR{};
+			tlasInfo.accelerationStructureCount = 1;
+			tlasInfo.pAccelerationStructures    = &tlasHandleValue;
+			tlasWrite.dstSet          = *targetDescriptorSets[frameIndex];
+			tlasWrite.dstBinding      = 11;
+			tlasWrite.dstArrayElement = 0;
+			tlasWrite.descriptorCount = 1;
+			tlasWrite.descriptorType  = vk::DescriptorType::eAccelerationStructureKHR;
+			tlasWrite.pNext           = &tlasInfo;
+			dstWrites.push_back(tlasWrite);
+		};
+
 		// Optionally write only the UBO (binding 0) — used at safe point to initialize per-frame sets once
 		if (uboOnly)
 		{
@@ -3884,11 +4024,20 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 			if (!entityIt->second.pbrUboBindingWritten[frameIndex])
 			{
 				writes.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo});
+			}
+			appendPbrFixedWrites(writes);
+			if (!writes.empty())
+			{
+				std::lock_guard<std::mutex> lk(descriptorMutex);
+				device.updateDescriptorSets(writes, {});
+				if (!entityIt->second.pbrUboBindingWritten[frameIndex])
 				{
-					std::lock_guard<std::mutex> lk(descriptorMutex);
-					device.updateDescriptorSets(writes, {});
+					entityIt->second.pbrUboBindingWritten[frameIndex] = true;
 				}
-				entityIt->second.pbrUboBindingWritten[frameIndex] = true;
+				if (needFixedWrites)
+				{
+					entityIt->second.pbrFixedBindingsWritten[frameIndex] = true;
+				}
 			}
 			return true;
 		}
@@ -3931,9 +4080,14 @@ bool Renderer::updateDescriptorSetsForFrame(Entity            *entity,
 			vk::DescriptorBufferInfo lightBufferInfo{.buffer = *lightStorageBuffers[frameIndex].buffer, .range = VK_WHOLE_SIZE};
 			writes.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 6, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &lightBufferInfo});
 		}
+		appendPbrFixedWrites(writes);
 		{
 			std::lock_guard<std::mutex> lk(descriptorMutex);
 			device.updateDescriptorSets(writes, {});
+		}
+		if (needFixedWrites)
+		{
+			entityIt->second.pbrFixedBindingsWritten[frameIndex] = true;
 		}
 		// CRITICAL FIX: Only mark UBO as written if we actually wrote it (not during imagesOnly updates)
 		if (!imagesOnly)

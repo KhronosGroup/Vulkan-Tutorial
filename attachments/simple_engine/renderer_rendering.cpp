@@ -18,15 +18,18 @@
 #include "imgui_system.h"
 #include "model_loader.h"
 #include "renderer.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <glm/gtx/norm.hpp>
 #include <iostream>
 #include <map>
 #include <ranges>
+#include <sstream>
 #include <stdexcept>
 
 // ===================== Culling helpers implementation =====================
@@ -44,8 +47,8 @@ Renderer::FrustumPlanes Renderer::extractFrustumPlanes(const glm::mat4 &vp)
 	fp.planes[2] = m[3] + m[1];
 	// Top    : m[3] - m[1]
 	fp.planes[3] = m[3] - m[1];
-	// Near   : m[3] + m[2]
-	fp.planes[4] = m[3] + m[2];
+	// Near   : m[2] (matches Vulkan [0, 1] clip range)
+	fp.planes[4] = m[2];
 	// Far    : m[3] - m[2]
 	fp.planes[5] = m[3] - m[2];
 
@@ -90,12 +93,16 @@ bool Renderer::aabbIntersectsFrustum(const glm::vec3     &worldMin,
 	for (const auto &p : frustum.planes)
 	{
 		const glm::vec3 n(p.x, p.y, p.z);
-		// Choose positive vertex
+		// Choose positive vertex (furthest in direction of normal)
 		glm::vec3 v{
 		    n.x >= 0.0f ? worldMax.x : worldMin.x,
 		    n.y >= 0.0f ? worldMax.y : worldMin.y,
 		    n.z >= 0.0f ? worldMax.z : worldMin.z};
-		if (glm::dot(n, v) + p.w < 0.0f)
+
+		// If the most positive vertex is still on the negative side of the plane,
+		// then the entire box is on the negative side.
+		// Use a small epsilon to avoid numerical issues.
+		if (glm::dot(n, v) + p.w < -0.01f)
 		{
 			return false;        // completely outside
 		}
@@ -408,6 +415,9 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer      &cmd,
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pbrGraphicsPipeline);
 	}
 
+	// Prepare frustum for mirrored view to allow culling
+	FrustumPlanes reflectFrustum = extractFrustumPlanes(currentReflectionVP);
+
 	// Render all entities with meshes (skip transparency; glass revisit later)
 	for (Entity *entity : entities)
 	{
@@ -417,9 +427,28 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer      &cmd,
 		if (!meshComponent)
 			continue;
 
+		// Skip transparent/blended objects in planar reflections to avoid recursion
+		// and because the reflection pipeline uses opaque PBR (PSMain).
+		ensureEntityMaterialCache(entity);
 		auto entityIt = entityResources.find(entity);
 		if (entityIt == entityResources.end())
 			continue;
+
+		if (entityIt->second.cachedIsBlended)
+			continue;
+
+		// Frustum culling for mirrored view
+		if (meshComponent->HasLocalAABB())
+		{
+			auto           *tc    = entity->GetComponent<TransformComponent>();
+			const glm::mat4 model = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
+			glm::vec3       wmin, wmax;
+			transformAABB(model, meshComponent->GetLocalAABBMin(), meshComponent->GetLocalAABBMax(), wmin, wmax);
+			if (!aabbIntersectsFrustum(wmin, wmax, reflectFrustum))
+			{
+				continue;        // culled from reflection
+			}
+		}
 
 		auto meshIt = meshResources.find(meshComponent);
 		if (meshIt == meshResources.end())
@@ -775,6 +804,7 @@ void Renderer::recreateSwapChain()
 			resources.basicUboBindingWritten.clear();
 			resources.pbrImagesWritten.clear();
 			resources.basicImagesWritten.clear();
+			resources.pbrFixedBindingsWritten.clear();
 		}
 	}
 
@@ -930,7 +960,7 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity *entity
 	ubo.exposure                 = std::clamp(this->exposure, 0.2f, 4.0f);
 	ubo.gamma                    = this->gamma;
 	ubo.prefilteredCubeMipLevels = 0.0f;
-	ubo.scaleIBLAmbient          = 0.25f;
+	ubo.scaleIBLAmbient          = 1.0f;
 	ubo.screenDimensions         = glm::vec2(swapChainExtent.width, swapChainExtent.height);
 	// Forward+ clustered parameters for fragment shader
 	ubo.nearZ   = camera ? camera->GetNearPlane() : 0.1f;
@@ -945,7 +975,8 @@ void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity *entity
 	ubo.padding0     = outputIsSRGB;
 	// Padding fields no longer used for runtime debug toggles
 	ubo.padding1 = 0.0f;
-	ubo.padding2 = 0.0f;
+	// `padding2`: raster ray-query shadows toggle (see `shaders/pbr.slang`)
+	ubo.padding2 = enableRasterRayQueryShadows ? 1.0f : 0.0f;
 
 	// Planar reflections: set sampling flags/matrices for main pass; preserve reflectionPass if already set by caller
 	if (ubo.reflectionPass != 1)
@@ -1474,11 +1505,23 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
  						SetLoadingPhase(LoadingPhase::Finalizing);
  						SetLoadingPhaseProgress(0.0f);
  					}
- 					loggedASRequestObserved = false;
+						loggedASRequestObserved = false;
 
- 					// Freeze only when the built AS covers essentially the full set of renderable entities.
- 					// NOTE: `lastASBuiltInstanceCount` is an ENTITY count; TLAS instance count (instancing) is tracked separately.
- 					if (asFreezeAfterFullBuild)
+						// The TLAS handle can transition from null -> valid (or change on rebuild).
+						// Ensure raster PBR descriptor sets (set 0, binding 11 `tlas`) are rewritten after an AS build
+						// so subsequent Raster draws never see an unwritten/stale acceleration-structure descriptor.
+						for (auto &kv : entityResources)
+						{
+							kv.second.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+						}
+						for (Entity *e : entities)
+						{
+							MarkEntityDescriptorsDirty(e);
+						}
+
+						// Freeze only when the built AS covers essentially the full set of renderable entities.
+						// NOTE: `lastASBuiltInstanceCount` is an ENTITY count; TLAS instance count (instancing) is tracked separately.
+						if (asFreezeAfterFullBuild)
  					{
  						const double threshold = 0.95;
  						if (totalRenderableEntities > 0 &&
@@ -1891,8 +1934,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			}
 		}
 	}
-	auto lightCountF    = static_cast<uint32_t>(lightsSubset.size());
-	lastFrameLightCount = lightCountF;
+	lastFrameLightCount = static_cast<uint32_t>(lightsSubset.size());
 	if (!lightsSubset.empty())
 	{
 		updateLightStorageBuffer(currentFrame, lightsSubset);
@@ -1953,7 +1995,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			{
 				// If animation updated transforms this frame, refit TLAS instead of rebuilding
 				// This prevents wiping TLAS contents to only animated instances
-				refitTopLevelAS(entities);
+				refitTopLevelAS(entities, camera);
 			}
 
 			// Bind ray query compute pipeline
@@ -1988,8 +2030,8 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 					ubo.exposure = std::clamp(exposure, 0.2f, 4.0f);
 					ubo.gamma    = std::clamp(gamma, 1.6f, 2.6f);
 					// Match raster convention: ambient scale factor for simple IBL/ambient term.
-					// (Raster defaults to ~0.25 in the main pass; keep Ray Query consistent.)
-					ubo.scaleIBLAmbient = 0.25f;
+					// (Raster defaults to ~1.0 in the main pass; keep Ray Query consistent.)
+					ubo.scaleIBLAmbient = 1.0f;
 					// Provide the per-frame light count so the ray query shader can iterate lights.
 					ubo.lightCount                 = static_cast<int>(lastFrameLightCount);
 					ubo.screenDimensions           = glm::vec2(swapChainExtent.width, swapChainExtent.height);
@@ -2002,6 +2044,11 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 					ubo.enableThickGlass  = enableThickGlass ? 1 : 0;
 					ubo.thicknessClamp    = thickGlassThicknessClamp;
 					ubo.absorptionScale   = thickGlassAbsorptionScale;
+					// Ray Query hard shadows (see `shaders/ray_query.slang`)
+					ubo._pad1             = enableRayQueryShadows ? 1 : 0;
+					ubo.shadowSampleCount = std::clamp(rayQueryShadowSampleCount, 1, 32);
+					ubo.shadowSoftness    = std::clamp(rayQueryShadowSoftness, 0.0f, 1.0f);
+					ubo.reflectionIntensity = reflectionIntensity;
 					// Provide geometry info count for shader-side bounds checking (per-instance)
 					ubo.geometryInfoCount = static_cast<int>(tlasInstanceCount);
 					// Provide material buffer count for shader-side bounds checking
@@ -2144,8 +2191,8 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 
 	vk::raii::Pipeline          *currentPipeline = nullptr;
 	vk::raii::PipelineLayout    *currentLayout   = nullptr;
+	std::vector<Entity *>        opaqueQueue;
 	std::vector<Entity *>        blendedQueue;
-	std::unordered_set<Entity *> blendedSet;
 
 	// Incrementally process pending texture uploads on the main thread so that
 	// all Vulkan submits happen from a single place while worker threads only
@@ -2197,23 +2244,35 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			{
 				const char *modeNames[] = {"Rasterization", "Ray Query"};
 				int         currentMode = (currentRenderMode == RenderMode::RayQuery) ? 1 : 0;
-				if (ImGui::Combo("Mode", &currentMode, modeNames, 2))
-				{
-					RenderMode newMode = (currentMode == 1) ? RenderMode::RayQuery : RenderMode::Rasterization;
-					if (newMode != currentRenderMode)
+					if (ImGui::Combo("Mode", &currentMode, modeNames, 2))
 					{
-						currentRenderMode = newMode;
-						std::cout << "Switched to " << modeNames[currentMode] << " mode\n";
+						RenderMode newMode = (currentMode == 1) ? RenderMode::RayQuery : RenderMode::Rasterization;
+						if (newMode != currentRenderMode)
+						{
+							currentRenderMode = newMode;
+							std::cout << "Switched to " << modeNames[currentMode] << " mode\n";
 
 						// Request acceleration structure build when switching to ray query mode
-						if (currentRenderMode == RenderMode::RayQuery)
-						{
-							std::cout << "Requesting acceleration structure build...\n";
-							RequestAccelerationStructureBuild();
+							if (currentRenderMode == RenderMode::RayQuery)
+							{
+								std::cout << "Requesting acceleration structure build...\n";
+								RequestAccelerationStructureBuild();
+							}
+
+							// Switching modes can change which pipelines are bound and whether ray-query-dependent
+							// descriptor bindings (e.g., PBR binding 11 `tlas`) become statically used.
+							// Mark entity descriptor sets dirty so the next safe point refreshes bindings for this frame.
+							for (auto &kv : entityResources)
+							{
+								kv.second.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+							}
+							for (Entity *e : entities)
+							{
+								MarkEntityDescriptorsDirty(e);
+							}
 						}
 					}
 				}
-			}
 			else
 			{
 				ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Rasterization only (ray query not supported)");
@@ -2258,6 +2317,16 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 					}
 				}
 
+				// Raster shadows via ray queries (experimental)
+				if (rayQueryEnabled && accelerationStructureEnabled)
+				{
+					ImGui::Checkbox("RayQuery shadows (raster)", &enableRasterRayQueryShadows);
+				}
+				else
+				{
+					ImGui::TextDisabled("RayQuery shadows (raster) (requires ray query + AS)");
+				}
+
 				// Planar reflections controls
 				ImGui::Spacing();
 				if (ImGui::Checkbox("Planar reflections (experimental)", &enablePlanarReflections))
@@ -2282,10 +2351,6 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 						ImGui::Text("Reflection RT: %ux%u", rt.width, rt.height);
 					}
 				}
-				if (enablePlanarReflections)
-				{
-					ImGui::SliderFloat("Reflection intensity", &reflectionIntensity, 0.0f, 2.0f, "%.2f");
-				}
 			}
 
 			// === RAY QUERY-SPECIFIC OPTIONS ===
@@ -2306,6 +2371,12 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 
 				ImGui::Spacing();
 				ImGui::Text("Ray Query Features:");
+				ImGui::Checkbox("Enable Hard Shadows", &enableRayQueryShadows);
+				if (enableRayQueryShadows)
+				{
+					ImGui::SliderInt("Shadow samples", &rayQueryShadowSampleCount, 1, 32);
+					ImGui::SliderFloat("Shadow softness (fraction of range)", &rayQueryShadowSoftness, 0.0f, 0.2f, "%.3f");
+				}
 				ImGui::Checkbox("Enable Reflections", &enableRayQueryReflections);
 				ImGui::Checkbox("Enable Transparency/Refraction", &enableRayQueryTransparency);
 				ImGui::SliderInt("Max secondary bounces", &rayQueryMaxBounces, 0, 10);
@@ -2344,16 +2415,17 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 					createTextureSampler(defaultTextureResources);
 				}
 			}
-			if (lastCullingVisibleCount + lastCullingCulledCount > 0)
-			{
-				ImGui::Text("Culling: visible=%u, culled=%u", lastCullingVisibleCount, lastCullingCulledCount);
-			}
+				if (lastCullingVisibleCount + lastCullingCulledCount > 0)
+				{
+					ImGui::Text("Culling: visible=%u, culled=%u", lastCullingVisibleCount, lastCullingCulledCount);
+				}
 
-			// Basic tone mapping controls
-			ImGui::Separator();
-			ImGui::Text("Tone Mapping:");
-			ImGui::SliderFloat("Exposure", &exposure, 0.1f, 4.0f, "%.2f");
-			ImGui::SliderFloat("Gamma", &gamma, 1.6f, 2.6f, "%.2f");
+				// Basic tone mapping controls
+				ImGui::Separator();
+				ImGui::Text("Tone Mapping & Tuning:");
+				ImGui::SliderFloat("Reflection intensity", &reflectionIntensity, 0.0f, 2.0f, "%.2f");
+				ImGui::SliderFloat("Exposure", &exposure, 0.1f, 4.0f, "%.2f");
+				ImGui::SliderFloat("Gamma", &gamma, 1.6f, 2.6f, "%.2f");
 		}
 		ImGui::End();
 	}
@@ -2362,12 +2434,22 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 	// Previously this always executed, but now we skip it when ray query mode successfully renders.
 	if (!rayQueryRenderedThisFrame)
 	{
+		// Force matrices to be up-to-date at the start of the frame
+		if (camera)
+		{
+			camera->ForceViewMatrixUpdate();
+		}
+
 		// Prepare frustum once per frame
 		FrustumPlanes frustum{};
 		const bool    doCulling = enableFrustumCulling && camera;
 		if (doCulling)
 		{
-			const glm::mat4 vp = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+			// Use the same projection matrix as the shader (including the Vulkan Y-flip)
+			// to ensure culling perfectly matches the visual frustum.
+			glm::mat4 proj = camera->GetProjectionMatrix();
+			proj[1][1] *= -1.0f;
+			const glm::mat4 vp = proj * camera->GetViewMatrix();
 			frustum            = extractFrustumPlanes(vp);
 		}
 
@@ -2390,20 +2472,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 			if (!meshComponent)
 				continue;
 
-			// Frustum culling
-			if (doCulling && meshComponent->HasLocalAABB())
-			{
-				auto           *tc    = entity->GetComponent<TransformComponent>();
-				const glm::mat4 model = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
-				glm::vec3       wmin, wmax;
-				transformAABB(model, meshComponent->GetLocalAABBMin(), meshComponent->GetLocalAABBMax(), wmin, wmax);
-				if (!aabbIntersectsFrustum(wmin, wmax, frustum))
-				{
-					lastCullingCulledCount++;
-					continue;        // culled early
-				}
-			}
-			lastCullingVisibleCount++;
+			// Get cached material info
 			bool useBlended = false;
 			ensureEntityMaterialCache(entity);
 			auto entityIt = entityResources.find(entity);
@@ -2412,45 +2481,69 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 				useBlended = entityIt->second.cachedIsBlended;
 			}
 
-			// Ensure all entities are considered regardless of reflections setting.
-			// Previous diagnostic mode skipped non-glass when reflections were ON, which could
-			// result in frames with few/no draws and visible black flashes. We no longer filter here.
-
-			// Distance-based LOD: approximate screen-space size of entity's bounds
-			if (enableDistanceLOD && camera && meshComponent && meshComponent->HasLocalAABB())
+			// Perform culling if bounds are available
+			if (meshComponent->HasLocalAABB())
 			{
-				auto           *tc       = entity->GetComponent<TransformComponent>();
-				const glm::mat4 model    = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
-				glm::vec3       localMin = meshComponent->GetLocalAABBMin();
-				glm::vec3       localMax = meshComponent->GetLocalAABBMax();
-				// Compute world AABB bounds
-				glm::vec3 wmin, wmax;
-				transformAABB(model, localMin, localMax, wmin, wmax);
-				glm::vec3 center  = 0.5f * (wmin + wmax);
-				glm::vec3 extents = 0.5f * (wmax - wmin);
-				float     radius  = glm::length(extents);
-				if (radius > 0.0f)
+				auto           *tc    = entity->GetComponent<TransformComponent>();
+				const glm::mat4 model = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
+				glm::vec3       wmin, wmax;
+				transformAABB(model, meshComponent->GetLocalAABBMin(), meshComponent->GetLocalAABBMax(), wmin, wmax);
+
+				// 1. Frustum Culling
+				if (doCulling && !aabbIntersectsFrustum(wmin, wmax, frustum))
 				{
-					glm::vec4 centerVS4 = camera->GetViewMatrix() * glm::vec4(center, 1.0f);
-					float     z         = std::abs(centerVS4.z);
-					if (z > 1e-3f)
+					lastCullingCulledCount++;
+					continue;
+				}
+
+				// 2. Distance-based LOD
+				if (enableDistanceLOD && camera)
+				{
+					glm::vec3 center = 0.5f * (wmin + wmax);
+					glm::vec3 camPos = camera->GetPosition();
+
+					// If camera is inside the AABB, it's definitely not "too small"
+					bool cameraInside = (camPos.x >= wmin.x && camPos.x <= wmax.x &&
+					                     camPos.y >= wmin.y && camPos.y <= wmax.y &&
+					                     camPos.z >= wmin.z && camPos.z <= wmax.z);
+
+					if (!cameraInside)
 					{
-						float fov           = glm::radians(camera->GetFieldOfView());
-						float pixelRadius   = (radius * static_cast<float>(swapChainExtent.height)) / (z * 2.0f * std::tan(fov * 0.5f));
-						float pixelDiameter = pixelRadius * 2.0f;
-						float threshold     = useBlended ? lodPixelThresholdTransparent : lodPixelThresholdOpaque;
-						if (pixelDiameter < threshold)
+						glm::vec3 extents = 0.5f * (wmax - wmin);
+						float     radius  = glm::length(extents);
+						if (radius > 0.0f)
 						{
-							// Too small to matter; skip adding to draw queues
-							continue;
+							// For huge sparse AABBs (like instanced groups), use the closest
+							// point distance to avoid culling when one instance is close but
+							// the group center is far.
+							float dx    = std::max({0.0f, wmin.x - camPos.x, camPos.x - wmax.x});
+							float dy    = std::max({0.0f, wmin.y - camPos.y, camPos.y - wmax.y});
+							float dz    = std::max({0.0f, wmin.z - camPos.z, camPos.z - wmax.z});
+							float dist  = std::sqrt(dx * dx + dy * dy + dz * dz);
+							float z_eff = std::max(0.1f, dist);
+
+							float fov           = glm::radians(camera->GetFieldOfView());
+							float pixelRadius   = (radius * static_cast<float>(swapChainExtent.height)) / (z_eff * 2.0f * std::tan(fov * 0.5f));
+							float pixelDiameter = pixelRadius * 2.0f;
+							float threshold     = useBlended ? lodPixelThresholdTransparent : lodPixelThresholdOpaque;
+							if (pixelDiameter < threshold)
+							{
+								lastCullingCulledCount++;
+								continue;        // too small
+							}
 						}
 					}
 				}
 			}
+
+			lastCullingVisibleCount++;
 			if (useBlended)
 			{
 				blendedQueue.push_back(entity);
-				blendedSet.insert(entity);
+			}
+			else
+			{
+				opaqueQueue.push_back(entity);
 			}
 		}
 
@@ -2513,18 +2606,7 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 		// Optional Forward+ depth pre-pass for opaque geometry
 		if (useForwardPlus)
 		{
-			// Build list of non-blended entities
-			std::vector<Entity *> opaqueEntities;
-			opaqueEntities.reserve(entities.size());
-			for (Entity *entity : entities)
-			{
-				if (!entity || !entity->IsActive() || blendedSet.contains(entity))
-					continue;
-				auto meshComponent = entity->GetComponent<MeshComponent>();
-				if (!meshComponent)
-					continue;
-				opaqueEntities.push_back(entity);
-			}
+			const auto &opaqueEntities = opaqueQueue;
 
 			if (!opaqueEntities.empty())
 			{
@@ -2712,10 +2794,8 @@ void Renderer::Render(const std::vector<Entity *> &entities, CameraComponent *ca
 		commandBuffers[currentFrame].setScissor(0, scissor);
 		{
 			uint32_t opaqueDrawsThisPass = 0;
-			for (Entity *entity : entities)
+			for (Entity *entity : opaqueQueue)
 			{
-				if (!entity || !entity->IsActive() || (blendedSet.contains(entity)))
-					continue;
 				auto meshComponent = entity->GetComponent<MeshComponent>();
 				if (!meshComponent)
 					continue;

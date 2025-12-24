@@ -19,6 +19,7 @@
 #include "renderer.h"
 #include "transform_component.h"
 #include <algorithm>
+#include <cmath>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <map>
@@ -598,8 +599,10 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 							std::string matName = entityName.substr(numEnd + 1);
 							if (Material *m = modelLoader->GetMaterial(matName))
 							{
-								// Only MASK requires candidate hits for alpha test.
-								forceNoOpaque = (m->alphaMode == "MASK");
+								// Force non-opaque for any material that should not be treated as a fully-opaque occluder.
+								// - MASK: needs candidate hits so we can alpha-test in-shader
+								// - BLEND / glass / transmission: should not fully block shadow rays
+								forceNoOpaque = (m->alphaMode == "MASK") || (m->alphaMode == "BLEND") || m->isGlass || (m->transmissionFactor > 0.01f);
 							}
 						}
 					}
@@ -1147,7 +1150,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *> &entities
 	}
 }
 
-bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
+bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities, CameraComponent *camera)
 {
 	try
 	{
@@ -1173,21 +1176,36 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
 			}
 		};
 
+		// Optional culling parity with raster: mask TLAS instances using the same frustum + distance-LOD checks.
+		// Use the same culling toggles as the raster path.
+		const bool doFrustumCulling = enableFrustumCulling && camera;
+		const bool doDistanceLOD     = enableDistanceLOD && camera;
+		FrustumPlanes frustum{};
+		if (doFrustumCulling)
+		{
+			const glm::mat4 vp = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+			frustum            = extractFrustumPlanes(vp);
+		}
+		const float camFovRad = camera ? glm::radians(camera->GetFieldOfView()) : glm::radians(60.0f);
+
 		for (uint32_t i = 0; i < tlasInstanceCount; ++i)
 		{
 			kickWatchdog();
 			const TlasInstanceRef &ref    = tlasInstanceOrder[i];
 			Entity                *entity = ref.entity;
 			if (!entity || !entity->IsActive())
+			{
+				instPtr[i].mask = 0u;
 				continue;
+			}
 			auto     *transform   = entity->GetComponent<TransformComponent>();
 			glm::mat4 entityModel = transform ? transform->GetModelMatrix() : glm::mat4(1.0f);
 
 			// If this TLAS entry represents a MeshComponent instance, multiply by the instance's model
 			glm::mat4 finalModel = entityModel;
+			auto     *meshComp   = entity->GetComponent<MeshComponent>();
 			if (ref.instanced)
 			{
-				auto *meshComp = entity->GetComponent<MeshComponent>();
 				if (meshComp && ref.instanceIndex < meshComp->GetInstanceCount())
 				{
 					const InstanceData &id = meshComp->GetInstance(ref.instanceIndex);
@@ -1205,6 +1223,56 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *> &entities)
 				}
 			}
 			instPtr[i].transform = vkTransform;
+
+			// Apply culling via instance mask (mask=0 => skipped by ray queries with mask=0xFF).
+			uint32_t mask = 0xFFu;
+			if ((doFrustumCulling || doDistanceLOD) && meshComp && camera && meshComp->HasLocalAABB())
+			{
+				bool visible = true;
+				glm::vec3 wmin{}, wmax{};
+				transformAABB(finalModel, meshComp->GetBaseMeshAABBMin(), meshComp->GetBaseMeshAABBMax(), wmin, wmax);
+
+				if (doFrustumCulling && !aabbIntersectsFrustum(wmin, wmax, frustum))
+				{
+					visible = false;
+				}
+
+				if (visible && doDistanceLOD)
+				{
+					// Match raster LOD heuristic (projected-size skip)
+					glm::vec3 center  = 0.5f * (wmin + wmax);
+					glm::vec3 extents = 0.5f * (wmax - wmin);
+					float     radius  = glm::length(extents);
+					if (radius > 0.0f)
+					{
+						glm::vec4 centerVS4 = camera->GetViewMatrix() * glm::vec4(center, 1.0f);
+						float     z         = std::abs(centerVS4.z);
+						if (z > 1e-3f)
+						{
+							float pixelRadius = (radius * static_cast<float>(swapChainExtent.height)) /
+							                   (z * 2.0f * std::tan(camFovRad * 0.5f));
+							float pixelDiameter = pixelRadius * 2.0f;
+
+							bool useBlended = false;
+							ensureEntityMaterialCache(entity);
+							auto it = entityResources.find(entity);
+							if (it != entityResources.end())
+							{
+								useBlended = it->second.cachedIsBlended;
+							}
+
+							float threshold = useBlended ? lodPixelThresholdTransparent : lodPixelThresholdOpaque;
+							if (pixelDiameter < threshold)
+							{
+								visible = false;
+							}
+						}
+					}
+				}
+
+				mask = visible ? 0xFFu : 0u;
+			}
+			instPtr[i].mask = mask;
 		}
 
 		// Prepare UPDATE build info

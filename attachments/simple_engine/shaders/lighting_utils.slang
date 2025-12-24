@@ -52,8 +52,26 @@ LightEvaluation evaluateLight(LightData light, float3 worldPos, float3 N) {
             result.radiance = light.color.rgb * att;
             result.valid = true;
         } else if (light.lightType == 0 || light.lightType == 2) {
-            // Point or spot light: inverse square falloff
-            result.radiance = light.color.rgb / max(d * d, 0.0001);
+            // Point or spot light: inverse square falloff with range windowing
+            float attenuation = 1.0 / max(d * d, 0.0001);
+            
+            // GLTF style range attenuation
+            if (light.range > 0.0) {
+                attenuation *= pow(saturate(1.0 - pow(d / light.range, 4.0)), 2.0);
+            }
+            
+            result.radiance = light.color.rgb * attenuation;
+            
+            if (light.lightType == 2) {
+                // Spot light cone attenuation
+                float3 D = normalize(light.direction.xyz);
+                float cd = dot(D, -result.L);
+                float cosInner = cos(light.innerConeAngle);
+                float cosOuter = cos(light.outerConeAngle);
+                float spotAttenuation = saturate((cd - cosOuter) / max(cosInner - cosOuter, 0.0001));
+                spotAttenuation *= spotAttenuation;
+                result.radiance *= spotAttenuation;
+            }
             result.valid = true;
         }
     }

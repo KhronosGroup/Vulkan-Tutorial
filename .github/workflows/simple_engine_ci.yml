@@ -53,6 +53,10 @@ jobs:
         shell: pwsh
         run: |
           choco install -y ninja sccache
+          $chocoBin = "C:\ProgramData\chocolatey\bin"
+          if (Test-Path $chocoBin) {
+            $chocoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
           "SCCACHE_DIR=$env:LOCALAPPDATA\Mozilla\sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: ccache (Linux)
@@ -287,10 +291,15 @@ jobs:
         shell: pwsh
         run: |
           $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          $vcpkgCache = Join-Path $env:RUNNER_TEMP "vcpkg-cache"
+          if (-not (Test-Path $vcpkgCache)) {
+            New-Item -Path $vcpkgCache -ItemType Directory
+          }
           "VCPKG_INSTALLATION_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "$vcpkgRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-cache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgCache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKG_BINARY_SOURCES=clear;files,$vcpkgCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'

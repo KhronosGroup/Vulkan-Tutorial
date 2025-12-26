@@ -23,31 +23,48 @@
 #include <ranges>
 #include <set>
 #include <thread>
+#include <type_traits>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;        // In a .cpp file
 
 #include <vulkan/vk_platform.h>
+#include <vulkan/vulkan.h>          // For PFN_vkGetInstanceProcAddr and C types
 #include <vulkan/vulkan_raii.hpp>
 
-// Debug callback for vk::raii
+// Debug callback for vk::raii - uses raw Vulkan C types for cross-platform compatibility
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackVkRaii(
-    vk::DebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-    vk::DebugUtilsMessageTypeFlagsEXT             messageType,
-    const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
-    void                                         *pUserData)
-{
-	if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
-	{
+	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT messageType,
+	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+	void* pUserData) {
+	(void) messageType;
+	(void) pUserData;
+	if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
 		// Print a message to the console
 		std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
-	}
-	else
-	{
+	} else {
 		// Print a message to the console
 		std::cout << "Validation layer: " << pCallbackData->pMessage << std::endl;
 	}
 
 	return VK_FALSE;
+}
+
+// Vulkan-Hpp style callback signature for newer headers expecting vk:: types
+static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallbackVkHpp(
+	vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	vk::DebugUtilsMessageTypeFlagsEXT messageType,
+	const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
+	void* pUserData) {
+    (void) messageType;
+    (void) pUserData;
+    if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
+    {
+        std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    } else {
+	    std::cout << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    }
+    return vk::False;
 }
 
 // Watchdog thread function - monitors frame updates and aborts if application hangs
@@ -69,13 +86,12 @@ static void WatchdogThreadFunc(std::atomic<std::chrono::steady_clock::time_point
 		// Check if frame timestamp was updated recently.
 		// Some operations (e.g., BLAS/TLAS builds in Debug on large scenes) can legitimately take
 		// much longer than 5 or 10 seconds. When suppressed, allow a longer grace period.
-		auto now        = std::chrono::steady_clock::now();
-		auto lastUpdate = lastFrameTime->load(std::memory_order_relaxed);
-		auto elapsed    = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdate).count();
+		auto          now            = std::chrono::steady_clock::now();
+		auto          lastUpdate     = lastFrameTime->load(std::memory_order_relaxed);
+		auto          elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdate).count();
 		const int64_t allowedSeconds = (suppressed && suppressed->load(std::memory_order_relaxed)) ? 60 : 10;
 
-		if (elapsed >= allowedSeconds)
-		{
+		if (elapsed >= allowedSeconds) {
 			// APPLICATION HAS HUNG - no frame updates for 10+ seconds
 			const char *label = nullptr;
 			if (progressLabel)
@@ -129,19 +145,17 @@ Renderer::~Renderer()
 // Initialize the renderer
 bool Renderer::Initialize(const std::string &appName, bool enableValidationLayers)
 {
-	vk::detail::DynamicLoader dl;
-	auto                      vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-	// Create a Vulkan instance
-	if (!createInstance(appName, enableValidationLayers))
-	{
-		return false;
-	}
+ // Initialize the Vulkan-Hpp default dispatcher using the global symbol directly.
+ // This avoids differences across Vulkan-Hpp versions for DynamicLoader placement.
+ VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+ // Create a Vulkan instance
+ if (!createInstance(appName, enableValidationLayers)) {
+	 return false;
+ }
 
-	// Setup debug messenger
-	if (!setupDebugMessenger(enableValidationLayers))
-	{
-		return false;
+ // Setup debug messenger
+ if (!setupDebugMessenger(enableValidationLayers)) {
+	 return false;
 	}
 
 	// Create surface
@@ -377,33 +391,25 @@ void Renderer::ensureThreadLocalVulkanInit() const
 	static thread_local bool s_tlsInitialized = false;
 	if (s_tlsInitialized)
 		return;
-	try
-	{
-		vk::detail::DynamicLoader dl;
-		auto                      vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-		if (vkGetInstanceProcAddr)
-		{
-			VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-		}
-		if (*instance)
-		{
-			VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
-		}
-		if (*device)
-		{
-			VULKAN_HPP_DEFAULT_DISPATCHER.init(*device);
-		}
-		s_tlsInitialized = true;
-	}
-	catch (...)
-	{
+ try
+ {
+     // Initialize the dispatcher for this thread using the global symbol.
+     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+     if (*instance)
+     {
+         VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
+     }
+     if (*device) {
+	     VULKAN_HPP_DEFAULT_DISPATCHER.init(*device);
+     }
+     s_tlsInitialized = true;
+ } catch (...) {
 		// best-effort
 	}
 }
 
 // Clean up renderer resources
-void Renderer::Cleanup()
-{
+void Renderer::Cleanup() {
 	// Stop watchdog thread first to prevent false hang detection during shutdown
 	if (watchdogRunning.load(std::memory_order_relaxed))
 	{
@@ -675,23 +681,28 @@ bool Renderer::setupDebugMessenger(bool enableValidationLayers)
 
 	try
 	{
-		// Create debug messenger info
-		vk::DebugUtilsMessengerCreateInfoEXT createInfo{
-		    .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
-		                       vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
-		                       vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-		                       vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
-		    .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-		                   vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
-		                   vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-		    .pfnUserCallback = debugCallbackVkRaii};
+  // Create debug messenger info
+        vk::DebugUtilsMessengerCreateInfoEXT createInfo{};
+        createInfo.messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+		  vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
+		  vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+		  vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
+  createInfo.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+		  vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+		  vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
 
-		// Create debug messenger
-		debugMessenger = vk::raii::DebugUtilsMessengerEXT(instance, createInfo);
-		return true;
-	}
-	catch (const std::exception &e)
-	{
+  // Select callback via simple platform macro: Android typically expects C PFN types in headers
+  // while desktop (newer Vulkan-Hpp) expects vk:: types.
+#if defined(__ANDROID__)
+  createInfo.pfnUserCallback = &debugCallbackVkRaii;
+#else
+  createInfo.pfnUserCallback = &debugCallbackVkHpp;
+#endif
+
+  // Create debug messenger
+  debugMessenger = vk::raii::DebugUtilsMessengerEXT(instance, createInfo);
+  return true;
+	} catch (const std::exception& e) {
 		std::cerr << "Failed to set up debug messenger: " << e.what() << std::endl;
 		return false;
 	}
@@ -955,6 +966,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		vulkan11Features.shaderDrawParameters = vk::True;
 
 		// Query extended feature support
+#if !defined(PLATFORM_ANDROID)
 		auto featureChain = physicalDevice.getFeatures2<
 		    vk::PhysicalDeviceFeatures2,
 		    vk::PhysicalDeviceDescriptorIndexingFeatures,
@@ -963,12 +975,20 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		    vk::PhysicalDeviceShaderTileImageFeaturesEXT,
 		    vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
 		    vk::PhysicalDeviceRayQueryFeaturesKHR>();
-		const auto &coreFeaturesSupported          = featureChain.get<vk::PhysicalDeviceFeatures2>().features;
-		const auto &indexingFeaturesSupported      = featureChain.get<vk::PhysicalDeviceDescriptorIndexingFeatures>();
-		const auto &robust2Supported               = featureChain.get<vk::PhysicalDeviceRobustness2FeaturesEXT>();
-		const auto &localReadSupported             = featureChain.get<vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR>();
-		const auto &tileImageSupported             = featureChain.get<vk::PhysicalDeviceShaderTileImageFeaturesEXT>();
-		const auto &accelerationStructureSupported = featureChain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
+		const auto &localReadSupported = featureChain.get<vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR>();
+		const auto &tileImageSupported = featureChain.get<vk::PhysicalDeviceShaderTileImageFeaturesEXT>();
+#else
+		auto featureChain = physicalDevice.getFeatures2<
+		    vk::PhysicalDeviceFeatures2,
+		    vk::PhysicalDeviceDescriptorIndexingFeatures,
+		    vk::PhysicalDeviceRobustness2FeaturesEXT,
+		    vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+		    vk::PhysicalDeviceRayQueryFeaturesKHR>();
+#endif
+		const auto& coreFeaturesSupported = featureChain.get<vk::PhysicalDeviceFeatures2>().features;
+		const auto& indexingFeaturesSupported = featureChain.get<vk::PhysicalDeviceDescriptorIndexingFeatures>();
+		const auto& robust2Supported = featureChain.get<vk::PhysicalDeviceRobustness2FeaturesEXT>();
+		const auto& accelerationStructureSupported = featureChain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
 		const auto &rayQuerySupported              = featureChain.get<vk::PhysicalDeviceRayQueryFeaturesKHR>();
 
 		// Ray Query shader uses indexing into a (large) sampled-image array.
@@ -1030,6 +1050,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 				robust2Enable.nullDescriptor = vk::True;
 		}
 
+#if !defined(PLATFORM_ANDROID)
 		// Prepare Dynamic Rendering Local Read features if extension is enabled and supported
 		auto                                                   hasLocalRead = hasExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
 		vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR localReadEnable{};
@@ -1050,6 +1071,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 			if (tileImageSupported.shaderTileImageStencilReadAccess)
 				tileImageEnable.shaderTileImageStencilReadAccess = vk::True;
 		}
+#endif
 
 		// Prepare Acceleration Structure features if extension is enabled and supported
 		auto                                               hasAccelerationStructure = hasExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
@@ -1091,6 +1113,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 			*tailNext           = &robust2Enable;
 			tailNext            = reinterpret_cast<void **>(&robust2Enable.pNext);
 		}
+#if !defined(PLATFORM_ANDROID)
 		if (hasLocalRead)
 		{
 			localReadEnable.pNext = nullptr;
@@ -1103,8 +1126,8 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 			*tailNext             = &tileImageEnable;
 			tailNext              = reinterpret_cast<void **>(&tileImageEnable.pNext);
 		}
-		if (hasAccelerationStructure)
-		{
+#endif
+		if (hasAccelerationStructure) {
 			accelerationStructureEnable.pNext = nullptr;
 			*tailNext                         = &accelerationStructureEnable;
 			tailNext                          = reinterpret_cast<void **>(&accelerationStructureEnable.pNext);
@@ -1117,15 +1140,20 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		}
 
 		// Record which features ended up enabled (for runtime decisions/tutorial diagnostics)
-		robustness2Enabled               = hasRobust2 && (robust2Enable.robustBufferAccess2 == vk::True ||
-                                            robust2Enable.robustImageAccess2 == vk::True ||
-                                            robust2Enable.nullDescriptor == vk::True);
+		robustness2Enabled = hasRobust2 && (robust2Enable.robustBufferAccess2 == vk::True ||
+		                                    robust2Enable.robustImageAccess2 == vk::True ||
+		                                    robust2Enable.nullDescriptor == vk::True);
+#if !defined(PLATFORM_ANDROID)
 		dynamicRenderingLocalReadEnabled = hasLocalRead && (localReadEnable.dynamicRenderingLocalRead == vk::True);
-		shaderTileImageEnabled           = hasTileImage && (tileImageEnable.shaderTileImageColorReadAccess == vk::True ||
-                                                  tileImageEnable.shaderTileImageDepthReadAccess == vk::True ||
-                                                  tileImageEnable.shaderTileImageStencilReadAccess == vk::True);
-		accelerationStructureEnabled     = hasAccelerationStructure && (accelerationStructureEnable.accelerationStructure == vk::True);
-		rayQueryEnabled                  = hasRayQuery && (rayQueryEnable.rayQuery == vk::True);
+		shaderTileImageEnabled = hasTileImage && (tileImageEnable.shaderTileImageColorReadAccess == vk::True ||
+			tileImageEnable.shaderTileImageDepthReadAccess == vk::True ||
+			tileImageEnable.shaderTileImageStencilReadAccess == vk::True);
+#else
+		dynamicRenderingLocalReadEnabled = false;
+		shaderTileImageEnabled           = false;
+#endif
+		accelerationStructureEnabled = hasAccelerationStructure && (accelerationStructureEnable.accelerationStructure == vk::True);
+		rayQueryEnabled              = hasRayQuery && (rayQueryEnable.rayQuery == vk::True);
 
 		// One-time startup diagnostics (Ray Query + texture array indexing)
 		static bool printedFeatureDiag = false;
@@ -1133,9 +1161,9 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers)
 		{
 			printedFeatureDiag = true;
 			std::cout << "[DeviceFeatures] shaderSampledImageArrayDynamicIndexing="
-			          << (features.features.shaderSampledImageArrayDynamicIndexing == vk::True ? "ON" : "OFF")
-			          << ", shaderSampledImageArrayNonUniformIndexing="
-			          << (indexingFeaturesEnable.shaderSampledImageArrayNonUniformIndexing == vk::True ? "ON" : "OFF")
+					<< (features.features.shaderSampledImageArrayDynamicIndexing == vk::True ? "ON" : "OFF")
+					<< ", shaderSampledImageArrayNonUniformIndexing="
+					<< (indexingFeaturesEnable.shaderSampledImageArrayNonUniformIndexing == vk::True ? "ON" : "OFF")
 			          << ", descriptorIndexingEnabled="
 			          << (descriptorIndexingEnabled ? "true" : "false")
 			          << "\n";

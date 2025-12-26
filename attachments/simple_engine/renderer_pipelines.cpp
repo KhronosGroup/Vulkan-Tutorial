@@ -175,14 +175,7 @@ bool Renderer::createPBRDescriptorSetLayout()
 		if (descriptorIndexingEnabled)
 		{
 			bindingFlags[0] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-			for (int i = 1; i <= 5; ++i)
-			{
-				bindingFlags[i] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-			}
-			// NOTE: Bindings 6/7/8 are storage buffers. We cannot use UPDATE_AFTER_BIND for them because
-			// descriptorBindingStorageBufferUpdateAfterBind feature is not enabled. These bindings should
-			// only be updated when buffers change, not every frame.
-			// Binding 10 (reflection sampler) can be updated after bind
+			bindingFlags[1] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
 			bindingFlags[10]               = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
 			bindingFlagsInfo.bindingCount  = static_cast<uint32_t>(bindingFlags.size());
 			bindingFlagsInfo.pBindingFlags = bindingFlags.data();
@@ -720,8 +713,7 @@ bool Renderer::createCompositePipeline()
 	try
 	{
 		// Reuse the transparent descriptor set layout (binding 0 = combined image sampler)
-		if (transparentDescriptorSetLayout == nullptr)
-		{
+		if (*transparentDescriptorSetLayout == nullptr) {
 			// Ensure PBR pipeline path created it
 			if (!createPBRPipeline())
 			{
@@ -808,10 +800,8 @@ bool Renderer::createDepthPrepassPipeline()
 	try
 	{
 		// Use the same descriptor set layout and pipeline layout as PBR for UBOs and instancing
-		if (pbrDescriptorSetLayout == nullptr || pbrPipelineLayout == nullptr)
-		{
-			if (!createPBRPipeline())
-			{
+		if (*pbrDescriptorSetLayout == nullptr || *pbrPipelineLayout == nullptr) {
+			if (!createPBRPipeline()) {
 				return false;
 			}
 		}
@@ -1286,18 +1276,15 @@ bool Renderer::createRayQueryResources()
 
 		// Create descriptor sets for composite pass to sample the rayQueryOutputImage
 		// Reuse the transparentDescriptorSetLayout (binding 0 = combined image sampler)
-		if (transparentDescriptorSetLayout == nullptr)
-		{
+		if (*transparentDescriptorSetLayout == nullptr) {
 			// Ensure it exists (created by PBR path);
 			createPBRPipeline();
 		}
-		if (transparentDescriptorSetLayout != nullptr)
-		{
+		if (*transparentDescriptorSetLayout != nullptr) {
 			// Ensure we have a valid sampler for sampling the ray-query output image
-			if (rqCompositeSampler == nullptr)
-			{
+			if (*rqCompositeSampler == nullptr) {
 				vk::SamplerCreateInfo sci{
-				    .magFilter               = vk::Filter::eLinear,
+					.magFilter               = vk::Filter::eLinear,
 				    .minFilter               = vk::Filter::eLinear,
 				    .mipmapMode              = vk::SamplerMipmapMode::eNearest,
 				    .addressModeU            = vk::SamplerAddressMode::eClampToEdge,

@@ -14,12 +14,13 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 # Find required packages
-find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
-find_package (OpenAL REQUIRED)
+
+# Find or download Vulkan-Hpp headers matching the Vulkan SDK/NDK version
+find_package(VulkanHpp REQUIRED)
 
 if(ENABLE_CPP20_MODULE)
     # Set up Vulkan C++ module for this standalone project
@@ -32,6 +33,7 @@ if(ENABLE_CPP20_MODULE)
     target_include_directories(VulkanCppModule
             PUBLIC
             "${Vulkan_INCLUDE_DIR}"
+            "${VulkanHpp_INCLUDE_DIRS}"
     )
     target_link_libraries(VulkanCppModule
             PUBLIC
@@ -44,9 +46,9 @@ if(ENABLE_CPP20_MODULE)
             PUBLIC
             FILE_SET cxx_modules TYPE CXX_MODULES
             BASE_DIRS
-            "${Vulkan_INCLUDE_DIR}"
+            "${VulkanHpp_CPPM_DIR}"
             FILES
-            "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+            "${VulkanHpp_CPPM_DIR}/vulkan/vulkan.cppm"
     )
 
     # MSVC-specific options to improve module support
@@ -66,6 +68,7 @@ else()
     target_compile_definitions(VulkanCppModule
             INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
     )
+    target_include_directories(VulkanCppModule INTERFACE "${VulkanHpp_INCLUDE_DIRS}")
 endif()
 
 
@@ -74,9 +77,12 @@ endif()
 if(ANDROID)
     # Android-specific settings
     add_definitions(-DPLATFORM_ANDROID)
+    find_package(game-activity REQUIRED CONFIG)
 else()
     # Desktop-specific settings
     add_definitions(-DPLATFORM_DESKTOP)
+    find_package(glfw3 REQUIRED)
+    find_package(OpenAL REQUIRED)
 endif()
 
 # Shader compilation
@@ -112,8 +118,9 @@ else()
 endif()
 
 # Source files
-set(SOURCES
-    main.cpp
+# NOTE: Android builds include this project via `add_subdirectory(...)` from
+# `android/app/src/main/cpp/CMakeLists.txt`, so we must not require a desktop `main()`.
+set(SOURCES_COMMON
     engine.cpp
     scene_loading.cpp
     platform.cpp
@@ -145,8 +152,19 @@ set(SOURCES
     mikktspace.c
 )
 
-# Create executable
-add_executable(SimpleEngine ${SOURCES})
+set(SOURCES_DESKTOP
+        main.cpp
+)
+
+# Create target
+if (ANDROID)
+    # Android: build the engine as a library to be linked into the app's `simple_engine_android` SHARED library.
+    add_library(SimpleEngine STATIC ${SOURCES_COMMON})
+else ()
+    # Desktop: build the runnable executable (unchanged behavior vs `HEAD`).
+    add_executable(SimpleEngine ${SOURCES_COMMON} ${SOURCES_DESKTOP})
+endif ()
+
 add_dependencies(SimpleEngine shaders)
 set_target_properties (SimpleEngine PROPERTIES CXX_STANDARD 20)
 
@@ -162,20 +180,21 @@ target_compile_definitions(SimpleEngine PRIVATE
 # Prefer the Vulkan C++ module target when available (configured at the parent level),
 # but fall back to the standard Vulkan library otherwise.
 if(TARGET Vulkan::cppm)
-    target_link_libraries(SimpleEngine PRIVATE Vulkan::cppm)
+    target_link_libraries(SimpleEngine PUBLIC Vulkan::cppm)
 else()
-    target_link_libraries(SimpleEngine PRIVATE Vulkan::Vulkan)
+    target_link_libraries(SimpleEngine PUBLIC Vulkan::Vulkan)
 endif()
 
-target_link_libraries(SimpleEngine PRIVATE
+target_link_libraries(SimpleEngine PUBLIC
     glm::glm
     tinygltf::tinygltf
     KTX::ktx
-    OpenAL::OpenAL
 )
 
-if(NOT ANDROID)
-    target_link_libraries(SimpleEngine PRIVATE glfw)
+if (ANDROID)
+    target_link_libraries(SimpleEngine PUBLIC game-activity::game-activity OpenSLES android log)
+else ()
+    target_link_libraries(SimpleEngine PRIVATE glfw OpenAL::OpenAL)
 endif()
 
 # Windows/MSVC portability and build settings
@@ -207,18 +226,22 @@ endif()
 
 # Copy model and texture files if they exist
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/models)
+    if (NOT ANDROID)
     add_custom_command(TARGET SimpleEngine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/models ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/models
         COMMENT "Copying models to output directory"
     )
 endif()
+endif ()
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/textures)
+    if (NOT ANDROID)
     add_custom_command(TARGET SimpleEngine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/textures ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/textures
         COMMENT "Copying textures to output directory"
     )
 endif()
+endif ()
 
 # Add packaging configuration
 include(CPack)
@@ -254,6 +277,7 @@ else()
 endif()
 
 # Include binary and resource directories in the package
+if (NOT ANDROID)
 install(TARGETS SimpleEngine DESTINATION bin)
 if(SLANGC_EXECUTABLE)
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/shaders DESTINATION share/SimpleEngine)
@@ -272,3 +296,4 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.md DESTINATION share/SimpleEngine)
 endif()
+endif ()

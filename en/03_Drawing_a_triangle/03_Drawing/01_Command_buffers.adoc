@@ -273,7 +273,7 @@ We can now bind the graphics pipeline:
 commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
 ----
 
-The second parameter specifies if the pipeline object is a graphics or compute pipeline.
+The first parameter specifies if the pipeline object is a graphics or compute pipeline.
 We've now told Vulkan which operations to execute in the graphics pipeline and which attachment to use in the fragment shader.
 
 As noted in the link:../02_Graphics_pipeline_basics/02_Fixed_functions.md#dynamic-state[fixed functions chapter],  we did specify viewport and scissor state for this pipeline to be dynamic.

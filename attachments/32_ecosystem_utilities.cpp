@@ -172,7 +172,8 @@ class HelloTriangleApplication
 	bool framebufferResized = false;
 
 	std::vector<const char *> requiredDeviceExtension = {
-	    vk::KHRSwapchainExtensionName};
+	    vk::KHRSwapchainExtensionName,
+	    vk::KHRShaderDrawParametersExtensionName};
 
 	void initWindow()
 	{

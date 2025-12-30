@@ -520,11 +520,22 @@ Modifying the structure to suit the fragment shader is easy:
 vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain" };
 ----
 
-Finish by defining an array that contains these two structs, which we'll later use to reference them in the actual pipeline creation step.
+Defining an array that contains these two structs, which we'll later use to reference them in the actual pipeline creation step.
 
 [,c++]
 ----
 vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+----
+
+Finish by adding DrawParameters to the deviceExtensions. Otherwise the 
+validation layers will complain:
+
+[,c++]
+----
+std::vector<const char*> deviceExtensions = {
+    ...
+    vk::KHRShaderDrawParametersExtensionName
+};
 ----
 
 That's all there is describing the programmable stages of the pipeline.

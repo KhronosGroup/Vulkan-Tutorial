@@ -165,7 +165,8 @@ class HelloTriangleApplication
 	};
 
 	const std::vector<const char *> requiredDeviceExtension = {
-	    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+	    vk::KHRSwapchainExtensionName,
+	    vk::KHRShaderDrawParametersExtensionName};
 
 	void initWindow()
 	{

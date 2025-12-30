@@ -231,7 +231,8 @@ class VulkanRaytracingApplication
 	    vk::KHRAccelerationStructureExtensionName,
 	    vk::KHRBufferDeviceAddressExtensionName,
 	    vk::KHRDeferredHostOperationsExtensionName,
-	    vk::KHRRayQueryExtensionName};
+	    vk::KHRRayQueryExtensionName,
+	    vk::KHRShaderDrawParametersExtensionName};
 
 	void initWindow()
 	{

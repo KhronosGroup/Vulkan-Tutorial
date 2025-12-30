@@ -232,7 +232,8 @@ class MultithreadedApplication
 	    vk::KHRSwapchainExtensionName,
 	    vk::KHRSpirv14ExtensionName,
 	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName};
+	    vk::KHRCreateRenderpass2ExtensionName,
+	    vk::KHRShaderDrawParametersExtensionName};
 
 	// Helper functions
 	[[nodiscard]] static std::vector<const char *> getRequiredExtensions()

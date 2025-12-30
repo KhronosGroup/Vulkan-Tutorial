@@ -387,7 +387,8 @@ class HelloTriangleApplication
 
 	// Required device extensions
 	const std::vector<const char *> deviceExtensions = {
-	    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+	    vk::KHRSwapchainExtensionName,
+	    vk::KHRShaderDrawParametersExtensionName};
 
 	// Initialize Vulkan
 	void initVulkan()

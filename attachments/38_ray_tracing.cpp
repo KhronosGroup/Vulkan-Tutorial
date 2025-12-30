@@ -227,7 +227,6 @@ class VulkanRaytracingApplication
 	    vk::KHRSwapchainExtensionName,
 	    vk::KHRSpirv14ExtensionName,
 	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName,
 	    vk::KHRAccelerationStructureExtensionName,
 	    vk::KHRBufferDeviceAddressExtensionName,
 	    vk::KHRDeferredHostOperationsExtensionName,

@@ -54,8 +54,7 @@ class HelloTriangleApplication
 	std::vector<const char *> requiredDeviceExtension = {
 	    vk::KHRSwapchainExtensionName,
 	    vk::KHRSpirv14ExtensionName,
-	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName};
+	    vk::KHRSynchronization2ExtensionName};
 
 	void initWindow()
 	{

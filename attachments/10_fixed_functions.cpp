@@ -62,7 +62,6 @@ class HelloTriangleApplication
 	    vk::KHRSwapchainExtensionName,
 	    vk::KHRSpirv14ExtensionName,
 	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName,
 	    vk::KHRShaderDrawParametersExtensionName};
 
 	void initWindow()

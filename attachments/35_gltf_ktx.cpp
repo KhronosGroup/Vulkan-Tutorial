@@ -322,7 +322,6 @@ class VulkanApplication
 
 	std::vector<const char *> requiredDeviceExtension = {
 	    vk::KHRSwapchainExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName,
 	    vk::KHRShaderDrawParametersExtensionName};
 
 #if PLATFORM_DESKTOP

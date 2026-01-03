@@ -28,4 +28,4 @@ Before starting this chapter, you should have completed the main Vulkan tutorial
 * xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
 * Basic programming concepts and C++
 
-xref:02_math_foundations.adoc[Next: Mathematical Foundations]
+link:02_math_foundations.adoc[Next: Mathematical Foundations]

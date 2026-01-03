@@ -317,7 +317,7 @@ link to the latest on like so:
 [,shell]
 ----
 pushd vulkansdk
-tar -xzf vulkansdk-linux-x86_64-1.4.304.1.tgz
+tar -xf vulkansdk-linux-x86_64-1.4.304.1.tar.xz
 ln -s 1.4.304.1 default
 ----
 

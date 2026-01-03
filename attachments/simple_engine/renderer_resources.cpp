@@ -1517,8 +1517,8 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *>& enti
   watchdogProgressIndex.store(0, std::memory_order_relaxed);
   ensureThreadLocalVulkanInit();
   try {
-    // --- 1. For all entities, create mesh resources with deferred uploads ---\
-		// Then, during initial loading (and while an AS build is pending), flush the queued
+    // --- 1. For all entities, create mesh resources with deferred uploads ---
+    // Then, during initial loading (and while an AS build is pending), flush the queued
     // uploads immediately in a single batched submit (much faster than per-mesh submits).
     watchdogProgressLabel.store("Batch: createMeshResources loop", std::memory_order_relaxed);
     std::vector<MeshComponent *> meshesNeedingUpload;
@@ -1567,9 +1567,8 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *>& enti
       }
     }
 
-    // --- 2. Defer all GPU copies to the render thread safe point ---\
-		if (!meshesNeedingUpload.empty())
-    {
+    // --- 2. Defer all GPU copies to the render thread safe point ---
+    if (!meshesNeedingUpload.empty()) {
       watchdogProgressLabel.store("Batch: EnqueueMeshUploads", std::memory_order_relaxed);
       EnqueueMeshUploads(meshesNeedingUpload);
       if (flushUploadsNow) {
@@ -1578,8 +1577,8 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *>& enti
       }
     }
 
-    // --- 3. Create uniform buffers and descriptor sets per entity ---\
-		watchdogProgressLabel.store("Batch: per-entity resources loop", std::memory_order_relaxed);
+    // --- 3. Create uniform buffers and descriptor sets per entity ---
+    watchdogProgressLabel.store("Batch: per-entity resources loop", std::memory_order_relaxed);
     uint32_t processedResources = 0;
     uint32_t resourceLoopIndex = 0;
     for (Entity* entity : entities) {

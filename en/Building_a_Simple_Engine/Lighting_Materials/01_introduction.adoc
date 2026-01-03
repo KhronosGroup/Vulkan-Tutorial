@@ -12,7 +12,7 @@ image:../../../images/bistro.png[Bistro scene with PBR, width=600, alt=Rendering
 
 This chapter serves as the foundation for understanding how light interacts with different materials in a physically accurate way. The concepts you'll learn here will be applied in later chapters, including the Loading_Models chapter where we'll use this knowledge to render glTF models with PBR materials.
 
-Throughout our engine implementation, we'll be using vk::raii dynamic rendering and C++20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. C++20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
+Throughout our engine implementation, we'll be using vk::raii dynamic rendering and {cpp}20 modules. The vk::raii namespace provides Resource Acquisition Is Initialization (RAII) wrappers for Vulkan objects, which helps with resource management and makes the code cleaner. Dynamic rendering simplifies the rendering process by eliminating the need for explicit render passes and framebuffers. {cpp}20 modules improve code organization, compilation times, and encapsulation compared to traditional header files.
 
 == Why Lighting Matters
 
@@ -110,6 +110,7 @@ f_diffuse = albedo / π
 ----
 
 Where:
+
 * albedo is the base color of the surface
 * π is a normalization factor
 
@@ -125,6 +126,7 @@ f_specular = D * F * G / (4 * (n·ωo) * (n·ωi))
 ----
 
 Where:
+
 * D is the Normal Distribution Function (NDF)
 * F is the Fresnel term
 * G is the Geometry term
@@ -133,6 +135,7 @@ Where:
 * ωi is the incoming (light) direction
 
 Popular implementations include:
+
 * *D*: GGX (Trowbridge-Reitz) distribution
 * *F*: Schlick's approximation
 * *G*: Smith shadowing-masking function

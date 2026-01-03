@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <numbers>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -795,7 +796,7 @@ void AudioSystem::GenerateSineWavePing(float* buffer, uint32_t sampleCount, uint
         envelope = static_cast<float>(relPos) / static_cast<float>(std::max(1u, releaseSamples));
       }
 
-      float sineWave = sinf(2.0f * static_cast<float>(M_PI) * frequency * t);
+      float sineWave = sinf(2.0f * std::numbers::pi_v<float> * frequency * t);
       buffer[i] = amplitude * envelope * sineWave;
     } else {
       // Silence phase
@@ -1160,8 +1161,7 @@ bool AudioSystem::IsHRTFEnabled() const {
   return hrtfEnabled;
 }
 
-void AudioSystem::SetHRTFCPUOnly(const bool cpuOnly) {
-  (void) cpuOnly;
+void AudioSystem::SetHRTFCPUOnly([[maybe_unused]] const bool cpuOnly) {
   // Enforce GPU-only HRTF processing: ignore CPU-only requests
   hrtfCPUOnly = false;
 }
@@ -1218,8 +1218,8 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
     uint32_t azimuthIndex = pos % 36;
     uint32_t elevationIndex = pos / 36;
 
-    float azimuth = (static_cast<float>(azimuthIndex) * 10.0f - 180.0f) * static_cast<float>(M_PI) / 180.0f;
-    float elevation = (static_cast<float>(elevationIndex) * 15.0f - 90.0f) * static_cast<float>(M_PI) / 180.0f;
+    float azimuth = (static_cast<float>(azimuthIndex) * 10.0f - 180.0f) * std::numbers::pi_v<float> / 180.0f;
+    float elevation = (static_cast<float>(elevationIndex) * 15.0f - 90.0f) * std::numbers::pi_v<float> / 180.0f;
 
     // Convert to Cartesian coordinates
     float x = std::cos(elevation) * std::sin(azimuth);
@@ -1258,7 +1258,7 @@ bool AudioSystem::LoadHRTFData(const std::string& filename) {
         // Direct path impulse
         if (i >= sampleDelay && i < sampleDelay + 10) {
           float t = static_cast<float>(i - sampleDelay) / sampleRate;
-          value = shadowFactor * std::exp(-t * 1000.0f) * std::cos(2.0f * static_cast<float>(M_PI) * 1000.0f * t);
+          value = shadowFactor * std::exp(-t * 1000.0f) * std::cos(2.0f * std::numbers::pi_v<float> * 1000.0f * t);
         }
 
         // Apply distance attenuation
@@ -1349,8 +1349,8 @@ bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uin
     float elevation = std::asin(std::max(-1.0f, std::min(1.0f, direction[1])));
 
     // Convert to indices
-    int azimuthIndex = static_cast<int>((azimuth + M_PI) / (2.0f * M_PI) * 36.0f) % 36;
-    int elevationIndex = static_cast<int>((elevation + M_PI / 2.0f) / M_PI * 13.0f);
+    int azimuthIndex = static_cast<int>((azimuth + std::numbers::pi_v<float>) / (2.0f * std::numbers::pi_v<float>) * 36.0f) % 36;
+    int elevationIndex = static_cast<int>((elevation + std::numbers::pi_v<float> / 2.0f) / std::numbers::pi_v<float> * 13.0f);
     elevationIndex = std::max(0, std::min(12, elevationIndex));
 
     // Get HRTF index

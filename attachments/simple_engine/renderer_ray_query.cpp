@@ -554,7 +554,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
             size_t numEnd = entityName.find('_', numStart);
             if (numEnd != std::string::npos && numEnd + 1 < entityName.size() && modelLoader) {
               std::string matName = entityName.substr(numEnd + 1);
-              if (Material* m = modelLoader->GetMaterial(matName)) {
+              if (const Material* m = modelLoader->GetMaterial(matName)) {
                 // Force non-opaque for any material that should not be treated as a fully-opaque occluder.
                 // - MASK: needs candidate hits so we can alpha-test in-shader
                 // - BLEND / glass / transmission: should not fully block shadow rays
@@ -650,9 +650,10 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     // Do not force OPAQUE here; leave flags at 0 so ray queries may process
     // transparency/glass more flexibly (any-hit not used in our path).
     tlasGeometry.flags = {};
-    tlasGeometry.geometry.instances.sType = vk::StructureType::eAccelerationStructureGeometryInstancesDataKHR;
-    tlasGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
-    tlasGeometry.geometry.instances.data = instancesAddress;
+    tlasGeometry.geometry.instances = vk::AccelerationStructureGeometryInstancesDataKHR{
+      .arrayOfPointers = VK_FALSE,
+      .data = instancesAddress
+    };
 
     // TLAS build info
     vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildInfo{};
@@ -899,7 +900,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
         for (const auto& [index, materialName] : materialIndexToName) {
           if (index >= materials.size())
             continue;
-          Material* sourceMat = modelLoader->GetMaterial(materialName);
+          const Material* sourceMat = modelLoader->GetMaterial(materialName);
           if (sourceMat) {
             MaterialData& matData = materials[index];
 
@@ -1173,9 +1174,10 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *>& entities, CameraComp
     vk::AccelerationStructureGeometryKHR tlasGeometry{};
     tlasGeometry.geometryType = vk::GeometryTypeKHR::eInstances;
     tlasGeometry.flags = {};
-    tlasGeometry.geometry.instances.sType = vk::StructureType::eAccelerationStructureGeometryInstancesDataKHR;
-    tlasGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
-    tlasGeometry.geometry.instances.data = instancesAddress;
+    tlasGeometry.geometry.instances = vk::AccelerationStructureGeometryInstancesDataKHR{
+      .arrayOfPointers = VK_FALSE,
+      .data = instancesAddress
+    };
 
     vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildInfo{};
     tlasBuildInfo.type = vk::AccelerationStructureTypeKHR::eTopLevel;

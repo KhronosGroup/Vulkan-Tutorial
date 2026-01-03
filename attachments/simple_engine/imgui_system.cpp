@@ -305,12 +305,14 @@ void ImGuiSystem::NewFrame() {
   if (ImGui::Checkbox("Use Debug Ping (800Hz sine wave)", &useDebugPing)) {
     // Stop current audio
     if (audioSource&& audioSource
+    
     ->
     IsPlaying()
     ) {
       audioSource->Stop();
     }
     if (debugPingSource&& debugPingSource
+    
     ->
     IsPlaying()
     ) {
@@ -402,6 +404,7 @@ void ImGuiSystem::NewFrame() {
   // Additional info
   ImGui::Separator();
   if (audioSystem&& audioSystem
+  
   ->
   IsHRTFEnabled()
   ) {
@@ -516,9 +519,7 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer& commandBuffer, uint32_t frameI
     commandBuffer.pushConstants<PushConstBlock>(*pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstBlock);
 
     // Bind vertex and index buffers for this frame
-    std::array<vk::Buffer, 1> vertexBuffersArr = {*vertexBuffers[frameIndex]};
-    std::array<vk::DeviceSize, 1> offsets = {};
-    commandBuffer.bindVertexBuffers(0, vertexBuffersArr, offsets);
+    commandBuffer.bindVertexBuffers(0, *vertexBuffers[frameIndex], vk::DeviceSize{0});
     commandBuffer.bindIndexBuffer(*indexBuffers[frameIndex], 0, vk::IndexType::eUint16);
 
     // Render command lists
@@ -1083,23 +1084,25 @@ void ImGuiSystem::updateBuffers(uint32_t frameIndex) {
       indexCounts[frameIndex] = drawData->TotalIdxCount;
     }
 
-    // Upload data to buffers for this frame
-    void* vtxMappedMemory = vertexBufferMemories[frameIndex].mapMemory(0, vertexBufferSize);
-    void* idxMappedMemory = indexBufferMemories[frameIndex].mapMemory(0, indexBufferSize);
+    // Upload data to buffers for this frame (only if we have data to upload)
+    if (drawData->TotalVtxCount > 0 && drawData->TotalIdxCount > 0) {
+      void* vtxMappedMemory = vertexBufferMemories[frameIndex].mapMemory(0, vertexBufferSize);
+      void* idxMappedMemory = indexBufferMemories[frameIndex].mapMemory(0, indexBufferSize);
 
-    ImDrawVert* vtxDst = static_cast<ImDrawVert *>(vtxMappedMemory);
-    ImDrawIdx* idxDst = static_cast<ImDrawIdx *>(idxMappedMemory);
+      ImDrawVert* vtxDst = static_cast<ImDrawVert *>(vtxMappedMemory);
+      ImDrawIdx* idxDst = static_cast<ImDrawIdx *>(idxMappedMemory);
 
-    for (int n = 0; n < drawData->CmdListsCount; n++) {
-      const ImDrawList* cmdList = drawData->CmdLists[n];
-      memcpy(vtxDst, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
-      memcpy(idxDst, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
-      vtxDst += cmdList->VtxBuffer.Size;
-      idxDst += cmdList->IdxBuffer.Size;
+      for (int n = 0; n < drawData->CmdListsCount; n++) {
+        const ImDrawList* cmdList = drawData->CmdLists[n];
+        memcpy(vtxDst, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+        memcpy(idxDst, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+        vtxDst += cmdList->VtxBuffer.Size;
+        idxDst += cmdList->IdxBuffer.Size;
+      }
+
+      vertexBufferMemories[frameIndex].unmapMemory();
+      indexBufferMemories[frameIndex].unmapMemory();
     }
-
-    vertexBufferMemories[frameIndex].unmapMemory();
-    indexBufferMemories[frameIndex].unmapMemory();
   } catch (const std::exception& e) {
     std::cerr << "Failed to update buffers: " << e.what() << std::endl;
   }

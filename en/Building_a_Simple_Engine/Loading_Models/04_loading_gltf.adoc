@@ -571,6 +571,7 @@ glTF uses a flexible animation system that can represent various animation techn
 * *Targets*: The properties being animated (translation, rotation, scale, or weights for morph targets)
 
 glTF supports three interpolation methods:
+
 * *LINEAR*: Smooth transitions with constant velocity
 * *STEP*: Sudden changes with no interpolation
 * *CUBICSPLINE*: Smooth curves with control points for acceleration and deceleration
@@ -770,6 +771,7 @@ To optimize texture memory usage:
 3. *Texture Streaming*: For very large scenes, implement texture streaming to load higher resolution textures only when needed
 4. *Memory Budgeting*: Implement a texture budget system that can reduce texture quality when memory is constrained
 5. *Format Selection*: Choose the appropriate format based on the texture content:
+
    - BC7/ASTC for color textures with alpha
    - BC1/ETC1 for color textures without alpha
    - BC5/ETC2 for normal maps

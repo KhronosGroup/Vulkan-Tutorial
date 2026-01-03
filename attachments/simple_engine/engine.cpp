@@ -367,6 +367,7 @@ void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
 
   // Suppress right-click while loading
   if (renderer&& renderer
+  
   ->
   IsLoading()
   ) {
@@ -480,6 +481,7 @@ void Engine::Update(TimeDelta deltaTime) {
   // entities/components safely while the main thread only drives the
   // UI/loading overlay.
   if (renderer&& renderer
+  
   ->
   IsLoading()
   ) {
@@ -611,6 +613,7 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
 
   // Check if camera tracking is enabled
   if (imguiSystem&& imguiSystem
+  
   ->
   IsCameraTrackingEnabled()
   ) {
@@ -978,40 +981,28 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
     return false;
   }
 
-  // Initialize model loader
-  if (!modelLoader->Initialize(renderer.get())) {
-    return false;
-  }
-
-  // Connect model loader to renderer for light extraction
-  renderer->SetModelLoader(modelLoader.get());
-
-  // Initialize audio system
-  if (!audioSystem->Initialize(this, renderer.get())) {
-    return false;
-  }
-
-  // Initialize physics system
-  physicsSystem->SetRenderer(renderer.get());
-
-  // Enable GPU acceleration for physics calculations to drastically speed up computations
-  physicsSystem->SetGPUAccelerationEnabled(true);
-
-  if (!physicsSystem->Initialize()) {
-    return false;
-  }
-
-  // Get window dimensions from platform
+  // Get window dimensions from platform for ImGui initialization
   int width, height;
   platform->GetWindowSize(&width, &height);
 
-  // Initialize ImGui system
-  if (!imguiSystem->Initialize(renderer.get(), width, height)) {
+  try {
+    // Model loader via constructor; also wire into renderer
+    modelLoader = std::make_unique<ModelLoader>(renderer.get());
+    renderer->SetModelLoader(modelLoader.get());
+
+    // Audio system via constructor
+    audioSystem = std::make_unique<AudioSystem>(this, renderer.get());
+
+    // Physics system via constructor (GPU enabled)
+    physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
+
+    // ImGui via constructor, then connect audio system
+    imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
+    imguiSystem->SetAudioSystem(audioSystem.get());
+  } catch (const std::exception& e) {
+    std::cerr << "Subsystem initialization failed: " << e.what() << std::endl;
     return false;
   }
-
-  // Connect ImGui system to audio system for UI controls
-  imguiSystem->SetAudioSystem(audioSystem.get());
 
   // Generate ball material properties once at load time
   GenerateBallMaterial();

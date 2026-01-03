@@ -223,7 +223,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     }
 
     // === LIGHTING SETUP ===
-    // Calculate view direction (camera to fragment)
+    // Calculate view direction (fragment to camera)
     float3 V = normalize(ubo.camPos.xyz - input.WorldPos);
 
     // Calculate reflection vector for environment mapping

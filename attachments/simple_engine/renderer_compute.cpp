@@ -528,11 +528,8 @@ vk::raii::Fence Renderer::DispatchCompute(uint32_t groupCountX,
     // Bind compute pipeline
     commandBufferRaii.bindPipeline(vk::PipelineBindPoint::eCompute, *computePipeline);
 
-    // Bind descriptor sets - properly convert RAII descriptor set to regular descriptor set
-    std::vector<vk::DescriptorSet> descriptorSetsToBindRaw;
-    descriptorSetsToBindRaw.reserve(1);
-    descriptorSetsToBindRaw.push_back(*computeDescriptorSets[0]);
-    commandBufferRaii.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *computePipelineLayout, 0, descriptorSetsToBindRaw, {});
+    // Bind descriptor set
+    commandBufferRaii.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *computePipelineLayout, 0, *computeDescriptorSets[0], {});
 
     // Dispatch compute shader
     commandBufferRaii.dispatch(groupCountX, groupCountY, groupCountZ);

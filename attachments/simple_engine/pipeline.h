@@ -65,11 +65,6 @@ class Pipeline
 	Pipeline(VulkanDevice &device, SwapChain &swapChain);
 
 	/**
-	 * @brief Destructor.
-	 */
-	~Pipeline();
-
-	/**
 	 * @brief Create the descriptor set layout.
 	 * @return True if the descriptor set layout was created successfully, false otherwise.
 	 */

@@ -141,13 +141,13 @@ bool Renderer::createSwapChain() {
 
     // Find queue families
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-    uint32_t queueFamilyIndicesLoc[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+    std::array<uint32_t, 2> queueFamilyIndicesLoc = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
     // Set sharing mode
     if (indices.graphicsFamily != indices.presentFamily) {
       createInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-      createInfo.queueFamilyIndexCount = 2;
-      createInfo.pQueueFamilyIndices = queueFamilyIndicesLoc;
+      createInfo.queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndicesLoc.size());
+      createInfo.pQueueFamilyIndices = queueFamilyIndicesLoc.data();
     } else {
       createInfo.imageSharingMode = vk::SharingMode::eExclusive;
       createInfo.queueFamilyIndexCount = 0;
@@ -270,7 +270,10 @@ bool Renderer::createReflectionResources(uint32_t width, uint32_t height) {
         std::lock_guard<std::mutex> lock(queueMutex);
         graphicsQueue.submit(submit, *fence);
       }
-      (void) waitForFencesSafe(*fence, VK_TRUE);
+      vk::Result result = waitForFencesSafe(*fence, VK_TRUE);
+      if (result != vk::Result::eSuccess) {
+        std::cerr << "Error: Failed to wait for reflection resource fence: " << vk::to_string(result) << std::endl;
+      }
     }
 
     return true;
@@ -340,7 +343,7 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
     .loadOp = vk::AttachmentLoadOp::eClear,
     .storeOp = vk::AttachmentStoreOp::eStore,
     // Clear to black so scene content dominates reflections
-    .clearValue = vk::ClearValue{vk::ClearColorValue{std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}}}
+    .clearValue = vk::ClearValue{vk::ClearColorValue{std::array < float, 4 >{0.0f, 0.0f, 0.0f, 1.0f}}}
   };
   vk::RenderingAttachmentInfo depthAtt{
     .imageView = *rt.depthView,
@@ -501,23 +504,22 @@ bool Renderer::createImageViews() {
     swapChainImageViews.clear();
     swapChainImageViews.reserve(swapChainImages.size());
 
+    // Create image view info template (image will be set per iteration)
+    vk::ImageViewCreateInfo createInfo{
+      .viewType = vk::ImageViewType::e2D,
+      .format = swapChainImageFormat,
+      .components = {
+        .r = vk::ComponentSwizzle::eIdentity,
+        .g = vk::ComponentSwizzle::eIdentity,
+        .b = vk::ComponentSwizzle::eIdentity,
+        .a = vk::ComponentSwizzle::eIdentity
+      },
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}
+    };
+
     // Create image view for each swap chain image
     for (const auto& image : swapChainImages) {
-      // Create image view info
-      vk::ImageViewCreateInfo createInfo{
-        .image = image,
-        .viewType = vk::ImageViewType::e2D,
-        .format = swapChainImageFormat,
-        .components = {
-          .r = vk::ComponentSwizzle::eIdentity,
-          .g = vk::ComponentSwizzle::eIdentity,
-          .b = vk::ComponentSwizzle::eIdentity,
-          .a = vk::ComponentSwizzle::eIdentity
-        },
-        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}
-      };
-
-      // Create image view
+      createInfo.image = image;
       swapChainImageViews.emplace_back(device, createInfo);
     }
 
@@ -537,7 +539,8 @@ bool Renderer::setupDynamicRendering() {
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f})
+        .clearValue = vk::ClearColorValue(std::array < float, 4 >{0.0f, 0.0f, 0.0f, 1.0f})
+      
       }
     };
 
@@ -619,26 +622,30 @@ bool Renderer::createSyncObjects() {
     renderFinishedSemaphores.clear();
     inFlightFences.clear();
 
+    // Semaphores per swapchain image (indexed by imageIndex from acquireNextImage)
+    // The presentation engine holds semaphores until the image is re-acquired, so we need
+    // one semaphore per swapchain image to avoid reuse conflicts. See Vulkan spec:
+    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     const auto semaphoreCount = static_cast<uint32_t>(swapChainImages.size());
     imageAvailableSemaphores.reserve(semaphoreCount);
     renderFinishedSemaphores.reserve(semaphoreCount);
 
-    // Fences remain per frame-in-flight for CPU-GPU synchronization
+    // Fences per frame-in-flight for CPU-GPU synchronization (indexed by currentFrame)
     inFlightFences.reserve(MAX_FRAMES_IN_FLIGHT);
 
-    // Create semaphore and fence info
+    // Create semaphore info
     vk::SemaphoreCreateInfo semaphoreInfo{};
-    vk::FenceCreateInfo fenceInfo{
-      .flags = vk::FenceCreateFlagBits::eSignaled
-    };
 
-    // Create semaphores per swapchain image (indexed by imageIndex from acquireNextImage)
+    // Create semaphores per swapchain image (indexed by imageIndex for presentation sync)
     for (uint32_t i = 0; i < semaphoreCount; i++) {
       imageAvailableSemaphores.emplace_back(device, semaphoreInfo);
       renderFinishedSemaphores.emplace_back(device, semaphoreInfo);
     }
 
     // Create fences per frame-in-flight (indexed by currentFrame for CPU-GPU pacing)
+    vk::FenceCreateInfo fenceInfo{
+      .flags = vk::FenceCreateFlagBits::eSignaled
+    };
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       inFlightFences.emplace_back(device, fenceInfo);
     }
@@ -707,7 +714,10 @@ void Renderer::recreateSwapChain() {
     allFences.push_back(*fence);
   }
   if (!allFences.empty()) {
-    (void) waitForFencesSafe(allFences, VK_TRUE);
+    vk::Result result = waitForFencesSafe(allFences, VK_TRUE);
+    if (result != vk::Result::eSuccess) {
+      std::cerr << "Error: Failed to wait for in-flight fences during swap chain recreation: " << vk::to_string(result) << std::endl;
+    }
   }
 
   // Wait for the device to be idle before recreating the swap chain
@@ -740,7 +750,10 @@ void Renderer::recreateSwapChain() {
 
   // Wait for all command buffers to complete before clearing resources
   for (const auto& fence : inFlightFences) {
-    (void) waitForFencesSafe(*fence, VK_TRUE);
+    vk::Result result = waitForFencesSafe(*fence, VK_TRUE);
+    if (result != vk::Result::eSuccess) {
+      std::cerr << "Error: Failed to wait for fence before clearing resources: " << vk::to_string(result) << std::endl;
+    }
   }
 
   // Clear all entity descriptor sets since they're now invalid (allocated from the old pool)
@@ -830,6 +843,8 @@ void Renderer::recreateSwapChain() {
 
 // Update uniform buffer
 void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera) {
+  assert(camera && "Camera must not be null for rendering");
+
   // Get entity resources
   auto entityIt = entityResources.find(entity);
   if (entityIt == entityResources.end()) {
@@ -855,6 +870,8 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
 
 // Overloaded version that accepts a custom transform matrix
 void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera, const glm::mat4& customTransform) {
+  assert(camera && "Camera must not be null for rendering");
+
   // Create the uniform buffer object with custom transform
   UniformBufferObject ubo{};
   ubo.model = customTransform;
@@ -993,7 +1010,7 @@ void Renderer::ensureEntityMaterialCache(Entity* entity) {
         const size_t nextUnderscore = remainder.find('_');
         if (nextUnderscore != std::string::npos && nextUnderscore + 1 < remainder.length()) {
           const std::string materialName = remainder.substr(nextUnderscore + 1);
-          if (Material* material = modelLoader->GetMaterial(materialName)) {
+          if (const Material* material = modelLoader->GetMaterial(materialName)) {
             res.cachedMaterial = material;
             res.cachedIsGlass = material->isGlass;
             res.cachedIsLiquid = material->isLiquid;
@@ -1080,7 +1097,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // Use a finite timeout loop so we can keep the watchdog alive during long GPU work
   // (e.g., acceleration structure builds/refits can legitimately take seconds on large scenes).
   watchdogProgressLabel.store("Render: wait inFlightFence", std::memory_order_relaxed);
-  (void) waitForFencesSafe(*inFlightFences[currentFrame], VK_TRUE);
+  vk::Result fenceResult = waitForFencesSafe(*inFlightFences[currentFrame], VK_TRUE);
+  if (fenceResult != vk::Result::eSuccess) {
+    std::cerr << "Error: Failed to wait for in-flight fence: " << vk::to_string(fenceResult) << std::endl;
+  }
 
   // Reset the fence immediately after successful wait, before any new work
   watchdogProgressLabel.store("Render: reset inFlightFence", std::memory_order_relaxed);
@@ -1120,7 +1140,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // This makes the TLAS grow as streaming/allocations complete, then settle (no rebuild spam).
   // NOTE: This scan can be relatively heavy and is not needed for the default startup path.
   // Only run it when opportunistic rebuilds are enabled.
-  if (rayQueryEnabled && accelerationStructureEnabled && asOpportunisticRebuildEnabled) {
+  if (rayQueryEnabled&& accelerationStructureEnabled && asOpportunisticRebuildEnabled) {
     watchdogProgressLabel.store("Render: AS readiness scan", std::memory_order_relaxed);
     size_t readyRenderableCount = 0;
     size_t readyUniqueMeshCount = 0; {
@@ -1193,8 +1213,12 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   // If in Ray Query static-only mode and TLAS not yet built post-load, request a one-time build now.
   // (Does not require a readiness scan.)
-  if (rayQueryEnabled && accelerationStructureEnabled && currentRenderMode == RenderMode::RayQuery && IsRayQueryStaticOnly() && !IsLoading() &&
-    !*tlasStructure.handle && !asBuildRequested.load(std::memory_order_relaxed)) {
+  if (rayQueryEnabled&& accelerationStructureEnabled && currentRenderMode 
+  ==
+  RenderMode::RayQuery&& IsRayQueryStaticOnly() &&
+  !IsLoading() &&
+      !*tlasStructure.handle && !asBuildRequested.load(std::memory_order_relaxed)
+  ) {
     RequestAccelerationStructureBuild("static-only initial build");
   }
 
@@ -1327,7 +1351,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         // and will not signal until we submit the current frame.
         {
           std::vector<vk::Fence> fencesToWait;
-          fencesToWait.reserve(inFlightFences.size() > 0 ? (inFlightFences.size() - 1) : 0);
+          if (inFlightFences.size() > 1) {
+            fencesToWait.reserve(inFlightFences.size() - 1);
+          }
           for (uint32_t i = 0; i < static_cast<uint32_t>(inFlightFences.size()); ++i) {
             if (i == currentFrame)
               continue;
@@ -1336,7 +1362,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             }
           }
           if (!fencesToWait.empty()) {
-            (void) waitForFencesSafe(fencesToWait, VK_TRUE);
+            vk::Result result = waitForFencesSafe(fencesToWait, VK_TRUE);
+            if (result != vk::Result::eSuccess) {
+              std::cerr << "Error: Failed to wait for fences before acceleration structure build: " << vk::to_string(result) << std::endl;
+            }
           }
         }
 
@@ -1608,10 +1637,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // refreshPBRForwardPlusBindingsForFrame(currentFrame);
 
   // Acquire next swapchain image
-  // We must provide a semaphore to acquireNextImage that will be signaled when the image is ready.
-  // Use currentFrame to cycle through available semaphores (one per frame-in-flight).
-  // After acquire, we'll use imageIndex to select semaphores for submit/present.
-  uint32_t acquireSemaphoreIndex = currentFrame % static_cast<uint32_t>(imageAvailableSemaphores.size());
+  // acquireNextImage returns imageIndex (which swapchain image is available).
+  // Use currentFrame to select an imageAvailableSemaphore for acquire.
+  // Use imageIndex to select renderFinishedSemaphore for present (ties semaphore to the specific image).
+  const uint32_t acquireSemaphoreIndex = currentFrame % static_cast<uint32_t>(imageAvailableSemaphores.size());
 
   uint32_t imageIndex;
   vk::Result acquireResultCode = vk::Result::eSuccess;
@@ -1655,7 +1684,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // imageIndex already populated above
   watchdogProgressLabel.store("Render: acquired swapchain image", std::memory_order_relaxed);
 
-  if (acquireResultCode == vk::Result::eErrorOutOfDateKHR || acquireResultCode == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+  if (acquireResultCode == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
     framebufferResized.store(false, std::memory_order_relaxed);
     if (imguiSystem)
       ImGui::EndFrame();
@@ -1786,7 +1815,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           swapChainImageLayouts[imageIndex] = swapchainBarrier.newLayout;
 
         // Clear to a distinct magenta diagnostic color
-        vk::ClearColorValue clearColor{std::array<float, 4>{1.0f, 0.0f, 1.0f, 1.0f}};
+        vk::ClearColorValue clearColor{std::array < float, 4 >{1.0f, 0.0f, 1.0f, 1.0f}};
         vk::ImageSubresourceRange clearRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
         commandBuffers[currentFrame].clearColorImage(swapChainImages[imageIndex], vk::ImageLayout::eTransferDstOptimal, clearColor, clearRange);
 
@@ -2114,7 +2143,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         float scaleBefore = reflectionResolutionScale;
         if (ImGui::SliderFloat("Reflection resolution scale", &reflectionResolutionScale, 0.25f, 1.0f, "%.2f")) {
           reflectionResolutionScale = std::clamp(reflectionResolutionScale, 0.25f, 1.0f);
-          if (enablePlanarReflections && std::abs(scaleBefore - reflectionResolutionScale) > 1e-3f) {
+          if (enablePlanarReflections&& std::abs(scaleBefore - reflectionResolutionScale) 
+          >
+          1e-3f
+          ) {
             reflectionResourcesDirty = true;
           }
         }
@@ -2398,9 +2430,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           // the opaque color pass using the standard opaque pipeline.
           bool isAlphaMasked = false;
           ensureEntityMaterialCache(entity);
-          auto entityItForMask = entityResources.find(entity);
-          if (entityItForMask != entityResources.end() && entityItForMask->second.materialCacheValid) {
-            isAlphaMasked = (entityItForMask->second.cachedMaterialProps.alphaMask > 0.5f);
+          if (entityIt->second.materialCacheValid) {
+            isAlphaMasked = (entityIt->second.cachedMaterialProps.alphaMask > 0.5f);
           }
           // Fallback: infer mask from baseColor texture alpha usage hint
           if (!isAlphaMasked) {
@@ -2516,7 +2547,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       opaqueSceneColorImageLayouts[currentFrame] = vk::ImageLayout::eColorAttachmentOptimal;
     }
     // Clear the off-screen target at the start of opaque rendering to a neutral black background
-    vk::RenderingAttachmentInfo colorAttachment{.imageView = *opaqueSceneColorImageViews[currentFrame], .imageLayout = vk::ImageLayout::eColorAttachmentOptimal, .loadOp = vk::AttachmentLoadOp::eClear, .storeOp = vk::AttachmentStoreOp::eStore, .clearValue = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f})};
+    vk::RenderingAttachmentInfo colorAttachment{.imageView = *opaqueSceneColorImageViews[currentFrame], .imageLayout = vk::ImageLayout::eColorAttachmentOptimal, .loadOp = vk::AttachmentLoadOp::eClear, .storeOp = vk::AttachmentStoreOp::eStore, .clearValue = vk::ClearColorValue(std::array < float, 4 >{0.0f, 0.0f, 0.0f, 1.0f})};
     depthAttachment.imageView = *depthImageView;
     depthAttachment.loadOp = (didOpaqueDepthPrepass) ? vk::AttachmentLoadOp::eLoad : vk::AttachmentLoadOp::eClear;
     vk::RenderingInfo passInfo{.renderArea = vk::Rect2D({0, 0}, swapChainExtent), .layerCount = 1, .colorAttachmentCount = 1, .pColorAttachments = &colorAttachment, .pDepthAttachment = &depthAttachment};
@@ -2530,6 +2561,13 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         auto meshComponent = entity->GetComponent<MeshComponent>();
         if (!meshComponent)
           continue;
+
+        // Look up entity and mesh resources once at the start of the loop
+        auto meshIt = meshResources.find(meshComponent);
+        auto entityIt = entityResources.find(entity);
+        if (meshIt == meshResources.end() || entityIt == entityResources.end())
+          continue;
+
         bool useBasic = imguiSystem && !imguiSystem->IsPBREnabled();
         vk::raii::Pipeline* selectedPipeline = nullptr;
         vk::raii::PipelineLayout* selectedLayout = nullptr;
@@ -2541,9 +2579,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           // read-only pipeline and use the normal depth-writing opaque pipeline instead.
           bool isAlphaMaskedOpaque = false;
           ensureEntityMaterialCache(entity);
-          auto entityItForMask = entityResources.find(entity);
-          if (entityItForMask != entityResources.end() && entityItForMask->second.materialCacheValid) {
-            isAlphaMaskedOpaque = (entityItForMask->second.cachedMaterialProps.alphaMask > 0.5f);
+          if (entityIt->second.materialCacheValid) {
+            isAlphaMaskedOpaque = (entityIt->second.cachedMaterialProps.alphaMask > 0.5f);
           }
           // Fallback based on texture hint if material flag not set
           if (!isAlphaMaskedOpaque) {
@@ -2577,10 +2614,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           currentPipeline = selectedPipeline;
           currentLayout = selectedLayout;
         }
-        auto meshIt = meshResources.find(meshComponent);
-        auto entityIt = entityResources.find(entity);
-        if (meshIt == meshResources.end() || entityIt == entityResources.end())
-          continue;
         std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
         std::array<vk::DeviceSize, 2> offsets = {0, 0};
         commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
@@ -2641,11 +2674,14 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           pushConstants.specularFactor = glm::vec3(1.0f);
           // override from cached material, if available
           ensureEntityMaterialCache(entity);
-          auto entityItForPC = entityResources.find(entity);
-          if (entityItForPC != entityResources.end() && entityItForPC->second.materialCacheValid) {
-            pushConstants = entityItForPC->second.cachedMaterialProps;
+          if (entityIt->second.materialCacheValid) {
+            pushConstants = entityIt->second.cachedMaterialProps;
           }
-          commandBuffers[currentFrame].pushConstants<MaterialProperties>(**selectedLayout, vk::ShaderStageFlagBits::eFragment, 0, {pushConstants});
+          commandBuffers[currentFrame].pushConstants < MaterialProperties > (**selectedLayout, vk::ShaderStageFlagBits::eFragment, 0,  {
+            pushConstants
+          }
+          )
+          ;
         }
         uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
         commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
@@ -2765,7 +2801,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             continue;
 
           ensureEntityMaterialCache(entity);
-          Material* material = entityIt->second.cachedMaterial;
+          const Material* material = entityIt->second.cachedMaterial;
 
           // Choose pipeline: specialized glass pipeline for architectural glass,
           // otherwise the generic blended PBR pipeline.
@@ -2825,7 +2861,11 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
               pushConstants.transmissionFactor = 0.0f;
             }
           }
-          commandBuffers[currentFrame].pushConstants<MaterialProperties>(**currentLayout, vk::ShaderStageFlagBits::eFragment, 0, {pushConstants});
+          commandBuffers[currentFrame].pushConstants < MaterialProperties > (**currentLayout, vk::ShaderStageFlagBits::eFragment, 0,  {
+            pushConstants
+          }
+          )
+          ;
           uint32_t instanceCountT = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
           commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCountT, 0, 0, 0);
         }
@@ -2930,16 +2970,16 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // Use imageIndex for renderFinished semaphore (matches the image being presented)
 
   std::array<vk::SemaphoreSubmitInfo, 2> waitInfos = {
-	  vk::SemaphoreSubmitInfo{
-		  .semaphore = *imageAvailableSemaphores[acquireSemaphoreIndex],
+    vk::SemaphoreSubmitInfo{
+      .semaphore = *imageAvailableSemaphores[acquireSemaphoreIndex],
       .value = 0,
       .stageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-		  .deviceIndex = 0
-	  },
-	  vk::SemaphoreSubmitInfo{
-		  .semaphore = *uploadsTimeline,
-		  .value = uploadsValueToWait,
-		  .stageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+      .deviceIndex = 0
+    },
+    vk::SemaphoreSubmitInfo{
+      .semaphore = *uploadsTimeline,
+      .value = uploadsValueToWait,
+      .stageMask = vk::PipelineStageFlagBits2::eFragmentShader,
       .deviceIndex = 0
     }
   };
@@ -2979,7 +3019,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   } catch (const vk::OutOfDateKHRError&) {
     framebufferResized.store(true, std::memory_order_relaxed);
   }
-  if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+  if (presentResult == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
     framebufferResized.store(false, std::memory_order_relaxed);
     recreateSwapChain();
   } else if (presentResult != vk::Result::eSuccess) {

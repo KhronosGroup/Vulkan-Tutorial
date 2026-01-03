@@ -34,6 +34,7 @@ AndroidPlatform::AndroidPlatform(android_app* androidApp) : app(androidApp) {
 
     switch (cmd) {
       case APP_CMD_INIT_WINDOW:
+      case APP_CMD_WINDOW_RESIZED:
         if (app->window != nullptr) {
           // Get the window dimensions
           ANativeWindow* window = app->window;
@@ -50,21 +51,6 @@ AndroidPlatform::AndroidPlatform(android_app* androidApp) : app(androidApp) {
 
       case APP_CMD_TERM_WINDOW:
         // Window is being hidden or closed
-        break;
-
-      case APP_CMD_WINDOW_RESIZED:
-        if (app->window != nullptr) {
-          // Get the new window dimensions
-          ANativeWindow* window = app->window;
-          platform->width = ANativeWindow_getWidth(window);
-          platform->height = ANativeWindow_getHeight(window);
-          platform->windowResized = true;
-
-          // Call the resize callback if set
-          if (platform->resizeCallback) {
-            platform->resizeCallback(platform->width, platform->height);
-          }
-        }
         break;
 
       default:
@@ -155,9 +141,8 @@ void AndroidPlatform::SetCharCallback(std::function<void(uint32_t)> callback) {
   charCallback = std::move(callback);
 }
 
-void AndroidPlatform::SetWindowTitle(const std::string& title) {
+void AndroidPlatform::SetWindowTitle([[maybe_unused]] const std::string& title) {
   // No-op on Android - mobile apps don't have window titles
-  (void) title;
 }
 
 void AndroidPlatform::DetectDeviceCapabilities() {

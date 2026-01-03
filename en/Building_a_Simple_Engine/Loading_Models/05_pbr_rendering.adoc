@@ -540,18 +540,21 @@ link:https://learnopengl.com/PBR/IBL/Diffuse-irradiance[IBL] uses environment ma
 ==== Subsurface Scattering
 
 For materials like skin, wax, or marble where light penetrates the surface:
+
 * link:https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-14-advanced-techniques-realistic-real-time-skin[Simulates how light scatters within translucent materials]
 * Can be approximated with techniques like subsurface scattering profiles
 
 ==== Clear Coat
 
 For materials with a thin, glossy layer on top:
+
 * link:https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat[Automotive paint, varnished wood, etc.]
 * Implemented as an additional specular lobe
 
 ==== Anisotropy
 
 For materials with directional reflections:
+
 * link:https://google.github.io/filament/Filament.html#materialsystem/anisotropicmodel[Brushed metal, hair, fabric, etc.]
 * Requires additional material parameters and modified BRDFs
 

@@ -139,21 +139,17 @@ bool VulkanDevice::createLogicalDevice(bool enableValidationLayers, const std::v
       queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    // Enable required features
-    auto features = physicalDevice.getFeatures2();
-    features.features.samplerAnisotropy = vk::True;
-    features.features.depthClamp = vk::True;
-
-    // Enable Vulkan 1.3 features
-    vk::PhysicalDeviceVulkan13Features vulkan13Features;
-    vulkan13Features.dynamicRendering = vk::True;
-    vulkan13Features.synchronization2 = vk::True;
-    features.pNext = &vulkan13Features;
-
-    vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT feedbackLoopFeatures{};
-    feedbackLoopFeatures.attachmentFeedbackLoopLayout = vk::True;
-
-    vulkan13Features.pNext = &feedbackLoopFeatures;
+    // Enable required features using StructureChain
+    vk::StructureChain<
+      vk::PhysicalDeviceFeatures2,
+      vk::PhysicalDeviceVulkan13Features,
+      vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT
+    > featureChain{
+      {.features = {.depthClamp = vk::True, .samplerAnisotropy = vk::True}},
+      {.synchronization2 = vk::True, .dynamicRendering = vk::True},
+      {.attachmentFeedbackLoopLayout = vk::True}
+    };
+    auto& features = featureChain.get<vk::PhysicalDeviceFeatures2>();
 
     // Create device. Device layers are deprecated and ignored, so we
     // configure only extensions and features; validation is enabled via

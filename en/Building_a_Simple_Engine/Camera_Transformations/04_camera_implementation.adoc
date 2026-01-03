@@ -11,7 +11,7 @@ Now that we understand the mathematical foundations and transformation matrices,
 There are several types of cameras commonly used in 3D applications:
 
 * *First-Person Camera*: Simulates viewing the world through the eyes of a character.
-* *Third-Person Camera*: Follows a character from behind or another fixed position.
+* *Third-Person Camera*: Follows a character from behind or another fixed relative position.
 * *Orbit Camera*: Rotates around a fixed point, useful for object inspection.
 * *Free Camera*: Allows unrestricted movement in all directions.
 
@@ -164,18 +164,26 @@ And implement the movement logic:
 void Camera::processKeyboard(CameraMovement direction, float deltaTime) {
     float velocity = movementSpeed * deltaTime;
 
-    if (direction == CameraMovement::FORWARD)
-        position += front * velocity;
-    if (direction == CameraMovement::BACKWARD)
-        position -= front * velocity;
-    if (direction == CameraMovement::LEFT)
-        position -= right * velocity;
-    if (direction == CameraMovement::RIGHT)
-        position += right * velocity;
-    if (direction == CameraMovement::UP)
-        position += up * velocity;
-    if (direction == CameraMovement::DOWN)
-        position -= up * velocity;
+    switch (direction) {
+        case CameraMovement::FORWARD:
+            position += front * velocity;
+            break;
+        case CameraMovement::BACKWARD:
+            position -= front * velocity;
+            break;
+        case CameraMovement::LEFT:
+            position -= right * velocity;
+            break;
+        case CameraMovement::RIGHT:
+            position += right * velocity;
+            break;
+        case CameraMovement::UP:
+            position += up * velocity;
+            break;
+        case CameraMovement::DOWN:
+            position -= up * velocity;
+            break;
+    }
 }
 ----
 
@@ -318,10 +326,7 @@ void Camera::processMouseMovement(float xOffset, float yOffset, bool constrainPi
 
     // Constrain pitch to avoid flipping
     if (constrainPitch) {
-        if (pitch > 89.0f)
-            pitch = 89.0f;
-        if (pitch < -89.0f)
-            pitch = -89.0f;
+        pitch = std::clamp(pitch, -89.0f, 89.0f);
     }
 
     // Update camera vectors based on updated Euler angles
@@ -615,10 +620,7 @@ void ThirdPersonCamera::orbit(float horizontalAngle, float verticalAngle) {
     pitch += verticalAngle;
 
     // Constrain pitch to avoid flipping
-    if (pitch > 89.0f)
-        pitch = 89.0f;
-    if (pitch < -89.0f)
-        pitch = -89.0f;
+    pitch = std::clamp(pitch, -89.0f, 89.0f);
 
     // Calculate the new camera position based on spherical coordinates
     float radius = followDistance;

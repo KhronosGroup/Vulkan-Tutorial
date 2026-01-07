@@ -16,8 +16,10 @@
  */
 #include "imgui/imgui.h"
 #include "imgui_system.h"
+#include "mesh_component.h"
 #include "model_loader.h"
 #include "renderer.h"
+#include "transform_component.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -300,7 +302,7 @@ void Renderer::destroyReflectionResources() {
 void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
                                     const glm::vec4& planeWS,
                                     CameraComponent* camera,
-                                    const std::vector<Entity *>& entities) {
+                                    const std::vector<RenderJob>& jobs) {
   if (reflections.empty())
     return;
   auto& rt = reflections[currentFrame];
@@ -374,7 +376,6 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
 
   glm::mat4 viewReflected = camera ? (camera->GetViewMatrix() * reflectM) : reflectM;
   glm::mat4 projReflected = camera ? camera->GetProjectionMatrix() : glm::mat4(1.0f);
-  projReflected[1][1] *= -1.0f;
   currentReflectionVP = projReflected * viewReflected;
   currentReflectionPlane = planeWS;
   if (currentFrame < reflectionVPs.size()) {
@@ -398,28 +399,19 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
   // Prepare frustum for mirrored view to allow culling
   FrustumPlanes reflectFrustum = extractFrustumPlanes(currentReflectionVP);
 
-  // Render all entities with meshes (skip transparency; glass revisit later)
-  for (Entity* entity : entities) {
-    if (!entity || !entity->IsActive())
-      continue;
-    auto meshComponent = entity->GetComponent<MeshComponent>();
-    if (!meshComponent)
-      continue;
+  // Render all jobs (skip transparency)
+  for (const auto& job : jobs) {
+    Entity* entity = job.entity;
+    MeshComponent* meshComponent = job.meshComp;
+    EntityResources* entityRes = job.entityRes;
+    MeshResources* meshRes = job.meshRes;
 
-    // Skip transparent/blended objects in planar reflections to avoid recursion
-    // and because the reflection pipeline uses opaque PBR (PSMain).
-    ensureEntityMaterialCache(entity);
-    auto entityIt = entityResources.find(entity);
-    if (entityIt == entityResources.end())
-      continue;
-
-    if (entityIt->second.cachedIsBlended)
+    if (entityRes->cachedIsBlended)
       continue;
 
     // Frustum culling for mirrored view
     if (meshComponent->HasLocalAABB()) {
-      auto* tc = entity->GetComponent<TransformComponent>();
-      const glm::mat4 model = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
+      const glm::mat4 model = job.transformComp ? job.transformComp->GetModelMatrix() : glm::mat4(1.0f);
       glm::vec3 wmin, wmax;
       transformAABB(model, meshComponent->GetLocalAABBMin(), meshComponent->GetLocalAABBMax(), wmin, wmax);
       if (!aabbIntersectsFrustum(wmin, wmax, reflectFrustum)) {
@@ -427,20 +419,16 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
       }
     }
 
-    auto meshIt = meshResources.find(meshComponent);
-    if (meshIt == meshResources.end())
-      continue;
-
     // Bind geometry
-    std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+    std::array<vk::Buffer, 2> buffers = {*meshRes->vertexBuffer, *entityRes->instanceBuffer};
     std::array<vk::DeviceSize, 2> offsets = {0, 0};
     cmd.bindVertexBuffers(0, buffers, offsets);
-    cmd.bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
+    cmd.bindIndexBuffer(*meshRes->indexBuffer, 0, vk::IndexType::eUint32);
 
     // Populate UBO with mirrored view + clip plane and reflection flags
     UniformBufferObject ubo{};
-    if (auto tc = entity->GetComponent<TransformComponent>())
-      ubo.model = tc->GetModelMatrix();
+    if (job.transformComp)
+      ubo.model = job.transformComp->GetModelMatrix();
     else
       ubo.model = glm::mat4(1.0f);
     ubo.view = viewReflected;
@@ -450,27 +438,27 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
     ubo.reflectionEnabled = 0;
     ubo.reflectionVP = currentReflectionVP;
     ubo.clipPlaneWS = planeWS;
-    updateUniformBufferInternal(currentFrame, entity, const_cast<CameraComponent *>(camera), ubo);
+    // Ray query shadows in reflection pass
+    ubo.padding2 = enableRasterRayQueryShadows ? 1.0f : 0.0f;
 
-    // Bind descriptor set (PBR)
-    auto& descSets = entityIt->second.pbrDescriptorSets;
-    if (descSets.empty() || currentFrame >= descSets.size())
-      continue;
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pbrPipelineLayout, 0, {*descSets[currentFrame]}, {});
+    updateUniformBufferInternal(currentFrame, entity, entityRes, camera, ubo);
 
-    // Push material properties for reflection pass (use textures)
-    MaterialProperties mp{};
-    // Neutral defaults; textures from descriptor set will provide actual albedo/normal/etc.
-    mp.baseColorFactor = glm::vec4(1.0f);
-    mp.metallicFactor = 0.0f;
-    mp.roughnessFactor = 0.8f;
+    // Bind descriptor set (PBR set 0)
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                           *pbrPipelineLayout,
+                           0,
+                           *entityRes->pbrDescriptorSets[currentFrame],
+                           nullptr);
+
+    // Push material properties
+    MaterialProperties mp = entityRes->cachedMaterialProps;
     // Transmission suppressed during reflection pass via UBO (reflectionPass=1)
     mp.transmissionFactor = 0.0f;
     pushMaterialProperties(*cmd, mp);
 
     // Issue draw
     uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
-    cmd.drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
+    cmd.drawIndexed(meshRes->indexCount, instanceCount, 0, 0, 0);
   }
 
   cmd.endRendering();
@@ -540,7 +528,7 @@ bool Renderer::setupDynamicRendering() {
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearColorValue(std::array < float, 4 >{0.0f, 0.0f, 0.0f, 1.0f})
-      
+
       }
     };
 
@@ -766,11 +754,11 @@ void Renderer::recreateSwapChain() {
       resources.pbrDescriptorSets.clear();
       // Descriptor initialization flags must be reset because new descriptor sets
       // will be allocated and only the current frame will be initialized at runtime.
-      resources.pbrUboBindingWritten.clear();
-      resources.basicUboBindingWritten.clear();
-      resources.pbrImagesWritten.clear();
-      resources.basicImagesWritten.clear();
-      resources.pbrFixedBindingsWritten.clear();
+      resources.pbrUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+      resources.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+      resources.pbrImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+      resources.basicImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+      resources.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
     }
   }
 
@@ -841,18 +829,59 @@ void Renderer::recreateSwapChain() {
   StartUploadsWorker();
 }
 
-// Update uniform buffer
-void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera) {
-  assert(camera && "Camera must not be null for rendering");
+void Renderer::prepareFrameUboTemplate(CameraComponent* camera) {
+  frameUboTemplate = UniformBufferObject{};
+  if (!camera) return;
 
-  // Get entity resources
-  auto entityIt = entityResources.find(entity);
-  if (entityIt == entityResources.end()) {
+  frameUboTemplate.view = camera->GetViewMatrix();
+  frameUboTemplate.proj = camera->GetProjectionMatrix();
+  frameUboTemplate.proj[1][1] *= -1; // Flip Y for Vulkan
+  frameUboTemplate.camPos = glm::vec4(camera->GetPosition(), 1.0f);
+
+  frameUboTemplate.lightCount = static_cast<int>(lastFrameLightCount);
+  frameUboTemplate.exposure = std::clamp(this->exposure, 0.2f, 4.0f);
+  frameUboTemplate.gamma = this->gamma;
+  frameUboTemplate.screenDimensions = glm::vec2(swapChainExtent.width, swapChainExtent.height);
+  frameUboTemplate.nearZ = camera->GetNearPlane();
+  frameUboTemplate.farZ = camera->GetFarPlane();
+  frameUboTemplate.slicesZ = static_cast<float>(forwardPlusSlicesZ);
+
+  int outputIsSRGB = (swapChainImageFormat == vk::Format::eR8G8B8A8Srgb ||
+                       swapChainImageFormat == vk::Format::eB8G8R8A8Srgb) ? 1 : 0;
+  frameUboTemplate.padding0 = outputIsSRGB;
+  // Raster PBR shader uses padding1 as the Forward+ enable flag.
+  // 0 = disabled (always use global light loop), non-zero = enabled (use culled tile lists).
+  frameUboTemplate.padding1 = useForwardPlus ? 1.0f : 0.0f;
+  frameUboTemplate.padding2 = enableRasterRayQueryShadows ? 1.0f : 0.0f;
+
+  bool reflReady = false;
+  if (enablePlanarReflections && !reflections.empty()) {
+    const uint32_t count = static_cast<uint32_t>(reflections.size());
+    const uint32_t prev = (currentFrame + count - 1u) % count;
+    auto& rtPrev = reflections[prev];
+    reflReady = (!!*rtPrev.colorView) && (!!*rtPrev.colorSampler);
+  }
+  frameUboTemplate.reflectionEnabled = reflReady ? 1 : 0;
+  frameUboTemplate.reflectionVP = sampleReflectionVP;
+  frameUboTemplate.clipPlaneWS = currentReflectionPlane;
+  frameUboTemplate.reflectionIntensity = std::clamp(reflectionIntensity, 0.0f, 2.0f);
+  frameUboTemplate.enableRayQueryReflections = enableRayQueryReflections ? 1 : 0;
+  frameUboTemplate.enableRayQueryTransparency = enableRayQueryTransparency ? 1 : 0;
+
+  // Ray-query shared buffers are also used by raster PBR when doing ray-query shadows.
+  // Populate counts so shaders can bounds-check even when running in raster mode.
+  frameUboTemplate.geometryInfoCount = static_cast<int>(geometryInfoCountCPU);
+  frameUboTemplate.materialCount = static_cast<int>(materialCountCPU);
+}
+
+// Update uniform buffer
+void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, EntityResources* entityRes, CameraComponent* camera, TransformComponent* tc) {
+  if (!entityRes) {
     return;
   }
 
   // Get transform component
-  auto transformComponent = entity->GetComponent<TransformComponent>();
+  auto transformComponent = tc ? tc : (entity ? entity->GetComponent<TransformComponent>() : nullptr);
   if (!transformComponent) {
     return;
   }
@@ -865,13 +894,12 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
   ubo.proj[1][1] *= -1; // Flip Y for Vulkan
 
   // Continue with the rest of the uniform buffer setup
-  updateUniformBufferInternal(currentImage, entity, camera, ubo);
+  updateUniformBufferInternal(currentImage, entity, entityRes, camera, ubo);
 }
 
 // Overloaded version that accepts a custom transform matrix
-void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera, const glm::mat4& customTransform) {
-  assert(camera && "Camera must not be null for rendering");
-
+void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, EntityResources* entityRes, CameraComponent* camera, const glm::mat4& customTransform) {
+  if (!entityRes) return;
   // Create the uniform buffer object with custom transform
   UniformBufferObject ubo{};
   ubo.model = customTransform;
@@ -880,94 +908,43 @@ void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, Camera
   ubo.proj[1][1] *= -1; // Flip Y for Vulkan
 
   // Continue with the rest of the uniform buffer setup
-  updateUniformBufferInternal(currentImage, entity, camera, ubo);
+  updateUniformBufferInternal(currentImage, entity, entityRes, camera, ubo);
 }
 
 // Internal helper function to complete uniform buffer setup
-void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity, CameraComponent* camera, UniformBufferObject& ubo) {
-  // Get entity resources
-  auto entityIt = entityResources.find(entity);
-  if (entityIt == entityResources.end()) {
+void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity, EntityResources* entityRes, CameraComponent* camera, UniformBufferObject& ubo) {
+  if (!entityRes) {
     return;
   }
 
-  // Use a single source of truth for the frame's light count, set in Render()
-  // right before the Forward+ compute dispatch. This ensures all entities see
-  // a consistent lightCount and that the PBR fallback loop can run when needed.
-  ubo.lightCount = static_cast<int>(lastFrameLightCount);
+  // Use frame template for most fields
+  UniformBufferObject finalUbo = frameUboTemplate;
+  finalUbo.model = ubo.model;
 
-  // Shadows removed: no shadow bias
-
-  // Set camera position for PBR calculations
-  ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);
-
-  // Set PBR parameters (use member variables for UI control)
-  // Clamp exposure to a sane range to avoid washout
-  ubo.exposure = std::clamp(this->exposure, 0.2f, 4.0f);
-  ubo.gamma = this->gamma;
-  ubo.prefilteredCubeMipLevels = 0.0f;
-  ubo.scaleIBLAmbient = 1.0f;
-  ubo.screenDimensions = glm::vec2(swapChainExtent.width, swapChainExtent.height);
-  // Forward+ clustered parameters for fragment shader
-  ubo.nearZ = camera ? camera->GetNearPlane() : 0.1f;
-  ubo.farZ = camera ? camera->GetFarPlane() : 1000.0f;
-  ubo.slicesZ = static_cast<float>(forwardPlusSlicesZ);
-
-  // Signal to the shader whether swapchain is sRGB (1) or not (0) using padding0
-  int outputIsSRGB = (swapChainImageFormat == vk::Format::eR8G8B8A8Srgb ||
-                       swapChainImageFormat == vk::Format::eB8G8R8A8Srgb)
-                       ? 1
-                       : 0;
-  ubo.padding0 = outputIsSRGB;
-  // Padding fields no longer used for runtime debug toggles
-  ubo.padding1 = 0.0f;
-  // `padding2`: raster ray-query shadows toggle (see `shaders/pbr.slang`)
-  ubo.padding2 = enableRasterRayQueryShadows ? 1.0f : 0.0f;
-
-  // Planar reflections: set sampling flags/matrices for main pass; preserve reflectionPass if already set by caller
-  if (ubo.reflectionPass != 1) {
-    // Main pass: enable planar reflection sampling for glass only when the feature is toggled
-    // and we have a valid previous-frame reflection render target to sample from.
-    ubo.reflectionPass = 0;
-    bool reflReady = false;
-    if (enablePlanarReflections && !reflections.empty()) {
-      // Use currentFrame (frame-in-flight index). Sample the previous frame's reflection RT
-      // so that the texture is fully written before it is read on this frame.
-      const uint32_t count = static_cast<uint32_t>(reflections.size());
-      const uint32_t prev = (currentFrame + count - 1u) % count;
-      auto& rtPrev = reflections[prev];
-      reflReady = (!!*rtPrev.colorView) && (!!*rtPrev.colorSampler);
-    }
-    ubo.reflectionEnabled = reflReady ? 1 : 0;
-    ubo.reflectionVP = sampleReflectionVP;
-    ubo.clipPlaneWS = currentReflectionPlane;
+  // For reflection pass, we must override view/proj/reflection flags
+  if (ubo.reflectionPass == 1) {
+    finalUbo.view = ubo.view;
+    finalUbo.proj = ubo.proj;
+    finalUbo.reflectionPass = 1;
+    finalUbo.reflectionEnabled = 0;
+    finalUbo.reflectionVP = ubo.reflectionVP;
+    finalUbo.clipPlaneWS = ubo.clipPlaneWS;
+    finalUbo.padding2 = ubo.padding2;
   }
-
-  // Reflection intensity from UI
-  ubo.reflectionIntensity = std::clamp(reflectionIntensity, 0.0f, 2.0f);
-
-  // Ray query rendering options from UI
-  ubo.enableRayQueryReflections = enableRayQueryReflections ? 1 : 0;
-  ubo.enableRayQueryTransparency = enableRayQueryTransparency ? 1 : 0;
 
   // Copy to uniform buffer (guard against null mapped pointer)
-  void* dst = entityIt->second.uniformBuffersMapped[currentImage];
+  void* dst = entityRes->uniformBuffersMapped[currentImage];
   if (!dst) {
-    // Mapped pointer not available (shouldn’t happen for HostVisible/Coherent). Avoid crash and continue.
-    std::cerr << "Warning: UBO mapped ptr null for entity '" << entity->GetName() << "' frame " << currentImage << std::endl;
+    std::cerr << "Warning: UBO mapped ptr null for entity '" << (entity ? entity->GetName() : "unknown") << "' frame " << currentImage << std::endl;
     return;
   }
-  std::memcpy(dst, &ubo, sizeof(ubo));
+  std::memcpy(dst, &finalUbo, sizeof(UniformBufferObject));
 }
 
-void Renderer::ensureEntityMaterialCache(Entity* entity) {
+void Renderer::ensureEntityMaterialCache(Entity* entity, EntityResources& res) {
   if (!entity)
     return;
 
-  auto it = entityResources.find(entity);
-  if (it == entityResources.end())
-    return;
-  auto& res = it->second;
   if (res.materialCacheValid)
     return;
 
@@ -1093,6 +1070,26 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // Track if ray query rendered successfully this frame to skip rasterization code path
   bool rayQueryRenderedThisFrame = false;
 
+  // --- Extract lights for the frame ---
+  // Build a single light list once per frame (emissive lights only for this scene)
+  std::vector<ExtractedLight> lightsSubset;
+  if (!staticLights.empty()) {
+    lightsSubset.reserve(std::min(staticLights.size(), static_cast<size_t>(MAX_ACTIVE_LIGHTS)));
+    for (const auto& L : staticLights) {
+      // Include all lights (Directional, Point, Emissive) up to the limit
+      lightsSubset.push_back(L);
+      if (lightsSubset.size() >= MAX_ACTIVE_LIGHTS)
+        break;
+    }
+  }
+  lastFrameLightCount = static_cast<uint32_t>(lightsSubset.size());
+  if (!lightsSubset.empty()) {
+    updateLightStorageBuffer(currentFrame, lightsSubset, camera);
+  }
+
+  // Pre-calculate frame-constant UBO data
+  prepareFrameUboTemplate(camera);
+
   // Wait for the previous frame's work on this frame slot to complete
   // Use a finite timeout loop so we can keep the watchdog alive during long GPU work
   // (e.g., acceleration structure builds/refits can legitimately take seconds on large scenes).
@@ -1140,7 +1137,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   // This makes the TLAS grow as streaming/allocations complete, then settle (no rebuild spam).
   // NOTE: This scan can be relatively heavy and is not needed for the default startup path.
   // Only run it when opportunistic rebuilds are enabled.
-  if (rayQueryEnabled&& accelerationStructureEnabled && asOpportunisticRebuildEnabled) {
+  // While loading, allow opportunistic AS rebuild scanning even if the user-facing toggle is off.
+  // This prevents nondeterministic “missing outdoor props” across app restarts when the first TLAS
+  // build happens before all entities exist.
+  if (rayQueryEnabled && accelerationStructureEnabled && (asOpportunisticRebuildEnabled || IsLoading())) {
     watchdogProgressLabel.store("Render: AS readiness scan", std::memory_order_relaxed);
     size_t readyRenderableCount = 0;
     size_t readyUniqueMeshCount = 0; {
@@ -1190,7 +1190,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       }
       readyUniqueMeshCount = meshToBLASProbe.size();
     }
-    if (!asFrozen && (readyRenderableCount > lastASBuiltInstanceCount || readyUniqueMeshCount > lastASBuiltBLASCount) && !asBuildRequested.load(std::memory_order_relaxed)) {
+    // During scene loading/finalization, the TLAS may be built before all entities exist.
+    // Allow rebuilds even if AS is "frozen" so the TLAS converges to the full scene across restarts.
+    if ((!asFrozen || IsLoading()) && (readyRenderableCount > lastASBuiltInstanceCount || readyUniqueMeshCount > lastASBuiltBLASCount) && !asBuildRequested.load(std::memory_order_relaxed)) {
       std::cout << "AS rebuild requested: counts increased (built instances=" << lastASBuiltInstanceCount
           << ", ready instances=" << readyRenderableCount
           << ", built meshes=" << lastASBuiltBLASCount
@@ -1213,7 +1215,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   // If in Ray Query static-only mode and TLAS not yet built post-load, request a one-time build now.
   // (Does not require a readiness scan.)
-  if (rayQueryEnabled&& accelerationStructureEnabled && currentRenderMode 
+  if (rayQueryEnabled&& accelerationStructureEnabled && currentRenderMode
   ==
   RenderMode::RayQuery&& IsRayQueryStaticOnly() &&
   !IsLoading() &&
@@ -1227,28 +1229,18 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   watchdogProgressLabel.store("Render: AS build request check", std::memory_order_relaxed);
   if (asBuildRequested.load(std::memory_order_acquire)) {
     watchdogProgressLabel.store("Render: AS build request handling", std::memory_order_relaxed);
-    // Low-noise one-time diagnostic to confirm the render thread observes the request.
-    // (Helps debug cases where the app prints the request message but AS logic never runs.)
-    static bool loggedASRequestObserved = false;
-    if (!loggedASRequestObserved) {
-      const uint64_t reqNs = asBuildRequestStartNs.load(std::memory_order_relaxed);
-      std::cout << "AS build request observed on render thread (loading=" << (IsLoading() ? "true" : "false")
-          << ", reqNs=" << reqNs << ")" << std::endl;
-      loggedASRequestObserved = true;
-    }
 
     // Defer TLAS/BLAS build while the scene loader is still active to avoid partial builds.
     // IMPORTANT: Do NOT use IsLoading() here; IsLoading() also includes the post-load
     // "finalizing" stage, and deferring on that would deadlock the AS build forever.
     if (IsSceneLoaderActive()) {
       // Keep the request flag set; we'll build once the loader (and critical textures) finish.
-    } else if (asFrozen && !asDevOverrideAllowRebuild) {
+    } else if (asFrozen && !asDevOverrideAllowRebuild && !IsLoading()) {
       // Ignore rebuilds while frozen to avoid wiping TLAS during animation playback
       std::cout << "AS rebuild request ignored (frozen). Reason: " << lastASBuildRequestReason << "\n";
       asBuildRequested.store(false, std::memory_order_release);
       asBuildRequestStartNs.store(0, std::memory_order_relaxed);
       watchdogSuppressed.store(false, std::memory_order_relaxed);
-      loggedASRequestObserved = false;
     } else {
       // Gate initial build until readiness is high enough to represent the full scene
       size_t totalRenderableEntities = 0;
@@ -1381,7 +1373,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             SetLoadingPhase(LoadingPhase::Finalizing);
             SetLoadingPhaseProgress(0.0f);
           }
-          loggedASRequestObserved = false;
 
           // The TLAS handle can transition from null -> valid (or change on rebuild).
           // Ensure raster PBR descriptor sets (set 0, binding 11 `tlas`) are rewritten after an AS build
@@ -1423,7 +1414,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             asBuildRequested.store(false, std::memory_order_release);
             asBuildRequestStartNs.store(0, std::memory_order_relaxed);
             watchdogSuppressed.store(false, std::memory_order_relaxed);
-            loggedASRequestObserved = false;
           } else {
             // If nothing is ready yet (e.g., mesh uploads still pending), don't spam logs.
             if (readyRenderableCount > 0 || readyUniqueMeshCount > 0) {
@@ -1443,25 +1433,28 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   ProcessDirtyDescriptorsForFrame(currentFrame);
   watchdogProgressLabel.store("Render: after ProcessDirtyDescriptorsForFrame", std::memory_order_relaxed);
 
-  // Safe point pre-pass: ensure descriptor sets exist for all visible entities this frame
-  // and initialize only binding 0 (UBO) for the current frame if not already done.
+  // --- 1. PREPARATION PASS ---
+  // Gather active entities with mesh resources, perform per-frame descriptor initialization,
+  // and execute culling. This single pass replaces multiple redundant scans and reduces map lookups.
+  std::vector<RenderJob> opaqueJobs;
+  std::vector<RenderJob> transparentJobs;
+  opaqueJobs.reserve(entities.size());
+
   {
-    watchdogProgressLabel.store("Render: per-entity descriptor cold-init", std::memory_order_relaxed);
-    // If we're in the loading overlay's Finalizing phase, estimate how many entities
-    // will be processed so we can update a meaningful progress fraction.
-    size_t totalToInit = 0;
-    if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing) {
-      for (Entity* entity : entities) {
-        if (!entity || !entity->IsActive())
-          continue;
-        if (!entity->GetComponent<MeshComponent>())
-          continue;
-        if (entityResources.find(entity) == entityResources.end())
-          continue;
-        ++totalToInit;
-      }
-      SetLoadingPhaseProgress(0.0f);
+    watchdogProgressLabel.store("Render: preparation pass", std::memory_order_relaxed);
+
+    // Prepare frustum once per frame for culling
+    FrustumPlanes frustum{};
+    const bool doCulling = enableFrustumCulling && camera;
+    if (doCulling && camera) {
+      glm::mat4 proj = camera->GetProjectionMatrix();
+      proj[1][1] *= -1.0f;
+      const glm::mat4 vp = proj * camera->GetViewMatrix();
+      frustum = extractFrustumPlanes(vp);
     }
+    lastCullingVisibleCount = 0;
+    lastCullingCulledCount = 0;
+
     uint32_t entityProcessCount = 0;
     for (Entity* entity : entities) {
       if (!entity || !entity->IsActive())
@@ -1469,102 +1462,116 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       auto meshComponent = entity->GetComponent<MeshComponent>();
       if (!meshComponent)
         continue;
+
       auto entityIt = entityResources.find(entity);
       if (entityIt == entityResources.end())
         continue;
 
-      // Update watchdog more frequently during heavy descriptor set initialization
-      // large scenes can have thousands of entities needing cold-init.
-      entityProcessCount++;
-      watchdogProgressIndex.store(entityProcessCount, std::memory_order_relaxed);
-      if (entityProcessCount % 10 == 0) {
-        lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing && totalToInit > 0) {
-          SetLoadingPhaseProgress(static_cast<float>(entityProcessCount) / static_cast<float>(totalToInit));
+      auto meshIt = meshResources.find(meshComponent);
+      if (meshIt == meshResources.end())
+        continue;
+
+      EntityResources& entityRes = entityIt->second;
+      MeshResources& meshRes = meshIt->second;
+
+      // Ensure material cache is valid once per frame
+      ensureEntityMaterialCache(entity, entityRes);
+
+      // --- Per-frame Descriptor Cold-Init (Integrated) ---
+      if (entityRes.basicDescriptorSets.empty() || entityRes.pbrDescriptorSets.empty()) {
+        std::string texPath = meshComponent->GetBaseColorTexturePath();
+        if (texPath.empty()) texPath = meshComponent->GetTexturePath();
+        if (entityRes.basicDescriptorSets.empty()) createDescriptorSets(entity, entityRes, texPath, false);
+        if (entityRes.pbrDescriptorSets.empty()) createDescriptorSets(entity, entityRes, texPath, true);
+      }
+
+      // Initialize binding 0 (UBO) for the current frame slot if not already done.
+      if (!entityRes.pbrUboBindingWritten[currentFrame] || !entityRes.basicUboBindingWritten[currentFrame]) {
+        std::string texPath = meshComponent->GetBaseColorTexturePath();
+        if (texPath.empty()) texPath = meshComponent->GetTexturePath();
+        if (!entityRes.pbrUboBindingWritten[currentFrame]) {
+          updateDescriptorSetsForFrame(entity, entityRes, texPath, true, currentFrame, false, true);
+        }
+        if (!entityRes.basicUboBindingWritten[currentFrame]) {
+          updateDescriptorSetsForFrame(entity, entityRes, texPath, false, currentFrame, false, true);
         }
       }
 
-      // Determine a reasonable base texture path for initial descriptor writes
-      std::string texPath = meshComponent->GetBaseColorTexturePath();
-      if (texPath.empty())
-        texPath = meshComponent->GetTexturePath();
+      // Initialize images for the current frame slot if not already done.
+      if (!entityRes.pbrImagesWritten[currentFrame] || !entityRes.basicImagesWritten[currentFrame]) {
+        std::string texPath = meshComponent->GetBaseColorTexturePath();
+        if (texPath.empty()) texPath = meshComponent->GetTexturePath();
+        if (!entityRes.pbrImagesWritten[currentFrame]) {
+          updateDescriptorSetsForFrame(entity, entityRes, texPath, true, currentFrame, true, false);
+          entityRes.pbrImagesWritten[currentFrame] = true;
+        }
+        if (!entityRes.basicImagesWritten[currentFrame]) {
+          updateDescriptorSetsForFrame(entity, entityRes, texPath, false, currentFrame, true, false);
+          entityRes.basicImagesWritten[currentFrame] = true;
+        }
+      }
 
-      // Create descriptor sets on demand if missing
-      if (entityIt->second.basicDescriptorSets.empty()) {
-        createDescriptorSets(entity, texPath, /*usePBR=*/false);
-      }
-      if (entityIt->second.pbrDescriptorSets.empty()) {
-        createDescriptorSets(entity, texPath, /*usePBR=*/true);
+      // --- Culling & Classification ---
+      auto* tc = entity->GetComponent<TransformComponent>();
+      bool useBlended = entityRes.cachedIsBlended;
+
+      if (meshComponent->HasLocalAABB()) {
+        const glm::mat4 model = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
+        glm::vec3 wmin, wmax;
+        transformAABB(model, meshComponent->GetLocalAABBMin(), meshComponent->GetLocalAABBMax(), wmin, wmax);
+
+        // 1. Frustum Culling
+        if (doCulling && !aabbIntersectsFrustum(wmin, wmax, frustum)) {
+          lastCullingCulledCount++;
+          continue;
+        }
+
+        // 2. Distance-based LOD
+        if (enableDistanceLOD && camera) {
+          glm::vec3 camPos = camera->GetPosition();
+          bool cameraInside = (camPos.x >= wmin.x && camPos.x <= wmax.x &&
+                               camPos.y >= wmin.y && camPos.y <= wmax.y &&
+                               camPos.z >= wmin.z && camPos.z <= wmax.z);
+          if (!cameraInside) {
+            float dx = std::max({0.0f, wmin.x - camPos.x, camPos.x - wmax.x});
+            float dy = std::max({0.0f, wmin.y - camPos.y, camPos.y - wmax.y});
+            float dz = std::max({0.0f, wmin.z - camPos.z, camPos.z - wmax.z});
+            float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            float z_eff = std::max(0.1f, dist);
+            float fov = glm::radians(camera->GetFieldOfView());
+            float radius = glm::length(0.5f * (wmax - wmin));
+            float pixelDiameter = (radius * 2.0f * static_cast<float>(swapChainExtent.height)) / (z_eff * 2.0f * std::tan(fov * 0.5f));
+            float threshold = useBlended ? lodPixelThresholdTransparent : lodPixelThresholdOpaque;
+            if (pixelDiameter < threshold) {
+              lastCullingCulledCount++;
+              continue;
+            }
+          }
+        }
       }
 
-      // Ensure ONLY binding 0 (UBO) is written for the CURRENT frame's PBR set once.
-      // Avoid touching image bindings here to keep per-frame descriptor churn minimal.
-      watchdogProgressLabel.store("ColdInit: PBR UBO", std::memory_order_relaxed);
-      updateDescriptorSetsForFrame(entity,
-                                   texPath,
-                                   /*usePBR=*/
-                                   true,
-                                   currentFrame,
-                                   /*imagesOnly=*/
-                                   false,
-                                   /*uboOnly=*/
-                                   true);
+      lastCullingVisibleCount++;
+      bool isAlphaMasked = false;
+      if (entityRes.materialCacheValid) {
+        isAlphaMasked = (entityRes.cachedMaterialProps.alphaMask > 0.5f);
+      }
 
-      // Basic/Phong pipeline also needs a per-frame UBO init at the safe point.
-      // Descriptor sets for non-current frames are allocated but may not be initialized yet.
-      watchdogProgressLabel.store("ColdInit: Basic UBO", std::memory_order_relaxed);
-      updateDescriptorSetsForFrame(entity,
-                                   texPath,
-                                   /*usePBR=*/
-                                   false,
-                                   currentFrame,
-                                   /*imagesOnly=*/
-                                   false,
-                                   /*uboOnly=*/
-                                   true);
+      // Update UBO for visible entity once per frame (shared across all main passes)
+      updateUniformBuffer(currentFrame, entity, &entityRes, camera, tc);
 
-      // Cold-initialize image bindings for CURRENT frame once to avoid per-frame black flashes.
-      // This writes PBR b1..b5 and Basic b1 with either real textures or shared defaults.
-      // It does not touch UBO (handled above).
-      // PBR images
-      if (entityIt->second.pbrImagesWritten.size() != MAX_FRAMES_IN_FLIGHT) {
-        entityIt->second.pbrImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+      RenderJob job{entity, &entityRes, &meshRes, meshComponent, tc, isAlphaMasked};
+      if (useBlended) {
+        transparentJobs.push_back(job);
+      } else {
+        opaqueJobs.push_back(job);
       }
-      if (!entityIt->second.pbrImagesWritten[currentFrame]) {
-        watchdogProgressLabel.store("ColdInit: PBR images", std::memory_order_relaxed);
-        updateDescriptorSetsForFrame(entity,
-                                     texPath,
-                                     /*usePBR=*/
-                                     true,
-                                     currentFrame,
-                                     /*imagesOnly=*/
-                                     true,
-                                     /*uboOnly=*/
-                                     false);
-        entityIt->second.pbrImagesWritten[currentFrame] = true;
-      }
-      // Basic images
-      if (entityIt->second.basicImagesWritten.size() != MAX_FRAMES_IN_FLIGHT) {
-        entityIt->second.basicImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
-      }
-      if (!entityIt->second.basicImagesWritten[currentFrame]) {
-        watchdogProgressLabel.store("ColdInit: Basic images", std::memory_order_relaxed);
-        updateDescriptorSetsForFrame(entity,
-                                     texPath,
-                                     /*usePBR=*/
-                                     false,
-                                     currentFrame,
-                                     /*imagesOnly=*/
-                                     true,
-                                     /*uboOnly=*/
-                                     false);
-        entityIt->second.basicImagesWritten[currentFrame] = true;
+
+      // Update watchdog periodically
+      if (++entityProcessCount % 100 == 0) {
+        lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
       }
     }
-    watchdogProgressLabel.store("Render: after per-entity descriptor cold-init", std::memory_order_relaxed);
-    if (IsLoading() && GetLoadingPhase() == LoadingPhase::Finalizing) {
-      SetLoadingPhaseProgress(1.0f);
-    }
+    watchdogProgressLabel.store("Render: after preparation pass", std::memory_order_relaxed);
   }
 
   // If the scene loader has finished and there are no remaining blocking tasks,
@@ -1756,6 +1763,15 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     }
   }
 
+  // Refit TLAS if needed (either for Ray Query mode or for Raster shadows)
+  const bool needTLAS = (currentRenderMode == RenderMode::RayQuery || enableRasterRayQueryShadows) && accelerationStructureEnabled;
+  if (needTLAS && !!*tlasStructure.handle) {
+    if (!IsRayQueryStaticOnly()) {
+      watchdogProgressLabel.store("Render: refitTopLevelAS", std::memory_order_relaxed);
+      refitTopLevelAS(entities, camera);
+    }
+  }
+
   commandBuffers[currentFrame].reset();
   // Begin command buffer recording for this frame
   commandBuffers[currentFrame].begin(vk::CommandBufferBeginInfo());
@@ -1764,24 +1780,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     commandBuffers[currentFrame].end();
     recreateSwapChain();
     return;
-  }
-
-  // Extract lights for this frame (needed by both ray query and rasterization)
-  // Build a single light list once per frame (emissive lights only for this scene)
-  std::vector<ExtractedLight> lightsSubset;
-  if (!staticLights.empty()) {
-    lightsSubset.reserve(std::min(staticLights.size(), static_cast<size_t>(MAX_ACTIVE_LIGHTS)));
-    for (const auto& L : staticLights) {
-      if (L.type == ExtractedLight::Type::Emissive) {
-        lightsSubset.push_back(L);
-        if (lightsSubset.size() >= MAX_ACTIVE_LIGHTS)
-          break;
-      }
-    }
-  }
-  lastFrameLightCount = static_cast<uint32_t>(lightsSubset.size());
-  if (!lightsSubset.empty()) {
-    updateLightStorageBuffer(currentFrame, lightsSubset);
   }
 
   // Ray query rendering mode dispatch
@@ -1835,13 +1833,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     } else {
       // TLAS is valid and descriptor sets were already updated at safe point
       // Proceed with ray query rendering
-      // In static-only mode, skip refit to keep TLAS immutable
-      if (!IsRayQueryStaticOnly()) {
-        // If animation updated transforms this frame, refit TLAS instead of rebuilding
-        // This prevents wiping TLAS contents to only animated instances
-        refitTopLevelAS(entities, camera);
-      }
-
       // Bind ray query compute pipeline
       commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eCompute, *rayQueryPipeline);
 
@@ -2028,8 +2019,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   vk::raii::Pipeline* currentPipeline = nullptr;
   vk::raii::PipelineLayout* currentLayout = nullptr;
-  std::vector<Entity *> opaqueQueue;
-  std::vector<Entity *> blendedQueue;
 
   // Incrementally process pending texture uploads on the main thread so that
   // all Vulkan submits happen from a single place while worker threads only
@@ -2058,8 +2047,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   }
 
   // Renderer UI - available for both ray query and rasterization modes.
-  // Allow UI during loading so the progress overlay can render; still skip if ImGui system already submitted.
-  if (imguiSystem && !imguiSystem->IsFrameRendered()) {
+  // Hide UI during loading; the progress overlay is handled by ImGuiSystem::NewFrame().
+  if (imguiSystem && !imguiSystem->IsFrameRendered() && !IsLoading()) {
     if (ImGui::Begin("Renderer")) {
       // Declare variables that need to persist across conditional blocks
       bool prevFwdPlus = useForwardPlus;
@@ -2136,14 +2125,17 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
         // Planar reflections controls
         ImGui::Spacing();
+        /*
         if (ImGui::Checkbox("Planar reflections (experimental)", &enablePlanarReflections)) {
           // Defer actual (re)creation/destruction to the next safe point at frame start
           reflectionResourcesDirty = true;
         }
+        */
+        enablePlanarReflections = false;
         float scaleBefore = reflectionResolutionScale;
         if (ImGui::SliderFloat("Reflection resolution scale", &reflectionResolutionScale, 0.25f, 1.0f, "%.2f")) {
           reflectionResolutionScale = std::clamp(reflectionResolutionScale, 0.25f, 1.0f);
-          if (enablePlanarReflections&& std::abs(scaleBefore - reflectionResolutionScale) 
+          if (enablePlanarReflections&& std::abs(scaleBefore - reflectionResolutionScale)
           >
           1e-3f
           ) {
@@ -2226,172 +2218,41 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   }
 
   // Rasterization rendering: only execute if ray query did not render this frame.
-  // Previously this always executed, but now we skip it when ray query mode successfully renders.
   if (!rayQueryRenderedThisFrame) {
-    // Force matrices to be up-to-date at the start of the frame
-    if (camera) {
-      camera->ForceViewMatrixUpdate();
-    }
-
-    // Prepare frustum once per frame
-    FrustumPlanes frustum{};
-    const bool doCulling = enableFrustumCulling && camera;
-    if (doCulling) {
-      // Use the same projection matrix as the shader (including the Vulkan Y-flip)
-      // to ensure culling perfectly matches the visual frustum.
-      glm::mat4 proj = camera->GetProjectionMatrix();
-      proj[1][1] *= -1.0f;
-      const glm::mat4 vp = proj * camera->GetViewMatrix();
-      frustum = extractFrustumPlanes(vp);
-    }
-
-    lastCullingVisibleCount = 0;
-    lastCullingCulledCount = 0;
-
     // Optional: render planar reflections first
+    /*
     if (enablePlanarReflections) {
-      // Default plane: Y=0 (upwards normal) — replace with component-driven plane later
       glm::vec4 planeWS(0.0f, 1.0f, 0.0f, 0.0f);
-      renderReflectionPass(commandBuffers[currentFrame], planeWS, camera, entities);
+      renderReflectionPass(commandBuffers[currentFrame], planeWS, camera, opaqueJobs);
     }
-
-    for (Entity* entity : entities) {
-      if (!entity || !entity->IsActive())
-        continue;
-      auto meshComponent = entity->GetComponent<MeshComponent>();
-      if (!meshComponent)
-        continue;
-
-      // Get cached material info
-      bool useBlended = false;
-      ensureEntityMaterialCache(entity);
-      auto entityIt = entityResources.find(entity);
-      if (entityIt == entityResources.end())
-        continue;
-
-      if (entityIt->second.cachedIsBlended) {
-        useBlended = true;
-      }
-
-      // Perform culling if bounds are available
-      if (meshComponent->HasLocalAABB()) {
-        auto* tc = entity->GetComponent<TransformComponent>();
-        const glm::mat4 model = tc ? tc->GetModelMatrix() : glm::mat4(1.0f);
-        glm::vec3 wmin, wmax;
-        transformAABB(model, meshComponent->GetLocalAABBMin(), meshComponent->GetLocalAABBMax(), wmin, wmax);
-
-        // 1. Frustum Culling
-        if (doCulling && !aabbIntersectsFrustum(wmin, wmax, frustum)) {
-          lastCullingCulledCount++;
-          continue;
-        }
-
-        // 2. Distance-based LOD
-        if (enableDistanceLOD && camera) {
-          glm::vec3 center = 0.5f * (wmin + wmax);
-          glm::vec3 camPos = camera->GetPosition();
-
-          // If camera is inside the AABB, it's definitely not "too small"
-          bool cameraInside = (camPos.x >= wmin.x && camPos.x <= wmax.x &&
-            camPos.y >= wmin.y && camPos.y <= wmax.y &&
-            camPos.z >= wmin.z && camPos.z <= wmax.z);
-
-          if (!cameraInside) {
-            glm::vec3 extents = 0.5f * (wmax - wmin);
-            float radius = glm::length(extents);
-            if (radius > 0.0f) {
-              // For huge sparse AABBs (like instanced groups), use the closest
-              // point distance to avoid culling when one instance is close but
-              // the group center is far.
-              float dx = std::max({0.0f, wmin.x - camPos.x, camPos.x - wmax.x});
-              float dy = std::max({0.0f, wmin.y - camPos.y, camPos.y - wmax.y});
-              float dz = std::max({0.0f, wmin.z - camPos.z, camPos.z - wmax.z});
-              float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-              float z_eff = std::max(0.1f, dist);
-
-              float fov = glm::radians(camera->GetFieldOfView());
-              float pixelRadius = (radius * static_cast<float>(swapChainExtent.height)) / (z_eff * 2.0f * std::tan(fov * 0.5f));
-              float pixelDiameter = pixelRadius * 2.0f;
-              float threshold = useBlended ? lodPixelThresholdTransparent : lodPixelThresholdOpaque;
-              if (pixelDiameter < threshold) {
-                lastCullingCulledCount++;
-                continue; // too small
-              }
-            }
-          }
-        }
-      }
-
-      lastCullingVisibleCount++;
-      if (useBlended) {
-        blendedQueue.push_back(entity);
-      } else {
-        opaqueQueue.push_back(entity);
-      }
-    }
+    */
 
     // Sort transparent entities back-to-front for correct blending of nested glass/liquids
-    if (!blendedQueue.empty()) {
-      // Sort by squared distance from the camera in world space.
-      // Farther objects must be rendered first so that nearer glass correctly
-      // appears in front (standard back-to-front transparency ordering).
+    if (!transparentJobs.empty()) {
       glm::vec3 camPos = camera ? camera->GetPosition() : glm::vec3(0.0f);
-      std::ranges::sort(blendedQueue,
-                        [this, camPos](Entity* a, Entity* b) {
-                          auto* ta = (a ? a->GetComponent<TransformComponent>() : nullptr);
-                          auto* tb = (b ? b->GetComponent<TransformComponent>() : nullptr);
-                          glm::vec3 pa = ta ? ta->GetPosition() : glm::vec3(0.0f);
-                          glm::vec3 pb = tb ? tb->GetPosition() : glm::vec3(0.0f);
+      std::ranges::sort(transparentJobs,
+                        [camPos](const RenderJob& a, const RenderJob& b) {
+                          glm::vec3 pa = a.transformComp ? a.transformComp->GetPosition() : glm::vec3(0.0f);
+                          glm::vec3 pb = b.transformComp ? b.transformComp->GetPosition() : glm::vec3(0.0f);
                           float da2 = glm::length2(pa - camPos);
                           float db2 = glm::length2(pb - camPos);
-
-                          // Primary key: distance (farther first)
-                          if (da2 != db2) {
-                            return da2 > db2;
-                          }
-
-                          // Secondary key: for entities at nearly the same distance, prefer
-                          // rendering liquid volumes before glass shells so bar glasses look
-                          // correctly filled. This is a heuristic based on material flags.
-                          auto classify = [this](Entity* e) {
-                            if (!e)
-                              return std::pair<bool, bool>{false, false};
-                            ensureEntityMaterialCache(e);
-                            auto it = entityResources.find(e);
-                            if (it == entityResources.end())
-                              return std::pair<bool, bool>{false, false};
-                            return std::pair<bool, bool>{it->second.cachedIsGlass, it->second.cachedIsLiquid};
-                          };
-
-                          auto [aIsGlass, aIsLiquid] = classify(a);
-                          auto [bIsGlass, bIsLiquid] = classify(b);
-
-                          // If one is liquid and the other is glass at the same distance,
-                          // render the liquid first (i.e., treat it as slightly farther).
-                          if (aIsLiquid && bIsGlass && !bIsLiquid) {
-                            return true; // a (liquid) comes before b (glass)
-                          }
-                          if (bIsLiquid && aIsGlass && !aIsLiquid) {
-                            return false; // b (liquid) comes before a (glass)
-                          }
-
-                          // Fallback to stable ordering when distances and classifications are equal.
-                          return a < b;
+                          if (da2 != db2) return da2 > db2;
+                          if (a.entityRes->cachedIsLiquid != b.entityRes->cachedIsLiquid) return a.entityRes->cachedIsLiquid;
+                          return a.entity < b.entity;
                         });
     }
+
 
     // Track whether we executed a depth pre-pass this frame (used to choose depth load op and pipeline state)
     bool didOpaqueDepthPrepass = false;
 
     // Optional Forward+ depth pre-pass for opaque geometry
     if (useForwardPlus) {
-      const auto& opaqueEntities = opaqueQueue;
-
-      if (!opaqueEntities.empty()) {
+      if (!opaqueJobs.empty()) {
         // Transition depth image for attachment write (Sync2)
         vk::ImageMemoryBarrier2 depthBarrier2{
           .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
-          .srcAccessMask = vk::AccessFlagBits2::eNone,
+          .srcAccessMask = {},
           .dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
           .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
           .oldLayout = vk::ImageLayout::eUndefined,
@@ -2418,57 +2279,25 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, *depthPrepassPipeline);
         }
 
-        for (Entity* entity : opaqueEntities) {
-          auto meshComponent = entity->GetComponent<MeshComponent>();
-          auto entityIt = entityResources.find(entity);
-          auto meshIt = meshResources.find(meshComponent);
-          if (!meshComponent || entityIt == entityResources.end() || meshIt == meshResources.end())
-            continue;
+        for (const auto& job : opaqueJobs) {
+          if (job.isAlphaMasked) continue;
 
-          // Skip alpha-masked geometry in the depth pre-pass so that depth is not written
-          // where fragments would be discarded by alpha test. These will write depth during
-          // the opaque color pass using the standard opaque pipeline.
-          bool isAlphaMasked = false;
-          ensureEntityMaterialCache(entity);
-          if (entityIt->second.materialCacheValid) {
-            isAlphaMasked = (entityIt->second.cachedMaterialProps.alphaMask > 0.5f);
-          }
-          // Fallback: infer mask from baseColor texture alpha usage hint
-          if (!isAlphaMasked) {
-            std::string baseColorPath;
-            if (meshComponent) {
-              if (!meshComponent->GetBaseColorTexturePath().empty()) {
-                baseColorPath = meshComponent->GetBaseColorTexturePath();
-              } else if (!meshComponent->GetTexturePath().empty()) {
-                baseColorPath = meshComponent->GetTexturePath();
-              }
-            }
-            if (!baseColorPath.empty()) {
-              const std::string resolvedBase = ResolveTextureId(baseColorPath);
-              std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
-              auto itTex = textureResources.find(resolvedBase);
-              if (itTex != textureResources.end() && itTex->second.alphaMaskedHint) {
-                isAlphaMasked = true;
-              }
-            }
-          }
-          if (isAlphaMasked) {
-            continue; // do not write depth for masked foliage in pre-pass
-          }
-
-          std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+          // Bind geometry
+          std::array<vk::Buffer, 2> buffers = {*job.meshRes->vertexBuffer, *job.entityRes->instanceBuffer};
           std::array<vk::DeviceSize, 2> offsets = {0, 0};
           commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
-          commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
+          commandBuffers[currentFrame].bindIndexBuffer(*job.meshRes->indexBuffer, 0, vk::IndexType::eUint32);
 
-          updateUniformBuffer(currentFrame, entity, camera);
+          // Bind descriptor set (PBR set 0)
+          commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                                           *pbrPipelineLayout,
+                                                           0,
+                                                           *job.entityRes->pbrDescriptorSets[currentFrame],
+                                                           nullptr);
 
-          auto& descSets = entityIt->second.pbrDescriptorSets;
-          if (descSets.empty() || currentFrame >= descSets.size())
-            continue;
-          commandBuffers[currentFrame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pbrPipelineLayout, 0, {*descSets[currentFrame]}, {});
-          uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
-          commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
+          // Issue draw
+          uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(job.meshComp->GetInstanceCount()));
+          commandBuffers[currentFrame].drawIndexed(job.meshRes->indexCount, instanceCount, 0, 0, 0);
         }
 
         commandBuffers[currentFrame].endRendering();
@@ -2546,6 +2375,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     if (currentFrame < opaqueSceneColorImageLayouts.size()) {
       opaqueSceneColorImageLayouts[currentFrame] = vk::ImageLayout::eColorAttachmentOptimal;
     }
+    // PASS 1: OFF-SCREEN COLOR (Opaque)
     // Clear the off-screen target at the start of opaque rendering to a neutral black background
     vk::RenderingAttachmentInfo colorAttachment{.imageView = *opaqueSceneColorImageViews[currentFrame], .imageLayout = vk::ImageLayout::eColorAttachmentOptimal, .loadOp = vk::AttachmentLoadOp::eClear, .storeOp = vk::AttachmentStoreOp::eStore, .clearValue = vk::ClearColorValue(std::array < float, 4 >{0.0f, 0.0f, 0.0f, 1.0f})};
     depthAttachment.imageView = *depthImageView;
@@ -2557,52 +2387,16 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     vk::Rect2D scissor({0, 0}, swapChainExtent);
     commandBuffers[currentFrame].setScissor(0, scissor); {
       uint32_t opaqueDrawsThisPass = 0;
-      for (Entity* entity : opaqueQueue) {
-        auto meshComponent = entity->GetComponent<MeshComponent>();
-        if (!meshComponent)
-          continue;
-
-        // Look up entity and mesh resources once at the start of the loop
-        auto meshIt = meshResources.find(meshComponent);
-        auto entityIt = entityResources.find(entity);
-        if (meshIt == meshResources.end() || entityIt == entityResources.end())
-          continue;
-
-        bool useBasic = imguiSystem && !imguiSystem->IsPBREnabled();
+      for (const auto& job : opaqueJobs) {
+        bool useBasic = (imguiSystem && !imguiSystem->IsPBREnabled());
         vk::raii::Pipeline* selectedPipeline = nullptr;
         vk::raii::PipelineLayout* selectedLayout = nullptr;
         if (useBasic) {
           selectedPipeline = &graphicsPipeline;
           selectedLayout = &pipelineLayout;
         } else {
-          // Determine if this entity uses alpha masking so we can bypass the post-prepass
-          // read-only pipeline and use the normal depth-writing opaque pipeline instead.
-          bool isAlphaMaskedOpaque = false;
-          ensureEntityMaterialCache(entity);
-          if (entityIt->second.materialCacheValid) {
-            isAlphaMaskedOpaque = (entityIt->second.cachedMaterialProps.alphaMask > 0.5f);
-          }
-          // Fallback based on texture hint if material flag not set
-          if (!isAlphaMaskedOpaque) {
-            std::string baseColorPath;
-            if (meshComponent) {
-              if (!meshComponent->GetBaseColorTexturePath().empty()) {
-                baseColorPath = meshComponent->GetBaseColorTexturePath();
-              } else if (!meshComponent->GetTexturePath().empty()) {
-                baseColorPath = meshComponent->GetTexturePath();
-              }
-            }
-            if (!baseColorPath.empty()) {
-              const std::string resolvedBase = ResolveTextureId(baseColorPath);
-              std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
-              auto itTex = textureResources.find(resolvedBase);
-              if (itTex != textureResources.end() && itTex->second.alphaMaskedHint) {
-                isAlphaMaskedOpaque = true;
-              }
-            }
-          }
           // If masked, we need depth writes with alpha test; otherwise, after-prepass read-only is fine.
-          if (isAlphaMaskedOpaque) {
+          if (job.isAlphaMasked) {
             selectedPipeline = &pbrGraphicsPipeline; // writes depth, compare Less
           } else {
             selectedPipeline = didOpaqueDepthPrepass && !!*pbrPrepassGraphicsPipeline ? &pbrPrepassGraphicsPipeline : &pbrGraphicsPipeline;
@@ -2614,24 +2408,17 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
           currentPipeline = selectedPipeline;
           currentLayout = selectedLayout;
         }
-        std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+
+        std::array<vk::Buffer, 2> buffers = {*job.meshRes->vertexBuffer, *job.entityRes->instanceBuffer};
         std::array<vk::DeviceSize, 2> offsets = {0, 0};
         commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
-        commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
-        updateUniformBuffer(currentFrame, entity, camera);
-        auto* descSetsPtr = useBasic ? &entityIt->second.basicDescriptorSets : &entityIt->second.pbrDescriptorSets;
+        commandBuffers[currentFrame].bindIndexBuffer(*job.meshRes->indexBuffer, 0, vk::IndexType::eUint32);
+
+        auto* descSetsPtr = useBasic ? &job.entityRes->basicDescriptorSets : &job.entityRes->pbrDescriptorSets;
         if (descSetsPtr->empty() || currentFrame >= descSetsPtr->size()) {
-          // Never create or update descriptor sets during command buffer recording.
-          // Mark this entity dirty so the safe point will initialize its descriptors next frame.
-          MarkEntityDescriptorsDirty(entity);
-          static bool printedOnceMissingSets = false;
-          if (!printedOnceMissingSets) {
-            std::cerr << "[Descriptors] Descriptor sets missing for '" << entity->GetName() << "' — deferring to safe point, draw skipped this frame" << std::endl;
-            printedOnceMissingSets = true;
-          }
           continue;
         }
-        // (binding of descriptor sets happens below using descSetsPtr for the chosen pipeline)
+
         if (useBasic) {
           commandBuffers[currentFrame].bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics,
@@ -2640,8 +2427,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             {*(*descSetsPtr)[currentFrame]},
             {});
         } else {
-          // Opaque PBR binds set0 (PBR) and set1 (scene color sampling for composite/transparency). During loading,
-          // force the fallback descriptor set to avoid sampling uninitialized off-screen color.
           vk::DescriptorSet set1Opaque = (transparentDescriptorSets.empty() || IsLoading())
                                            ? *transparentFallbackDescriptorSets[currentFrame]
                                            : *transparentDescriptorSets[currentFrame];
@@ -2652,39 +2437,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             {*(*descSetsPtr)[currentFrame], set1Opaque},
             {});
 
-          // Ensure fragment shader push constants are provided before first draw for this pipeline layout
-          MaterialProperties pushConstants{};
-          // Sensible defaults for entities without explicit material
-          pushConstants.baseColorFactor = glm::vec4(1.0f);
-          pushConstants.metallicFactor = 0.0f;
-          pushConstants.roughnessFactor = 1.0f;
-          pushConstants.baseColorTextureSet = 0; // sample bound baseColor (falls back to shared default if none)
-          pushConstants.physicalDescriptorTextureSet = 0; // default to sampling metallic-roughness on binding 2
-          pushConstants.normalTextureSet = -1;
-          pushConstants.occlusionTextureSet = -1;
-          pushConstants.emissiveTextureSet = -1;
-          pushConstants.alphaMask = 0.0f;
-          pushConstants.alphaMaskCutoff = 0.5f;
-          pushConstants.emissiveFactor = glm::vec3(0.0f);
-          pushConstants.emissiveStrength = 1.0f;
-          pushConstants.hasEmissiveStrengthExtension = 0;
-          pushConstants.transmissionFactor = 0.0f;
-          pushConstants.useSpecGlossWorkflow = 0;
-          pushConstants.glossinessFactor = 0.0f;
-          pushConstants.specularFactor = glm::vec3(1.0f);
-          // override from cached material, if available
-          ensureEntityMaterialCache(entity);
-          if (entityIt->second.materialCacheValid) {
-            pushConstants = entityIt->second.cachedMaterialProps;
-          }
-          commandBuffers[currentFrame].pushConstants < MaterialProperties > (**selectedLayout, vk::ShaderStageFlagBits::eFragment, 0,  {
-            pushConstants
-          }
-          )
-          ;
+          commandBuffers[currentFrame].pushConstants<MaterialProperties>(**selectedLayout, vk::ShaderStageFlagBits::eFragment, 0, {job.entityRes->cachedMaterialProps});
         }
-        uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
-        commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCount, 0, 0, 0);
+        uint32_t instanceCount = std::max(1u, static_cast<uint32_t>(job.meshComp->GetInstanceCount()));
+        commandBuffers[currentFrame].drawIndexed(job.meshRes->indexCount, instanceCount, 0, 0, 0);
         ++opaqueDrawsThisPass;
       }
     }
@@ -2787,42 +2543,22 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       commandBuffers[currentFrame].setViewport(0, viewport);
       commandBuffers[currentFrame].setScissor(0, scissor);
 
-      if (!blendedQueue.empty()) {
+      if (!transparentJobs.empty()) {
         currentLayout = &pbrTransparentPipelineLayout;
-
-        // Track currently bound pipeline so we only rebind when needed
         vk::raii::Pipeline* activeTransparentPipeline = nullptr;
 
-        for (Entity* entity : blendedQueue) {
-          auto meshComponent = entity->GetComponent<MeshComponent>();
-          auto entityIt = entityResources.find(entity);
-          auto meshIt = meshResources.find(meshComponent);
-          if (!meshComponent || entityIt == entityResources.end() || meshIt == meshResources.end())
-            continue;
-
-          ensureEntityMaterialCache(entity);
-          const Material* material = entityIt->second.cachedMaterial;
-
-          // Choose pipeline: specialized glass pipeline for architectural glass,
-          // otherwise the generic blended PBR pipeline.
-          bool useGlassPipeline = entityIt->second.cachedIsGlass;
-          vk::raii::Pipeline* desiredPipeline = useGlassPipeline ? &glassGraphicsPipeline : &pbrBlendGraphicsPipeline;
+        for (const auto& job : transparentJobs) {
+          vk::raii::Pipeline* desiredPipeline = job.entityRes->cachedIsGlass ? &glassGraphicsPipeline : &pbrBlendGraphicsPipeline;
           if (desiredPipeline != activeTransparentPipeline) {
             commandBuffers[currentFrame].bindPipeline(vk::PipelineBindPoint::eGraphics, **desiredPipeline);
             activeTransparentPipeline = desiredPipeline;
           }
 
-          std::array<vk::Buffer, 2> buffers = {*meshIt->second.vertexBuffer, *entityIt->second.instanceBuffer};
+          std::array<vk::Buffer, 2> buffers = {*job.meshRes->vertexBuffer, *job.entityRes->instanceBuffer};
           std::array<vk::DeviceSize, 2> offsets = {0, 0};
           commandBuffers[currentFrame].bindVertexBuffers(0, buffers, offsets);
-          commandBuffers[currentFrame].bindIndexBuffer(*meshIt->second.indexBuffer, 0, vk::IndexType::eUint32);
-          updateUniformBuffer(currentFrame, entity, camera);
+          commandBuffers[currentFrame].bindIndexBuffer(*job.meshRes->indexBuffer, 0, vk::IndexType::eUint32);
 
-          auto& pbrDescSets = entityIt->second.pbrDescriptorSets;
-          if (pbrDescSets.empty() || currentFrame >= pbrDescSets.size())
-            continue;
-
-          // Bind PBR (set 0) and scene color (set 1). During loading, force fallback to avoid sampling uninitialized off-screen color.
           vk::DescriptorSet set1 = (transparentDescriptorSets.empty() || IsLoading())
                                      ? *transparentFallbackDescriptorSets[currentFrame]
                                      : *transparentDescriptorSets[currentFrame];
@@ -2830,44 +2566,20 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
             vk::PipelineBindPoint::eGraphics,
             **currentLayout,
             0,
-            {*pbrDescSets[currentFrame], set1},
+            {*job.entityRes->pbrDescriptorSets[currentFrame], set1},
             {});
 
-          MaterialProperties pushConstants{};
-          // Sensible defaults for entities without explicit material
-          pushConstants.baseColorFactor = glm::vec4(1.0f);
-          pushConstants.metallicFactor = 0.0f;
-          pushConstants.roughnessFactor = 1.0f;
-          pushConstants.baseColorTextureSet = 0; // sample bound baseColor (falls back to shared default if none)
-          pushConstants.physicalDescriptorTextureSet = 0; // default to sampling metallic-roughness on binding 2
-          pushConstants.normalTextureSet = -1;
-          pushConstants.occlusionTextureSet = -1;
-          pushConstants.emissiveTextureSet = -1;
-          pushConstants.alphaMask = 0.0f;
-          pushConstants.alphaMaskCutoff = 0.5f;
-          pushConstants.emissiveFactor = glm::vec3(0.0f);
-          pushConstants.emissiveStrength = 1.0f;
-          pushConstants.hasEmissiveStrengthExtension = 0;
-          pushConstants.transmissionFactor = 0.0f;
-          pushConstants.useSpecGlossWorkflow = 0;
-          pushConstants.glossinessFactor = 0.0f;
-          pushConstants.specularFactor = glm::vec3(1.0f);
-          // pushConstants.ior already 1.5f default
-          if (material) {
-            pushConstants = entityIt->second.cachedMaterialProps;
-            // For bar liquids and similar volumes, we want the fill to be
-            // clearly visible rather than fully transmissive.
-            if (entityIt->second.cachedIsLiquid) {
-              pushConstants.transmissionFactor = 0.0f;
-            }
+          MaterialProperties pushConstants = job.entityRes->cachedMaterialProps;
+          if (job.entityRes->cachedIsLiquid) {
+            pushConstants.transmissionFactor = 0.0f;
           }
           commandBuffers[currentFrame].pushConstants < MaterialProperties > (**currentLayout, vk::ShaderStageFlagBits::eFragment, 0,  {
             pushConstants
           }
           )
           ;
-          uint32_t instanceCountT = std::max(1u, static_cast<uint32_t>(meshComponent->GetInstanceCount()));
-          commandBuffers[currentFrame].drawIndexed(meshIt->second.indexCount, instanceCountT, 0, 0, 0);
+          uint32_t instanceCountT = std::max(1u, static_cast<uint32_t>(job.meshComp->GetInstanceCount()));
+          commandBuffers[currentFrame].drawIndexed(job.meshRes->indexCount, instanceCountT, 0, 0, 0);
         }
       }
       // End transparent rendering pass before any layout transitions (even if no transparent draws)
@@ -2900,7 +2612,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   // Render ImGui UI overlay AFTER rasterization/ray query (must always execute regardless of render mode)
   // ImGui expects Render() to be called every frame after NewFrame() - skipping it causes hangs
-  if (imguiSystem && !IsLoading() && !imguiSystem->IsFrameRendered()) {
+  if (imguiSystem && !imguiSystem->IsFrameRendered()) {
     // When ray query renders, swapchain is in PRESENT layout with valid content.
     // When rasterization renders, swapchain is also in PRESENT layout with valid content.
     // Transition to COLOR_ATTACHMENT with loadOp=eLoad to preserve existing pixels for ImGui overlay.

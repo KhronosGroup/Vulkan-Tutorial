@@ -22,62 +22,6 @@ import pbr_utils;
 import lighting_utils;
 import tonemapping_utils;
 
-// GPU data structures for proper geometry and material access
-struct GeometryInfo {
-    uint64_t vertexBufferAddress;
-    uint64_t indexBufferAddress;
-    uint vertexCount;
-    uint materialIndex;
-    uint indexCount;   // number of indices in the index buffer
-    uint _pad0;
-    // Instance -> world normal transform (3 columns; xyz used, w unused)
-    float4 normalMatrix0;
-    float4 normalMatrix1;
-    float4 normalMatrix2;
-};
-
-struct MaterialData {
-    float3 albedo;
-    float metallic;
-    float3 emissive;
-    float roughness;
-    float ao;
-    float ior;
-    float emissiveStrength;
-    float alpha;
-    float transmissionFactor;
-    float alphaCutoff;
-    int alphaMode; // 0=OPAQUE, 1=MASK, 2=BLEND (matches glTF)
-    uint isGlass;
-    uint isLiquid;
-
-    // Thick-glass parameters (RQ-only)
-    float3 absorptionColor;      // Color after traveling absorptionDistance in the medium (1=none)
-    float absorptionDistance;    // Distance at which absorptionColor applies (meters)
-    uint thinWalled;             // 1 = thin surface (no thickness), 0 = thick volume
-
-    // Raster parity: texture-set flags (-1 = no texture; 0 = sample from texture table)
-    int baseColorTextureSet;
-    int physicalDescriptorTextureSet;
-    int normalTextureSet;
-    int occlusionTextureSet;
-    int emissiveTextureSet;
-
-    // Ray Query texture table indices (binding 6)
-    int baseColorTexIndex;
-    int normalTexIndex;
-    int physicalTexIndex;
-    int occlusionTexIndex;
-    int emissiveTexIndex;
-
-    // Specular-glossiness workflow support
-    int useSpecGlossWorkflow;
-    float glossinessFactor;
-    float3 specularFactor;
-    int hasEmissiveStrengthExt;
-    uint _padMat[3];
-};
-
 // C++ Vertex structure layout (tightly packed, 48 bytes total):
 // - position: vec3 at offset 0 (12 bytes)
 // - normal: vec3 at offset 12 (12 bytes)  
@@ -238,15 +182,20 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
     // does not turn black and so interior lighting remains visible through windows.
     float glassTransmission = 0.0;
     if (hit.isGlass) {
+        // Only apply the strong "glass fallback" when the surface actually looks like a pane
+        // (i.e., has meaningful coverage/opacity < 1). This avoids pushing opaque surfaces that
+        // were heuristically tagged as glass into the refraction path (which can cause view-dependent banding).
         glassTransmission = max(physicalTransmission, (1.0 - opacity));
-        if (glassTransmission < 0.01) {
+        if (glassTransmission < 0.01 && opacity < 0.98) {
             glassTransmission = 0.90;
         }
     }
 
-    float T = 0.0;
+    // Alpha BLEND (decals/foliage) should work regardless of the "transparency/refraction" toggle.
+    // That toggle is intended for true transmission/glass, not basic alpha compositing.
+    float T = blendTransmission;
     if (ubo.enableRayQueryTransparency != 0 && !hit.isLiquid) {
-        T = max(physicalTransmission, max(blendTransmission, glassTransmission));
+        T = max(T, max(physicalTransmission, glassTransmission));
     }
 
     // Reflection ray (chain up to maxBounces)
@@ -271,6 +220,60 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
         reflCol = last * ubo.reflectionIntensity;
     }
 
+    // Alpha BLEND (decals/foliage) is coverage. Composite over what is behind along the same ray.
+    // Do this iteratively (no recursion allowed in SPIR-V codegen).
+    if (hit.alphaMode == 2 && physicalTransmission <= 1e-4 && !hit.isGlass) {
+        float3 accum = float3(0.0, 0.0, 0.0);
+        float trans = 1.0;
+        HitInfo cur = hit;
+
+        // Composite up to a small number of BLEND layers (coplanar decals).
+        // After that, treat the next hit as opaque background.
+        uint lastInst = cur.instanceId;
+        uint lastMat = cur.materialIndex;
+        uint lastPrim = 0u;
+
+        [loop]
+        for (int layer = 0; layer < 8; ++layer) {
+            float a = clamp(cur.opacity, 0.0, 1.0);
+            accum += max(cur.color, 0.0) * (a * trans);
+            trans *= (1.0 - a);
+            if (trans < 1e-3) {
+                break;
+            }
+
+            // Step behind the current BLEND layer. Coplanar decals can self-hit even with a small bias,
+            // which would cause us to repeatedly composite the same layer and look opaque.
+            float3 startPos = cur.worldPos + cur.normal * (4.0 * RQ_RAY_EPS) + rayDir * (4.0 * RQ_RAY_EPS);
+            HitInfo next = traceRay(startPos, rayDir, RQ_RAY_EPS, 10000.0, rngState);
+
+            // If we re-hit the same instance/material, push further along the ray direction and retry a few times.
+            [loop]
+            for (int retry = 0; retry < 4 && next.hit; ++retry) {
+                if (next.instanceId != lastInst || next.materialIndex != lastMat) {
+                    break;
+                }
+                startPos += rayDir * (16.0 * RQ_RAY_EPS);
+                next = traceRay(startPos, rayDir, RQ_RAY_EPS, 10000.0, rngState);
+            }
+            if (!next.hit) {
+                accum += skyColor(rayDir) * trans;
+                break;
+            }
+
+            // Stop stacking when we reach a non-BLEND surface (or true transmission/glass).
+            if (next.alphaMode != 2 || next.isGlass || next.transmission > 0.01) {
+                accum += max(next.color, 0.0) * trans;
+                break;
+            }
+
+            lastInst = next.instanceId;
+            lastMat = next.materialIndex;
+            cur = next;
+        }
+        return accum;
+    }
+
     // Transmission ray (iterative loop to support multiple layers)
     float3 thruCol = skyColor(rayDir);
     bool doThru = (T > 1e-4);
@@ -284,7 +287,7 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
             float curPhysT = clamp(curHit.transmission, 0.0, 1.0);
             float curOpacity = clamp(curHit.opacity, 0.0, 1.0);
             float curGlassT = curHit.isGlass ? max(curPhysT, 1.0 - curOpacity) : 0.0;
-            if (curHit.isGlass && curGlassT < 0.01) curGlassT = 0.9;
+            if (curHit.isGlass && curGlassT < 0.01 && curOpacity < 0.98) curGlassT = 0.9;
             float curT = max(curPhysT, max((curHit.alphaMode == 2 ? 1.0 - curOpacity : 0.0), curGlassT));
 
             if (curT < 1e-4) {
@@ -293,7 +296,7 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
             }
 
             float3 nextRd = curRd;
-            bool refracts = (curPhysT > 1e-4 || curHit.isGlass);
+            bool refracts = (curPhysT > 1e-4 || (curHit.isGlass && curOpacity < 0.98));
             if (refracts) {
                 float3 Nn = curHit.normal;
                 float eta = 1.0 / max(curHit.ior, 1.0);
@@ -320,6 +323,12 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
 
             // Trace from just inside the entry point to reduce self-hits.
             float3 startPos = curHit.worldPos + nextRd * (4.0 * RQ_RAY_EPS);
+            // For coplanar BLEND decals, stepping only along the ray direction can still re-hit
+            // the same decal layer due to precision. Push along the surface normal as well so the
+            // next trace lands on the underlying wall.
+            if (curHit.alphaMode == 2) {
+                startPos = curHit.worldPos + curHit.normal * (4.0 * RQ_RAY_EPS) + nextRd * (4.0 * RQ_RAY_EPS);
+            }
 
             // Volumetric absorption for THICK glass (skip for thin-walled)
             if (ubo.enableThickGlass != 0 && !curHit.thinWalled && refracts) {
@@ -380,7 +389,7 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
     }
 
     if (T > 1e-4) {
-        // Transmissive: energy-conserving mix using Fresnel reflectance Fr and
+        // Transmissive/glass: energy-conserving mix using Fresnel reflectance Fr and
         // transmission factor T (authored/heuristic). Transmission weight Ft = (1-Fr)*T.
         float Fr_s = saturate(Fr);
         float Ft = saturate((1.0 - Fr_s) * T);
@@ -392,11 +401,6 @@ float3 shadeWithSecondaryRays(float3 rayOrigin, float3 rayDir, HitInfo hit, inou
         }
 
         float3 mixed = Fr_s * reflCol + Ft * thruCol;
-
-        // For alpha BLEND without physical transmission, composite with base using coverage.
-        if (hit.alphaMode == 2 && physicalTransmission <= 1e-4 && !hit.isGlass) {
-            return base * opacity + mixed * (1.0 - opacity);
-        }
 
         // Glass/transmission path: return the energy-conserving mixture directly,
         // plus direct surface highlights (specular + emissive) from the glass surface.
@@ -435,8 +439,12 @@ float2 computeTriangleUV(uint instIndex, uint primitiveIndex, float2 bary) {
 }
 
 float computeBaseColorAlpha(MaterialData material, uint instIndex, uint primitiveIndex, float2 bary) {
+    // In the Ray Query pipeline, `baseColorTexIndex` is always valid (real texture or a default slot).
+    // Some assets rely on alpha in the baseColor texture even when CPU-side `baseColorTextureSet`
+    // can be incorrect/stale. For alpha-sensitive materials, sample via the texture-table index.
     float alpha = material.alpha;
-    if (material.baseColorTextureSet >= 0) {
+    bool alphaSensitive = (material.alphaMode != 0) || (material.alpha < 0.999);
+    if (material.baseColorTextureSet >= 0 || alphaSensitive) {
         float2 uv = computeTriangleUV(instIndex, primitiveIndex, bary);
         uint tiBase = (uint)min(max(material.baseColorTexIndex, 0), int(RQ_MAX_TEX - 1));
         float4 baseColor = baseColorTex[NonUniformResourceIndex(tiBase)].SampleLevel(uv, 0.0);
@@ -571,10 +579,17 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
                 }
                 MaterialData matC = materialBuffer[materialIndexC];
 
+                float alpha = computeBaseColorAlpha(matC, instIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
+
                 bool accept = true;
                 if (matC.alphaMode == 1) {
-                    float alpha = computeBaseColorAlpha(matC, instIndex, q.CandidatePrimitiveIndex(), q.CandidateTriangleBarycentrics());
+                    // MASK: classic cutout
                     accept = (alpha >= matC.alphaCutoff);
+                } else if (matC.alphaMode == 2) {
+                    // BLEND: do not commit fully-transparent pixels.
+                    // Committing alpha==0 hits can make opaque geometry behind decals disappear.
+                    // Use a small threshold to avoid precision noise.
+                    accept = (alpha > 0.01);
                 }
 
                 if (accept) {
@@ -630,6 +645,7 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
             materialIndex = min(geoInfo.materialIndex, (uint) (ubo.materialCount - 1));
         }
         result.materialIndex = materialIndex;
+
         MaterialData material = materialBuffer[materialIndex];
 
         // Validate buffer addresses are non-zero (geometry may still be streaming)
@@ -738,9 +754,15 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
         float2 uvSample = uv;
         float4 baseColor = float4(material.albedo, material.alpha);
         float lodHint = computeTextureLOD(result.worldPos, material.roughness);
-        if (material.baseColorTextureSet >= 0) {
+        // For alpha-sensitive materials, prefer sampling by texture-table index even if the
+        // texture-set flag is missing. The texture table always provides a valid descriptor.
+        bool alphaSensitive = (material.alphaMode != 0) || (material.alpha < 0.999);
+        // For alpha-sensitive materials (decals/foliage), avoid noisy/unstable LOD selection in compute.
+        // Sampling baseColor at LOD 0 stabilizes alpha and prevents speckled transparency.
+        float baseColorLod = alphaSensitive ? 0.0 : lodHint;
+        if (material.baseColorTextureSet >= 0 || alphaSensitive) {
             uint tiBase = (uint)min(max(material.baseColorTexIndex, 0), int(RQ_MAX_TEX - 1));
-            baseColor = baseColorTex[NonUniformResourceIndex(tiBase)].SampleLevel(uvSample, lodHint);
+            baseColor = baseColorTex[NonUniformResourceIndex(tiBase)].SampleLevel(uvSample, baseColorLod);
             baseColor *= float4(material.albedo, material.alpha);
             result.texIndex = tiBase;
         } else {
@@ -749,8 +771,9 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
 
         result.baseColor = saturate(baseColor.rgb);
 
+        float opacity = clamp(baseColor.a, 0.0, 1.0);
         result.alphaMode = material.alphaMode;
-        result.opacity = clamp(baseColor.a, 0.0, 1.0);
+        result.opacity = opacity;
 
         // Physical descriptor: metallic-roughness (default) or spec-gloss
         float4 mrOrSpecGloss = float4(1.0, 1.0, 1.0, 1.0);
@@ -939,7 +962,12 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
 
                 float visibility = 1.0;
                 if (shadowsEnabled) {
-                    float3 shadowOrigin = result.worldPos + N * RQ_RAY_EPS;
+                    // Coplanar decals (alpha BLEND) can self-occlude against the wall behind them
+                    // when starting shadow rays along the surface normal. Bias along the light
+                    // direction for BLEND to keep decal lighting stable under shadows.
+                    float3 shadowOrigin = (result.alphaMode == 2)
+                        ? (result.worldPos + L * (4.0 * RQ_RAY_EPS))
+                        : (result.worldPos + N * RQ_RAY_EPS);
                     bool occluded = traceShadowOccluded(shadowOrigin, L, RQ_RAY_EPS, tMaxShadow);
                     visibility = occluded ? 0.0 : 1.0;
                 }
@@ -963,9 +991,9 @@ HitInfo traceRay(float3 origin, float3 direction, float tMin, float tMax, inout 
             diffuseLighting += diffAcc * inv;
         }
 
-        // Avoid ambient "fill" on glass/transmissive surfaces; it can make them look opaque/frosted.
-        // Keep ambient for opaque materials to retain basic IBL/ambient parity.
-        bool treatAsTransmissive = (material.isGlass != 0) || (material.transmissionFactor > 0.01) || (material.alphaMode == 2);
+        // Avoid ambient "fill" on true glass/transmission; it can make them look opaque/frosted.
+        // BUT keep ambient for alpha-BLEND decals/foliage so they don't become unnaturally dark overlays.
+        bool treatAsTransmissive = (material.isGlass != 0) || (material.transmissionFactor > 0.01);
         float3 ambient = treatAsTransmissive ? float3(0.0, 0.0, 0.0) : (albedo * (0.1 * ubo.scaleIBLAmbient) * ao);
         float3 color = ambient + diffuseLighting + specularLighting + emissive;
 

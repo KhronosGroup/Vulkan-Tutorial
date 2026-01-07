@@ -1116,6 +1116,13 @@ bool Renderer::createUniformBuffers(Entity* entity) {
       resources.uniformBuffersMapped.emplace_back(mappedMemory);
     }
 
+    // Initialize descriptor initialization tracking flags to MAX_FRAMES_IN_FLIGHT
+    resources.pbrUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+    resources.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+    resources.pbrImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+    resources.basicImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+    resources.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+
     // Create instance buffer for all entities (shaders always expect instance data)
     auto* meshComponent = entity->GetComponent<MeshComponent>();
     if (meshComponent) {
@@ -1178,13 +1185,15 @@ bool Renderer::createDescriptorPool() {
     // Texture descriptors: Basic pipeline uses 1, PBR uses 21 (5 PBR textures + 16 shadow maps)
     // Allocate for worst case: all entities using PBR (21 texture descriptors each)
     const uint32_t textureDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities * 21;
-    // Storage buffer descriptors: PBR pipeline uses 1 light storage buffer per descriptor set
-    // Only PBR entities need storage buffers, so allocate for all entities using PBR
+    // Storage buffer descriptors: PBR pipeline uses multiple storage buffers per descriptor set.
     // Storage buffers used per PBR descriptor set:
-    //  - Binding 6: light storage buffer
-    //  - Binding 7: Forward+ tile headers buffer
-    //  - Binding 8: Forward+ tile indices buffer
-    const uint32_t storageBufferDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities * 3u;
+    //  - Binding 6:  light storage buffer
+    //  - Binding 7:  Forward+ tile headers buffer
+    //  - Binding 8:  Forward+ tile indices buffer
+    //  - Binding 9:  Fragment debug output buffer (optional)
+    //  - Binding 12: Ray-query geometry info buffer (for raster ray-query shadows)
+    //  - Binding 13: Ray-query material buffer (for raster ray-query shadows)
+    const uint32_t storageBufferDescriptors = MAX_FRAMES_IN_FLIGHT * maxEntities * 6u;
 
     // Acceleration structure descriptors: Ray query needs 1 TLAS descriptor per frame
     const uint32_t accelerationStructureDescriptors = MAX_FRAMES_IN_FLIGHT;
@@ -1239,6 +1248,13 @@ bool Renderer::createDescriptorPool() {
 
 // Create descriptor sets
 bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePath, bool usePBR) {
+  auto entityIt = entityResources.find(entity);
+  if (entityIt == entityResources.end())
+    return false;
+  return createDescriptorSets(entity, entityIt->second, texturePath, usePBR);
+}
+
+bool Renderer::createDescriptorSets(Entity* entity, EntityResources& res, const std::string& texturePath, bool usePBR) {
   // Kick watchdog periodically during heavy descriptor creation (if called from a long loop)
   static uint32_t descWatchdogCounter = 0;
   if (++descWatchdogCounter % 50 == 0) {
@@ -1248,15 +1264,11 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
   // Resolve alias before taking the shared lock to avoid nested shared_lock on the same mutex
   const std::string resolvedTexturePath = ResolveTextureId(texturePath);
   try {
-    auto entityIt = entityResources.find(entity);
-    if (entityIt == entityResources.end())
-      return false;
-
     vk::DescriptorSetLayout selectedLayout = usePBR ? *pbrDescriptorSetLayout : *descriptorSetLayout;
     std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, selectedLayout);
     vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = *descriptorPool, .descriptorSetCount = MAX_FRAMES_IN_FLIGHT, .pSetLayouts = layouts.data()};
 
-    auto& targetDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
+    auto& targetDescriptorSets = usePBR ? res.pbrDescriptorSets : res.basicDescriptorSets;
     if (targetDescriptorSets.empty()) {
       std::lock_guard<std::mutex> lk(descriptorMutex);
       // Allocate into a temporary owning container, then move the individual RAII sets into our vector.
@@ -1290,7 +1302,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
             << " frame " << i << " (usePBR=" << usePBR << ")" << std::endl;
         return false;
       }
-      vk::DescriptorBufferInfo bufferInfo{.buffer = *entityIt->second.uniformBuffers[i], .range = sizeof(UniformBufferObject)};
+      vk::DescriptorBufferInfo bufferInfo{.buffer = *res.uniformBuffers[i], .range = sizeof(UniformBufferObject)};
 
       if (usePBR) {
         // Build descriptor writes dynamically to avoid writing unused bindings
@@ -1307,10 +1319,7 @@ bool Renderer::createDescriptorSets(Entity* entity, const std::string& texturePa
         descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo});
 
         auto meshComponent = entity->GetComponent<MeshComponent>();
-        std::vector<std::string> pbrTexturePaths = {
-          /* ... same as before ... */
-        };
-        // ... (logic to get texture paths is the same)
+        std::vector<std::string> pbrTexturePaths;
         {
           const std::string legacyPath = (meshComponent ? meshComponent->GetTexturePath() : std::string());
           const std::string baseColorPath = (meshComponent && !meshComponent->GetBaseColorTexturePath().empty()) ? meshComponent->GetBaseColorTexturePath() : (!legacyPath.empty() ? legacyPath : SHARED_DEFAULT_ALBEDO_ID);
@@ -1568,7 +1577,8 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *>& enti
     }
 
     // --- 2. Defer all GPU copies to the render thread safe point ---
-    if (!meshesNeedingUpload.empty()) {
+		if (!meshesNeedingUpload.empty())
+    {
       watchdogProgressLabel.store("Batch: EnqueueMeshUploads", std::memory_order_relaxed);
       EnqueueMeshUploads(meshesNeedingUpload);
       if (flushUploadsNow) {
@@ -2773,6 +2783,8 @@ void Renderer::refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex) {
     vk::DescriptorBufferInfo lightsInfo{};
     vk::DescriptorBufferInfo headersInfo{};
     vk::DescriptorBufferInfo indicesInfo{};
+    vk::DescriptorBufferInfo geoInfoInfo{};
+    vk::DescriptorBufferInfo matInfoInfo{};
     vk::DescriptorBufferInfo fragDbgInfo{};
 
     // At this point, all three critical buffers (lights, headers, indices) should exist (real or dummy)
@@ -2848,6 +2860,16 @@ void Renderer::refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex) {
       tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
       tlasWrite.pNext = &tlasInfo;
       writes.push_back(tlasWrite);
+
+      // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
+      // Always bind something valid; shader guards on `ubo.geometryInfoCount/materialCount`.
+      vk::Buffer fallbackBuf = headersBuf ? headersBuf : indicesBuf;
+      vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
+      vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
+      geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+      matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+      writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
+      writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
     }
 
     if (!writes.empty()) {
@@ -2860,7 +2882,7 @@ void Renderer::refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex) {
 }
 
 // Update the light storage buffer with current light data
-bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<ExtractedLight>& lights) {
+bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<ExtractedLight>& lights, CameraComponent* camera) {
   try {
     // Ensure buffers are large enough and properly initialized
     if (!createOrResizeLightStorageBuffers(lights.size())) {
@@ -2900,8 +2922,18 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
       glm::mat4 lightProjection, lightView;
       if (light.type == ExtractedLight::Type::Directional) {
         float orthoSize = 50.0f;
-        lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, 100.0f);
-        lightView = glm::lookAt(light.position, light.position + light.direction, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 shadowCamPos = light.position;
+        glm::vec3 lightDir = glm::normalize(light.direction);
+        if (camera) {
+             // Center shadow map on camera frustum
+             glm::vec3 camPos = camera->GetPosition();
+             shadowCamPos = camPos - lightDir * 50.0f;
+        }
+        lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, 200.0f);
+
+        // Robust up vector to avoid LookAt singularities with vertical lights
+        glm::vec3 up = (std::abs(lightDir.y) > 0.99f) ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+        lightView = glm::lookAt(shadowCamPos, shadowCamPos + lightDir, up);
       } else {
         lightProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, light.range);
         lightView = glm::lookAt(light.position, light.position + light.direction, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -3401,6 +3433,19 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
                                             uint32_t frameIndex,
                                             bool imagesOnly,
                                             bool uboOnly) {
+  auto entityIt = entityResources.find(entity);
+  if (entityIt == entityResources.end())
+    return false;
+  return updateDescriptorSetsForFrame(entity, entityIt->second, texturePath, usePBR, frameIndex, imagesOnly, uboOnly);
+}
+
+bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
+                                            EntityResources& res,
+                                            const std::string& texturePath,
+                                            bool usePBR,
+                                            uint32_t frameIndex,
+                                            bool imagesOnly,
+                                            bool uboOnly) {
   if (!entity)
     return false;
   if (!descriptorSetsValid.load(std::memory_order_relaxed)) {
@@ -3416,14 +3461,11 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
   }
   // IMPORTANT: Do NOT hold `textureResourcesMutex` across this function.
   // We may call `ResolveTextureId()` (which also locks it), and `std::shared_mutex` is not recursive.
-  auto entityIt = entityResources.find(entity);
-  if (entityIt == entityResources.end())
-    return false;
 
   // Ensure we have a valid UBO for this frame before attempting descriptor writes
-  if (frameIndex >= entityIt->second.uniformBuffers.size() ||
-    frameIndex >= entityIt->second.uniformBuffersMapped.size() ||
-    *entityIt->second.uniformBuffers[frameIndex] == vk::Buffer{}) {
+  if (frameIndex >= res.uniformBuffers.size() ||
+    frameIndex >= res.uniformBuffersMapped.size() ||
+    *res.uniformBuffers[frameIndex] == vk::Buffer{}) {
     // Missing UBO for this frame; skip to avoid writing invalid descriptors
     return false;
   }
@@ -3432,7 +3474,7 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
   // Ensure descriptor sets exist for this entity
   std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, selectedLayout);
   vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = *descriptorPool, .descriptorSetCount = MAX_FRAMES_IN_FLIGHT, .pSetLayouts = layouts.data()};
-  auto& targetDescriptorSets = usePBR ? entityIt->second.pbrDescriptorSets : entityIt->second.basicDescriptorSets;
+  auto& targetDescriptorSets = usePBR ? res.pbrDescriptorSets : res.basicDescriptorSets;
   bool newlyAllocated = false;
   if (targetDescriptorSets.empty()) {
     std::lock_guard<std::mutex> lk(descriptorMutex);
@@ -3442,17 +3484,23 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
   if (frameIndex >= targetDescriptorSets.size())
     return false;
 
-  vk::DescriptorBufferInfo bufferInfo{.buffer = *entityIt->second.uniformBuffers[frameIndex], .range = sizeof(UniformBufferObject)};
+  vk::DescriptorBufferInfo bufferInfo{.buffer = *res.uniformBuffers[frameIndex], .range = sizeof(UniformBufferObject)};
 
   // Ensure per-pipeline UBO init tracking is sized
-  if (entityIt->second.pbrUboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT) {
-    entityIt->second.pbrUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+  if (res.pbrUboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT) {
+    res.pbrUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
   }
-  if (entityIt->second.basicUboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT) {
-    entityIt->second.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+  if (res.basicUboBindingWritten.size() != MAX_FRAMES_IN_FLIGHT) {
+    res.basicUboBindingWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
   }
-  if (entityIt->second.pbrFixedBindingsWritten.size() != MAX_FRAMES_IN_FLIGHT) {
-    entityIt->second.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+  if (res.pbrFixedBindingsWritten.size() != MAX_FRAMES_IN_FLIGHT) {
+    res.pbrFixedBindingsWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+  }
+  if (res.pbrImagesWritten.size() != MAX_FRAMES_IN_FLIGHT) {
+    res.pbrImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
+  }
+  if (res.basicImagesWritten.size() != MAX_FRAMES_IN_FLIGHT) {
+    res.basicImagesWritten.assign(MAX_FRAMES_IN_FLIGHT, false);
   }
 
   if (usePBR) {
@@ -3465,11 +3513,13 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
     // IMPORTANT: descriptor infos must remain alive until `updateDescriptorSets` is called.
     vk::DescriptorBufferInfo headersInfo{};
     vk::DescriptorBufferInfo indicesInfo{};
+    vk::DescriptorBufferInfo geoInfoInfo{};
+    vk::DescriptorBufferInfo matInfoInfo{};
     vk::DescriptorImageInfo reflInfo{};
     vk::AccelerationStructureKHR tlasHandleValue{};
     vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
     vk::WriteDescriptorSet tlasWrite{};
-    const bool needFixedWrites = !entityIt->second.pbrFixedBindingsWritten[frameIndex];
+    const bool needFixedWrites = !res.pbrFixedBindingsWritten[frameIndex];
     auto appendPbrFixedWrites = [&](std::vector<vk::WriteDescriptorSet>& dstWrites) {
       if (!needFixedWrites)
         return;
@@ -3535,23 +3585,33 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
       tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
       tlasWrite.pNext = &tlasInfo;
       dstWrites.push_back(tlasWrite);
+
+      // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
+      // Always bind something valid; shader guards on `ubo.geometryInfoCount/materialCount`.
+      vk::Buffer fallbackBuf = headersBuf ? headersBuf : indicesBuf;
+      vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
+      vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
+      geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+      matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+      dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
+      dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
     };
 
     // Optionally write only the UBO (binding 0) — used at safe point to initialize per-frame sets once
     if (uboOnly) {
       // Avoid re-writing if we already initialized this frame's UBO binding
-      if (!entityIt->second.pbrUboBindingWritten[frameIndex]) {
+      if (!res.pbrUboBindingWritten[frameIndex]) {
         writes.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo});
       }
       appendPbrFixedWrites(writes);
       if (!writes.empty()) {
         std::lock_guard<std::mutex> lk(descriptorMutex);
         device.updateDescriptorSets(writes, {});
-        if (!entityIt->second.pbrUboBindingWritten[frameIndex]) {
-          entityIt->second.pbrUboBindingWritten[frameIndex] = true;
+        if (!res.pbrUboBindingWritten[frameIndex]) {
+          res.pbrUboBindingWritten[frameIndex] = true;
         }
         if (needFixedWrites) {
-          entityIt->second.pbrFixedBindingsWritten[frameIndex] = true;
+          res.pbrFixedBindingsWritten[frameIndex] = true;
         }
       }
       return true;
@@ -3596,10 +3656,10 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
       device.updateDescriptorSets(writes, {});
     }
     if (needFixedWrites) {
-      entityIt->second.pbrFixedBindingsWritten[frameIndex] = true;
+      res.pbrFixedBindingsWritten[frameIndex] = true;
     }
     if (!imagesOnly) {
-      entityIt->second.pbrUboBindingWritten[frameIndex] = true;
+      res.pbrUboBindingWritten[frameIndex] = true;
     }
   } else {
     const std::string resolvedTexturePath = ResolveTextureId(texturePath);
@@ -3622,14 +3682,14 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
     } else {
       // If uboOnly is requested for basic pipeline, only write binding 0
       if (uboOnly) {
-        if (!entityIt->second.basicUboBindingWritten[frameIndex]) {
+        if (!res.basicUboBindingWritten[frameIndex]) {
           std::array<vk::WriteDescriptorSet, 1> descriptorWrites = {
             vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo}
           }; {
             std::lock_guard<std::mutex> lk(descriptorMutex);
             device.updateDescriptorSets(descriptorWrites, {});
           }
-          entityIt->second.basicUboBindingWritten[frameIndex] = true;
+          res.basicUboBindingWritten[frameIndex] = true;
         }
         return true;
       }
@@ -3640,7 +3700,7 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
         std::lock_guard<std::mutex> lk(descriptorMutex);
         device.updateDescriptorSets(descriptorWrites, {});
       }
-      entityIt->second.basicUboBindingWritten[frameIndex] = true;
+      res.basicUboBindingWritten[frameIndex] = true;
     }
   }
   return true;
@@ -3683,8 +3743,11 @@ void Renderer::ProcessDirtyDescriptorsForFrame(uint32_t frameIndex) {
     // Update strategy:
     // - Only update the current frame here at the safe point.
     //   Other frames will be updated at their own safe points to avoid UPDATE_AFTER_BIND violations.
-    updateDescriptorSetsForFrame(entity, basicTexPath, false, frameIndex, /*imagesOnly=*/true);
-    updateDescriptorSetsForFrame(entity, basicTexPath, true, frameIndex, /*imagesOnly=*/true);
+    auto entityIt = entityResources.find(entity);
+    if (entityIt != entityResources.end()) {
+      updateDescriptorSetsForFrame(entity, entityIt->second, basicTexPath, false, frameIndex, /*imagesOnly=*/true);
+      updateDescriptorSetsForFrame(entity, entityIt->second, basicTexPath, true, frameIndex, /*imagesOnly=*/true);
+    }
     // Do not touch descriptors for other frames while their command buffers may be pending.
   }
 

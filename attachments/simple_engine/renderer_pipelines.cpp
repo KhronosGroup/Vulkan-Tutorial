@@ -172,13 +172,29 @@ bool Renderer::createPBRDescriptorSetLayout() {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
+      },
+      // Binding 12: Ray-query geometry info buffer (per-instance addresses + material indices)
+      vk::DescriptorSetLayoutBinding{
+        .binding = 12,
+        .descriptorType = vk::DescriptorType::eStorageBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
+        .pImmutableSamplers = nullptr
+      },
+      // Binding 13: Ray-query material buffer (PBR material properties)
+      vk::DescriptorSetLayoutBinding{
+        .binding = 13,
+        .descriptorType = vk::DescriptorType::eStorageBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
+        .pImmutableSamplers = nullptr
       }
     };
 
     // Create a descriptor set layout
     // Descriptor indexing: set per-binding flags for UPDATE_AFTER_BIND on UBO (0) and sampled images (1..5)
     vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
-    std::array<vk::DescriptorBindingFlags, 12> bindingFlags{};
+    std::array<vk::DescriptorBindingFlags, 14> bindingFlags{};
     if (descriptorIndexingEnabled) {
       bindingFlags[0] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
       bindingFlags[1] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;

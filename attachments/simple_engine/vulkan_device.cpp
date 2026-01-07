@@ -87,13 +87,13 @@ bool VulkanDevice::pickPhysicalDevice() {
 
         // Check for required features
         auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>();
-        bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
+        bool supportsRequiredFeatures = (features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering == VK_TRUE);
         if (!supportsRequiredFeatures) {
           std::cout << "  - Does not support required features (dynamicRendering)" << std::endl;
         }
 
-        supportsRequiredFeatures &= features.template get<vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>().attachmentFeedbackLoopLayout;
-        if (!supportsRequiredFeatures) {
+        if (features.template get<vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>().attachmentFeedbackLoopLayout == VK_FALSE) {
+          supportsRequiredFeatures = false;
           std::cout << "  - Does not support required feature (attachmentFeedbackLoopLayout)" << std::endl;
         }
 

@@ -65,9 +65,13 @@ struct VSOutput {
 // Raster ray-query shadows: TLAS
 [[vk::binding(11, 0)]] RaytracingAccelerationStructure tlas;
 
+// Ray-query shared buffers (used for material-aware raster shadow queries)
+[[vk::binding(12, 0)]] StructuredBuffer<GeometryInfo> geometryInfoBuffer;
+[[vk::binding(13, 0)]] StructuredBuffer<MaterialData> materialBuffer;
+
 [[vk::push_constant]] PushConstants material;
 
-static const float RASTER_SHADOW_EPS = 0.002;
+static const float RASTER_SHADOW_EPS = 0.001;
 
 // Hard shadow query for raster fragment shading.
 // NOTE: We intentionally treat NON_OPAQUE candidates as non-occluding here.
@@ -82,7 +86,10 @@ bool traceShadowOccluded(float3 origin, float3 direction, float tMin, float tMax
     ray.TMax = tMax;
 
     RayQuery<RAY_FLAG_NONE> q;
-    uint mask = 0xFF;
+    // Match TLAS instance masking convention from `renderer_ray_query.cpp`:
+    // 0x01 = regular scene geometry, 0x02 = environment/sky.
+    // For raster shadows, ignore the environment to avoid global false occlusion.
+    uint mask = 0x01;
     q.TraceRayInline(
         tlas,
         RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
@@ -91,14 +98,10 @@ bool traceShadowOccluded(float3 origin, float3 direction, float tMin, float tMax
     );
 
     int iter = 0;
-    while (q.Proceed() && iter < 256)
+    while (q.Proceed() && iter < 64)
     {
         iter++;
-        if (q.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE)
-        {
-            // Skip non-opaque candidates (mask/blend/glass instances should be non-opaque).
-            // Do not commit.
-        }
+        // No special acceptance rules here; accept-first-hit will commit on the first opaque blocker.
     }
     return (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT);
 }
@@ -219,9 +222,12 @@ float4 PSMain(VSOutput input) : SV_TARGET
 
     uint tileId = (slice * tilesY + tileY) * tilesX + tileX;
 
+    // CPU toggles Forward+ via ubo.padding1 (0 = disabled, non-zero = enabled)
+    bool useForwardPlus = (ubo.padding1 != 0.0);
+
     uint base = 0u;
     uint count = 0u;
-    if (tileId < totalTiles * (uint)slices) {
+    if (useForwardPlus && tileId < totalTiles * (uint)slices) {
         TileHeader th = tileHeaders[tileId];
         base = th.offset;
         count = th.count;
@@ -230,7 +236,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     bool forceGlobal = false;
 
     // Accumulate per-light diffuse and specular terms using GGX microfacet BRDF.
-    if (!forceGlobal && count > 0) {
+    if (useForwardPlus && !forceGlobal && count > 0) {
         // Use Forward+ culled list
         for (uint li = 0u; li < count; ++li) {
             uint lightIndex = tileLightIndices[base + li];
@@ -279,7 +285,10 @@ float4 PSMain(VSOutput input) : SV_TARGET
 
             if (NdotL > 0.0) {
                 float visibility = 1.0;
-                if (ubo.padding2 != 0.0) {
+                // Raster ray-query shadows are expensive. In Bistro, most lights are emissive
+                // and casting per-light shadows drops FPS drastically. Shadow only the directional
+                // light (sun) for now.
+                if (ubo.padding2 != 0.0 && light.lightType == 1) {
                     float tMaxShadow = (light.lightType == 1) ? 10000.0 : max(distToLight - RASTER_SHADOW_EPS, RASTER_SHADOW_EPS);
                     float3 shadowOrigin = input.WorldPos + N * RASTER_SHADOW_EPS;
                     bool occluded = traceShadowOccluded(shadowOrigin, L, RASTER_SHADOW_EPS, tMaxShadow);
@@ -303,7 +312,9 @@ float4 PSMain(VSOutput input) : SV_TARGET
     // Global light loop (fallback or forced debug)
     // Fallback when Forward+ list is empty but lights exist and not in single-tile mode,
     // OR always when forceGlobal flag is enabled.
-    if (forceGlobal || (count == 0 && ubo.lightCount > 0 && (ubo.padding1 == 0.0))) {
+    // If Forward+ is disabled, always use global lights.
+    // If Forward+ is enabled but lists are empty (e.g., before first dispatch), fall back to global.
+    if (forceGlobal || !useForwardPlus || (count == 0 && ubo.lightCount > 0)) {
         // Fallback path when Forward+ is disabled or lists are not populated yet
         for (uint li = 0u; li < (uint)ubo.lightCount; ++li) {
             LightData light = lightBuffer[li];
@@ -345,7 +356,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
             float NdotL = (light.lightType == 3) ? abs(dot(N, L)) : max(dot(N, L), 0.0);
             if (NdotL > 0.0) {
                 float visibility = 1.0;
-                if (ubo.padding2 != 0.0) {
+                if (ubo.padding2 != 0.0 && light.lightType == 1) {
                     float tMaxShadow = (light.lightType == 1) ? 10000.0 : max(distToLight - RASTER_SHADOW_EPS, RASTER_SHADOW_EPS);
                     float3 shadowOrigin = input.WorldPos + N * RASTER_SHADOW_EPS;
                     bool occluded = traceShadowOccluded(shadowOrigin, L, RASTER_SHADOW_EPS, tMaxShadow);

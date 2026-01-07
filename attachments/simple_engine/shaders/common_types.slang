@@ -104,6 +104,63 @@ struct TileHeader {
     uint pad1; 
 };
 
+// Ray-query shared buffers (also reused by raster PBR when doing ray-query shadows)
+// Layout must match the CPU-side structs in `renderer.h` and the definitions in `ray_query.slang`.
+struct GeometryInfo {
+    uint64_t vertexBufferAddress;
+    uint64_t indexBufferAddress;
+    uint vertexCount;
+    uint materialIndex;
+    uint indexCount;   // number of indices in the index buffer
+    uint _pad0;
+    // Instance -> world normal transform (3 columns; xyz used, w unused)
+    float4 normalMatrix0;
+    float4 normalMatrix1;
+    float4 normalMatrix2;
+};
+
+struct MaterialData {
+    float3 albedo;
+    float metallic;
+    float3 emissive;
+    float roughness;
+    float ao;
+    float ior;
+    float emissiveStrength;
+    float alpha;
+    float transmissionFactor;
+    float alphaCutoff;
+    int alphaMode; // 0=OPAQUE, 1=MASK, 2=BLEND (matches glTF)
+    uint isGlass;
+    uint isLiquid;
+
+    // Thick-glass parameters (RQ-only)
+    float3 absorptionColor;      // Color after traveling absorptionDistance in the medium (1=none)
+    float absorptionDistance;    // Distance at which absorptionColor applies (meters)
+    uint thinWalled;             // 1 = thin surface (no thickness), 0 = thick volume
+
+    // Raster parity: texture-set flags (-1 = no texture; 0 = sample from texture table)
+    int baseColorTextureSet;
+    int physicalDescriptorTextureSet;
+    int normalTextureSet;
+    int occlusionTextureSet;
+    int emissiveTextureSet;
+
+    // Ray Query texture table indices (binding 6)
+    int baseColorTexIndex;
+    int normalTexIndex;
+    int physicalTexIndex;
+    int occlusionTexIndex;
+    int emissiveTexIndex;
+
+    // Specular-glossiness workflow support
+    int useSpecGlossWorkflow;
+    float glossinessFactor;
+    float3 specularFactor;
+    int hasEmissiveStrengthExt;
+    uint _padMat[3];
+};
+
 // Constants
 static const float PI = 3.14159265359;
 

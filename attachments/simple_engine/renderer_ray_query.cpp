@@ -235,7 +235,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
           skippedZeroIndices++;
           continue;
         }
-      } catch (const std::exception& e) {
+      } catch (const std::exception&) {
         // Avoid spamming; a rebuild on the next safe frame should succeed.
         skippedException++;
         continue;
@@ -437,12 +437,26 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     cmdBuffer.pipelineBarrier2(depInfo);
 
     // Build TLAS with instances
+    // NOTE: many entities are instanced; reserve based on an estimated total instance count.
+    size_t estimatedInstances = 0;
+    for (Entity* e : renderableEntities) {
+      if (!e) continue;
+      if (auto* mc = e->GetComponent<MeshComponent>()) {
+        const size_t c = mc->GetInstanceCount();
+        estimatedInstances += (c > 0) ? c : 1;
+      } else {
+        estimatedInstances += 1;
+      }
+      if (estimatedInstances > 1000000) {
+        break; // safety
+      }
+    }
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
-    instances.reserve(renderableEntities.size());
+    instances.reserve(std::max<size_t>(renderableEntities.size(), estimatedInstances));
 
     // Build per-instance geometry info in the SAME order as TLAS instances
     std::vector<GeometryInfo> geometryInfos; // defined later in file; we reuse the type
-    geometryInfos.reserve(renderableEntities.size());
+    geometryInfos.reserve(instances.capacity());
     tlasInstanceOrder.clear();
 
     // Ray Query texture table (binding 6): seed reserved shared-default slots.
@@ -470,6 +484,51 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     seedReservedSlot(RQ_SLOT_DEFAULT_OCCLUSION, SHARED_DEFAULT_OCCLUSION_ID);
     seedReservedSlot(RQ_SLOT_DEFAULT_EMISSIVE, SHARED_DEFAULT_EMISSIVE_ID);
     rayQueryTexCount = static_cast<uint32_t>(rayQueryTexKeys.size());
+
+    // Build an authoritative lookup from `materialIndex` -> `Material*`.
+    // We already embed both the numeric `materialIndex` and the material name in entity names
+    // (`modelName_Material_<index>_<materialName>`). Use this mapping so TLAS instance flags
+    // can be set per-instance using the resolved `materialIndex` (critical for MASK/BLEND decals).
+    std::unordered_map<uint32_t, const Material*> materialByIndex;
+    if (modelLoader) {
+      materialByIndex.reserve(renderableEntities.size());
+      static constexpr uint32_t kMaxSupportedMaterialIndex = 100000u;
+      for (Entity* e : renderableEntities) {
+        if (!e) continue;
+        const std::string& name = e->GetName();
+        if (name.find("Ball_") == 0) {
+          if (const Material* m = modelLoader->GetMaterial("BallMaterial")) {
+            materialByIndex[9999u] = m;
+          }
+          continue;
+        }
+        size_t matPos = name.find("_Material_");
+        if (matPos == std::string::npos) {
+          continue;
+        }
+        size_t numStart = matPos + 10; // length of "_Material_"
+        size_t numEnd = name.find('_', numStart);
+        if (numEnd == std::string::npos) {
+          continue;
+        }
+        uint32_t matIndex = 0;
+        try {
+          matIndex = static_cast<uint32_t>(std::stoi(name.substr(numStart, numEnd - numStart)));
+        } catch (...) {
+          continue;
+        }
+        if (matIndex > kMaxSupportedMaterialIndex) {
+          continue;
+        }
+        if (numEnd + 1 >= name.size()) {
+          continue;
+        }
+        const std::string materialName = name.substr(numEnd + 1);
+        if (const Material* m = modelLoader->GetMaterial(materialName)) {
+          materialByIndex[matIndex] = m;
+        }
+      }
+    }
 
     auto addTextureSlot = [&](const std::string& texId, uint32_t fallbackSlot) -> uint32_t {
       if (texId.empty())
@@ -517,6 +576,33 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
           finalModel = entityModel * id.getModelMatrix(); // match raster path: ubo.model * instanceModel
         }
 
+        // Extract material index early so we can set TLAS instance flags per-instance.
+        uint32_t resolvedMaterialIndex = 0;
+        if (hasInstance && iInst < meshInstCount) {
+          resolvedMaterialIndex = meshComp->GetInstance(iInst).materialIndex;
+        } else {
+          // Special case: Ball entities (named "Ball_N") use a red material
+          // Use strict prefix match to avoid turning other objects red
+          if (entity->GetName().find("Ball_") == 0) {
+            resolvedMaterialIndex = 9999; // Reserve index 9999 for the ball material
+          } else {
+            // Extract material index from entity name (model_Material_{index}_materialName)
+            const std::string& entityName = entity->GetName();
+            size_t matPos = entityName.find("_Material_");
+            if (matPos != std::string::npos) {
+              size_t numStart = matPos + 10; // length of "_Material_"
+              size_t numEnd = entityName.find('_', numStart);
+              if (numEnd != std::string::npos) {
+                try {
+                  resolvedMaterialIndex = static_cast<uint32_t>(std::max(0, std::stoi(entityName.substr(numStart, numEnd - numStart))));
+                } catch (...) {
+                  resolvedMaterialIndex = 0;
+                }
+              }
+            }
+          }
+        }
+
         // Convert to Vulkan 3x4 row-major transform
         const float* m = glm::value_ptr(finalModel);
         vk::TransformMatrixKHR vkTransform;
@@ -537,34 +623,106 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
         // CommittedInstanceID() or CommittedInstanceContributionToHitGroupIndex()
         // can be used in the shader to recover the per-instance index.
         AS_Instance.instanceShaderBindingTableRecordOffset = runningInstanceIndex;
-        // Disable facing cull at the instance level to ensure both front and back faces
-        // are considered during traversal.
-        //
-        // IMPORTANT: For alpha-masked materials (foliage), we must NOT force opaque.
-        // Ray Query inline traversal has no any-hit shader, so we emulate alpha testing
-        // by committing candidates only when baseColor alpha passes the cutoff.
+        // Determine alpha mode and environment status for this entity's material.
         VkGeometryInstanceFlagsKHR instFlags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-        bool forceNoOpaque = false; {
-          // Determine alpha mode for this entity's material.
-          // Entity name format: "modelName_Material_<index>_<materialName>".
-          const std::string& entityName = entity->GetName();
-          size_t matPos = entityName.find("_Material_");
-          if (matPos != std::string::npos) {
-            size_t numStart = matPos + 10;
-            size_t numEnd = entityName.find('_', numStart);
-            if (numEnd != std::string::npos && numEnd + 1 < entityName.size() && modelLoader) {
-              std::string matName = entityName.substr(numEnd + 1);
-              if (const Material* m = modelLoader->GetMaterial(matName)) {
-                // Force non-opaque for any material that should not be treated as a fully-opaque occluder.
-                // - MASK: needs candidate hits so we can alpha-test in-shader
-                // - BLEND / glass / transmission: should not fully block shadow rays
-                forceNoOpaque = (m->alphaMode == "MASK") || (m->alphaMode == "BLEND") || m->isGlass || (m->transmissionFactor > 0.01f);
+        bool forceNoOpaque = false;
+        bool forceOpaque = false;
+        bool isEnvironment = false;
+        {
+          // Determine environment status from entity name (standard naming convention)
+          std::string nameLower = entity->GetName();
+          std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), [](unsigned char c){ return std::tolower(c); });
+          if (nameLower.find("sky") != std::string::npos || 
+              nameLower.find("dome") != std::string::npos ||
+              nameLower.find("env") != std::string::npos ||
+              nameLower.find("bg") != std::string::npos ||
+              nameLower.find("atmosphere") != std::string::npos ||
+              nameLower.find("cloud") != std::string::npos ||
+              nameLower.find("fog") != std::string::npos ||
+              nameLower.find("background") != std::string::npos ||
+              nameLower.find("exterior") != std::string::npos) {
+            isEnvironment = true;
+          }
+
+          // Safety check: if object is enormous, treat it as environment to prevent occlusion
+          if (!isEnvironment) {
+             glm::vec3 scale = transform ? transform->GetScale() : glm::vec3(1.0f);
+             if (scale.x > 400.0f || scale.y > 400.0f || scale.z > 400.0f) {
+                 isEnvironment = true;
+                 std::cout << "Entity '" << entity->GetName() << "' auto-classified as ENVIRONMENT (scale > 400)" << std::endl;
+             }
+          }
+
+          // Determine opacity classification for ray queries.
+          // IMPORTANT: Be conservative here.
+          // If *either* the renderer material cache OR the model-loader material says this is non-opaque,
+          // we must set FORCE_NO_OPAQUE so the ray-query shader can correctly alpha-test / skip blends.
+          bool forceNoOpaqueCache = false;
+          bool forceOpaqueCache = false;
+          const Material* cachedMat = nullptr;
+
+          auto itRes = entityResources.find(entity);
+          if (itRes != entityResources.end()) {
+            ensureEntityMaterialCache(entity, itRes->second);
+            const MaterialProperties& mp = itRes->second.cachedMaterialProps;
+            const bool masked = (mp.alphaMask > 0.5f);
+            const bool transmissive = (mp.transmissionFactor > 0.01f);
+            const bool blended = itRes->second.cachedIsBlended;
+            const bool glassHint = itRes->second.cachedIsGlass || itRes->second.cachedIsLiquid;
+            forceNoOpaqueCache = masked || blended || transmissive || glassHint;
+            forceOpaqueCache = (!masked) && (!blended) && (!transmissive) && (!glassHint);
+            cachedMat = itRes->second.cachedMaterial;
+          }
+
+          bool forceNoOpaqueMat = false;
+          bool forceOpaqueMat = false;
+          const Material* mat = nullptr;
+          auto itByIndex = materialByIndex.find(resolvedMaterialIndex);
+          if (itByIndex != materialByIndex.end()) {
+            mat = itByIndex->second;
+          }
+          if (!mat) {
+            mat = cachedMat;
+          }
+          if (!mat && modelLoader) {
+            // Legacy lookup: Entity name format "modelName_Material_<index>_<materialName>".
+            const std::string& entityName = entity->GetName();
+            size_t matPos = entityName.find("_Material_");
+            if (matPos != std::string::npos) {
+              size_t numStart = matPos + 10;
+              size_t numEnd = entityName.find('_', numStart);
+              if (numEnd != std::string::npos && numEnd + 1 < entityName.size()) {
+                std::string matName = entityName.substr(numEnd + 1);
+                mat = modelLoader->GetMaterial(matName);
               }
             }
           }
+          if (mat) {
+            // - MASK: needs candidate hits so we can alpha-test in-shader
+            // - BLEND / glass / transmission: should not fully block rays
+            forceNoOpaqueMat = (mat->alphaMode == "MASK") || (mat->alphaMode == "BLEND") || mat->isGlass || (mat->transmissionFactor > 0.01f);
+            forceOpaqueMat = (mat->alphaMode == "OPAQUE") && (!mat->isGlass) && (mat->transmissionFactor <= 0.01f);
+          }
+
+          forceNoOpaque = forceNoOpaqueCache || forceNoOpaqueMat;
+
+          // If we are confident this is a solid opaque surface, force opaque.
+          // This improves stability/perf and prevents "missing geometry" when BLAS geometry flags
+          // cause everything to be treated as non-opaque candidates.
+          forceOpaque = (!forceNoOpaque) && (!isEnvironment) && (forceOpaqueCache || forceOpaqueMat);
         }
-        instFlags |= forceNoOpaque ? VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR : VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
+        // Force instance opacity behavior only when we are confident.
+        if (forceNoOpaque) {
+          instFlags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+        } else if (forceOpaque) {
+          instFlags |= VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
+        }
         AS_Instance.flags = static_cast<VkGeometryInstanceFlagsKHR>(instFlags);
+        
+        // Use mask bits: 0x01 = regular geometry, 0x02 = environment (skybox).
+        // Shadow rays will use mask 0x01 to avoid occlusion by the skybox.
+        AS_Instance.mask = isEnvironment ? 0x02 : 0x01;
+
         AS_Instance.accelerationStructureReference = blasStructures[blasIndex].deviceAddress;
         instances.push_back(AS_Instance);
 
@@ -580,28 +738,11 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
         vk::DeviceAddress vertexAddr = getBufferDeviceAddress(device, *meshRes.vertexBuffer);
         vk::DeviceAddress indexAddr = getBufferDeviceAddress(device, *meshRes.indexBuffer);
 
-        // Extract material index from entity name (model_Material_{index}_materialName)
-        int32_t materialIndex = -1; {
-          const std::string& entityName = entity->GetName();
-          size_t matPos = entityName.find("_Material_");
-          if (matPos != std::string::npos) {
-            size_t numStart = matPos + 10; // length of "_Material_"
-            size_t numEnd = entityName.find('_', numStart);
-            if (numEnd != std::string::npos) {
-              try {
-                materialIndex = std::stoi(entityName.substr(numStart, numEnd - numStart));
-              } catch (...) {
-                materialIndex = -1;
-              }
-            }
-          }
-        }
-
         GeometryInfo gi{};
         gi.vertexBufferAddress = vertexAddr;
         gi.indexBufferAddress = indexAddr;
         gi.vertexCount = static_cast<uint32_t>(meshComp->GetVertices().size());
-        gi.materialIndex = static_cast<uint32_t>(std::max(0, materialIndex));
+        gi.materialIndex = resolvedMaterialIndex;
         // Provide indexCount so shader can bound-check primitiveIndex safely
         gi.indexCount = meshRes.indexCount;
         gi._pad0 = 0;
@@ -641,6 +782,8 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     tlasInstancesAllocation = std::move(instancesAllocTmp);
     tlasInstanceCount = static_cast<uint32_t>(instances.size());
     // tlasInstanceOrder already filled above in the same order as 'instances'
+
+    // (Debug TLAS composition logs removed.)
 
     vk::DeviceAddress instancesAddress = getBufferDeviceAddress(device, *tlasInstancesBuffer);
 
@@ -797,8 +940,14 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     {
       // Build material buffer
 
-      // Collect unique materials with their indices from entities
-      std::map<uint32_t, std::string> materialIndexToName;
+      // Collect material indices used by this TLAS build.
+      // Do not rely only on entity-name parsing here: instanced geometry uses
+      // `InstanceData.materialIndex`, which may not appear in entity names (decals/foliage).
+      std::unordered_set<uint32_t> usedMaterialIndices;
+      usedMaterialIndices.reserve(geometryInfos.size() + 16);
+      usedMaterialIndices.insert(0u);
+
+      std::map<uint32_t, std::string> materialIndexToName; // legacy fallback (debug/heuristics)
       static constexpr uint32_t kMaxSupportedMaterialIndex = 100000u;
 
       size_t entityCount = 0;
@@ -823,14 +972,25 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
               // Extract material name (everything after materialIndex_)
               std::string materialName = entityName.substr(numEnd + 1);
               materialIndexToName[matIndex] = materialName;
+              usedMaterialIndices.insert(matIndex);
             } catch (...) {
               // Failed to parse, skip
             }
           }
+        } else if (entityName.find("Ball_") == 0) {
+          materialIndexToName[9999] = "BallMaterial";
+          usedMaterialIndices.insert(9999u);
         }
 
         entityCount++;
         // Progress indicator removed (log-noise)
+      }
+
+      // Authoritative: include indices referenced by built geometry infos (covers instanced materials).
+      for (const GeometryInfo& gi : geometryInfos) {
+        if (gi.materialIndex <= kMaxSupportedMaterialIndex) {
+          usedMaterialIndices.insert(gi.materialIndex);
+        }
       }
 
       // (Verbose material discovery logs removed.)
@@ -877,7 +1037,7 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
 
       // Determine max material index to size the array
       uint32_t maxMaterialIndex = 0;
-      for (const auto& [index, name] : materialIndexToName) {
+      for (uint32_t index : usedMaterialIndices) {
         maxMaterialIndex = std::max(maxMaterialIndex, index);
       }
       maxMaterialIndex = std::min(maxMaterialIndex, kMaxSupportedMaterialIndex);
@@ -897,10 +1057,42 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
       if (modelLoader) {
         // Populate materials from ModelLoader
         size_t matProcessed = 0;
-        for (const auto& [index, materialName] : materialIndexToName) {
+        for (uint32_t index : usedMaterialIndices) {
           if (index >= materials.size())
             continue;
-          const Material* sourceMat = modelLoader->GetMaterial(materialName);
+
+          // `materialIndex` in this engine is not guaranteed to match the glTF
+          // material array index (especially for instanced meshes). Do not resolve by numeric
+          // index here; prefer the name mapping when available and otherwise fall back to a
+          // safe default material.
+          const Material* sourceMat = nullptr;
+          std::string materialName;
+          auto itName = materialIndexToName.find(index);
+          if (itName != materialIndexToName.end()) {
+            materialName = itName->second;
+            sourceMat = modelLoader->GetMaterial(materialName);
+          }
+
+          if (!sourceMat && index == 9999u) {
+            // Create a virtual red material for spawned balls
+            MaterialData& matData = materials[index];
+            matData.albedo = glm::vec3(1.0f, 0.05f, 0.05f); // Bright red
+            matData.roughness = 0.4f;
+            matData.metallic = 0.0f;
+            matData.ao = 1.0f;
+            matData.emissive = glm::vec3(0.0f);
+            matData.alpha = 1.0f;
+            matData.alphaMode = 0; // OPAQUE
+            matData.isGlass = 0;
+            matData.transmissionFactor = 0.0f;
+            matData.baseColorTextureSet = -1;
+            matData.normalTextureSet = -1;
+            matData.physicalDescriptorTextureSet = -1;
+            matData.occlusionTextureSet = -1;
+            matData.emissiveTextureSet = -1;
+            continue;
+          }
+
           if (sourceMat) {
             MaterialData& matData = materials[index];
 
@@ -935,6 +1127,21 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
             {
               std::string lower = materialName;
               std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+              // Decal materials in Bistro are primarily identified by their baseColor texture path.
+              // `Material::albedoTexturePath` is often an alias ID like `gltf_texture_#`.
+              // Resolve it to the canonical path so we can detect `textures/decals/...` reliably.
+              if (matData.alphaMode == 0 && !sourceMat->albedoTexturePath.empty()) {
+                std::string resolvedBase = ResolveTextureId(sourceMat->albedoTexturePath);
+                std::string baseLower = resolvedBase;
+                std::transform(baseLower.begin(), baseLower.end(), baseLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (baseLower.find("/decals/") != std::string::npos ||
+                    baseLower.find("\\decals\\") != std::string::npos ||
+                    baseLower.find("_decal") != std::string::npos) {
+                  matData.alphaMode = 2;
+                }
+              }
+
               const bool hasGlassWord = lower.find("glass") != std::string::npos;
               const bool isWindowPane = (lower.find("window") != std::string::npos) || (lower.find("pane") != std::string::npos);
               const bool isLampGlass = (lower.find("lamp") != std::string::npos) && hasGlassWord;
@@ -971,17 +1178,20 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
             // Texture paths and stable indices into the Ray Query texture table (binding 6)
             if (index < rqMaterialTexPaths.size()) {
               RQMaterialTexPaths& paths = rqMaterialTexPaths[index];
-              paths.baseColor = sourceMat->albedoTexturePath;
-              paths.normal = sourceMat->normalTexturePath;
-              paths.physical = sourceMat->useSpecularGlossiness ? sourceMat->specGlossTexturePath : sourceMat->metallicRoughnessTexturePath;
-              paths.occlusion = sourceMat->occlusionTexturePath;
-              paths.emissive = sourceMat->emissiveTexturePath;
+              // Resolve alias IDs (`gltf_texture_*`) to canonical keys (file paths) so RayQuery
+              // samples the correct textures and decal heuristics can match paths.
+              paths.baseColor = ResolveTextureId(sourceMat->albedoTexturePath);
+              paths.normal = ResolveTextureId(sourceMat->normalTexturePath);
+              paths.physical = ResolveTextureId(sourceMat->useSpecularGlossiness ? sourceMat->specGlossTexturePath : sourceMat->metallicRoughnessTexturePath);
+              paths.occlusion = ResolveTextureId(sourceMat->occlusionTexturePath);
+              paths.emissive = ResolveTextureId(sourceMat->emissiveTexturePath);
 
               matData.baseColorTexIndex = static_cast<int32_t>(addTextureSlot(paths.baseColor, RQ_SLOT_DEFAULT_BASECOLOR));
               matData.normalTexIndex = static_cast<int32_t>(addTextureSlot(paths.normal, RQ_SLOT_DEFAULT_NORMAL));
               matData.physicalTexIndex = static_cast<int32_t>(addTextureSlot(paths.physical, RQ_SLOT_DEFAULT_METALROUGH));
               matData.occlusionTexIndex = static_cast<int32_t>(addTextureSlot(paths.occlusion, RQ_SLOT_DEFAULT_OCCLUSION));
               matData.emissiveTexIndex = static_cast<int32_t>(addTextureSlot(paths.emissive, RQ_SLOT_DEFAULT_EMISSIVE));
+
             }
 
             // Specular-glossiness workflow support
@@ -1126,16 +1336,46 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *>& entities, CameraComp
 
       // Apply culling via instance mask (mask=0 => skipped by ray queries with mask=0xFF).
       uint32_t mask = 0xFFu;
+
+      // Determine if environment (skybox/dome) - ALWAYS check this to ensure correct shadow masking
+      std::string nameLower = entity->GetName();
+      std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), [](unsigned char c){ return std::tolower(c); });
+      bool isEnvironment = (nameLower.find("sky") != std::string::npos) || 
+                           (nameLower.find("dome") != std::string::npos) ||
+                           (nameLower.find("env") != std::string::npos) ||
+                           (nameLower.find("bg") != std::string::npos) ||
+                           (nameLower.find("atmosphere") != std::string::npos) ||
+                           (nameLower.find("cloud") != std::string::npos) ||
+                           (nameLower.find("fog") != std::string::npos) ||
+                           (nameLower.find("background") != std::string::npos) ||
+                           (nameLower.find("exterior") != std::string::npos);
+
+      // Safety check: if object is enormous, treat it as environment to prevent occlusion
+      if (!isEnvironment) {
+         glm::vec3 scale = transform ? transform->GetScale() : glm::vec3(1.0f);
+         if (scale.x > 400.0f || scale.y > 400.0f || scale.z > 400.0f) {
+             isEnvironment = true;
+         }
+      }
+
+      // Default mask: 0x02 for environment (ignored by shadow rays), 0x01 for geometry (casters)
+      mask = isEnvironment ? 0x02u : 0x01u;
+
       if ((doFrustumCulling || doDistanceLOD) && meshComp && camera && meshComp->HasLocalAABB()) {
+        // (RayQuery): Avoid dropping instances from TLAS via mask=0 based on heuristic culling.
+        // AABBs for some instanced meshes can be unreliable, and `mask=0` removes the instance from all
+        // ray queries, causing visible objects to vanish. Keep TLAS coverage stable.
+        const bool applyFrustumCullingToRayQueryTLASMask = false;
+        const bool applyDistanceLodToRayQueryTLASMask = false;
         bool visible = true;
         glm::vec3 wmin{}, wmax{};
         transformAABB(finalModel, meshComp->GetBaseMeshAABBMin(), meshComp->GetBaseMeshAABBMax(), wmin, wmax);
 
-        if (doFrustumCulling && !aabbIntersectsFrustum(wmin, wmax, frustum)) {
+        if (doFrustumCulling && applyFrustumCullingToRayQueryTLASMask && !aabbIntersectsFrustum(wmin, wmax, frustum)) {
           visible = false;
         }
 
-        if (visible && doDistanceLOD) {
+        if (visible && doDistanceLOD && applyDistanceLodToRayQueryTLASMask) {
           // Match raster LOD heuristic (projected-size skip)
           glm::vec3 center = 0.5f * (wmin + wmax);
           glm::vec3 extents = 0.5f * (wmax - wmin);
@@ -1149,9 +1389,9 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *>& entities, CameraComp
               float pixelDiameter = pixelRadius * 2.0f;
 
               bool useBlended = false;
-              ensureEntityMaterialCache(entity);
               auto it = entityResources.find(entity);
               if (it != entityResources.end()) {
+                ensureEntityMaterialCache(entity, it->second);
                 useBlended = it->second.cachedIsBlended;
               }
 
@@ -1161,9 +1401,12 @@ bool Renderer::refitTopLevelAS(const std::vector<Entity *>& entities, CameraComp
               }
             }
           }
+
         }
 
-        mask = visible ? 0xFFu : 0u;
+        if (!visible) {
+          mask = 0u;
+        }
       }
       instPtr[i].mask = mask;
     }
@@ -1351,6 +1594,12 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
     // is rebuilt each update from current streamed texture handles.
 
     std::vector<vk::WriteDescriptorSet> writes;
+    vk::DescriptorBufferInfo uboInfo{};
+    vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
+    vk::DescriptorImageInfo imageInfo{};
+    vk::DescriptorBufferInfo lightInfo{};
+    vk::DescriptorBufferInfo geoInfo{};
+    vk::DescriptorBufferInfo matInfo{};
 
     // NOTE: Do not write into mapped geometry info here. The buffer is built at AS build time
     // and remains immutable to avoid races with refit and descriptor updates.
@@ -1361,7 +1610,6 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
       return false;
     }
 
-    vk::DescriptorBufferInfo uboInfo{};
     uboInfo.buffer = *rayQueryUniformBuffers[frameIndex];
     uboInfo.offset = 0;
     uboInfo.range = sizeof(RayQueryUniformBufferObject);
@@ -1376,8 +1624,6 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
     writes.push_back(uboWrite);
 
     // Binding 1: TLAS (get address of underlying VkAccelerationStructureKHR)
-    vk::AccelerationStructureKHR tlasHandleValue = *tlasStructure.handle;
-    vk::WriteDescriptorSetAccelerationStructureKHR tlasInfo{};
     tlasInfo.accelerationStructureCount = 1;
     tlasInfo.pAccelerationStructures = &tlasHandleValue;
 
@@ -1391,7 +1637,6 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
     writes.push_back(tlasWrite);
 
     // Binding 2: Output image
-    vk::DescriptorImageInfo imageInfo{};
     imageInfo.imageView = *rayQueryOutputImageView;
     imageInfo.imageLayout = vk::ImageLayout::eGeneral;
 
@@ -1405,7 +1650,6 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
     writes.push_back(imageWrite);
 
     // Binding 3: Light buffer
-    vk::DescriptorBufferInfo lightInfo{};
     lightInfo.buffer = *lightStorageBuffers[frameIndex].buffer;
     lightInfo.offset = 0;
     lightInfo.range = VK_WHOLE_SIZE;
@@ -1421,7 +1665,6 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
 
     // Binding 4: Geometry info buffer (vertex/index addresses + material indices)
     if (*geometryInfoBuffer) {
-      vk::DescriptorBufferInfo geoInfo{};
       geoInfo.buffer = *geometryInfoBuffer;
       geoInfo.offset = 0;
       geoInfo.range = VK_WHOLE_SIZE;
@@ -1438,7 +1681,6 @@ bool Renderer::updateRayQueryDescriptorSets(uint32_t frameIndex, const std::vect
 
     // Binding 5: Material buffer (PBR material properties)
     if (*materialBuffer) {
-      vk::DescriptorBufferInfo matInfo{};
       matInfo.buffer = *materialBuffer;
       matInfo.offset = 0;
       matInfo.range = VK_WHOLE_SIZE;

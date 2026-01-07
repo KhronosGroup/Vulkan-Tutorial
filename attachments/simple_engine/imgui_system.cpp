@@ -208,8 +208,6 @@ void ImGuiSystem::NewFrame() {
         ImGui::PopStyleVar();
       }
       ImGui::End();
-      ImGui::Render();
-      frameAlreadyRendered = true;
       return;
     }
   }
@@ -1034,7 +1032,7 @@ void ImGuiSystem::updateBuffers(uint32_t frameIndex) {
     if (frameIndex >= vertexCounts.size())
       return; // Safety
 
-    if (drawData->TotalVtxCount > vertexCounts[frameIndex]) {
+    if (static_cast<uint32_t>(drawData->TotalVtxCount) > vertexCounts[frameIndex]) {
       // Clean up old buffer
       vertexBuffers[frameIndex] = vk::raii::Buffer(nullptr);
       vertexBufferMemories[frameIndex] = vk::raii::DeviceMemory(nullptr);
@@ -1059,7 +1057,7 @@ void ImGuiSystem::updateBuffers(uint32_t frameIndex) {
       vertexCounts[frameIndex] = drawData->TotalVtxCount;
     }
 
-    if (drawData->TotalIdxCount > indexCounts[frameIndex]) {
+    if (static_cast<uint32_t>(drawData->TotalIdxCount) > indexCounts[frameIndex]) {
       // Clean up old buffer
       indexBuffers[frameIndex] = vk::raii::Buffer(nullptr);
       indexBufferMemories[frameIndex] = vk::raii::DeviceMemory(nullptr);

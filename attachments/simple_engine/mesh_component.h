@@ -38,12 +38,16 @@ struct InstanceData {
   // Normal matrix as glm::mat3x4 (3 columns of vec4: xyz = normal matrix columns, w unused)
   glm::mat3x4 normalMatrix{};
 
+  // Material index for this instance
+  uint32_t materialIndex{0};
+
   InstanceData() {
     // Initialize as identity matrices
     modelMatrix = glm::mat4(1.0f);
     normalMatrix[0] = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
     normalMatrix[1] = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
     normalMatrix[2] = glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
+    materialIndex = 0;
   }
 
   explicit InstanceData(const glm::mat4& transform, uint32_t matIndex = 0) {
@@ -56,7 +60,7 @@ struct InstanceData {
     normalMatrix[1] = glm::vec4(normalMat3[1], 0.0f);
     normalMatrix[2] = glm::vec4(normalMat3[2], 0.0f);
 
-    // Note: matIndex parameter ignored since materialIndex field was removed
+    materialIndex = matIndex;
   }
 
   // Helper methods for backward compatibility

@@ -376,6 +376,13 @@ class ModelLoader {
     const Material* GetMaterial(const std::string& materialName) const;
 
     /**
+	 * @brief Get a material by its glTF material index.
+	 * @param materialIndex The material index as used by glTF primitives/instances.
+	 * @return Pointer to the material, or nullptr if out of range / not available.
+	 */
+    const Material* GetMaterialByIndex(uint32_t materialIndex) const;
+
+    /**
 	 * @brief Get animations from a loaded model.
 	 * @param modelName The name of the model.
 	 * @return Vector of animations from the model.
@@ -440,6 +447,9 @@ class ModelLoader {
 
     // Loaded materials
     std::unordered_map<std::string, std::unique_ptr<Material>> materials;
+
+    // Mapping from glTF material index -> Material pointer (rebuilt on each model load).
+    std::vector<Material*> materialsByIndex;
 
     // Extracted lights per model
     std::unordered_map<std::string, std::vector<ExtractedLight>> extractedLights;

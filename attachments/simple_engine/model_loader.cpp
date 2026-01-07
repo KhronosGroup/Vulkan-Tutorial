@@ -222,6 +222,10 @@ static bool LoadKTX2Image(tinygltf::Image* image,
 void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
                                    const std::string& baseTexturePath,
                                    std::set<std::string>& loadedTextures) {
+  // Build/refresh an index -> material mapping that matches glTF material indices.
+  materialsByIndex.clear();
+  materialsByIndex.resize(gltfModel.materials.size(), nullptr);
+
   // Process materials first
   for (size_t i = 0; i < gltfModel.materials.size(); ++i) {
     const auto& gltfMaterial = gltfModel.materials[i];
@@ -570,7 +574,11 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
     }
 
     // Store the material
+    Material* rawPtr = material.get();
     materials[material->GetName()] = std::move(material);
+    if (i < materialsByIndex.size()) {
+      materialsByIndex[i] = rawPtr;
+    }
   }
 
   // Handle KHR_materials_pbrSpecularGlossiness.diffuseTexture for baseColor when still missing
@@ -1617,7 +1625,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
       }
 
       for (uint32_t index : materialMesh.indices) {
-        combinedIndices.push_back(index + vertexOffset);
+        combinedIndices.push_back(index + static_cast<uint32_t>(vertexOffset));
       }
     }
   }
@@ -1781,6 +1789,13 @@ const Material* ModelLoader::GetMaterial(const std::string& materialName) const 
   auto it = materials.find(materialName);
   if (it != materials.end()) {
     return it->second.get();
+  }
+  return nullptr;
+}
+
+const Material* ModelLoader::GetMaterialByIndex(uint32_t materialIndex) const {
+  if (materialIndex < materialsByIndex.size()) {
+    return materialsByIndex[materialIndex];
   }
   return nullptr;
 }

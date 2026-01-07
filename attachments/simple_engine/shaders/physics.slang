@@ -327,7 +327,7 @@ void NarrowPhaseCS(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
             if (collisionIndex < params.maxCollisions) {
                 // Calculate normal so that it points from sphere(A) to geometry(B)
-                float3 normal = (distance > 0.0001) ? (-direction / distance) : float3(0, -1, 0);
+                float3 normal = (distance > 0.0001) ? (-direction / distance) : float3(0, 1, 0);
                 float penetration = sphereRadius - distance;
 
                 // Create collision data

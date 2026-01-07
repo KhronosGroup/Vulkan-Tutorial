@@ -96,6 +96,15 @@ struct LightData {
   alignas(4) float outerConeAngle; // For spotlights
 };
 
+struct ShadowUniforms {
+  alignas(16) glm::mat4 view;
+  alignas(16) glm::mat4 proj;
+};
+
+struct ShadowPushConstants {
+  alignas(16) glm::mat4 model;
+};
+
 /**
  * @brief Structure for the uniform buffer object (now without fixed light arrays).
  */
@@ -598,15 +607,9 @@ class Renderer {
       }
     }
 
-    // Descriptor set deferred update machinery
-    void MarkEntityDescriptorsDirty(Entity* entity);
-    void ProcessDirtyDescriptorsForFrame(uint32_t frameIndex);
-    bool updateDescriptorSetsForFrame(Entity* entity,
-                                      const std::string& texturePath,
-                                      bool usePBR,
-                                      uint32_t frameIndex,
-                                      bool imagesOnly = false,
-                                      bool uboOnly = false);
+	// Descriptor set deferred update machinery
+	void MarkEntityDescriptorsDirty(Entity *entity);
+	void ProcessDirtyDescriptorsForFrame(uint32_t frameIndex);
 
     // Texture aliasing: map canonical IDs to actual loaded keys (e.g., file paths) to avoid duplicates
     inline void RegisterTextureAlias(const std::string& aliasId, const std::string& targetId) {
@@ -822,10 +825,16 @@ class Renderer {
           .count());
         asBuildRequestStartNs.store(nowNs, std::memory_order_relaxed);
       }
-      if (reason)
+      if (reason) {
         lastASBuildRequestReason = reason;
-      else
+        std::cout << "[AS] Requesting rebuild. Reason: " << reason << std::endl;
+      } else {
         lastASBuildRequestReason = "(no reason)";
+      }
+
+      // Explicit requests bypass the freeze to ensure dynamic objects (like balls) are added
+      asDevOverrideAllowRebuild = true;
+
       watchdogSuppressed.store(true, std::memory_order_relaxed);
       asBuildRequested.store(true, std::memory_order_release);
     }
@@ -860,7 +869,7 @@ class Renderer {
 	 * @param lights The light data to upload.
 	 * @return True if successful, false otherwise.
 	 */
-    bool updateLightStorageBuffer(uint32_t frameIndex, const std::vector<ExtractedLight>& lights);
+    bool updateLightStorageBuffer(uint32_t frameIndex, const std::vector<ExtractedLight>& lights, CameraComponent* camera = nullptr);
 
     /**
 	 * @brief Update all existing descriptor sets with new light storage buffer references.
@@ -1514,13 +1523,24 @@ class Renderer {
       bool materialCacheValid = false;
       const Material* cachedMaterial = nullptr;
       // Derived flags used by render queues and sorting heuristics
-      bool cachedIsBlended = false;
-      bool cachedIsGlass = false;
-      bool cachedIsLiquid = false;
-      // Material-derived push constants defaults (static per-entity unless material changes)
-      MaterialProperties cachedMaterialProps{};
-    };
-    std::unordered_map<Entity *, EntityResources> entityResources;
+		bool cachedIsBlended = false;
+		bool cachedIsGlass   = false;
+		bool cachedIsLiquid  = false;
+		// Material-derived push constants defaults (static per-entity unless material changes)
+		MaterialProperties cachedMaterialProps{};
+	};
+
+	// Cached job for rendering a single entity in a frame
+	struct RenderJob
+	{
+		Entity             *entity;
+		EntityResources    *entityRes;
+		MeshResources      *meshRes;
+		MeshComponent      *meshComp;
+		TransformComponent *transformComp;
+		bool                isAlphaMasked;
+	};
+	std::unordered_map<Entity *, EntityResources> entityResources;
 
     // Descriptor pool (declared after entity resources to ensure proper destruction order)
     vk::raii::DescriptorPool descriptorPool = nullptr;
@@ -1639,7 +1659,7 @@ class Renderer {
     const uint32_t MAX_FRAMES_IN_FLIGHT = 2u;
 
     // --- Performance & diagnostics ---
-    // CPU-side frustum culling toggle and last-frame stats
+    UniformBufferObject frameUboTemplate{};
     bool enableFrustumCulling = true;
     uint32_t lastCullingVisibleCount = 0;
     uint32_t lastCullingCulledCount = 0;
@@ -1756,12 +1776,26 @@ class Renderer {
     bool createUniformBuffers(Entity* entity);
     bool createDescriptorPool();
     bool createDescriptorSets(Entity* entity, const std::string& texturePath, bool usePBR = false);
-    // Refresh only the currentFrame PBR descriptor set bindings that Forward+ relies on
-    // (b6 = lights SSBO, b7 = tile headers, b8 = tile indices). Safe to call after
-    // we've waited on the frame fence at the start of Render().
-    void refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex);
-    bool createCommandBuffers();
-    bool createSyncObjects();
+    bool createDescriptorSets(Entity *entity, EntityResources &res, const std::string &texturePath, bool usePBR = false);
+	bool updateDescriptorSetsForFrame(Entity            *entity,
+	                                  const std::string &texturePath,
+	                                  bool               usePBR,
+	                                  uint32_t           frameIndex,
+	                                  bool               imagesOnly = false,
+	                                  bool               uboOnly    = false);
+	bool updateDescriptorSetsForFrame(Entity            *entity,
+	                                  EntityResources   &res,
+	                                  const std::string &texturePath,
+	                                  bool               usePBR,
+	                                  uint32_t           frameIndex,
+	                                  bool               imagesOnly = false,
+	                                  bool               uboOnly    = false);
+	// Refresh only the currentFrame PBR descriptor set bindings that Forward+ relies on
+	// (b6 = lights SSBO, b7 = tile headers, b8 = tile indices). Safe to call after
+	// we've waited on the frame fence at the start of Render().
+	void refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex);
+	bool createCommandBuffers();
+	bool createSyncObjects();
 
     void cleanupSwapChain();
 
@@ -1772,14 +1806,14 @@ class Renderer {
     void renderReflectionPass(vk::raii::CommandBuffer& cmd,
                               const glm::vec4& planeWS,
                               CameraComponent* camera,
-                              const std::vector<Entity *>& entities);
+                              const std::vector<RenderJob>      &jobs);
 
     // Ensure Vulkan-Hpp dispatcher is initialized for the current thread when using RAII objects on worker threads
     void ensureThreadLocalVulkanInit() const;
 
     // Cache and classify an entity's material for raster rendering (opaque vs blended, glass/liquid flags,
     // and push-constant defaults). This avoids repeated per-frame string parsing and material lookups.
-    void ensureEntityMaterialCache(Entity* entity);
+    void ensureEntityMaterialCache(Entity* entity, EntityResources &res);
 
     // ===================== Culling helpers =====================
     struct FrustumPlanes {
@@ -1800,9 +1834,10 @@ class Renderer {
                                       const FrustumPlanes& frustum);
     void recreateSwapChain();
 
-    void updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera);
-    void updateUniformBuffer(uint32_t currentImage, Entity* entity, CameraComponent* camera, const glm::mat4& customTransform);
-    void updateUniformBufferInternal(uint32_t currentImage, Entity* entity, CameraComponent* camera, UniformBufferObject& ubo);
+    void updateUniformBuffer(uint32_t currentImage, Entity* entity, EntityResources *entityRes, CameraComponent* camera, TransformComponent *tc = nullptr);
+    void updateUniformBuffer(uint32_t currentImage, Entity* entity, EntityResources *entityRes, CameraComponent* camera, const glm::mat4& customTransform);
+    void updateUniformBufferInternal(uint32_t currentImage, Entity* entity, EntityResources *entityRes, CameraComponent* camera, UniformBufferObject& ubo);
+	void prepareFrameUboTemplate(CameraComponent *camera);
 
     vk::raii::ShaderModule createShaderModule(const std::vector<char>& code);
 

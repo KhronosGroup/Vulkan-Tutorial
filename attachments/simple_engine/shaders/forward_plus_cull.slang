@@ -16,17 +16,8 @@
  */
 // Forward+ tiled light culling (2D tiles)
 
-struct LightData {
-    [[vk::offset(0)]]   float4 position;
-    [[vk::offset(16)]]  float4 color;
-    [[vk::offset(32)]]  column_major float4x4 lightSpaceMatrix;
-    [[vk::offset(96)]]  int   lightType;
-    [[vk::offset(100)]] float range;
-    [[vk::offset(104)]] float innerConeAngle;
-    [[vk::offset(108)]] float outerConeAngle;
-};
-
-struct TileHeader { uint offset; uint count; uint pad0; uint pad1; };
+// Use the shared `LightData`/`TileHeader` definitions
+import common_types;
 
 // Params packed by the engine (see updateForwardPlusParams)
 struct FPParams {

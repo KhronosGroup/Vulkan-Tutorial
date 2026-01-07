@@ -906,6 +906,10 @@ void Engine::ProcessPendingBalls() {
       // Set bounciness from material
       rigidBody->SetRestitution(ballMaterial.bounciness);
 
+      // Request an acceleration structure build so the new ball is included in Ray Query mode.
+      // We do this after creating the rigid body and initializing the entity.
+      renderer->RequestAccelerationStructureBuild("Ball spawned");
+
       // Apply throw force and spin
       glm::vec3 throwImpulse = pendingBall.throwDirection * pendingBall.throwForce;
       rigidBody->ApplyImpulse(throwImpulse, glm::vec3(0.0f));

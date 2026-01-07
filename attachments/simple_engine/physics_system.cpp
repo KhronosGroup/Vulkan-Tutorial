@@ -1276,7 +1276,7 @@ void PhysicsSystem::SimulatePhysicsOnGPU(const std::chrono::milliseconds deltaTi
 
   // Step 1: Integrate forces and velocities
   vulkanResources.commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *vulkanResources.integratePipeline);
-  vulkanResources.commandBuffer.dispatch((rigidBodies.size() + 63) / 64, 1, 1);
+  vulkanResources.commandBuffer.dispatch(static_cast<uint32_t>((rigidBodies.size() + 63) / 64), 1, 1);
 
   // Memory barrier to ensure integration is complete before collision detection
   vk::MemoryBarrier memoryBarrier;
@@ -1293,7 +1293,7 @@ void PhysicsSystem::SimulatePhysicsOnGPU(const std::chrono::milliseconds deltaTi
 
   // Step 2: Broad-phase collision detection
   vulkanResources.commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *vulkanResources.broadPhasePipeline);
-  uint32_t numPairs = (rigidBodies.size() * (rigidBodies.size() - 1)) / 2;
+  uint32_t numPairs = static_cast<uint32_t>((rigidBodies.size() * (rigidBodies.size() - 1)) / 2);
   // Dispatch number of workgroups matching [numthreads(64,1,1)] in BroadPhaseCS
   // One workgroup has 64 threads, each processes one pair by index
   uint32_t broadPhaseThreads = (numPairs + 63) / 64;

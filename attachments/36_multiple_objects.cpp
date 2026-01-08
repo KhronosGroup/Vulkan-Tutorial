@@ -1552,7 +1552,9 @@ class VulkanApplication
 		// Update uniform buffers for all objects
 		updateUniformBuffers();
 
+		// Only reset the fence if we are submitting work
 		device.resetFences(*inFlightFences[frameIndex]);
+
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

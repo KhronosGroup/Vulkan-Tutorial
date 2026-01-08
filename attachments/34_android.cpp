@@ -1337,7 +1337,8 @@ class HelloTriangleApplication
 		// Update uniform buffer with current transformation
 		updateUniformBuffer(frameIndex);
 
-		device.resetFences({*inFlightFences[frameIndex]});
+		// Only reset the fence if we are submitting work
+		device.resetFences(*inFlightFences[frameIndex]);
 
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(commandBuffers[frameIndex], imageIndex);

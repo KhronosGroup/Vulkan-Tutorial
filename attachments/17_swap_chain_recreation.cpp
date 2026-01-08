@@ -522,13 +522,15 @@ class HelloTriangleApplication
 		}
 		// On other success codes than eSuccess and eSuboptimalKHR we just throw an exception.
 		// On any error code, aquireNextImage already threw an exception.
-		if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+		else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
 		{
 			assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
+		// Only reset the fence if we are submitting work
 		device.resetFences(*inFlightFences[frameIndex]);
+
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

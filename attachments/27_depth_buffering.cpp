@@ -1028,7 +1028,9 @@ class HelloTriangleApplication
 		}
 		updateUniformBuffer(frameIndex);
 
+		// Only reset the fence if we are submitting work
 		device.resetFences(*inFlightFences[frameIndex]);
+
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 

@@ -101,7 +101,7 @@ you can add the search path for the *-config.cmake to the `HINTS` portion of
 the find_package config calls: i.e.
 [,cmake]
 ----
-find_package(Slang CONFIG HINTS "$ENV{VULKAN_SDK}/lib/cmake").
+find_package(slang CONFIG HINTS "$ENV{VULKAN_SDK}/lib/cmake").
 ----
 
 In the future, FindVulkan.cmake might migrate to the *-config.cmake standard,

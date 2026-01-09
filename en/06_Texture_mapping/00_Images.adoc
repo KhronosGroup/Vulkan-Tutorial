@@ -502,7 +502,7 @@ Since the `transitionImageLayout` function executes a command buffer with only a
 It's up to you if you want to be explicit about it or not, but I'm personally not a fan of relying on these OpenGL-like "hidden" operations.
 
 There is actually a special type of image layout that supports all operations, `vk::ImageLayout::eGeneral`.
-But unless using certain extensions, which we don't do in the tutorial, using the general layout might come with a performance penalty is it may disable certain optimizations on some GPUs.
+But unless using certain extensions, which we don't do in the tutorial, using the general layout might come with a performance penalty as it may disable certain optimizations on some GPUs.
 It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout.
 
 All the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle.

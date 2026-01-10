@@ -145,7 +145,7 @@ The choices are `VK_FILTER_NEAREST` and `VK_FILTER_LINEAR`, corresponding to the
 [,c++]
 ----
 vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat};
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat};
 ----
 
 The addressing mode can be specified per axis using the `addressMode` fields.
@@ -167,7 +167,7 @@ However, the repeat mode is probably the most common mode, because it can be use
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat,
     .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy};
 ----
 
@@ -190,7 +190,7 @@ If we want to go for maximum quality, we can simply use that value directly:
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat,
     .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy};
 ----
 

@@ -186,4 +186,4 @@ To deepen your understanding of lighting models, here are some valuable resource
 
 In the next section, we'll explore how to use push constants to efficiently pass material properties to our shaders.
 
-link:01_introduction.adoc[Previous: Introduction] | link:03_push_constants.adoc[Next: Push Constants]
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_push_constants.adoc[Next: Push Constants]

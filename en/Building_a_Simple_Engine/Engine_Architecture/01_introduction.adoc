@@ -59,4 +59,4 @@ Performance opportunities often emerge from architectural decisions made early i
 
 Let's begin our exploration of engine architecture with an overview of common architectural patterns used in modern rendering engines.
 
-link:02_architectural_patterns.adoc[Next: Architectural Patterns]
+xref:02_architectural_patterns.adoc[Next: Architectural Patterns]

@@ -37,4 +37,4 @@ You should also be familiar with the following chapters from the main tutorial:
 
 Let's begin by exploring the platform considerations for Android and iOS.
 
-link:../Tooling/07_conclusion.adoc[Previous: Tooling Conclusion] | link:02_platform_considerations.adoc[Next: Platform Considerations for Android and iOS]
+xref:../Tooling/07_conclusion.adoc[Previous: Tooling Conclusion] | xref:02_platform_considerations.adoc[Next: Platform Considerations for Android and iOS]

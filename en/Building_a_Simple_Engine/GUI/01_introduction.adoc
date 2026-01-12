@@ -43,4 +43,4 @@ You should also be familiar with the following chapters from the main tutorial:
 
 Let's begin by exploring how to implement a professional GUI system with Dear ImGui and Vulkan.
 
-link:../Lighting_Materials/06_conclusion.adoc[Previous: Lighting & Materials Conclusion] | link:02_imgui_setup.adoc[Next: Setting Up Dear ImGui]
+xref:../Lighting_Materials/06_conclusion.adoc[Previous: Lighting & Materials Conclusion] | xref:02_imgui_setup.adoc[Next: Setting Up Dear ImGui]

@@ -373,4 +373,4 @@ At runtime, our engine will:
 
 By implementing these specific approaches, our engine will have a robust and efficient asset pipeline that aligns with the general concepts discussed earlier in this chapter.
 
-link:03_model_system.adoc[Next: Implementing the Model Loading System]
+xref:03_model_system.adoc[Next: Implementing the Model Loading System]

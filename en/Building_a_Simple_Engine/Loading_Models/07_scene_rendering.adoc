@@ -190,7 +190,7 @@ glm::mat4 getLocalMatrix() {
 
 [NOTE]
 ====
-We covered PBR material theory and shader details earlier in link:05_pbr_rendering.adoc[PBR Rendering], so we won't restate that here. This section focuses on the wiring: how material properties are packed into push constants and consumed by the draw call in this chapter's context.
+We covered PBR material theory and shader details earlier in xref:05_pbr_rendering.adoc[PBR Rendering], so we won't restate that here. This section focuses on the wiring: how material properties are packed into push constants and consumed by the draw call in this chapter's context.
 ====
 
 If the node has a mesh, we need to set up its material properties before rendering:
@@ -702,4 +702,4 @@ In this chapter, we've explored the process of rendering a scene using a scene g
 
 The scene rendering system we've built is flexible and extensible, allowing for the rendering of complex scenes with multiple objects, materials, and lighting conditions. In the next chapter, we'll build on this foundation to implement animations, bringing our scenes to life.
 
-link:06_multiple_objects.adoc[Previous: Rendering Multiple Objects] | link:08_animations.adoc[Next: Updating Animations]
+xref:06_multiple_objects.adoc[Previous: Rendering Multiple Objects] | xref:08_animations.adoc[Next: Updating Animations]

@@ -124,7 +124,7 @@ glTF comes in two formats, each with its own advantages:
 
 [NOTE]
 ====
-This section provides a brief overview of PBR materials as they relate to glTF loading. For a more comprehensive explanation of PBR concepts and lighting models, please refer to the link:../../Lighting_Materials/02_lighting_models.adoc#physically-based-rendering-pbr[Physically Based Rendering section] in the Lighting Materials chapter.
+This section provides a brief overview of PBR materials as they relate to glTF loading. For a more comprehensive explanation of PBR concepts and lighting models, please refer to the xref:../../Lighting_Materials/02_lighting_models.adoc#physically-based-rendering-pbr[Physically Based Rendering section] in the Lighting Materials chapter.
 ====
 
 Materials define how surfaces look when rendered. Modern games and engines use Physically Based Rendering (PBR), which simulates how light interacts with real-world materials based on physical principles.
@@ -807,4 +807,4 @@ In the next chapter, we'll explore how to render these models using
 physically-based rendering techniques, bringing our loaded assets to life
 with realistic lighting and materials.
 
-link:03_model_system.adoc[Previous: Implementing the Model Loading System] | link:05_pbr_rendering.adoc[Next: Implementing PBR Rendering]
+xref:03_model_system.adoc[Previous: Implementing the Model Loading System] | xref:05_pbr_rendering.adoc[Next: Implementing PBR Rendering]

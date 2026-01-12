@@ -335,5 +335,5 @@ When designing your engine architecture, consider:
 3. *Team Size and Experience* - More complex architectures may be harder to work with for smaller teams.
 4. *Project Scope* - A small project may not need the complexity of a full ECS.
 
-link:../Engine_Architecture/02_architectural_patterns.adoc[Back to Architectural Patterns]
-link:../Engine_Architecture/05_rendering_pipeline.adoc[Back to Rendering Pipeline]
+xref:../Engine_Architecture/02_architectural_patterns.adoc[Back to Architectural Patterns]
+xref:../Engine_Architecture/05_rendering_pipeline.adoc[Back to Rendering Pipeline]

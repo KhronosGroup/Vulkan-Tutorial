@@ -45,7 +45,7 @@ Let's extend our physics system to include Vulkan-accelerated components. We’l
 
 [NOTE]
 ====
-We avoid repeating Vulkan compute fundamentals here; focus stays on physics‑specific wiring. Use earlier chapters (link:../Engine_Architecture/04_resource_management.adoc[Resource Management], link:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]) or the Vulkan Guide (https://docs.vulkan.org/guide/latest/) if you need a refresher on descriptors, buffers, or pipeline creation.
+We avoid repeating Vulkan compute fundamentals here; focus stays on physics‑specific wiring. Use earlier chapters (xref:../Engine_Architecture/04_resource_management.adoc[Resource Management], xref:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]) or the Vulkan Guide (https://docs.vulkan.org/guide/latest/) if you need a refresher on descriptors, buffers, or pipeline creation.
 ====
 
 [source,cpp]
@@ -773,4 +773,4 @@ In this chapter, we've explored how Vulkan compute shaders can be used to accele
 
 The techniques we've covered demonstrate the versatility of Vulkan beyond traditional graphics rendering. As you continue to develop your engine, consider other areas where GPU acceleration might provide benefits, such as AI pathfinding, procedural generation, or particle systems.
 
-link:04_physics_basics.adoc[Previous: Physics Basics] | link:06_conclusion.adoc[Next: Conclusion]
+xref:04_physics_basics.adoc[Previous: Physics Basics] | xref:06_conclusion.adoc[Next: Conclusion]

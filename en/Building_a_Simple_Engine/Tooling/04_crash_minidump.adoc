@@ -530,4 +530,4 @@ Robust crash handling is essential for maintaining a high-quality Vulkan applica
 
 In the next section, we'll explore Vulkan extensions for robustness, which can reduce undefined behavior and help prevent crashes in the first place.
 
-link:03_debugging_and_renderdoc.adoc[Previous: Debugging with VK_KHR_debug_utils and RenderDoc] | link:05_extensions.adoc[Next: Vulkan Extensions for Robustness]
+xref:03_debugging_and_renderdoc.adoc[Previous: Debugging with VK_KHR_debug_utils and RenderDoc] | xref:05_extensions.adoc[Next: Vulkan Extensions for Robustness]

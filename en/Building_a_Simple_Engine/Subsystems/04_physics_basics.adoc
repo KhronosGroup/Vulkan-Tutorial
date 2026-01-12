@@ -563,4 +563,4 @@ While this basic physics system provides the essential functionality for simulat
 
 In the next section, we'll explore how Vulkan compute shaders can address these limitations by offloading physics calculations to the GPU, particularly for large-scale simulations with many objects.
 
-link:03_vulkan_audio.adoc[Previous: Vulkan for Audio Processing] | link:05_vulkan_physics.adoc[Next: Vulkan for Physics Simulation]
+xref:03_vulkan_audio.adoc[Previous: Vulkan for Audio Processing] | xref:05_vulkan_physics.adoc[Next: Vulkan for Physics Simulation]

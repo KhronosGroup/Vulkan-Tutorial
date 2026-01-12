@@ -1499,7 +1499,7 @@ private:
 
 === Advanced Rendering Techniques
 
-For detailed information about advanced rendering techniques such as Deferred Rendering, Forward+ Rendering, and Physically Based Rendering (PBR), please refer to the link:../Appendix/appendix.adoc#advanced-rendering-techniques[Advanced Rendering Techniques] section in the Appendix. This section includes references to valuable resources for further reading.
+For detailed information about advanced rendering techniques such as Deferred Rendering, Forward+ Rendering, and Physically Based Rendering (PBR), please refer to the xref:../Appendix/appendix.adoc#advanced-rendering-techniques[Advanced Rendering Techniques] section in the Appendix. This section includes references to valuable resources for further reading.
 
 === Conclusion
 
@@ -1512,4 +1512,4 @@ A well-designed rendering pipeline is essential for creating a flexible and effi
 
 In the next section, we'll explore event systems, which provide a flexible way for different parts of your engine to communicate with each other.
 
-link:04_resource_management.adoc[Previous: Resource Management] | link:06_event_systems.adoc[Next: Event Systems]
+xref:04_resource_management.adoc[Previous: Resource Management] | xref:06_event_systems.adoc[Next: Event Systems]

@@ -986,4 +986,4 @@ With this knowledge, you can create a robust GUI system for your Vulkan applicat
 
 In the next section, we'll wrap up with a conclusion and discuss potential improvements to our GUI system.
 
-link:04_ui_elements.adoc[Previous: UI Elements] | link:06_conclusion.adoc[Next: Conclusion]
+xref:04_ui_elements.adoc[Previous: UI Elements] | xref:06_conclusion.adoc[Next: Conclusion]

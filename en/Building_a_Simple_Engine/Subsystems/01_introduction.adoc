@@ -73,4 +73,4 @@ You should also be familiar with the following chapters from the main tutorial:
 
 Let's begin by exploring how to implement a basic audio subsystem and then enhance it with Vulkan's computational capabilities.
 
-link:../Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | link:02_audio_basics.adoc[Next: Audio Basics]
+xref:../Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | xref:02_audio_basics.adoc[Next: Audio Basics]

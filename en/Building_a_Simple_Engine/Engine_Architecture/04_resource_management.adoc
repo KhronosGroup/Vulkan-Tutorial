@@ -917,4 +917,4 @@ A well-designed resource management system is crucial for efficiently handling a
 
 In the next section, we'll explore rendering pipeline design, which will build upon the resource management system to create a flexible and efficient rendering system.
 
-link:03_component_systems.adoc[Previous: Component Systems] | link:05_rendering_pipeline.adoc[Next: Rendering Pipeline]
+xref:03_component_systems.adoc[Previous: Component Systems] | xref:05_rendering_pipeline.adoc[Next: Rendering Pipeline]

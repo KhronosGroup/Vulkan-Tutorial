@@ -391,4 +391,4 @@ consider these optimizations:
 
 In the next section, we'll conclude our exploration of mobile development with a summary of key takeaways and best practices.
 
-link:04_rendering_approaches.adoc[Previous: Rendering Approaches] | link:06_conclusion.adoc[Next: Conclusion]
+xref:04_rendering_approaches.adoc[Previous: Rendering Approaches] | xref:06_conclusion.adoc[Next: Conclusion]

@@ -6,9 +6,9 @@ This chapter covers the implementation of a 3D camera system and the mathematica
 
 == Contents
 
-* link:01_introduction.adoc[Introduction]
-* link:02_math_foundations.adoc[Mathematical Foundations]
-* link:03_transformation_matrices.adoc[Transformation Matrices]
-* link:04_camera_implementation.adoc[Camera Implementation]
-* link:05_vulkan_integration.adoc[Vulkan Integration]
-* link:06_conclusion.adoc[Conclusion]
+* xref:01_introduction.adoc[Introduction]
+* xref:02_math_foundations.adoc[Mathematical Foundations]
+* xref:03_transformation_matrices.adoc[Transformation Matrices]
+* xref:04_camera_implementation.adoc[Camera Implementation]
+* xref:05_vulkan_integration.adoc[Vulkan Integration]
+* xref:06_conclusion.adoc[Conclusion]

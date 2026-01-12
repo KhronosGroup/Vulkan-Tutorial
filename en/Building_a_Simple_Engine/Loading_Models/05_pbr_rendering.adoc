@@ -6,9 +6,9 @@
 
 === Building on PBR Knowledge
 
-In the link:../Lighting_Materials/01_introduction.adoc[Lighting & Materials chapter], we explored the fundamentals of Physically Based Rendering (PBR), including its core principles, the BRDF, and material properties. Now, we'll apply that knowledge to implement a PBR pipeline for the glTF models we've loaded.
+In the xref:../Lighting_Materials/01_introduction.adoc[Lighting & Materials chapter], we explored the fundamentals of Physically Based Rendering (PBR), including its core principles, the BRDF, and material properties. Now, we'll apply that knowledge to implement a PBR pipeline for the glTF models we've loaded.
 
-As we learned in the link:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
+As we learned in the xref:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
 
 === Leveraging glTF's PBR Materials
 
@@ -61,7 +61,7 @@ This uniform buffer includes:
 
 [NOTE]
 ====
-We introduced push constants earlier in link:../Lighting_Materials/03_push_constants.adoc[push constants]; here we focus on how the same mechanism carries glTF metallic‑roughness material knobs efficiently per draw.
+We introduced push constants earlier in xref:../Lighting_Materials/03_push_constants.adoc[push constants]; here we focus on how the same mechanism carries glTF metallic‑roughness material knobs efficiently per draw.
 ====
 
 We'll use link:https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-pushconstant[push constants] to pass material properties to the shader:
@@ -574,4 +574,4 @@ In the next chapter, we'll explore how to render multiple objects with different
 
 If you want to dive deeper into lighting and materials, refer back to the Lighting & Materials chapter, where we explored the theory behind PBR in detail.
 
-link:04_loading_gltf.adoc[Previous: Loading a glTF Model] | link:06_multiple_objects.adoc[Next: Rendering Multiple Objects]
+xref:04_loading_gltf.adoc[Previous: Loading a glTF Model] | xref:06_multiple_objects.adoc[Next: Rendering Multiple Objects]

@@ -100,8 +100,8 @@
 *** xref:Building_a_Simple_Engine/Lighting_Materials/03_push_constants.adoc[Push constants]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/04_lighting_implementation.adoc[Lighting implementation]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/05_vulkan_integration.adoc[Vulkan integration]
-*** xref:Building_a_Simple_Engine/Lighting_Materials/06_conclusion.adoc[Conclusion]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/07_shadows.adoc[Shadows]
+*** xref:Building_a_Simple_Engine/Lighting_Materials/06_conclusion.adoc[Conclusion]
 ** GUI
 *** xref:Building_a_Simple_Engine/GUI/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/GUI/01_introduction.adoc[Introduction]

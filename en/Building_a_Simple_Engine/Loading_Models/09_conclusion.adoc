@@ -23,6 +23,6 @@ As you continue to develop your engine, consider exploring these advanced topics
 
 The code for this chapter can be found in the `simple_engine/20_loading_models.cpp` file.
 
-xref:attachment$simple_engine/20_loading_models.cpp[C{pp} code]
+link:{attachmentsdir}/simple_engine/20_loading_models.cpp[C{pp} code]
 
 xref:Building_a_Simple_Engine/Loading_Models/08_animations.adoc[Previous: Updating Animations] | xref:Building_a_Simple_Engine/Subsystems/01_introduction.adoc[Next: Subsystems] | xref:../index.adoc[Back to Building a Simple Engine]

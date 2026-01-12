@@ -12,4 +12,4 @@ This chapter covers the essential aspects of adapting your Vulkan engine for mob
 * xref:05_vulkan_extensions.adoc[Vulkan Extensions for Mobile]
 * xref:06_conclusion.adoc[Conclusion]
 
-xref:../Tooling/07_conclusion.adoc[Previous: Tooling Conclusion] | xref:../index.html[Back to Building a Simple Engine]
+xref:../Tooling/07_conclusion.adoc[Previous: Tooling Conclusion] | xref:../index.adoc[Back to Building a Simple Engine]

@@ -36,4 +36,4 @@ You should also be familiar with the following chapters from the main tutorial:
 
 Let's begin by exploring how to set up a CI/CD pipeline for Vulkan projects.
 
-xref:../Subsystems/06_conclusion.adoc[Previous: Subsystems Conclusion] | xref:02_cicd.adoc[Next: CI/CD for Vulkan Projects]
+xref:Subsystems/06_conclusion.adoc[Previous: Subsystems Conclusion] | xref:02_cicd.adoc[Next: CI/CD for Vulkan Projects]

@@ -13,7 +13,7 @@
 
 === Building on glTF Knowledge
 
-As we learned in the xref:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF is a modern 3D format that supports a wide range of features including PBR materials, animations, and scene hierarchies. In this chapter, we'll leverage these capabilities to build a more robust engine.
+As we learned in the xref:../../15_GLTF_KTX2_Migration.adoc[glTF and KTX2 Migration chapter], glTF is a modern 3D format that supports a wide range of features including PBR materials, animations, and scene hierarchies. In this chapter, we'll leverage these capabilities to build a more robust engine.
 
 While the previous chapter covered the basics of loading glTF models, here we'll focus on organizing the loaded data into a proper scene graph and implementing animation support. This approach will allow us to create more complex and dynamic scenes.
 

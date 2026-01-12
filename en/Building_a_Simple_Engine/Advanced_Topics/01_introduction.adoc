@@ -24,4 +24,4 @@ Start anywhere that matches your interest:
 * xref:Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read]
 * xref:Shader_Tile_Image.adoc[Shader Tile Image]
 
-xref:../index.html[Back to Building a Simple Engine]
+xref:../index.adoc[Back to Building a Simple Engine]

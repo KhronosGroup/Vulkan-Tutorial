@@ -20,4 +20,4 @@ This chapter is divided into several sections to make it easier to follow:
 
 Each section builds upon the previous ones, so it's recommended to follow them in order. This chapter also builds upon the concepts introduced in the Engine Architecture and Camera Transformations chapters. By completing this chapter, you'll have a comprehensive foundation for a Vulkan-based 3D engine with a well-structured architecture, camera system, and model loading capabilities.
 
-xref:../index.html[Back to Building a Simple Engine]
+xref:../index.adoc[Back to Building a Simple Engine]

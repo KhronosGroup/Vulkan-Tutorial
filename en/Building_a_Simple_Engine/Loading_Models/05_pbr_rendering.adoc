@@ -8,7 +8,7 @@
 
 In the xref:../Lighting_Materials/01_introduction.adoc[Lighting & Materials chapter], we explored the fundamentals of Physically Based Rendering (PBR), including its core principles, the BRDF, and material properties. Now, we'll apply that knowledge to implement a PBR pipeline for the glTF models we've loaded.
 
-As we learned in the xref:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
+As we learned in the xref:../../15_GLTF_KTX2_Migration.adoc[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
 
 === Leveraging glTF's PBR Materials
 

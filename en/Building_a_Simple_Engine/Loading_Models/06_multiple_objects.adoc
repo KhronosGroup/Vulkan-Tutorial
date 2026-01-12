@@ -381,8 +381,8 @@ void setupInstanceBuffers() {
         void* instanceBufferMapped = device.mapMemory(instanceBufferMemory, 0, bufferSize, {});
 
         // Store buffer and memory
-        instanceBuffers.push_back(instanceBuffer);
-        instanceBufferMemories.push_back(instanceBufferMemory);
+        instanceBuffers.push_back(std::move(instanceBuffer));
+        instanceBufferMemories.push_back(std::move(instanceBufferMemory));
         instanceBuffersMapped.push_back(instanceBufferMapped);
 
         // Set the instance buffer index for this node

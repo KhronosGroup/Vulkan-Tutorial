@@ -2,10 +2,16 @@
   "name": "vulkan-game-engine-tutorial",
   "version": "1.0.0",
   "dependencies": [
-    "glfw3",
+    {
+      "name": "glfw3",
+      "platform": "!android"
+    },
     "glm",
     "openal-soft",
-    "ktx",
+    {
+      "name": "ktx",
+      "features": [ "vulkan" ]
+    },
     "tinygltf",
     "nlohmann-json"
   ]

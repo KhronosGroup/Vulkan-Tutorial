@@ -65,7 +65,7 @@ Before rendering, we must validate that the node contains valid mesh data and ha
 
 This validation step prevents rendering errors that could occur from incomplete scene graph nodes. Not every node in a scene graph necessarily contains renderable geometry - some nodes exist purely for organization or as transformation anchors for child objects. By checking for non-empty vertex and index arrays plus valid buffer indices, we ensure that we only attempt to render nodes that have been properly prepared with GPU resources.
 
-The buffer index checks (>= 0) are particularly important because they confirm that the mesh data has been successfully uploaded to GPU buffers and assigned valid indices in our buffer management system. Negative indices typically indicate uninitialized or failed buffer allocations.
+The buffer index checks (>= 0) confirm that the mesh data has been successfully uploaded to GPU buffers and assigned valid indices (0 or greater) in our buffer management system. Note that 0 is a valid buffer index - negative values (typically -1) indicate uninitialized or failed buffer allocations.
 
 === Material property configuration
 
@@ -96,7 +96,7 @@ This material setup step translates high-level material descriptions into GPU-re
                 pushConstants.baseColorFactor = glm::vec4(1.0f);               // White base color
                 pushConstants.metallicFactor = 1.0f;                           // Fully metallic (safe default)
                 pushConstants.roughnessFactor = 1.0f;                          // Fully rough (safe default)
-                pushConstants.baseColorTextureSet = 1;                         // Assume default texture
+                pushConstants.baseColorTextureSet = -1;                        // No texture for default material
                 pushConstants.physicalDescriptorTextureSet = -1;               // No metallic/roughness texture
                 pushConstants.normalTextureSet = -1;                           // No normal map
                 pushConstants.occlusionTextureSet = -1;                        // No ambient occlusion
@@ -190,7 +190,7 @@ glm::mat4 getLocalMatrix() {
 
 [NOTE]
 ====
-We covered PBR material theory and shader details earlier in Loading_Models/05_pbr_rendering.adoc, so we won’t restate that here. This section focuses on the wiring: how material properties are packed into push constants and consumed by the draw call in this chapter’s context.
+We covered PBR material theory and shader details earlier in link:05_pbr_rendering.adoc[PBR Rendering], so we won't restate that here. This section focuses on the wiring: how material properties are packed into push constants and consumed by the draw call in this chapter's context.
 ====
 
 If the node has a mesh, we need to set up its material properties before rendering:
@@ -215,7 +215,7 @@ if (node->mesh.materialIndex >= 0 && node->mesh.materialIndex < static_cast<int>
     pushConstants.baseColorFactor = glm::vec4(1.0f);
     pushConstants.metallicFactor = 1.0f;
     pushConstants.roughnessFactor = 1.0f;
-    pushConstants.baseColorTextureSet = 1;
+    pushConstants.baseColorTextureSet = -1;
     pushConstants.physicalDescriptorTextureSet = -1;
     pushConstants.normalTextureSet = -1;
     pushConstants.occlusionTextureSet = -1;
@@ -618,6 +618,16 @@ void renderNodeHierarchical(const vk::raii::CommandBuffer& commandBuffer, const 
     }
 }
 ----
+
+[NOTE]
+====
+The hierarchical culling algorithm presented here works correctly but is relatively naïve. In its current form, it's unlikely to provide significant performance improvements over simpler culling approaches. For real performance gains in production environments, more efficient and complex handling would be needed, such as:
+
+* Using bounding volume hierarchies (BVH) with efficient spatial data structures
+* Implementing GPU-based culling with compute shaders
+* Employing temporal coherence to cache visibility results across frames
+* Using occlusion queries to skip entire subtrees hidden behind other geometry
+====
 
 ==== Deferred Rendering
 

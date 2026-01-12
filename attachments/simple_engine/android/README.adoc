@@ -1,0 +1,52 @@
+= Android Project for Vulkan Game Engine Tutorial
+
+This Android project allows you to run the Game Engine's example code in Android.
+It demonstrates how to manage a non-trivial project across Desktop and mobile environments from the same code base.
+
+== Project Overview
+
+The Vulkan Game Engine Tutorial is a comprehensive learning project that showcases modern graphics programming using the Vulkan API.
+This Android port enables running the same engine code on mobile devices, demonstrating cross-platform development practices.
+
+== Prerequisites
+
+* Android Studio 4.2 or higher
+* Android NDK r21 or higher
+* CMake 3.10+
+* Vulkan SDK
+* Android device with Vulkan support (Android 7.0+)
+
+== Building and Running
+
+1. Open the project in Android Studio
+2. Sync Gradle files
+3. Build the project
+4. Run on your Android device or emulator
+
+== Project Structure
+
+* `app/` - Android-specific code and resources
+* `src/` - Shared C++ engine code
+* `assets/` - Shared game assets and shaders (automatically copied by Gradle)
+** `models/` - GLTF/GLB model files
+** `shaders/` - Compiled SPIR-V shader files
+** `textures/` - Texture assets
+* `CMake/` - Build configuration files
+
+== Asset Management
+
+The project uses Gradle to automatically handle asset deployment.
+Place your assets in the following source locations:
+
+* Source assets location: `<project_root>/assets/`
+* Gradle will automatically copy assets to: `app/src/main/assets/`
+* Asset changes will be synchronized during build
+
+== Key Components
+
+* GLTF model loading support
+* Cross-platform rendering pipeline
+* JSON configuration using nlohmann_json
+* Unified asset management system with Gradle automation
+
+The project demonstrates professional-grade techniques for maintaining a single codebase that targets both desktop and mobile platforms while leveraging modern C++20 features and Vulkan's cross-platform capabilities.

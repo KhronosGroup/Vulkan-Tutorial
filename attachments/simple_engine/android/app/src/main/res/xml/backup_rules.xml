@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Backup everything by default -->
+    <include domain="root" path="."/>
+    <include domain="file" path="."/>
+    <include domain="database" path="."/>
+    <include domain="sharedpref" path="."/>
+    <include domain="external" path="."/>
+</full-backup-content>

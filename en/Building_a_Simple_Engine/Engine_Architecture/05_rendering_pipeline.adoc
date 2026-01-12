@@ -296,7 +296,7 @@ The topological sort algorithm ensures that passes execute in dependency order w
 
 === Rendergraph: Automatic Synchronization and Resource Allocation
 
-Next create the GPU synchronization objects needed for correct execution ordering and allocates the actual Vulkan resources for all registered resources.
+Next create the GPU synchronization objects needed for correct execution ordering and allocate the actual Vulkan resources for all registered resources.
 
 [source,cpp]
 ----

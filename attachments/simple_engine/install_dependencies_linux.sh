@@ -30,87 +30,158 @@ fi
 echo "Detected OS: $OS $VER"
 
 # Function to install dependencies on Ubuntu/Debian
+require_vulkan_headers() {
+	if [ -n "${VULKAN_SDK:-}" ] && [ -f "${VULKAN_SDK}/include/vulkan/vulkan.h" ]; then
+		return 0
+	fi
+	if [ -f "/usr/include/vulkan/vulkan.h" ]; then
+		return 0
+	fi
+	echo ""
+	echo "Vulkan SDK (or Vulkan development headers) not found."
+	echo "Install the Vulkan SDK from LunarG, then re-run this script."
+	echo "https://vulkan.lunarg.com/"
+	exit 1
+}
+
+build_and_install_tinygltf() {
+	if [ -f "/usr/local/lib/cmake/tinygltf/tinygltfConfig.cmake" ] || [ -f "/usr/lib/cmake/tinygltf/tinygltfConfig.cmake" ]; then
+		return 0
+	fi
+	local workRoot="$1"
+	echo "Installing tinygltf (from source)..."
+	rm -rf "${workRoot}/tinygltf" "${workRoot}/tinygltf-build"
+	git clone --depth 1 https://github.com/syoyo/tinygltf.git "${workRoot}/tinygltf"
+	cmake -S "${workRoot}/tinygltf" -B "${workRoot}/tinygltf-build" -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_SHARED_LIBS=OFF \
+		-DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF \
+		-DTINYGLTF_BUILD_GL_EXAMPLES=OFF \
+		-DTINYGLTF_BUILD_STB_IMAGE=ON
+	cmake --build "${workRoot}/tinygltf-build" --parallel
+	sudo cmake --install "${workRoot}/tinygltf-build"
+}
+
+build_and_install_ktx() {
+	if [ -f "/usr/local/lib/cmake/KTX/KTXConfig.cmake" ] || [ -f "/usr/lib/cmake/KTX/KTXConfig.cmake" ]; then
+		return 0
+	fi
+	require_vulkan_headers
+	local workRoot="$1"
+	echo "Installing KTX-Software (from source)..."
+	rm -rf "${workRoot}/KTX-Software" "${workRoot}/KTX-Software-build"
+	git clone --depth 1 --branch v4.3.2 https://github.com/KhronosGroup/KTX-Software.git "${workRoot}/KTX-Software"
+	cmake -S "${workRoot}/KTX-Software" -B "${workRoot}/KTX-Software-build" -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_SHARED_LIBS=OFF \
+		-DKTX_FEATURE_TESTS=OFF \
+		-DKTX_FEATURE_TOOLS=OFF \
+		-DKTX_FEATURE_VULKAN=ON
+	cmake --build "${workRoot}/KTX-Software-build" --parallel
+	sudo cmake --install "${workRoot}/KTX-Software-build"
+}
+
 install_ubuntu_debian() {
-    echo "Installing dependencies for Ubuntu/Debian..."
+	echo "Installing dependencies for Ubuntu/Debian..."
 
-    # Update package list
-    sudo apt update
+	sudo apt-get update
 
-    # Install build essentials
-    sudo apt install -y build-essential cmake git
+	sudo apt-get install -y \
+		build-essential \
+		cmake \
+		git \
+		ninja-build \
+		pkg-config \
+		ca-certificates \
+		curl \
+		zip \
+		unzip \
+		tar \
+		libglfw3-dev \
+		libglm-dev \
+		libopenal-dev \
+		nlohmann-json3-dev \
+		libx11-dev \
+		libxrandr-dev \
+		libxinerama-dev \
+		libxcursor-dev \
+		libxi-dev \
+		zlib1g-dev \
+		libpng-dev \
+		libzstd-dev
 
-    # Install Vulkan SDK
-    echo "Installing Vulkan SDK..."
-    wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-    sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list https://packages.lunarg.com/vulkan/lunarg-vulkan-focal.list
-    sudo apt update
-    sudo apt install -y vulkan-sdk
+	local workRoot
+	workRoot="${HOME}/.cache/simple_engine_deps"
+	mkdir -p "${workRoot}"
 
-    # Install other dependencies
-    sudo apt install -y \
-        libglfw3-dev \
-        libglm-dev \
-        libopenal-dev \
-        libktx-dev
+	build_and_install_tinygltf "${workRoot}"
+	build_and_install_ktx "${workRoot}"
 
-    # Install Slang compiler (for shader compilation)
-    echo "Installing Slang compiler..."
-    if [ ! -f /usr/local/bin/slangc ]; then
-        SLANG_VERSION="2024.1.21"
-        wget "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
-        tar -xzf "slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
-        sudo cp slang/bin/slangc /usr/local/bin/
-        sudo chmod +x /usr/local/bin/slangc
-        rm -rf slang "slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
-    fi
+	echo ""
+	echo "Note: This script does not install Vulkan or slangc."
+	echo "Install the Vulkan SDK from LunarG (it includes slangc) if you need shader compilation."
 }
 
 # Function to install dependencies on Fedora/RHEL/CentOS
 install_fedora_rhel() {
     echo "Installing dependencies for Fedora/RHEL/CentOS..."
 
-    # Install build essentials
-    sudo dnf install -y gcc gcc-c++ cmake git
+	sudo dnf install -y \
+		gcc \
+		gcc-c++ \
+		cmake \
+		git \
+		ninja-build \
+		pkgconf-pkg-config \
+		glfw-devel \
+		glm-devel \
+		openal-soft-devel \
+		nlohmann-json-devel \
+		zlib-devel \
+		libpng-devel \
+		zstd-devel
 
-    # Install Vulkan SDK
-    echo "Installing Vulkan SDK..."
-    sudo dnf install -y vulkan-devel vulkan-tools
+	local workRoot
+	workRoot="${HOME}/.cache/simple_engine_deps"
+	mkdir -p "${workRoot}"
 
-    # Install other dependencies
-    sudo dnf install -y \
-        glfw-devel \
-        glm-devel \
-        openal-soft-devel
+	build_and_install_tinygltf "${workRoot}"
+	build_and_install_ktx "${workRoot}"
 
-    # Note: Some packages might need to be built from source on RHEL/CentOS
-    echo "Note: Some dependencies (libktx, tinygltf) may need to be built from source"
-    echo "Please refer to the project documentation for manual installation instructions"
+	echo ""
+	echo "Note: This script does not install Vulkan or slangc."
 }
 
 # Function to install dependencies on Arch Linux
 install_arch() {
     echo "Installing dependencies for Arch Linux..."
 
-    # Update package database
-    sudo pacman -Sy
+	sudo pacman -Sy
 
-    # Install build essentials
-    sudo pacman -S --noconfirm base-devel cmake git
 
-    # Install dependencies
-    sudo pacman -S --noconfirm \
-        vulkan-devel \
-        glfw-wayland \
-        glm \
-        openal
+	sudo pacman -S --noconfirm \
+		base-devel \
+		cmake \
+		git \
+		ninja \
+		pkgconf \
+		glfw \
+		glm \
+		openal \
+		nlohmann-json \
+		zlib \
+		libpng \
+		zstd
 
-    # Install AUR packages (requires yay or another AUR helper)
-    if command -v yay &> /dev/null; then
-        yay -S --noconfirm libktx
-    else
-        echo "Note: Please install yay or another AUR helper to install libktx packages"
-        echo "Alternatively, build these dependencies from source"
-    fi
+	local workRoot
+	workRoot="${HOME}/.cache/simple_engine_deps"
+	mkdir -p "${workRoot}"
+
+	build_and_install_tinygltf "${workRoot}"
+	build_and_install_ktx "${workRoot}"
+
+	echo ""
+	echo "Note: This script does not install Vulkan or slangc."
 }
 
 # Install dependencies based on detected OS
@@ -145,9 +216,7 @@ echo "Dependencies installation completed!"
 echo ""
 echo "To build the Simple Game Engine:"
 echo "1. cd to the simple_engine directory"
-echo "2. mkdir build && cd build"
-echo "3. cmake .."
-echo "4. make -j$(nproc)"
+echo "2. cmake -S . -B build -G Ninja"
+echo "3. cmake --build build --target SimpleEngine --parallel $(nproc)"
 echo ""
-echo "Or use the provided CMake build command:"
-echo "cmake --build cmake-build-debug --target SimpleEngine -j 10"
+echo "If you have Vulkan SDK installed, shader compilation uses slangc from the SDK automatically."

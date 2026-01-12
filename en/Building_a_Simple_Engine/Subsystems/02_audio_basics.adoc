@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Subsystems: Audio Basics
 :doctype: book

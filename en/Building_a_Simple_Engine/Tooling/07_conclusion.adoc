@@ -229,4 +229,4 @@ link:../../attachments/simple_engine/33_debug_utils.cpp[Debug Utils C{pp} code]
 link:../../attachments/simple_engine/34_crash_handling.cpp[Crash Handling C{pp} code]
 link:../../attachments/simple_engine/35_robustness_extensions.cpp[Robustness Extensions C{pp} code]
 
-xref:06_packaging_and_distribution.adoc[Previous: Packaging and Distribution] | xref:../Mobile_Development/01_introduction.adoc[Next: Mobile Development]
+link:06_packaging_and_distribution.adoc[Previous: Packaging and Distribution] | link:../Mobile_Development/01_introduction.adoc[Next: Mobile Development]

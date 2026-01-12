@@ -76,8 +76,8 @@ void Model::updateAnimation(uint32_t index, float deltaTime) {
     // Update animation timing with automatic looping
     Animation& animation = animations[index];
     animation.currentTime += deltaTime;
-    if (animation.currentTime > animation.end) {
-        animation.currentTime = animation.start;
+    while (animation.currentTime >= animation.end) {
+        animation.currentTime -= (animation.end - animation.start);
     }
 ----
 
@@ -87,12 +87,13 @@ Time management forms the foundation of animation playback, where the deltaTime 
 
 === Animation Update: Channel Iteration and Sampler Access
 
-New we iterate through all animation channels, establishing the connection between abstract animation data and the specific nodes in our scene graph that will receive transformation updates.
+Now we iterate through all animation channels, establishing the connection between abstract animation data and the specific nodes in our scene graph that will receive transformation updates.
 
 [source,cpp]
 ----
     // Process each animation channel to update corresponding scene nodes
     for (auto& channel : animation.channels) {
+        assert(channel.samplerIndex < animation.samplers.size());
         AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
 ----
 
@@ -106,14 +107,15 @@ Next, locate the appropriate keyframes that surround the current animation time 
 
 [source,cpp]
 ----
-        // Find the current keyframe pair that brackets the animation time
-        for (size_t i = 0; i < sampler.inputs.size() - 1; i++) {
-            if (animation.currentTime >= sampler.inputs[i] && animation.currentTime <= sampler.inputs[i + 1]) {
-                // Calculate normalized interpolation factor between keyframes
-                float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+        // Find the current keyframe pair that brackets the animation time using binary search
+        auto nextKeyFrameIt = std::lower_bound(sampler.inputs.begin(), sampler.inputs.end(), animation.currentTime);
+        if (nextKeyFrameIt != sampler.inputs.end() && nextKeyFrameIt != sampler.inputs.begin()) {
+            size_t i = std::distance(sampler.inputs.begin(), nextKeyFrameIt) - 1;
+            // Calculate normalized interpolation factor between keyframes
+            float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
 ----
 
-The keyframe search algorithm performs a linear scan to find the pair of keyframes that bracket the current animation time. While this approach has O(n) complexity, it's practical for typical animation data where keyframes are relatively sparse. Production systems often optimize this with binary search or by caching the last keyframe index, but the linear approach provides clarity for educational purposes and adequate performance for most real-world animation sequences.
+The keyframe search algorithm uses std::lower_bound to perform a binary search, finding the pair of keyframes that bracket the current animation time with O(log n) complexity. This efficient approach is ideal for animation data with many keyframes, providing optimal performance compared to linear scanning. The binary search returns an iterator to the first keyframe whose time is greater than or equal to the current animation time, allowing us to determine the bracketing pair by looking at the previous keyframe.
 
 The interpolation factor calculation creates a normalized value between 0.0 and 1.0 that represents exactly where the current time falls between two keyframes. When t=0.0, we're at the first keyframe; when t=1.0, we're at the second keyframe; values in between create smooth transitions. This mathematical foundation enables all the interpolation techniques that follow, whether for linear position changes or complex quaternion rotations.
 
@@ -298,11 +300,8 @@ void blendMultipleAnimations(const std::vector<uint32_t>& animationIndices,
         return;
     }
 
-    // Normalize weights
-    float totalWeight = 0.0f;
-    for (float weight : weights) {
-        totalWeight += weight;
-    }
+    // Normalize weights using std::accumulate for cleaner code
+    float totalWeight = std::accumulate(weights.begin(), weights.end(), 0.0f);
 
     std::vector<std::vector<glm::vec3>> allTranslations;
     std::vector<std::vector<glm::quat>> allRotations;
@@ -312,6 +311,11 @@ void blendMultipleAnimations(const std::vector<uint32_t>& animationIndices,
     std::vector<glm::vec3> originalTranslations;
     std::vector<glm::quat> originalRotations;
     std::vector<glm::vec3> originalScales;
+
+    // Reserve space to avoid reallocations
+    originalTranslations.reserve(model.linearNodes.size());
+    originalRotations.reserve(model.linearNodes.size());
+    originalScales.reserve(model.linearNodes.size());
 
     for (auto node : model.linearNodes) {
         originalTranslations.push_back(node->translation);
@@ -342,9 +346,9 @@ void blendMultipleAnimations(const std::vector<uint32_t>& animationIndices,
             scales.push_back(node->scale);
         }
 
-        allTranslations.push_back(translations);
-        allRotations.push_back(rotations);
-        allScales.push_back(scales);
+        allTranslations.push_back(std::move(translations));
+        allRotations.push_back(std::move(rotations));
+        allScales.push_back(std::move(scales));
     }
 
     // Reset to original state
@@ -453,6 +457,8 @@ void updateLocomotionBlendSpace(float currentDirection, float currentSpeed) {
         weights.push_back(weight);
 
         // Limit to 3 closest animations for performance
+        // Note: This works because we're inside the loop - we remove one element each time
+        // the size exceeds 3, maintaining a maximum of 3 elements as we iterate
         if (animIndices.size() > 3) {
             // Find the smallest weight
             auto minIt = std::min_element(weights.begin(), weights.end());

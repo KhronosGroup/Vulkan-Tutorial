@@ -30,4 +30,4 @@ xref:../../06_Texture_mapping/00_Images.adoc[Texture mapping] skills are particu
 
 Finally, basic 3D math understanding (matrices, vectors, quaternions) is crucial for handling model transformations, animations, and scene hierarchies. If you need a refresher, see the xref:../../Building_a_Simple_Engine/Camera_Transformations/02_math_foundations.adoc[Camera Transformations chapter] for detailed coverage of these mathematical concepts.
 
-xref:../GUI/06_conclusion.adoc[Previous: GUI] | xref:02_project_setup.adoc[Next: Setting Up the Project]
+link:../GUI/06_conclusion.adoc[Previous: GUI] | link:02_project_setup.adoc[Next: Setting Up the Project]

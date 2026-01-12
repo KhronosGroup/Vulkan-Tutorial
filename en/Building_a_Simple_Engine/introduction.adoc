@@ -36,16 +36,18 @@ Each chapter builds on the last to assemble a small but capable engine. Read a c
 
 Let's begin our journey into engine development with these chapters:
 
-1. xref:Engine_Architecture/01_introduction.adoc[Engine Architecture] - How to structure your code for flexibility, maintainability, and extensibility.
-2. xref:Camera_Transformations/01_introduction.adoc[Camera Transformations] - Implementation of camera systems and transformations.
-3. xref:Lighting_Materials/01_introduction.adoc[Lighting & Materials] - Basic lighting models and push constants.
-4. xref:GUI/01_introduction.adoc[GUI] - Implementation of a graphical user interface using Dear ImGui.
-5. xref:Loading_Models/01_introduction.adoc[Loading Models] - More sophisticated approaches to handling models, textures, and other assets.
-6. xref:Subsystems/01_introduction.adoc[Subsystems] - Implementation of Audio and Physics subsystems with Vulkan compute capabilities.
-7. xref:Tooling/01_introduction.adoc[Tooling] - CI/CD, Debugging, Crash minidump, Distribution, and Vulkan extensions for robustness.
-8. xref:Mobile_Development/01_introduction.adoc[Mobile Development] - Adapting the engine for Android/iOS, focusing on performance considerations and mobile-specific Vulkan extensions.
+1. link:Engine_Architecture/01_introduction.adoc[Engine Architecture] - How to structure your code for flexibility, maintainability, and extensibility.
+2. link:Camera_Transformations/01_introduction.adoc[Camera Transformations] - Implementation of camera systems and transformations.
+3. link:Lighting_Materials/01_introduction.adoc[Lighting & Materials] - Basic lighting models and push constants.
+4. link:GUI/01_introduction.adoc[GUI] - Implementation of a graphical user interface using Dear ImGui.
+5. link:Loading_Models/01_introduction.adoc[Loading Models] - More sophisticated approaches to handling models, textures, and other assets.
+6. link:Subsystems/01_introduction.adoc[Subsystems] - Implementation of Audio and Physics subsystems with Vulkan compute capabilities.
+7. link:Tooling/01_introduction.adoc[Tooling] - CI/CD, Debugging, Crash minidump, Distribution, and Vulkan extensions for robustness.
+8. link:Mobile_Development/01_introduction.adoc[Mobile Development] - Adapting the engine for Android/iOS, focusing on performance considerations and mobile-specific Vulkan extensions.
 
-xref:../conclusion.adoc[Previous: Main Tutorial Conclusion] | xref:Engine_Architecture/01_introduction.adoc[Next: Engine Architecture]
+9. link:Advanced_Topics/01_introduction.adoc[Advanced Topics] - Short, focused tutorials that extend the Simple Engine with specific features and optimizations.
+
+xref:../conclusion.adoc[Previous: Main Tutorial Conclusion] | link:Engine_Architecture/01_introduction.adoc[Next: Engine Architecture]
 
 
 === Getting Started with Example Assets

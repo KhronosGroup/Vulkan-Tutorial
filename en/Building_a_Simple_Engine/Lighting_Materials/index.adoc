@@ -11,4 +11,5 @@ This chapter covers the implementation of basic lighting models and the use of p
 * link:03_push_constants.adoc[Push Constants]
 * link:04_lighting_implementation.adoc[Lighting Implementation]
 * link:05_vulkan_integration.adoc[Vulkan Integration]
+* link:07_shadows.adoc[Shadows]
 * link:06_conclusion.adoc[Conclusion]

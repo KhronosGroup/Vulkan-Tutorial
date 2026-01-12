@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Implementing the Model Loading System
 :doctype: book
@@ -334,18 +334,16 @@ struct Model {
     }
 
     Node* findNode(const std::string& name) {
-        for (auto node : linearNodes) {
-            if (node->name == name) {
-                return node;
-            }
-        }
-        return nullptr;
+        auto nodeIt = std::ranges::find_if(linearNodes, [&name](auto const& node) {
+            return node->name == name;
+        });
+        return (nodeIt != linearNodes.end()) ? *nodeIt : nullptr;
     }
 
     void updateAnimation(uint32_t index, float deltaTime) {
-        if (animations.empty() || index >= animations.size()) {
-            return;
-        }
+        assert(!animations.empty() && index < animations.size());
+
+
 
         Animation& animation = animations[index];
         animation.currentTime += deltaTime;
@@ -356,10 +354,11 @@ struct Model {
         for (auto& channel : animation.channels) {
             AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
 
-            // Find the current key frame
-            for (size_t i = 0; i < sampler.inputs.size() - 1; i++) {
-                if (animation.currentTime >= sampler.inputs[i] && animation.currentTime <= sampler.inputs[i + 1]) {
-                    float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+            // Find the current key frame using binary search
+            auto keyFrameIt = std::ranges::lower_bound(sampler.inputs, animation.currentTime);
+            if (keyFrameIt != sampler.inputs.end() && keyFrameIt != sampler.inputs.begin()) {
+                size_t i = std::distance(sampler.inputs.begin(), keyFrameIt) - 1;
+                float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
 
                     switch (channel.path) {
                         case AnimationChannel::TRANSLATION: {

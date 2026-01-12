@@ -75,7 +75,6 @@
 *** xref:Building_a_Simple_Engine/Engine_Architecture/06_event_systems.adoc[Event systems]
 *** xref:Building_a_Simple_Engine/Engine_Architecture/conclusion.adoc[Conclusion]
 ** Camera Transformations
-*** xref:Building_a_Simple_Engine/Camera_Transformations/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/Camera_Transformations/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Camera_Transformations/02_math_foundations.adoc[Math foundations]
 *** xref:Building_a_Simple_Engine/Camera_Transformations/03_transformation_matrices.adoc[Transformation matrices]
@@ -83,7 +82,6 @@
 *** xref:Building_a_Simple_Engine/Camera_Transformations/05_vulkan_integration.adoc[Vulkan integration]
 *** xref:Building_a_Simple_Engine/Camera_Transformations/06_conclusion.adoc[Conclusion]
 ** Loading Models
-*** xref:Building_a_Simple_Engine/Loading_Models/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/Loading_Models/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Loading_Models/02_project_setup.adoc[Project setup]
 *** xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Model system]
@@ -94,7 +92,6 @@
 *** xref:Building_a_Simple_Engine/Loading_Models/08_animations.adoc[Animations]
 *** xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Conclusion]
 ** Lighting & Materials
-*** xref:Building_a_Simple_Engine/Lighting_Materials/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/02_lighting_models.adoc[Lighting models]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/03_push_constants.adoc[Push constants]
@@ -103,7 +100,6 @@
 *** xref:Building_a_Simple_Engine/Lighting_Materials/07_shadows.adoc[Shadows]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/06_conclusion.adoc[Conclusion]
 ** GUI
-*** xref:Building_a_Simple_Engine/GUI/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/GUI/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/GUI/02_imgui_setup.adoc[ImGui setup]
 *** xref:Building_a_Simple_Engine/GUI/03_input_handling.adoc[Input handling]
@@ -111,7 +107,6 @@
 *** xref:Building_a_Simple_Engine/GUI/05_vulkan_integration.adoc[Vulkan integration]
 *** xref:Building_a_Simple_Engine/GUI/06_conclusion.adoc[Conclusion]
 ** Subsystems
-*** xref:Building_a_Simple_Engine/Subsystems/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/Subsystems/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Subsystems/02_audio_basics.adoc[Audio basics]
 *** xref:Building_a_Simple_Engine/Subsystems/03_vulkan_audio.adoc[Vulkan audio]
@@ -119,7 +114,6 @@
 *** xref:Building_a_Simple_Engine/Subsystems/05_vulkan_physics.adoc[Vulkan physics]
 *** xref:Building_a_Simple_Engine/Subsystems/06_conclusion.adoc[Conclusion]
 ** Tooling
-*** xref:Building_a_Simple_Engine/Tooling/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/Tooling/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Tooling/02_cicd.adoc[CI/CD]
 *** xref:Building_a_Simple_Engine/Tooling/03_debugging_and_renderdoc.adoc[Debugging & RenderDoc]
@@ -128,7 +122,6 @@
 *** xref:Building_a_Simple_Engine/Tooling/06_packaging_and_distribution.adoc[Packaging & distribution]
 *** xref:Building_a_Simple_Engine/Tooling/07_conclusion.adoc[Conclusion]
 ** Mobile Development
-*** xref:Building_a_Simple_Engine/Mobile_Development/index.adoc[Overview]
 *** xref:Building_a_Simple_Engine/Mobile_Development/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Mobile_Development/02_platform_considerations.adoc[Platform considerations]
 *** xref:Building_a_Simple_Engine/Mobile_Development/03_performance_optimizations.adoc[Performance optimizations]

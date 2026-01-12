@@ -8,14 +8,14 @@ Mobile devices have significantly different hardware constraints compared to des
 
 [NOTE]
 ====
-This chapter covers general mobile performance. For practices that arise specifically because the GPU is tile-based (TBR), see xref:04_rendering_approaches.adoc[Rendering Approaches: Tile-Based Rendering].
+This chapter covers general mobile performance. For practices that arise specifically because the GPU is tile-based (TBR), see xref:Building_a_Simple_Engine/Mobile_Development/04_rendering_approaches.adoc[Rendering Approaches: Tile-Based Rendering].
 ====
 
 === Texture Optimizations
 
 [NOTE]
 ====
-We focus on mobile‑specific decisions here. For general Vulkan image creation, staging uploads, and descriptor setup, refer back to earlier chapters in the engine series—xref:../Engine_Architecture/04_resource_management.adoc[Resource Management], xref:../Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]—or the Vulkan Guide (https://docs.vulkan.org/guide/latest/).
+We focus on mobile‑specific decisions here. For general Vulkan image creation, staging uploads, and descriptor setup, refer back to earlier chapters in the engine series—xref:Building_a_Simple_Engine/Engine_Architecture/04_resource_management.adoc[Resource Management], xref:Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.adoc[Rendering Pipeline]—or the Vulkan Guide (https://docs.vulkan.org/guide/latest/).
 ====
 
 Textures are often the largest consumers of memory in a graphics application. Optimizing them is crucial for performance on both mobile and desktop.
@@ -188,7 +188,7 @@ struct OptimizedVertex {
 
 [NOTE]
 ====
-If you are targeting tile-based GPUs (TBR), bandwidth can be heavily impacted by attachment load/store behavior and tile flushes. See xref:04_rendering_approaches.adoc[Rendering Approaches] — sections “Attachment Load/Store Operations on Tilers” and “Pipelining on Tilers: Subpass Dependencies and BY_REGION” for concrete guidance.
+If you are targeting tile-based GPUs (TBR), bandwidth can be heavily impacted by attachment load/store behavior and tile flushes. See xref:Building_a_Simple_Engine/Mobile_Development/04_rendering_approaches.adoc[Rendering Approaches] — sections “Attachment Load/Store Operations on Tilers” and “Pipelining on Tilers: Subpass Dependencies and BY_REGION” for concrete guidance.
 ====
 
 === Draw Call Optimizations
@@ -203,7 +203,7 @@ Mobile GPUs are particularly sensitive to draw call overhead:
 
 [NOTE]
 ====
-On tile-based GPUs, reducing CPU overhead is important, but keeping work and data on-chip via proper pipelining and subpasses often yields larger gains. See xref:04_rendering_approaches.adoc[Rendering Approaches] — “Pipelining on Tilers: Subpass Dependencies and BY_REGION” for barrier/subpass patterns, and “Attachment Load/Store Operations on Tilers” for loadOp/storeOp guidance that avoids external memory traffic.
+On tile-based GPUs, reducing CPU overhead is important, but keeping work and data on-chip via proper pipelining and subpasses often yields larger gains. See xref:Building_a_Simple_Engine/Mobile_Development/04_rendering_approaches.adoc[Rendering Approaches] — “Pipelining on Tilers: Subpass Dependencies and BY_REGION” for barrier/subpass patterns, and “Attachment Load/Store Operations on Tilers” for loadOp/storeOp guidance that avoids external memory traffic.
 ====
 
 === Vendor-Specific Optimizations
@@ -257,4 +257,4 @@ vk::Format get_optimal_texture_format(vk::PhysicalDevice physical_device) {
 
 In the next section, we'll explore different rendering approaches for mobile GPUs, focusing on the differences between Tile-Based Rendering (TBR) and Immediate Mode Rendering (IMR).
 
-xref:02_platform_considerations.adoc[Previous: Platform Considerations] | xref:04_rendering_approaches.adoc[Next: Rendering Approaches]
+xref:Building_a_Simple_Engine/Mobile_Development/02_platform_considerations.adoc[Previous: Platform Considerations] | xref:Building_a_Simple_Engine/Mobile_Development/04_rendering_approaches.adoc[Next: Rendering Approaches]

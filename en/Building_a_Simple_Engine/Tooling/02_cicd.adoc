@@ -236,4 +236,4 @@ A well-designed CI/CD pipeline is essential for maintaining quality and producti
 
 In the next section, we'll explore debugging tools for Vulkan applications, including the powerful VK_KHR_debug_utils extension and external tools like RenderDoc.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_debugging_and_renderdoc.adoc[Next: Debugging with VK_KHR_debug_utils and RenderDoc]
+xref:Building_a_Simple_Engine/Tooling/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Tooling/03_debugging_and_renderdoc.adoc[Next: Debugging with VK_KHR_debug_utils and RenderDoc]

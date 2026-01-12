@@ -308,7 +308,7 @@ The `GLFW_CURSOR_DISABLED` mode captures the mouse cursor, allowing unlimited mo
 
 [NOTE]
 ====
-The specific implementation of input handling will depend on your windowing library and application architecture. The example above uses GLFW, but similar principles apply to other libraries like SDL, Qt, or platform-specific APIs. For more details on input handling with GLFW, refer to the xref:https://www.glfw.org/docs/latest/input_guide.html[GLFW Input Guide].
+The specific implementation of input handling will depend on your windowing library and application architecture. The example above uses GLFW, but similar principles apply to other libraries like SDL, Qt, or platform-specific APIs. For more details on input handling with GLFW, refer to the link:https://www.glfw.org/docs/latest/input_guide.html[GLFW Input Guide].
 ====
 
 === Camera Rotation
@@ -686,9 +686,9 @@ void gameLoop(float deltaTime) {
 
 [NOTE]
 ====
-For more advanced camera techniques, refer to the Advanced Camera Techniques section in the xref:../Appendix/appendix.adoc[Appendix].
+For more advanced camera techniques, refer to the Advanced Camera Techniques section in the xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix].
 ====
 
 In the next section, we'll integrate our camera system with Vulkan to render 3D scenes.
 
-xref:03_transformation_matrices.adoc[Previous: Transformation Matrices] | xref:05_vulkan_integration.adoc[Next: Vulkan Integration]
+xref:Building_a_Simple_Engine/Camera_Transformations/03_transformation_matrices.adoc[Previous: Transformation Matrices] | xref:Building_a_Simple_Engine/Camera_Transformations/05_vulkan_integration.adoc[Next: Vulkan Integration]

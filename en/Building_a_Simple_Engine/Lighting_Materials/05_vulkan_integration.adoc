@@ -11,7 +11,7 @@ To keep the flow concrete and avoid repeating earlier theory, use this quick roa
 
 [NOTE]
 ====
-We won’t re-explain PBR theory or push-constant fundamentals here. See xref:03_push_constants.adoc[push constants], and xref:01_introduction.adoc[Introduction] (and xref:../Loading_Models/05_pbr_rendering.adoc[PBR Rendering]) for PBR concepts.
+We won’t re-explain PBR theory or push-constant fundamentals here. See xref:Building_a_Simple_Engine/Lighting_Materials/03_push_constants.adoc[push constants], and xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Introduction] (and xref:Building_a_Simple_Engine/Loading_Models/05_pbr_rendering.adoc[PBR Rendering]) for PBR concepts.
 ====
 
 The PBR pass slots into the graphics pipeline as shown below:
@@ -146,7 +146,7 @@ void Renderer::recordCommandBuffer(vk::CommandBuffer commandBuffer, uint32_t ima
 
 == PBR Shader Reference
 
-This chapter reuses the exact PBR shader defined in the previous section to avoid duplication and drift. Please refer to xref:04_lighting_implementation.adoc[Implementing the PBR Shader] for the full pbr.slang source and detailed explanations. Here we focus strictly on Vulkan integration: pipeline layout, descriptor bindings, push constants, and draw submission.
+This chapter reuses the exact PBR shader defined in the previous section to avoid duplication and drift. Please refer to xref:Building_a_Simple_Engine/Lighting_Materials/04_lighting_implementation.adoc[Implementing the PBR Shader] for the full pbr.slang source and detailed explanations. Here we focus strictly on Vulkan integration: pipeline layout, descriptor bindings, push constants, and draw submission.
 
 
 == Compiling the Shader
@@ -218,4 +218,4 @@ This approach provides a solid foundation for rendering physically accurate mate
 
 In the next section, we'll explore how to add high-quality shadows using Vulkan Ray Query.
 
-xref:04_lighting_implementation.adoc[Previous: Lighting Implementation] | xref:07_shadows.adoc[Next: Shadows]
+xref:Building_a_Simple_Engine/Lighting_Materials/04_lighting_implementation.adoc[Previous: Lighting Implementation] | xref:Building_a_Simple_Engine/Lighting_Materials/07_shadows.adoc[Next: Shadows]

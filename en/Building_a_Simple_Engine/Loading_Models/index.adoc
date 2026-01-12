@@ -8,15 +8,15 @@ Welcome to the third chapter of the "Building a Simple Engine" series! After exp
 
 This chapter is divided into several sections to make it easier to follow:
 
-1. xref:01_introduction.adoc[Introduction] - An overview of what we'll be building and prerequisites
-2. xref:02_project_setup.adoc[Setting Up the Project] - How to structure our engine project
-3. xref:03_model_system.adoc[Implementing the Model Loading System] - Creating the core data structures
-4. xref:04_loading_gltf.adoc[Loading a glTF Model] - Parsing and processing glTF files
-5. xref:05_pbr_rendering.adoc[Implementing PBR Rendering] - Setting up physically-based rendering
-6. xref:06_multiple_objects.adoc[Rendering Multiple Objects] - Managing multiple model instances
-7. xref:07_scene_rendering.adoc[Rendering the Scene] - Drawing the scene graph
-8. xref:08_animations.adoc[Updating Animations] - Animating models
-9. xref:09_conclusion.adoc[Conclusion] - Summary and future directions
+1. xref:Building_a_Simple_Engine/Loading_Models/01_introduction.adoc[Introduction] - An overview of what we'll be building and prerequisites
+2. xref:Building_a_Simple_Engine/Loading_Models/02_project_setup.adoc[Setting Up the Project] - How to structure our engine project
+3. xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Implementing the Model Loading System] - Creating the core data structures
+4. xref:Building_a_Simple_Engine/Loading_Models/04_loading_gltf.adoc[Loading a glTF Model] - Parsing and processing glTF files
+5. xref:Building_a_Simple_Engine/Loading_Models/05_pbr_rendering.adoc[Implementing PBR Rendering] - Setting up physically-based rendering
+6. xref:Building_a_Simple_Engine/Loading_Models/06_multiple_objects.adoc[Rendering Multiple Objects] - Managing multiple model instances
+7. xref:Building_a_Simple_Engine/Loading_Models/07_scene_rendering.adoc[Rendering the Scene] - Drawing the scene graph
+8. xref:Building_a_Simple_Engine/Loading_Models/08_animations.adoc[Updating Animations] - Animating models
+9. xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Conclusion] - Summary and future directions
 
 Each section builds upon the previous ones, so it's recommended to follow them in order. This chapter also builds upon the concepts introduced in the Engine Architecture and Camera Transformations chapters. By completing this chapter, you'll have a comprehensive foundation for a Vulkan-based 3D engine with a well-structured architecture, camera system, and model loading capabilities.
 

@@ -13,7 +13,7 @@
 
 === Building on glTF Knowledge
 
-As we learned in the xref:../../15_GLTF_KTX2_Migration.adoc[glTF and KTX2 Migration chapter], glTF is a modern 3D format that supports a wide range of features including PBR materials, animations, and scene hierarchies. In this chapter, we'll leverage these capabilities to build a more robust engine.
+As we learned in the xref:15_GLTF_KTX2_Migration.adoc[glTF and KTX2 Migration chapter], glTF is a modern 3D format that supports a wide range of features including PBR materials, animations, and scene hierarchies. In this chapter, we'll leverage these capabilities to build a more robust engine.
 
 While the previous chapter covered the basics of loading glTF models, here we'll focus on organizing the loaded data into a proper scene graph and implementing animation support. This approach will allow us to create more complex and dynamic scenes.
 
@@ -392,4 +392,4 @@ struct Model {
 
 Now that we've designed our model system's architecture and implemented the core data structures, the next step is to actually load 3D models from glTF files. In the next chapter, we'll explore how to parse glTF files using the tinygltf library and populate our scene graph with the loaded data. We'll learn how to extract meshes, materials, textures, and animations from glTF files and convert them into our engine's internal representation.
 
-xref:02_project_setup.adoc[Previous: Setting Up the Project] | xref:04_loading_gltf.adoc[Next: Loading a glTF Model]
+xref:Building_a_Simple_Engine/Loading_Models/02_project_setup.adoc[Previous: Setting Up the Project] | xref:Building_a_Simple_Engine/Loading_Models/04_loading_gltf.adoc[Next: Loading a glTF Model]

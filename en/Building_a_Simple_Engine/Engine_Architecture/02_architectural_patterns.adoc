@@ -23,7 +23,7 @@ image::../../../images/layered_architecture_diagram.png[Layered Architecture Dia
 * Easier to understand and maintain
 * Can replace or modify individual layers without affecting others
 
-For detailed information and implementation examples, see the xref:../Appendix/appendix.adoc#layered-architecture[Appendix: Layered Architecture].
+For detailed information and implementation examples, see the xref:Building_a_Simple_Engine/Appendix/appendix.adoc#layered-architecture[Appendix: Layered Architecture].
 
 ==== link:https://www.youtube.com/watch?v=rX0ItVEVjHc[Data-Oriented Design]
 
@@ -36,7 +36,7 @@ image::../../../images/data_oriented_design_diagram.svg[Data-Oriented Design Dia
 * More efficient memory usage
 * Easier to parallelize
 
-For detailed information and implementation examples, see the xref:../Appendix/appendix.adoc#data-oriented-design[Appendix: Data-Oriented Design].
+For detailed information and implementation examples, see the xref:Building_a_Simple_Engine/Appendix/appendix.adoc#data-oriented-design[Appendix: Data-Oriented Design].
 
 ==== link:https://gameprogrammingpatterns.com/service-locator.html[Service Locator Pattern]
 
@@ -49,7 +49,7 @@ image::../../../images/service_locator_pattern_diagram.svg[Service Locator Patte
 * Allows for easy service replacement
 * Facilitates testing with mock services
 
-For detailed information and implementation examples, see the xref:../Appendix/appendix.adoc#service-locator-pattern[Appendix: Service Locator Pattern].
+For detailed information and implementation examples, see the xref:Building_a_Simple_Engine/Appendix/appendix.adoc#service-locator-pattern[Appendix: Service Locator Pattern].
 
 === link:https://gameprogrammingpatterns.com/component.html[Component-Based Architecture]
 
@@ -164,8 +164,8 @@ While other architectural patterns have their merits, component-based architectu
 
 === Conclusion
 
-We've provided a brief overview of common architectural patterns, with a focus on Component-Based Architecture which we'll use throughout this tutorial. For more detailed information about other architectural patterns, including implementation examples and comparative analysis, see the xref:../Appendix/appendix.adoc[Appendix: Detailed Architectural Patterns].
+We've provided a brief overview of common architectural patterns, with a focus on Component-Based Architecture which we'll use throughout this tutorial. For more detailed information about other architectural patterns, including implementation examples and comparative analysis, see the xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix: Detailed Architectural Patterns].
 
 In the next section, we'll dive deeper into component systems and how to implement them effectively in your engine.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_component_systems.adoc[Next: Component Systems]
+xref:Building_a_Simple_Engine/Engine_Architecture/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Engine_Architecture/03_component_systems.adoc[Next: Component Systems]

@@ -35,12 +35,12 @@ A basic understanding of input handling concepts will help you follow along as w
 You should also be familiar with the following chapters from the main tutorial:
 
 * Basic Vulkan concepts:
-** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
-** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
-* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
-* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
-* xref:../../06_Texture_mapping/00_Images.adoc[Texture mapping]
+** xref:03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+* xref:06_Texture_mapping/00_Images.adoc[Texture mapping]
 
 Let's begin by exploring how to implement a professional GUI system with Dear ImGui and Vulkan.
 
-xref:../Lighting_Materials/06_conclusion.adoc[Previous: Lighting & Materials Conclusion] | xref:02_imgui_setup.adoc[Next: Setting Up Dear ImGui]
+xref:Building_a_Simple_Engine/Lighting_Materials/06_conclusion.adoc[Previous: Lighting & Materials Conclusion] | xref:Building_a_Simple_Engine/GUI/02_imgui_setup.adoc[Next: Setting Up Dear ImGui]

@@ -4,11 +4,11 @@
 
 This chapter covers the implementation of critical engine subsystems - Audio and Physics - with a focus on leveraging Vulkan's compute capabilities for enhanced performance.
 
-* xref:01_introduction.adoc[Introduction]
-* xref:02_audio_basics.adoc[Audio Basics]
-* xref:03_vulkan_audio.adoc[Vulkan for Audio Processing]
-* xref:04_physics_basics.adoc[Physics Basics]
-* xref:05_vulkan_physics.adoc[Vulkan for Physics Simulation]
-* xref:06_conclusion.adoc[Conclusion]
+* xref:Building_a_Simple_Engine/Subsystems/01_introduction.adoc[Introduction]
+* xref:Building_a_Simple_Engine/Subsystems/02_audio_basics.adoc[Audio Basics]
+* xref:Building_a_Simple_Engine/Subsystems/03_vulkan_audio.adoc[Vulkan for Audio Processing]
+* xref:Building_a_Simple_Engine/Subsystems/04_physics_basics.adoc[Physics Basics]
+* xref:Building_a_Simple_Engine/Subsystems/05_vulkan_physics.adoc[Vulkan for Physics Simulation]
+* xref:Building_a_Simple_Engine/Subsystems/06_conclusion.adoc[Conclusion]
 
-xref:../Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | xref:../index.adoc[Back to Building a Simple Engine]
+xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | xref:../index.adoc[Back to Building a Simple Engine]

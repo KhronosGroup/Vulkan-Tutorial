@@ -498,4 +498,4 @@ private:
 
 With these advanced input handling techniques, your application can provide a consistent and intuitive user experience. In the next section, we'll explore how to create various UI elements to control your application.
 
-xref:02_imgui_setup.adoc[Previous: Setting Up Dear ImGui] | xref:04_ui_elements.adoc[Next: UI Elements]
+xref:Building_a_Simple_Engine/GUI/02_imgui_setup.adoc[Previous: Setting Up Dear ImGui] | xref:Building_a_Simple_Engine/GUI/04_ui_elements.adoc[Next: UI Elements]

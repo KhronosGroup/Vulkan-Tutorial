@@ -52,4 +52,4 @@ A well-designed camera system is essential for any 3D application. It serves as 
 
 Remember that the code provided in this chapter is a starting point. Feel free to modify and extend it to suit your specific needs and application requirements.
 
-xref:05_vulkan_integration.adoc[Previous: Vulkan Integration] | xref:../Lighting_Materials/01_introduction.adoc[Next: Lighting & Materials]
+xref:Building_a_Simple_Engine/Camera_Transformations/05_vulkan_integration.adoc[Previous: Vulkan Integration] | xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Next: Lighting & Materials]

@@ -65,12 +65,12 @@ A basic understanding of audio and physics concepts in game development will hel
 You should also be familiar with the following chapters from the main tutorial:
 
 * Basic Vulkan concepts:
-** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
-** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
-* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
-* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
-* xref:../../11_Compute_Shader.adoc[Compute shaders]
+** xref:03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+* xref:11_Compute_Shader.adoc[Compute shaders]
 
 Let's begin by exploring how to implement a basic audio subsystem and then enhance it with Vulkan's computational capabilities.
 
-xref:../Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | xref:02_audio_basics.adoc[Next: Audio Basics]
+xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Previous: Loading Models Conclusion] | xref:Building_a_Simple_Engine/Subsystems/02_audio_basics.adoc[Next: Audio Basics]

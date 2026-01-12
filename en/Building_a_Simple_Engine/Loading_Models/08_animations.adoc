@@ -19,7 +19,7 @@ glTF provides a standardized way to store and transfer animations, which our eng
 
 === Animation Data Structures
 
-As we saw in the xref:03_model_system.adoc[Model System chapter], our engine uses several structures to represent animations:
+As we saw in the xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Model System chapter], our engine uses several structures to represent animations:
 
 [source,cpp]
 ----
@@ -1064,4 +1064,4 @@ Our animation system provides a solid foundation for bringing 3D models to life.
 
 In the next chapter, we'll wrap up our exploration of the model loading system and discuss future enhancements.
 
-xref:07_scene_rendering.adoc[Previous: Rendering the Scene] | xref:09_conclusion.adoc[Next: Conclusion]
+xref:Building_a_Simple_Engine/Loading_Models/07_scene_rendering.adoc[Previous: Rendering the Scene] | xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Next: Conclusion]

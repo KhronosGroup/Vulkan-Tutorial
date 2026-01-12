@@ -184,4 +184,4 @@ By the end of this chapter, you'll understand:
 
 Let's get started by exploring the principles of Physically Based Rendering in more detail.
 
-xref:../Camera_Transformations/06_conclusion.adoc[Previous: Camera Transformations - Conclusion] | xref:02_lighting_models.adoc[Next: Lighting Models]
+xref:Building_a_Simple_Engine/Camera_Transformations/06_conclusion.adoc[Previous: Camera Transformations - Conclusion] | xref:Building_a_Simple_Engine/Lighting_Materials/02_lighting_models.adoc[Next: Lighting Models]

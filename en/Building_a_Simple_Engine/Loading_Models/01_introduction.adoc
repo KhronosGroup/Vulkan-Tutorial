@@ -6,7 +6,7 @@
 
 Welcome to the "Loading Models" chapter of our "Building a Simple Engine" series! After exploring engine architecture and camera systems in the previous chapters, we're now ready to focus on handling 3D assets within our engine framework.
 
-In this chapter, we'll set up a robust model loading system that can handle modern 3D assets. Building upon the engine architecture we've established and the camera system we've implemented, we'll now add the ability to load and render complex 3D models. In the xref:../../15_GLTF_KTX2_Migration.html[chapter on glTF and KTX2] from the main tutorial, we learned about migrating from OBJ to glTF format and the basics of loading glTF models. Now, we'll integrate that knowledge into our engine structure to create a more complete implementation.
+In this chapter, we'll set up a robust model loading system that can handle modern 3D assets. Building upon the engine architecture we've established and the camera system we've implemented, we'll now add the ability to load and render complex 3D models. In the xref:../../15_GLTF_KTX2_Migration.adoc[chapter on glTF and KTX2] from the main tutorial, we learned about migrating from OBJ to glTF format and the basics of loading glTF models. Now, we'll integrate that knowledge into our engine structure to create a more complete implementation.
 
 This chapter will transform your understanding of 3D asset handling from simple model loading to sophisticated engine-level systems. We'll begin by building a scene graph, which provides the hierarchical organization that complex 3D scenes require. This foundation enables you to group objects logically, apply transformations at different levels, and efficiently manage scene complexity.
 

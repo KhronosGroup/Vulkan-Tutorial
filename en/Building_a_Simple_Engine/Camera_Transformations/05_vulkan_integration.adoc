@@ -24,7 +24,7 @@ To keep the integration digestible, think of it in five small steps:
 
 [NOTE]
 ====
-See xref:04_transformation_matrices.adoc[Camera transformation matricies] and xref:04_camera_implementation.adoc[Camera implementation] for a refresher on Matrix math.
+See xref:03_transformation_matrices.adoc[Transformation matrices] and xref:04_camera_implementation.adoc[Camera implementation] for a refresher on matrix math.
 ====
 
 === Uniform Buffer Setup

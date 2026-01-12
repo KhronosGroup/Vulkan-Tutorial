@@ -193,17 +193,17 @@ private:
 
 The following short, focused tutorials build directly on the Simple Engine and are great next steps:
 
-- xref:Advanced_Topics/01_introduction.adoc[Tutorials Index — browse all topics]
-- xref:Advanced_Topics/Mipmaps_and_LOD.adoc[Mipmaps and LOD] — practical guidance on stable texture sampling and anisotropy.
-- xref:Advanced_Topics/Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read] — optimize same‑pass reads via tile/local memory when supported.
+- xref:../Advanced_Topics/01_introduction.adoc[Tutorials Index — browse all topics]
+- xref:../Advanced_Topics/Mipmaps_and_LOD.adoc[Mipmaps and LOD] — practical guidance on stable texture sampling and anisotropy.
+- xref:../Advanced_Topics/Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read] — optimize same‑pass reads via tile/local memory when supported.
 
 === Code Examples
 
 The complete code for this chapter can be found in the following files:
 
-xref:attachment$simple_engine/36_mobile_platform_integration.cpp[Mobile Platform Integration C{pp} code]
-xref:attachment$simple_engine/37_mobile_optimizations.cpp[Mobile Optimizations C{pp} code]
-xref:attachment$simple_engine/38_tbr_optimizations.cpp[TBR Optimizations C{pp} code]
-xref:attachment$simple_engine/39_mobile_extensions.cpp[Mobile Extensions C{pp} code]
+xref:../../attachments/simple_engine/36_mobile_platform_integration.cpp[Mobile Platform Integration C{pp} code]
+xref:../../attachments/simple_engine/37_mobile_optimizations.cpp[Mobile Optimizations C{pp} code]
+xref:../../attachments/simple_engine/38_tbr_optimizations.cpp[TBR Optimizations C{pp} code]
+xref:../../attachments/simple_engine/39_mobile_extensions.cpp[Mobile Extensions C{pp} code]
 
 xref:05_vulkan_extensions.adoc[Previous: Vulkan Extensions for Mobile] | xref:../index.adoc[Back to Building a Simple Engine]

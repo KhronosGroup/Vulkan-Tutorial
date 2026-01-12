@@ -11,7 +11,7 @@ To keep the flow concrete and avoid repeating earlier theory, use this quick roa
 
 [NOTE]
 ====
-We won’t re-explain PBR theory or push-constant fundamentals here. See xref:Lighting_Materials/03_push_constants.adoc [push constants], and xref:Lighting_Materials/01_introduction.adoc[Introduction] (and xref:Lighting_Materials/05_pbr_rendering.adoc[PBR Rendering]) for PBR concepts.
+We won’t re-explain PBR theory or push-constant fundamentals here. See xref:03_push_constants.adoc[push constants], and xref:01_introduction.adoc[Introduction] (and xref:../Loading_Models/05_pbr_rendering.adoc[PBR Rendering]) for PBR concepts.
 ====
 
 The PBR pass slots into the graphics pipeline as shown below:

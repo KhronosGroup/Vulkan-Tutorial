@@ -235,7 +235,7 @@ We'll use this function now to create a `findDepthFormat` helper function to sel
 
 [,c++]
 ----
-VkFormat findDepthFormat() {
+vk::Format findDepthFormat() {
    return findSupportedFormat(
         {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
             vk::ImageTiling::eOptimal,

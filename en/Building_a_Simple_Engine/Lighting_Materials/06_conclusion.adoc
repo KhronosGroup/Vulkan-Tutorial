@@ -41,4 +41,4 @@ Remember that lighting is a complex topic with many approaches and techniques. T
 
 In the next chapter, we'll explore GUI implementation, which will allow us to create interactive user interfaces for our applications.
 
-xref:07_shadows.adoc[Previous: Shadows] | xref:../GUI/01_introduction.adoc[Next: GUI - Introduction]
+xref:07_shadows.adoc[Previous: Shadows] | xref:../GUI/01_introduction.adoc[Next: GUI]

@@ -203,4 +203,4 @@ Shadows are a deep topic. Now that you understand how to implement basic and sof
 
 In the next chapter, we'll look at how to add a Graphical User Interface (GUI) to control these lighting and shadow parameters in real-time.
 
-xref:06_conclusion.adoc[Previous: Conclusion] | xref:../GUI/01_introduction.adoc[Next: GUI - Introduction]
+xref:05_vulkan_integration.adoc[Previous: Vulkan Integration] | xref:06_conclusion.adoc[Next: Conclusion]

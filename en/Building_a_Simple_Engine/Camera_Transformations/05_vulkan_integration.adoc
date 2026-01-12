@@ -294,4 +294,4 @@ With these components in place, we now have a fully functional camera system int
 
 In the next section, we'll wrap up with a conclusion and discuss potential improvements to our camera system.
 
-xref:06_conclusion.adoc[Next: Conclusion]
+xref:04_camera_implementation.adoc[Previous: Camera Implementation] | xref:06_conclusion.adoc[Next: Conclusion]

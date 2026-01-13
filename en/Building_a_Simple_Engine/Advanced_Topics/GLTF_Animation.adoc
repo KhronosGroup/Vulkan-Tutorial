@@ -251,7 +251,7 @@ return glm::slerp(q0, q1, t);  // Avoids gimbal lock
 If you want to dive deeper:
 
 * **Transform Component**: See `transform_component.h` for how we store and compute model matrices
-* **GLTF Specification**: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#animations
+* **GLTF Specification**: link:https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#animations[GLTF Specification about animation]
 * **Synchronization**: How animation updates interact with render frame timing
 
 The key takeaway: **Always compose animation transforms with base transforms**. This fundamental principle is what makes objects animate in their correct world positions while the animation data itself describes relative changes. Understanding this composition is essential for any animation system.

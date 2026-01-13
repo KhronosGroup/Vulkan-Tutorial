@@ -41,6 +41,6 @@ If you want to push this further:
 
 == What to read next
 
-* `Rendering_Pipeline_Overview.adoc`
-* `ForwardPlus_Rendering.adoc`
-* `Ray_Query_Rendering.adoc`
+* xref:Building_a_Simple_Engine/Advanced_Topics/Rendering_Pipeline_Overview.adoc[Rendering Pipeline Overview]
+* xref:Building_a_Simple_Engine/Advanced_Topics/ForwardPlus_Rendering.adoc[Forward+ Rendering]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Ray_Query_Rendering.adoc[Ray Query Rendering]

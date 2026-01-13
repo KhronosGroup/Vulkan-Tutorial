@@ -565,4 +565,4 @@ This concludes our exploration of engine architecture. In this chapter, we've co
 
 With these foundations in place, you're well-equipped to build a robust and flexible rendering engine that can be extended to support a wide range of features and techniques.
 
-xref:Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.adoc[Previous: Rendering Pipeline] | xref:conclusion.adoc[Next: Conclusion]
+xref:Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.adoc[Previous: Rendering Pipeline] | xref:Building_a_Simple_Engine/Engine_Architecture/conclusion.adoc[Next: Conclusion]

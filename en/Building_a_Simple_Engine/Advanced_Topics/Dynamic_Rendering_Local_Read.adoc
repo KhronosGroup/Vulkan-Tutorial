@@ -34,6 +34,6 @@ If you want to demonstrate local-read more directly:
 
 == What to read next
 
-* `Rendering_Pipeline_Overview.adoc`
-* `Synchronization_and_Streaming.adoc`
-* `Synchronization_2_Frame_Pacing.adoc`
+* xref:Building_a_Simple_Engine/Advanced_Topics/Rendering_Pipeline_Overview.adoc[Rendering Pipelne Overview]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Synchronization_and_Streaming.adoc[Synchronization and Streaming]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Synchronization_2_Frame_Pacing.adoc[Frame Pacing]

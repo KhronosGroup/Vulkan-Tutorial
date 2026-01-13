@@ -97,6 +97,6 @@ If you want to expand the lighting system beyond “readable sample”:
 
 == What to read next
 
-* `Rendering_Pipeline_Overview.adoc`
-* `ForwardPlus_Rendering.adoc`
-* `Synchronization_2_Frame_Pacing.adoc`
+* xref:Building_a_Simple_Engine/Advanced_Topics/Rendering_Pipeline_Overview.adoc[Rendering Pipeline Overview]
+* xref:Building_a_Simple_Engine/Advanced_Topics/ForwardPlus_Rendering.adoc[Forward+ Rendering]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Synchronization_2_Frame_Pacing.adoc[Frame Pacing]

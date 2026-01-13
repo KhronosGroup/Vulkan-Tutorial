@@ -81,16 +81,6 @@
 *** xref:Building_a_Simple_Engine/Camera_Transformations/04_camera_implementation.adoc[Camera implementation]
 *** xref:Building_a_Simple_Engine/Camera_Transformations/05_vulkan_integration.adoc[Vulkan integration]
 *** xref:Building_a_Simple_Engine/Camera_Transformations/06_conclusion.adoc[Conclusion]
-** Loading Models
-*** xref:Building_a_Simple_Engine/Loading_Models/01_introduction.adoc[Introduction]
-*** xref:Building_a_Simple_Engine/Loading_Models/02_project_setup.adoc[Project setup]
-*** xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Model system]
-*** xref:Building_a_Simple_Engine/Loading_Models/04_loading_gltf.adoc[Loading glTF]
-*** xref:Building_a_Simple_Engine/Loading_Models/05_pbr_rendering.adoc[PBR rendering]
-*** xref:Building_a_Simple_Engine/Loading_Models/06_multiple_objects.adoc[Multiple objects]
-*** xref:Building_a_Simple_Engine/Loading_Models/07_scene_rendering.adoc[Scene rendering]
-*** xref:Building_a_Simple_Engine/Loading_Models/08_animations.adoc[Animations]
-*** xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Conclusion]
 ** Lighting & Materials
 *** xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Lighting_Materials/02_lighting_models.adoc[Lighting models]
@@ -106,6 +96,16 @@
 *** xref:Building_a_Simple_Engine/GUI/04_ui_elements.adoc[UI elements]
 *** xref:Building_a_Simple_Engine/GUI/05_vulkan_integration.adoc[Vulkan integration]
 *** xref:Building_a_Simple_Engine/GUI/06_conclusion.adoc[Conclusion]
+** Loading Models
+*** xref:Building_a_Simple_Engine/Loading_Models/01_introduction.adoc[Introduction]
+*** xref:Building_a_Simple_Engine/Loading_Models/02_project_setup.adoc[Project setup]
+*** xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Model system]
+*** xref:Building_a_Simple_Engine/Loading_Models/04_loading_gltf.adoc[Loading glTF]
+*** xref:Building_a_Simple_Engine/Loading_Models/05_pbr_rendering.adoc[PBR rendering]
+*** xref:Building_a_Simple_Engine/Loading_Models/06_multiple_objects.adoc[Multiple objects]
+*** xref:Building_a_Simple_Engine/Loading_Models/07_scene_rendering.adoc[Scene rendering]
+*** xref:Building_a_Simple_Engine/Loading_Models/08_animations.adoc[Animations]
+*** xref:Building_a_Simple_Engine/Loading_Models/09_conclusion.adoc[Conclusion]
 ** Subsystems
 *** xref:Building_a_Simple_Engine/Subsystems/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Subsystems/02_audio_basics.adoc[Audio basics]

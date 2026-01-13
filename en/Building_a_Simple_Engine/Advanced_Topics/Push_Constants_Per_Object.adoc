@@ -34,6 +34,6 @@ If you want to extend this pattern:
 
 == What to read next
 
-* `Rendering_Pipeline_Overview.adoc`
-* `Descriptor_Indexing_UpdateAfterBind.adoc`
-* `Ray_Query_Rendering.adoc`
+* xref:Building_a_Simple_Engine/Advanced_Topics/Rendering_Pipeline_Overview.adoc[Rendering Pipeline Overview]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Descriptor_Indexing_UpdateAfterBind.adoc[Descriptor Indexing UpdateAfterBind]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Ray_Query_Rendering.adoc[Ray Query Rendering]

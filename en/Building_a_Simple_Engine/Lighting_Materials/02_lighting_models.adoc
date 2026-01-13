@@ -113,6 +113,8 @@ Considerations for using PBR:
 
 For comprehensive information on PBR, see the link:https://www.pbr-book.org/[Physically Based Rendering book].
 
+image::images/PBR_ray_shadows.png[PBR materials with ray-traced shadows - demonstrating metallic surfaces, roughness variation, and realistic shadow rendering]
+
 == Lighting Models in glTF
 
 The glTF format uses PBR with the metallic-roughness workflow, which defines materials using these primary parameters:
@@ -186,4 +188,4 @@ To deepen your understanding of lighting models, here are some valuable resource
 
 In the next section, we'll explore how to use push constants to efficiently pass material properties to our shaders.
 
-link:01_introduction.adoc[Previous: Introduction] | link:03_push_constants.adoc[Next: Push Constants]
+xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Lighting_Materials/03_push_constants.adoc[Next: Push Constants]

@@ -66,8 +66,8 @@ If you want to explore more advanced descriptor patterns:
 
 == What to read next
 
-* `Synchronization_and_Streaming.adoc`
-* `Separate_Image_Sampler_Descriptors.adoc`
-* `Ray_Query_Rendering.adoc`
+* xref:Building_a_Simple_Engine/Advanced_Topics/Synchronization_and_Streaming.adoc[Synchronization and Stremaing]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Separate_Image_Sampler_Descriptors.adoc[Separate Image Sampler Descriptors]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Ray_Query_Rendering.adoc[Ray Query Rendering]
 
 This conservative approach avoids common pitfalls while keeping the code approachable.

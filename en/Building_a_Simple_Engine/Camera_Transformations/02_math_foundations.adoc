@@ -1102,4 +1102,4 @@ If you're finding some of the mathematical concepts challenging or want to deepe
 
 These resources should help you gain a deeper understanding of the mathematical concepts used in 3D graphics and camera systems. If you're struggling with a particular concept, try looking at multiple resources as different explanations might resonate better with your learning style.
 
-link:03_transformation_matrices.adoc[Next: Transformation Matrices]
+xref:Building_a_Simple_Engine/Camera_Transformations/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Camera_Transformations/03_transformation_matrices.adoc[Next: Transformation Matrices]

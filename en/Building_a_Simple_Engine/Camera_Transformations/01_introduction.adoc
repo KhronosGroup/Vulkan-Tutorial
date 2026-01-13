@@ -22,10 +22,10 @@ By the end of this chapter, you'll have a solid understanding of 3D transformati
 Before starting this chapter, you should have completed the main Vulkan tutorial. You should also be familiar with:
 
 * Basic Vulkan concepts:
-** xref:../../03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
-** xref:../../03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
-* xref:../../04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:../../04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
-* xref:../../05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
+** xref:03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers]
+** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Graphics pipelines]
+* xref:04_Vertex_buffers/00_Vertex_input_description.adoc[Vertex] and xref:04_Vertex_buffers/03_Index_buffer.adoc[index buffers]
+* xref:05_Uniform_buffers/00_Descriptor_set_layout_and_buffer.adoc[Uniform buffers]
 * Basic programming concepts and C++
 
-link:02_math_foundations.adoc[Next: Mathematical Foundations]
+xref:Building_a_Simple_Engine/Engine_Architecture/conclusion.adoc[Previous: Engine Architecture Conclusion] | xref:Building_a_Simple_Engine/Camera_Transformations/02_math_foundations.adoc[Next: Mathematical Foundations]

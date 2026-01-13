@@ -845,4 +845,4 @@ With this implementation, you have a Vulkan implementation for ImGui that allows
 
 In the next section, we'll explore how to handle input for both the GUI and the 3D scene.
 
-link:01_introduction.adoc[Previous: Introduction] | link:03_input_handling.adoc[Next: Input Handling]
+xref:Building_a_Simple_Engine/GUI/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/GUI/03_input_handling.adoc[Next: Input Handling]

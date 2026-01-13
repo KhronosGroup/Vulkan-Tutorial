@@ -24,7 +24,7 @@ To keep the integration digestible, think of it in five small steps:
 
 [NOTE]
 ====
-See link:04_transformation_matrices.adoc[Camera transformation matricies] and link:04_camera_implementation.adoc[Camera implementation] for a refresher on Matrix math.
+See xref:Building_a_Simple_Engine/Camera_Transformations/03_transformation_matrices.adoc[Transformation matrices] and xref:Building_a_Simple_Engine/Camera_Transformations/04_camera_implementation.adoc[Camera implementation] for a refresher on matrix math.
 ====
 
 === Uniform Buffer Setup
@@ -294,4 +294,4 @@ With these components in place, we now have a fully functional camera system int
 
 In the next section, we'll wrap up with a conclusion and discuss potential improvements to our camera system.
 
-link:06_conclusion.adoc[Next: Conclusion]
+xref:Building_a_Simple_Engine/Camera_Transformations/04_camera_implementation.adoc[Previous: Camera Implementation] | xref:Building_a_Simple_Engine/Camera_Transformations/06_conclusion.adoc[Next: Conclusion]

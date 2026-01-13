@@ -686,9 +686,9 @@ void gameLoop(float deltaTime) {
 
 [NOTE]
 ====
-For more advanced camera techniques, refer to the Advanced Camera Techniques section in the link:../Appendix/appendix.adoc[Appendix].
+For more advanced camera techniques, refer to the Advanced Camera Techniques section in the xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix].
 ====
 
 In the next section, we'll integrate our camera system with Vulkan to render 3D scenes.
 
-link:05_vulkan_integration.adoc[Next: Vulkan Integration]
+xref:Building_a_Simple_Engine/Camera_Transformations/03_transformation_matrices.adoc[Previous: Transformation Matrices] | xref:Building_a_Simple_Engine/Camera_Transformations/05_vulkan_integration.adoc[Next: Vulkan Integration]

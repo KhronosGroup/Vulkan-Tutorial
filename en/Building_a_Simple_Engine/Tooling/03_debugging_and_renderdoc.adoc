@@ -360,4 +360,4 @@ Effective debugging is essential for developing complex Vulkan applications. By 
 
 In the next section, we'll explore crash handling and minidumps, which are crucial for diagnosing issues that occur in production environments.
 
-link:02_cicd.adoc[Previous: CI/CD for Vulkan Projects] | link:04_crash_minidump.adoc[Next: Crash Handling and Minidumps]
+xref:Building_a_Simple_Engine/Tooling/02_cicd.adoc[Previous: CI/CD for Vulkan Projects] | xref:Building_a_Simple_Engine/Tooling/04_crash_minidump.adoc[Next: Crash Handling and Minidumps]

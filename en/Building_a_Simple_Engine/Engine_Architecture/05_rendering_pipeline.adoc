@@ -529,10 +529,10 @@ Proper synchronization is crucial in Vulkan because:
 
 The vulkan tutorial includes a more detailed discussion of synchronization, the proper uses of the primitives described above.
 
-* xref:../../03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[Synchronization]
-* xref:../../03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[Frames In Flight]
-* xref:../../11_Compute_Shader.adoc[Compute Shader]
-* xref:../../17_Multithreading.adoc[Multithreading]
+* xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[Synchronization]
+* xref:03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[Frames In Flight]
+* xref:11_Compute_Shader.adoc[Compute Shader]
+* xref:17_Multithreading.adoc[Multithreading]
 
 
 ===== Pipeline Barriers
@@ -1499,7 +1499,7 @@ private:
 
 === Advanced Rendering Techniques
 
-For detailed information about advanced rendering techniques such as Deferred Rendering, Forward+ Rendering, and Physically Based Rendering (PBR), please refer to the link:../Appendix/appendix.adoc#advanced-rendering-techniques[Advanced Rendering Techniques] section in the Appendix. This section includes references to valuable resources for further reading.
+For detailed information about advanced rendering techniques such as Deferred Rendering, Forward+ Rendering, and Physically Based Rendering (PBR), please refer to the xref:Building_a_Simple_Engine/Appendix/appendix.adoc#advanced-rendering-techniques[Advanced Rendering Techniques] section in the Appendix. This section includes references to valuable resources for further reading.
 
 === Conclusion
 
@@ -1512,4 +1512,4 @@ A well-designed rendering pipeline is essential for creating a flexible and effi
 
 In the next section, we'll explore event systems, which provide a flexible way for different parts of your engine to communicate with each other.
 
-link:04_resource_management.adoc[Previous: Resource Management] | link:06_event_systems.adoc[Next: Event Systems]
+xref:Building_a_Simple_Engine/Engine_Architecture/04_resource_management.adoc[Previous: Resource Management] | xref:Building_a_Simple_Engine/Engine_Architecture/06_event_systems.adoc[Next: Event Systems]

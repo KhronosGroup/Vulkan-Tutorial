@@ -12,3 +12,6 @@ content:
 ui:
   bundle:
     url: ui-bundle.zip
+runtime:
+  log:
+    failure_level: warn

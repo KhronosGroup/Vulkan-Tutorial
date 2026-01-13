@@ -224,9 +224,9 @@ The complete code for this chapter can be found in the following files:
 * `simple_engine/34_crash_handling.cpp`: Implementation of crash handling and minidumps
 * `simple_engine/35_robustness_extensions.cpp`: Implementation of Vulkan extensions for robustness
 
-link:../../attachments/simple_engine/32_cicd_setup.cpp[CI/CD Setup C{pp} code]
-link:../../attachments/simple_engine/33_debug_utils.cpp[Debug Utils C{pp} code]
-link:../../attachments/simple_engine/34_crash_handling.cpp[Crash Handling C{pp} code]
-link:../../attachments/simple_engine/35_robustness_extensions.cpp[Robustness Extensions C{pp} code]
+link:{attachmentsdir}/simple_engine/32_cicd_setup.cpp[CI/CD Setup C{pp} code]
+link:{attachmentsdir}/simple_engine/33_debug_utils.cpp[Debug Utils C{pp} code]
+link:{attachmentsdir}/simple_engine/34_crash_handling.cpp[Crash Handling C{pp} code]
+link:{attachmentsdir}/simple_engine/35_robustness_extensions.cpp[Robustness Extensions C{pp} code]
 
-link:06_packaging_and_distribution.adoc[Previous: Packaging and Distribution] | link:../Mobile_Development/01_introduction.adoc[Next: Mobile Development]
+xref:Building_a_Simple_Engine/Tooling/06_packaging_and_distribution.adoc[Previous: Packaging and Distribution] | xref:Building_a_Simple_Engine/Mobile_Development/01_introduction.adoc[Next: Mobile Development]

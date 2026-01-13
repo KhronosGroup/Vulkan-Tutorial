@@ -194,4 +194,4 @@ the capabilities of the device, rather than making assumptions based on the plat
 
 In the next section, we'll explore performance optimizations specifically tailored for mobile hardware, focusing on texture formats and memory usage.
 
-link:01_introduction.adoc[Previous: Introduction] | link:03_performance_optimizations.adoc[Next: Performance Optimizations for Mobile]
+xref:Building_a_Simple_Engine/Mobile_Development/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Mobile_Development/03_performance_optimizations.adoc[Next: Performance Optimizations for Mobile]

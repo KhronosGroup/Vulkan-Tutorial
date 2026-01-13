@@ -113,6 +113,8 @@ Considerations for using PBR:
 
 For comprehensive information on PBR, see the link:https://www.pbr-book.org/[Physically Based Rendering book].
 
+image::../attachments/simple_engine/Assets/PBR_ray_shadows.png[PBR materials with ray-traced shadows - demonstrating metallic surfaces, roughness variation, and realistic shadow rendering]
+
 == Lighting Models in glTF
 
 The glTF format uses PBR with the metallic-roughness workflow, which defines materials using these primary parameters:

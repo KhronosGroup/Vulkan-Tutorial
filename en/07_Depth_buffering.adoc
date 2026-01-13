@@ -385,7 +385,7 @@ transition_image_layout(
     vk::ImageAspectFlagBits::eDepth);
 ----
 
-Unlike as with the color image we don't need multiple barriers here. As we don't care for the contents of the depth attachment once the frame is finished, we can always translate from `k::ImageLayout::eUndefined`. What's special about this layout, is the fact that you can always use it as a source without having to care what happens before.
+Unlike as with the color image we don't need multiple barriers here. As we don't care for the contents of the depth attachment once the frame is finished, we can always translate from `vk::ImageLayout::eUndefined`. What's special about this layout, is the fact that you can always use it as a source without having to care what happens before.
 
 Also make sure you adjust all other calls to the `transition_image_layout` function call to pass the correct image aspect:
 

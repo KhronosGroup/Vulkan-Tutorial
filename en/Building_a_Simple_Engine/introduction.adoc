@@ -54,7 +54,7 @@ xref:conclusion.adoc[Previous: Main Tutorial Conclusion] | xref:Building_a_Simpl
 
 To follow along with the attachments-based Simple Engine examples and scenes, fetch the Bistro assets locally.
 
-image::../attachments/simple_engine/Assets/MainEntry.png[The Bistro scene - a detailed outdoor café environment demonstrating the engine's rendering capabilities]
+image::images/MainEntry.png[The Bistro scene - a detailed outdoor café environment demonstrating the engine's rendering capabilities]
 
 - Linux/macOS (default target: attachments/simple_engine/Assets/bistro at repository root):
 +

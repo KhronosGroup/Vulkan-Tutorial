@@ -165,7 +165,7 @@ These properties can be specified as constant values or as texture maps for
 spatial variation across the surface. We'll go into details about PBR in the
 next few chapters.
 
-image::../attachments/simple_engine/Assets/bookstand.png[Bookstand with complex PBR materials - demonstrating wood, glass, metal, and paper textures with varied material properties]
+image::images/bookstand.png[Bookstand with complex PBR materials - demonstrating wood, glass, metal, and paper textures with varied material properties]
 
 ==== Texture Formats and Compression
 

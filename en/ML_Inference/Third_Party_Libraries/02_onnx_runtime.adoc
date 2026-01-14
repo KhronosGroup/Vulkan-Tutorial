@@ -160,7 +160,7 @@ target_link_libraries(your_target PRIVATE onnxruntime)
 
 === Platform-Specific Considerations
 
-*Linux*: ONNX Runtime requires glibc 2.27 or later (Ubuntu 18.04+, CentOS 8+). For GPU support, install CUDA 11.x or 12.x.
+*Linux*: ONNX Runtime requires glibc 2.27 or later (Ubuntu 18.04+, CentOS 8+). For GPU support, install CUDA 11.0 or later.
 
 *Windows*: Requires Visual Studio 2019 or later runtime. For GPU support, install CUDA or ensure DirectX 12 is available (it's included in Windows 10/11).
 

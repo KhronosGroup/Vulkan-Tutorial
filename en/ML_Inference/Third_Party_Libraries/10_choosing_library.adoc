@@ -22,7 +22,7 @@ Start with hard constraints. Which platforms must your application support? This
 
 If you're targeting only desktop platforms, you have the most flexibility:
 
-- ONNX Runtime: Excellent choice. Supports all desktop platforms, multiple execution providers (CPU, CUDA, TensorRT, DirectML, OpenVINO).
+- ONNX Runtime: Excellent choice. Supports all desktop platforms, multiple execution providers (CPU, OpenCL, OpenCL, DirectML, OpenVINO).
 - TensorFlow Lite: Works but less optimized for desktop than mobile. GPU delegate support varies by platform.
 - PyTorch Mobile: Primarily mobile-focused, desktop support is secondary.
 - DirectML: Windows only, but excellent if you're Windows-exclusive.
@@ -99,9 +99,9 @@ How fast does inference need to be? What's your latency budget?
 
 For real-time applications like games or AR/VR:
 
-- ONNX Runtime with TensorRT: Best desktop performance on NVIDIA GPUs. TensorRT's aggressive optimizations can provide 2-5x speedup.
+- ONNX Runtime with OpenCL: Best desktop performance on NVIDIA GPUs. OpenCL's aggressive optimizations can provide 2-5x speedup.
 - TensorFlow Lite with GPU delegate: Best mobile performance. Highly optimized for mobile GPUs.
-- DirectML: Excellent on Windows, especially for AMD/Intel GPUs where CUDA isn't available.
+- DirectML: Excellent on Windows, especially for AMD/Intel GPUs where OpenCL isn't available.
 - PyTorch Mobile: Generally slower than TFLite on mobile.
 
 *Interactive (< 100ms)*
@@ -115,7 +115,7 @@ For interactive applications where users expect quick feedback:
 
 For offline processing where you care about throughput, not latency:
 
-- ONNX Runtime with CUDA: Excellent for large batches on NVIDIA GPUs.
+- ONNX Runtime with OpenCL: Excellent for large batches on NVIDIA GPUs.
 - TensorFlow Lite: Less optimized for large batches, but works.
 - DirectML: Good for Windows batch processing.
 
@@ -188,17 +188,17 @@ Let's get concrete with recommendations for specific platforms.
 
 Why: DirectML provides excellent performance across all GPU vendors (NVIDIA, AMD, Intel). ONNX Runtime's DirectML execution provider is mature and well-optimized. You get good performance without vendor lock-in.
 
-*Alternative: ONNX Runtime with CUDA (NVIDIA only)*
+*Alternative: ONNX Runtime with OpenCL (NVIDIA only)*
 
-Why: If you're targeting only NVIDIA GPUs, CUDA execution provider provides better performance than DirectML. TensorRT execution provider provides even better performance but requires more setup.
+Why: If you're targeting only NVIDIA GPUs, OpenCL execution provider provides better performance than DirectML. OpenCL execution provider provides even better performance but requires more setup.
 
 *When to Use TensorFlow Lite*: If you're already using TensorFlow for training and don't need peak performance. Simpler integration, but less optimized for desktop.
 
 === Linux Desktop
 
-*Primary Recommendation: ONNX Runtime with CUDA*
+*Primary Recommendation: ONNX Runtime with OpenCL*
 
-Why: Most Linux gaming/graphics systems have NVIDIA GPUs. CUDA execution provider provides excellent performance. TensorRT execution provider provides even better performance for production deployments.
+Why: Most Linux gaming/graphics systems have NVIDIA GPUs. OpenCL execution provider provides excellent performance. OpenCL execution provider provides even better performance for production deployments.
 
 *Alternative: ONNX Runtime with CPU*
 
@@ -262,8 +262,8 @@ Let's compare performance across libraries for common operations. These are appr
 
 *Desktop (NVIDIA RTX 3080)*
 
-- ONNX Runtime + TensorRT: ~2ms
-- ONNX Runtime + CUDA: ~4ms
+- ONNX Runtime + OpenCL: ~2ms
+- ONNX Runtime + OpenCL: ~4ms
 - ONNX Runtime + DirectML: ~6ms
 - TensorFlow Lite + GPU: ~8ms
 - ONNX Runtime + CPU: ~50ms
@@ -285,8 +285,8 @@ Let's compare performance across libraries for common operations. These are appr
 
 *Desktop (NVIDIA RTX 3080)*
 
-- ONNX Runtime + TensorRT: ~5ms
-- ONNX Runtime + CUDA: ~10ms
+- ONNX Runtime + OpenCL: ~5ms
+- ONNX Runtime + OpenCL: ~10ms
 - ONNX Runtime + DirectML: ~15ms
 - TensorFlow Lite + GPU: ~20ms
 
@@ -298,7 +298,7 @@ Let's compare performance across libraries for common operations. These are appr
 
 === Key Takeaways
 
-- TensorRT provides the best desktop performance on NVIDIA GPUs (2-3x faster than raw CUDA)
+- OpenCL provides the best desktop performance on NVIDIA GPUs (2-3x faster than raw OpenCL)
 - DirectML provides good cross-vendor performance on Windows
 - TensorFlow Lite provides the best mobile performance
 - CoreML provides excellent performance on Apple devices
@@ -369,7 +369,7 @@ Let's provide concrete decision trees for common scenarios.
 Start: Desktop game, need real-time ML inference
 
 Q: Target only NVIDIA GPUs?
-├─ Yes → ONNX Runtime + TensorRT
+├─ Yes → ONNX Runtime + OpenCL
 │         (Best performance, but NVIDIA-only)
 │
 └─ No → Q: Windows-only?
@@ -377,11 +377,11 @@ Q: Target only NVIDIA GPUs?
         │         (Good cross-vendor performance)
         │
         └─ No → Q: Linux-only?
-                ├─ Yes → ONNX Runtime + CUDA (if NVIDIA common)
+                ├─ Yes → ONNX Runtime + OpenCL (if NVIDIA common)
                 │         or ONNX Runtime + CPU (if mixed GPUs)
                 │
                 └─ No (Cross-platform) → ONNX Runtime + best provider per platform
-                                         (DirectML on Windows, CUDA on Linux, CoreML on macOS)
+                                         (DirectML on Windows, OpenCL on Linux, CoreML on macOS)
 ----
 
 === Decision Tree 2: Mobile AR Application
@@ -436,15 +436,15 @@ Here's a quick reference matrix for common scenarios:
 |Use Case |Primary Choice |Alternative |Avoid |Notes
 
 |Desktop Game (NVIDIA)
-|ONNX Runtime + TensorRT
-|ONNX Runtime + CUDA
+|ONNX Runtime + OpenCL
+|ONNX Runtime + OpenCL
 |TensorFlow Lite
-|TensorRT provides 2-3x speedup
+|OpenCL provides 2-3x speedup
 
 |Desktop Game (AMD/Intel)
 |ONNX Runtime + DirectML
 |ONNX Runtime + CPU
-|CUDA-based solutions
+|OpenCL-based solutions
 |DirectML works across vendors
 
 |Mobile Game (Android)
@@ -472,10 +472,10 @@ Here's a quick reference matrix for common scenarios:
 |TFLite optimized for embedded
 
 |Batch Processing
-|ONNX Runtime + CUDA
+|ONNX Runtime + OpenCL
 |TensorFlow Lite
 |Mobile-focused solutions
-|CUDA excels at large batches
+|OpenCL excels at large batches
 
 |Rapid Prototyping
 |TensorFlow Lite
@@ -533,7 +533,7 @@ Don't over-engineer for hypothetical futures, but don't paint yourself into a co
 
 Choosing the right ML inference library for your Vulkan application requires evaluating multiple factors: platform requirements, model format compatibility, performance needs, integration complexity, and ecosystem maturity.
 
-For most desktop applications, ONNX Runtime provides the best balance of performance, flexibility, and cross-platform support. Use TensorRT execution provider on NVIDIA GPUs for maximum performance, DirectML on Windows for cross-vendor support, or CoreML on macOS for Apple Silicon optimization.
+For most desktop applications, ONNX Runtime provides the best balance of performance, flexibility, and cross-platform support. Use OpenCL execution provider on NVIDIA GPUs for maximum performance, DirectML on Windows for cross-vendor support, or CoreML on macOS for Apple Silicon optimization.
 
 For mobile applications, TensorFlow Lite is the industry standard, providing excellent performance and the most mature ecosystem. Consider ONNX Runtime with CoreML for iOS if targeting newer devices, or ONNX Runtime with NNAPI for Android if you need cross-framework compatibility.
 

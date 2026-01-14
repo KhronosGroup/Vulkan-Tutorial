@@ -1,0 +1,427 @@
+::pp: {plus}{plus}
+
+= PyTorch Mobile
+
+== Introduction
+
+PyTorch has become the framework of choice for many researchers and practitioners. Its dynamic computation graph, intuitive Python API, and strong ecosystem make it ideal for experimentation and development. But PyTorch was designed for research and training, not for deployment on resource-constrained devices.
+
+PyTorch Mobile bridges this gap. It's Facebook's (now Meta's) solution for deploying PyTorch models on mobile and embedded devices. Unlike TensorFlow Lite, which requires converting models to a different framework's format, PyTorch Mobile lets you deploy PyTorch models directly, maintaining the same model representation from training to deployment.
+
+This chapter explores PyTorch Mobile: what makes it different from desktop PyTorch, how it compares to TensorFlow Lite and ONNX Runtime, how to integrate it with Vulkan applications, and when it's the right choice for your project.
+
+== The PyTorch Advantage: One Framework, Everywhere
+
+The core value proposition of PyTorch Mobile is continuity. You train in PyTorch, you deploy in PyTorch. No conversion to a different format, no worrying about whether operations will translate correctly, no debugging subtle differences between training and inference behavior.
+
+=== The Conversion Problem
+
+If you've worked with TensorFlow Lite or ONNX, you've experienced the conversion problem. You train a model in one framework, then convert it to a deployment format. This conversion is a source of bugs and frustration.
+
+Operations might not convert correctly. Dynamic shapes might become fixed. Custom operations might not be supported. Numerical differences might appear between the training framework and the deployment runtime. You spend hours debugging why your model works perfectly in PyTorch but produces wrong results in TensorFlow Lite.
+
+PyTorch Mobile eliminates this problem. The model you train is the model you deploy. The same PyTorch runtime that executes your model during training executes it during inference. There's no conversion step, no format translation, no opportunity for subtle bugs to creep in.
+
+=== The Developer Experience
+
+This continuity extends to the developer experience. If you know PyTorch, you know PyTorch Mobile. The APIs are similar, the concepts are the same, the debugging tools work the same way.
+
+You can prototype on your desktop, test on your phone, and be confident that behavior will be identical. You can use the same model file for desktop inference, server deployment, and mobile deployment. This flexibility is powerful—it means you can iterate quickly without worrying about platform-specific issues.
+
+=== The Tradeoff: Size and Optimization
+
+This continuity comes with a tradeoff. PyTorch Mobile is larger than TensorFlow Lite. The runtime is several megabytes instead of hundreds of kilobytes. Models are stored in PyTorch's format, which is less aggressively optimized than TensorFlow Lite's FlatBuffers.
+
+For many applications, this tradeoff is worth it. The development velocity and reduced debugging time outweigh the size cost. But for size-critical applications (apps with tight download size budgets, embedded systems with limited storage), TensorFlow Lite's aggressive optimization might be necessary.
+
+== Architecture: Desktop PyTorch, Optimized for Mobile
+
+PyTorch Mobile isn't a complete rewrite—it's desktop PyTorch, carefully pruned and optimized for mobile constraints.
+
+=== Selective Build: Only What You Need
+
+The key to PyTorch Mobile's size management is selective builds. Desktop PyTorch includes hundreds of operations, support for training, automatic differentiation, and extensive debugging tools. PyTorch Mobile lets you build a custom runtime that includes only the operations your model actually uses.
+
+When you prepare a model for mobile deployment, you analyze which operations it uses. Then you build a PyTorch Mobile runtime that includes only those operations. A model that uses 50 operations gets a runtime with 50 operations, not 500.
+
+This selective build process can reduce the runtime from 50MB+ to 2-5MB, depending on your model's complexity. It's not as small as TensorFlow Lite, but it's small enough for most mobile applications.
+
+=== TorchScript: The Deployment Format
+
+PyTorch models are typically defined as Python classes with a `forward` method. This works great for training but doesn't work for mobile deployment—you can't run Python on iOS, and running Python on Android is problematic.
+
+TorchScript solves this problem. It's a subset of Python that can be compiled to a portable intermediate representation. You convert your PyTorch model to TorchScript, which produces a `.pt` or `.ptl` file that can be loaded and executed by the PyTorch Mobile runtime without Python.
+
+There are two ways to create TorchScript:
+
+*Tracing*: You run your model with example inputs, and PyTorch records the operations that execute. This produces a TorchScript model that replicates the traced execution path.
+
+[source,python]
+----
+import torch
+
+model = MyModel()
+example_input = torch.rand(1, 3, 224, 224)
+traced_model = torch.jit.trace(model, example_input)
+traced_model.save("model.pt")
+----
+
+Tracing is simple and works for most models, but it has limitations. If your model has control flow (if statements, loops) that depends on input data, tracing only captures one execution path. The traced model might not handle different inputs correctly.
+
+*Scripting*: You annotate your model with type hints, and PyTorch compiles it to TorchScript directly from the Python source code. This preserves control flow and handles dynamic behavior correctly.
+
+[source,python]
+----
+import torch
+
+class MyModel(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.sum() > 0:
+            return x * 2
+        else:
+            return x * 3
+
+model = MyModel()
+scripted_model = torch.jit.script(model)
+scripted_model.save("model.pt")
+----
+
+Scripting is more powerful but requires type annotations and has some limitations on which Python features you can use.
+
+For most models, tracing is sufficient. For models with complex control flow, scripting is necessary.
+
+=== Quantization: Catching Up to TensorFlow Lite
+
+Historically, PyTorch's quantization support lagged behind TensorFlow Lite. This has changed dramatically in recent years. PyTorch now has comprehensive quantization support that rivals TensorFlow Lite.
+
+PyTorch supports:
+
+*Dynamic Quantization*: Weights are quantized to int8, activations remain float32. Simple to apply, provides model size reduction and some speedup.
+
+*Static Quantization*: Both weights and activations are int8. Requires calibration with representative data, provides maximum performance.
+
+*Quantization-Aware Training (QAT)*: Simulates quantization during training, allowing the model to learn to be robust to quantization. Provides the best accuracy for quantized models.
+
+The workflow is similar to TensorFlow Lite:
+
+[source,python]
+----
+import torch
+from torch.quantization import quantize_dynamic, get_default_qconfig, prepare, convert
+
+# Dynamic quantization (simplest)
+model_dynamic = quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+
+# Static quantization (requires calibration)
+model.qconfig = get_default_qconfig('fbgemm')  # or 'qnnpack' for mobile
+model_prepared = prepare(model)
+# Run calibration data through model_prepared
+model_quantized = convert(model_prepared)
+
+# Convert to TorchScript for mobile
+traced = torch.jit.trace(model_quantized, example_input)
+traced.save("model_quantized.pt")
+----
+
+PyTorch's quantization is powerful, but the tooling and documentation are less mature than TensorFlow Lite's. You might need to experiment more to get good results.
+
+=== Mobile Optimization: Operator Fusion and Graph Optimization
+
+Beyond quantization, PyTorch Mobile applies various optimizations to improve inference performance:
+
+*Operator Fusion*: Combines multiple operations into single, optimized kernels. For example, convolution followed by batch normalization and ReLU can be fused into a single operation, reducing memory traffic and overhead.
+
+*Constant Folding*: Evaluates operations with constant inputs at compile time, eliminating runtime computation.
+
+*Dead Code Elimination*: Removes operations that don't contribute to the final output.
+
+*Memory Planning*: Analyzes the model graph to reuse memory for intermediate tensors, reducing peak memory usage.
+
+These optimizations happen automatically when you prepare a model for mobile deployment. You don't need to do anything special—just use the mobile optimization APIs.
+
+== Integration with Vulkan Applications
+
+Integrating PyTorch Mobile with Vulkan applications follows similar patterns to TensorFlow Lite, but with some PyTorch-specific considerations.
+
+=== The Basic Approach: Separate Contexts
+
+Like TensorFlow Lite, the simplest integration treats PyTorch Mobile and Vulkan as separate systems:
+
+1. Your Vulkan application renders frames and manages GPU resources
+2. When inference is needed, copy data from GPU to CPU memory
+3. Run PyTorch Mobile inference (which might use GPU internally)
+4. Process results on CPU
+5. Copy results back to GPU if needed
+
+This approach is straightforward and works well for most applications. The overhead is acceptable if inference doesn't happen every frame.
+
+=== GPU Acceleration: The Vulkan Backend
+
+PyTorch Mobile supports GPU acceleration through multiple backends:
+
+*Metal* (iOS): Uses Apple's Metal API for GPU acceleration. This is the recommended approach on iOS, providing excellent performance on Apple GPUs.
+
+*Vulkan* (Android): PyTorch Mobile has experimental Vulkan backend support for Android. This is particularly interesting for Vulkan-based applications because both your rendering and ML inference can use Vulkan.
+
+*OpenGL ES* (Android): Fallback option for devices without Vulkan support.
+
+The Vulkan backend is still experimental and has limitations. Not all operations are supported, and performance might not match the Metal backend on iOS or TensorFlow Lite's GPU delegate on Android. But it's improving rapidly, and for Vulkan-based applications, it offers the potential for tighter integration.
+
+To use the Vulkan backend:
+
+[source,cpp]
+----
+#include <torch/script.h>
+
+// Load model
+torch::jit::script::Module module = torch::jit::load("model.pt");
+
+// Enable Vulkan backend (Android)
+module.to(torch::kVulkan);
+
+// Run inference
+std::vector<torch::jit::IValue> inputs;
+inputs.push_back(torch::rand({1, 3, 224, 224}).to(torch::kVulkan));
+auto output = module.forward(inputs).toTensor();
+----
+
+The key is the `.to(torch::kVulkan)` call, which moves the model and tensors to Vulkan-backed memory.
+
+=== Memory Sharing: Possible but Complex
+
+Unlike TensorFlow Lite, PyTorch Mobile's Vulkan backend is designed with the possibility of memory sharing in mind. In theory, you could share Vulkan memory between your rendering context and PyTorch Mobile's inference context.
+
+In practice, this is complex and not well-documented. The Vulkan backend is experimental, and the APIs for memory sharing aren't stable. For production applications, the separate-contexts approach is more reliable.
+
+If you need tight integration, consider:
+
+*Custom Operators*: Implement critical operations as custom PyTorch operators that directly use your Vulkan context. This gives you full control but requires significant implementation effort.
+
+*Hybrid Approach*: Use PyTorch Mobile for most operations, but implement performance-critical or tightly-integrated operations as custom Vulkan compute shaders. This balances convenience and performance.
+
+=== Cross-Platform Considerations
+
+PyTorch Mobile's cross-platform story is strong:
+
+*iOS*: Excellent support. Use the Metal backend for GPU acceleration. The runtime integrates well with iOS apps, and the tooling is mature.
+
+*Android*: Good support. Use the Vulkan or OpenGL ES backend for GPU acceleration. The runtime works well, though the Vulkan backend is still experimental.
+
+*Desktop*: Full PyTorch works on desktop, so you can use the same model for desktop and mobile deployment. This is useful for testing and development.
+
+The ability to use the same model across all platforms is a major advantage. You can develop on desktop, test on mobile, and deploy everywhere with confidence that behavior will be consistent.
+
+== Practical Example: Real-Time Style Transfer
+
+Let's walk through a complete example: integrating PyTorch Mobile style transfer into a Vulkan-based mobile app.
+
+=== The Scenario
+
+You're building a mobile app that applies artistic style transfer to camera frames in real-time. Users see their camera feed transformed into the style of famous paintings. You need to process frames at 15+ FPS on mid-range devices.
+
+=== Model Selection and Training
+
+You start with a fast style transfer model based on the Johnson et al. architecture. You train it in PyTorch on a desktop GPU:
+
+[source,python]
+----
+import torch
+import torch.nn as nn
+
+class StyleTransferNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Encoder
+        self.conv1 = nn.Conv2d(3, 32, 9, stride=1, padding=4)
+        self.conv2 = nn.Conv2d(32, 64, 3, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, 3, stride=2, padding=1)
+
+        # Residual blocks
+        self.res1 = ResidualBlock(128)
+        self.res2 = ResidualBlock(128)
+        self.res3 = ResidualBlock(128)
+
+        # Decoder
+        self.deconv1 = nn.ConvTranspose2d(128, 64, 3, stride=2, padding=1, output_padding=1)
+        self.deconv2 = nn.ConvTranspose2d(64, 32, 3, stride=2, padding=1, output_padding=1)
+        self.conv4 = nn.Conv2d(32, 3, 9, stride=1, padding=4)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = self.res1(x)
+        x = self.res2(x)
+        x = self.res3(x)
+        x = F.relu(self.deconv1(x))
+        x = F.relu(self.deconv2(x))
+        x = torch.tanh(self.conv4(x))
+        return x
+
+# Train the model
+model = StyleTransferNet()
+# ... training code ...
+----
+
+After training, you convert to TorchScript for mobile deployment:
+
+[source,python]
+----
+# Convert to TorchScript
+model.eval()
+example_input = torch.rand(1, 3, 360, 640)
+traced_model = torch.jit.trace(model, example_input)
+
+# Optimize for mobile
+from torch.utils.mobile_optimizer import optimize_for_mobile
+optimized_model = optimize_for_mobile(traced_model)
+optimized_model._save_for_lite_interpreter("style_transfer.ptl")
+----
+
+The `.ptl` format is optimized for mobile, with reduced file size and faster loading.
+
+=== Android Integration
+
+In your Android app, you integrate PyTorch Mobile:
+
+[source,java]
+----
+import org.pytorch.IValue;
+import org.pytorch.Module;
+import org.pytorch.Tensor;
+
+// Load model
+Module module = Module.load(assetFilePath(this, "style_transfer.ptl"));
+
+// Prepare input tensor (360x640x3 image, normalized to [-1, 1])
+float[] inputData = preprocessImage(cameraFrame);
+Tensor inputTensor = Tensor.fromBlob(inputData, new long[]{1, 3, 360, 640});
+
+// Run inference
+Tensor outputTensor = module.forward(IValue.from(inputTensor)).toTensor();
+
+// Process output
+float[] outputData = outputTensor.getDataAsFloatArray();
+Bitmap styledImage = postprocessImage(outputData, 360, 640);
+----
+
+=== Vulkan Integration
+
+Your Vulkan rendering pipeline captures camera frames. To integrate style transfer:
+
+1. *Capture Frame*: Vulkan renders the camera feed to a texture
+2. *Read Back*: Copy the texture to a staging buffer using `vkCmdCopyImageToBuffer`
+3. *Map Memory*: Map the staging buffer to CPU memory
+4. *Preprocess*: Resize to 360×640, normalize to [-1, 1]
+5. *Inference*: Run PyTorch Mobile inference on a background thread
+6. *Display*: When inference completes, upload the styled image to a Vulkan texture and render it
+
+The key is asynchronous execution. While the GPU renders the current frame, the CPU processes the previous frame's style transfer. This maintains smooth frame rates.
+
+=== Performance Optimization
+
+Initial testing shows 80ms inference time—12.5 FPS, not quite meeting the 15 FPS target. You optimize:
+
+*Reduce Resolution*: Using 270×480 instead of 360×640 reduces inference to 45ms (22 FPS) with acceptable quality loss.
+
+*Quantization*: Applying dynamic quantization reduces inference to 35ms (28 FPS) and model size from 6.5MB to 1.7MB.
+
+*Operator Fusion*: The mobile optimizer already fuses operations, but you manually fuse batch normalization into convolutions during training, providing another 10% speedup (32ms, 31 FPS).
+
+*GPU Acceleration*: Enabling the Vulkan backend (experimental) reduces inference to 25ms (40 FPS) on devices with good Vulkan support.
+
+The final implementation runs smoothly at 30+ FPS on mid-range devices, providing real-time style transfer with minimal latency.
+
+== Comparing PyTorch Mobile to Alternatives
+
+How does PyTorch Mobile stack up against TensorFlow Lite and ONNX Runtime?
+
+=== PyTorch Mobile vs TensorFlow Lite
+
+*Advantages of PyTorch Mobile*:
+
+- No conversion step—train and deploy in the same framework
+- Better support for dynamic models and control flow
+- Easier debugging—same tools work for training and inference
+- Strong iOS support with Metal backend
+
+*Advantages of TensorFlow Lite*:
+
+- Smaller runtime size (300KB vs 2-5MB)
+- More mature quantization tooling
+- Better Android GPU support (GPU delegate is more stable than PyTorch's Vulkan backend)
+- Larger ecosystem of pre-trained models
+
+*When to choose PyTorch Mobile*: You're already using PyTorch for training, you value development velocity over size optimization, or you need dynamic model behavior.
+
+*When to choose TensorFlow Lite*: Size is critical, you need the most mature mobile ML solution, or you're already in the TensorFlow ecosystem.
+
+=== PyTorch Mobile vs ONNX Runtime
+
+*Advantages of PyTorch Mobile*:
+
+- Direct PyTorch deployment—no conversion
+- Better support for PyTorch-specific features
+- Simpler workflow for PyTorch users
+
+*Advantages of ONNX Runtime*:
+
+- Framework-agnostic—works with models from any framework
+- Better desktop/server performance
+- More execution providers (CUDA, TensorRT, DirectML, etc.)
+- Smaller size for mobile deployment
+
+*When to choose PyTorch Mobile*: You're committed to PyTorch and want the simplest deployment path.
+
+*When to choose ONNX Runtime*: You need cross-framework compatibility, you're deploying on desktop/server, or you want maximum flexibility.
+
+=== The Hybrid Approach
+
+Many applications use multiple runtimes:
+
+- PyTorch Mobile for models trained in PyTorch that need dynamic behavior
+- TensorFlow Lite for models where size is critical
+- ONNX Runtime for desktop deployment
+- Custom Vulkan shaders for performance-critical operations
+
+This hybrid approach gives you the best of all worlds, at the cost of additional complexity.
+
+== When PyTorch Mobile Makes Sense
+
+PyTorch Mobile isn't always the right choice. Here's when it shines and when to consider alternatives.
+
+=== Ideal Use Cases
+
+*PyTorch-First Development*: If your team uses PyTorch for training and you want to minimize friction in deployment, PyTorch Mobile is the natural choice.
+
+*Dynamic Models*: Models with control flow, dynamic shapes, or complex logic that's hard to convert to other formats benefit from PyTorch Mobile's direct deployment.
+
+*Rapid Iteration*: When you're iterating quickly on model architecture and don't want conversion issues to slow you down, PyTorch Mobile's seamless workflow is valuable.
+
+*Cross-Platform Deployment*: The same model works on iOS, Android, and desktop, simplifying multi-platform development.
+
+*Research to Production*: When you want to quickly move from research prototypes to production deployment without reimplementing in a different framework.
+
+=== When to Consider Alternatives
+
+*Size-Critical Applications*: If every megabyte of app size matters, TensorFlow Lite's smaller runtime is a better choice.
+
+*Maximum Performance on Android*: TensorFlow Lite's GPU delegate is more mature and often faster than PyTorch Mobile's Vulkan backend on Android.
+
+*TensorFlow Ecosystem*: If you're already using TensorFlow, TensorFlow Lite is the natural choice.
+
+*Framework-Agnostic Deployment*: If you need to deploy models from multiple frameworks, ONNX Runtime provides better cross-framework support.
+
+*Embedded Systems*: For very resource-constrained embedded systems, TensorFlow Lite's aggressive optimization might be necessary.
+
+== Summary
+
+PyTorch Mobile brings PyTorch to mobile and embedded devices, maintaining the same framework from training to deployment. This continuity eliminates conversion issues and provides a seamless developer experience, at the cost of larger runtime size compared to TensorFlow Lite.
+
+The architecture is desktop PyTorch, optimized for mobile through selective builds, TorchScript compilation, quantization, and operator fusion. The result is a runtime that's 2-5MB (larger than TensorFlow Lite but acceptable for most apps) with performance that's competitive for many use cases.
+
+Integration with Vulkan applications follows similar patterns to TensorFlow Lite, with the added benefit of experimental Vulkan backend support that could enable tighter integration in the future. The cross-platform story is strong, with excellent iOS support via Metal and good Android support via Vulkan or OpenGL ES.
+
+PyTorch Mobile excels when you're already using PyTorch, need dynamic model behavior, or value development velocity over size optimization. For size-critical applications or maximum Android performance, TensorFlow Lite might be a better choice.
+
+xref:ML_Inference/Third_Party_Libraries/03_tensorflow_lite.adoc[Previous: TensorFlow Lite] | xref:ML_Inference/Third_Party_Libraries/05_directml.adoc[Next: DirectML]

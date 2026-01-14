@@ -1,0 +1,366 @@
+::pp: {plus}{plus}
+
+= ONNX Runtime
+
+== Introduction
+
+When you're ready to deploy ML models in production, ONNX Runtime stands out as one of the most versatile and powerful options available. Developed by Microsoft and backed by a broad industry consortium, it's designed to solve a fundamental problem: how do you take models trained in different frameworks and run them efficiently across diverse hardware?
+
+Think about the typical ML workflow. Your research team might prefer PyTorch for its flexibility and ease of experimentation. Your production infrastructure might be built around different tools. Your deployment targets might range from high-end servers with NVIDIA GPUs to Windows desktops with AMD or Intel graphics to embedded devices with limited resources. ONNX Runtime bridges all these gaps.
+
+This chapter explores ONNX Runtime in depth—what it is, why it's our primary recommendation for Vulkan applications, how to set it up, and how to integrate it effectively with your rendering pipeline.
+
+== What Is ONNX Runtime?
+
+ONNX Runtime is a high-performance inference engine for machine learning models. But that simple description doesn't capture what makes it special. Let's break down its key characteristics.
+
+=== Framework-Agnostic Design
+
+The "ONNX" in ONNX Runtime stands for Open Neural Network Exchange—a standardized format for representing neural networks. This format acts as a universal translator between ML frameworks.
+
+You can train a model in PyTorch, export it to ONNX format, and run it with ONNX Runtime. Or train in TensorFlow, export to ONNX, and run with ONNX Runtime. Or use Keras, scikit-learn, or any other framework that supports ONNX export. The training framework becomes a choice you make based on what works best for development, not a constraint that locks you into a particular deployment path.
+
+This framework independence is liberating. Your research team can use whatever tools they prefer. Your production system uses ONNX Runtime. The two are decoupled, connected only by the ONNX format.
+
+=== Cross-Platform Support
+
+ONNX Runtime runs on Windows, Linux, macOS, Android, iOS, and various embedded platforms. The same model file, the same API, works across all of them. Write your integration code once, deploy everywhere.
+
+This cross-platform consistency is rare in the ML world. Many frameworks have platform-specific quirks, different APIs on different platforms, or limited support for certain operating systems. ONNX Runtime provides a unified experience.
+
+=== Multiple Execution Providers
+
+Here's where ONNX Runtime really shines: it supports multiple "execution providers"—backends that actually run the inference. You can choose the best provider for your hardware:
+
+*CPU Execution Provider*: Optimized CPU inference using libraries like Intel MKL-DNN or ARM Compute Library. Works everywhere, no GPU required.
+
+*CUDA Execution Provider*: Leverages NVIDIA GPUs using CUDA. Provides excellent performance on NVIDIA hardware.
+
+*TensorRT Execution Provider*: Uses NVIDIA's TensorRT library for even more aggressive optimization on NVIDIA GPUs. Can provide 2-5x speedup over raw CUDA for certain models.
+
+*DirectML Execution Provider*: Uses Microsoft's DirectML API for GPU acceleration on Windows. Works with NVIDIA, AMD, and Intel GPUs—any GPU with DirectX 12 support.
+
+*OpenVINO Execution Provider*: Optimized for Intel hardware (CPUs, integrated GPUs, VPUs).
+
+*CoreML Execution Provider*: Leverages Apple's CoreML framework on iOS and macOS, accessing the Neural Engine on Apple Silicon.
+
+The key insight: you write your code once, using ONNX Runtime's API. At runtime, you select which execution provider to use. The same model, the same code, automatically optimized for whatever hardware you're running on.
+
+== Why ONNX Runtime for Vulkan Applications?
+
+Given that this tutorial focuses on Vulkan-based graphics applications, why do we recommend ONNX Runtime as the primary ML inference solution?
+
+=== Complementary Strengths
+
+Vulkan gives you low-level control over GPU rendering. ONNX Runtime gives you high-level, optimized ML inference. They complement each other beautifully.
+
+For most ML workloads, you don't need the same level of control that Vulkan provides for rendering. You don't need to manage every buffer allocation, every synchronization point, every shader dispatch. You just need the inference to run fast and produce correct results. ONNX Runtime handles that complexity for you.
+
+This lets you focus your engineering effort where it matters most: the unique aspects of your application. The rendering pipeline, the user experience, the game mechanics, the creative features. Let ONNX Runtime handle the ML inference.
+
+=== DirectML Integration on Windows
+
+On Windows, ONNX Runtime's DirectML execution provider is particularly interesting for Vulkan applications. DirectML is built on top of Direct3D 12, which shares the same GPU with Vulkan. While they're separate APIs, they can coexist on the same hardware.
+
+This means you can run Vulkan rendering and ONNX Runtime inference on the same GPU, with the OS handling resource management. It's not as tightly integrated as a custom Vulkan implementation, but it's far simpler and leverages years of optimization work in DirectML.
+
+=== Broad Model Support
+
+ONNX Runtime supports hundreds of operations out of the box. If you download a pre-trained model from a model zoo, it will almost certainly work with ONNX Runtime without modification. This broad compatibility means you can experiment with different models, try cutting-edge architectures, and leverage the latest research without worrying about implementation details.
+
+=== Production-Ready Reliability
+
+ONNX Runtime is used in production by Microsoft (in products like Bing, Office, and Azure), by Facebook, by many other companies. It's been tested at massive scale, handling billions of inference requests per day. The bugs have been found and fixed. The edge cases have been handled. The performance has been optimized.
+
+When you use ONNX Runtime, you're building on a foundation that's proven to work in the real world.
+
+== Getting ONNX Runtime
+
+Let's get practical. How do you actually obtain and set up ONNX Runtime for your project?
+
+=== Official Releases
+
+The primary source is the official GitHub releases page: https://github.com/microsoft/onnxruntime/releases
+
+Each release provides pre-built binaries for multiple platforms. You'll find:
+
+- Windows (x64, ARM64)
+- Linux (x64, ARM64)
+- macOS (x64, ARM64)
+
+Each platform package includes:
+
+- Header files (`include/` directory)
+- Library files (`lib/` directory)
+- Documentation and license information
+
+Download the package for your target platform. For cross-platform development, you might download multiple packages.
+
+=== Package Managers
+
+For Python development or prototyping, package managers provide easy installation:
+
+*CPU-only version*:
+[source,bash]
+----
+pip install onnxruntime
+----
+
+*GPU-enabled version* (requires CUDA):
+[source,bash]
+----
+pip install onnxruntime-gpu
+----
+
+For C++ development on Windows, NuGet provides packages:
+[source,powershell]
+----
+Install-Package Microsoft.ML.OnnxRuntime.Gpu
+----
+
+=== Building from Source
+
+For specialized platforms or custom configurations, you can build from source:
+
+[source,bash]
+----
+git clone --recursive https://github.com/microsoft/onnxruntime.git
+cd onnxruntime
+./build.sh --config Release --build_shared_lib --parallel
+----
+
+Building from source gives you full control over which execution providers to include, optimization flags, and platform-specific tuning. It's more complex but provides maximum flexibility.
+
+== Setting Up ONNX Runtime
+
+Once you have the binaries, integrating ONNX Runtime into your C++ project is straightforward.
+
+=== Project Configuration
+
+For CMake-based projects (recommended):
+
+[source,cmake]
+----
+# Find ONNX Runtime
+find_package(onnxruntime REQUIRED)
+
+# Link your target
+target_link_libraries(your_target PRIVATE onnxruntime::onnxruntime)
+----
+
+If ONNX Runtime isn't installed system-wide, specify the path:
+
+[source,cmake]
+----
+set(ONNXRUNTIME_ROOT_DIR "/path/to/onnxruntime")
+include_directories(${ONNXRUNTIME_ROOT_DIR}/include)
+link_directories(${ONNXRUNTIME_ROOT_DIR}/lib)
+target_link_libraries(your_target PRIVATE onnxruntime)
+----
+
+=== Platform-Specific Considerations
+
+*Linux*: ONNX Runtime requires glibc 2.27 or later (Ubuntu 18.04+, CentOS 8+). For GPU support, install CUDA 11.x or 12.x.
+
+*Windows*: Requires Visual Studio 2019 or later runtime. For GPU support, install CUDA or ensure DirectX 12 is available (it's included in Windows 10/11).
+
+*macOS*: CPU-only support. ONNX Runtime doesn't provide GPU acceleration on macOS through its own execution providers, though you can use the CoreML provider to access Apple's Neural Engine.
+
+=== Runtime Dependencies
+
+When you distribute your application, include the ONNX Runtime shared library:
+
+- Windows: `onnxruntime.dll`
+- Linux: `libonnxruntime.so`
+- macOS: `libonnxruntime.dylib`
+
+For GPU execution providers, users need the appropriate drivers and runtimes (CUDA, DirectX 12, etc.) installed on their systems.
+
+== Using ONNX Runtime: The Basics
+
+Let's walk through the fundamental workflow for running inference with ONNX Runtime.
+
+=== Step 1: Create the Environment
+
+The `Ort::Env` object represents the ONNX Runtime environment. Create it once at application startup:
+
+[source,cpp]
+----
+#include <onnxruntime_cxx_api.h>
+
+// Create environment with logging level
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MyApp");
+----
+
+The environment manages global state and logging. You typically create one environment for your entire application.
+
+=== Step 2: Configure Session Options
+
+Session options control how inference runs:
+
+[source,cpp]
+----
+Ort::SessionOptions session_options;
+
+// Set number of threads for CPU execution
+session_options.SetIntraOpNumThreads(4);
+
+// Enable optimizations
+session_options.SetGraphOptimizationLevel(
+    GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+// For GPU execution (CUDA example)
+OrtCUDAProviderOptions cuda_options;
+cuda_options.device_id = 0;
+session_options.AppendExecutionProvider_CUDA(cuda_options);
+----
+
+The execution provider selection happens here. You can add multiple providers—ONNX Runtime will try them in order and use the first one that works.
+
+=== Step 3: Load the Model
+
+Create a session by loading your ONNX model file:
+
+[source,cpp]
+----
+const wchar_t* model_path = L"model.onnx";
+Ort::Session session(env, model_path, session_options);
+----
+
+The session parses the model, allocates resources, and prepares for inference. This is a relatively expensive operation—do it once and reuse the session for multiple inference runs.
+
+=== Step 4: Query Input/Output Information
+
+Before running inference, you need to know what inputs the model expects and what outputs it produces:
+
+[source,cpp]
+----
+// Get input information
+size_t num_input_nodes = session.GetInputCount();
+const char* input_name = session.GetInputName(0, allocator);
+Ort::TypeInfo input_type_info = session.GetInputTypeInfo(0);
+auto input_tensor_info = input_type_info.GetTensorTypeAndShapeInfo();
+std::vector<int64_t> input_shape = input_tensor_info.GetShape();
+
+// Get output information
+size_t num_output_nodes = session.GetOutputCount();
+const char* output_name = session.GetOutputName(0, allocator);
+----
+
+This tells you the expected input dimensions, data types, and output structure.
+
+=== Step 5: Prepare Input Data
+
+Create input tensors with your data:
+
+[source,cpp]
+----
+// Allocate memory for input
+std::vector<float> input_data(input_size);
+// ... fill input_data with your preprocessed input ...
+
+// Create input tensor
+auto memory_info = Ort::MemoryInfo::CreateCpu(
+    OrtArenaAllocator, OrtMemTypeDefault);
+Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+    memory_info, input_data.data(), input_data.size(),
+    input_shape.data(), input_shape.size());
+----
+
+The tensor wraps your data without copying it, so ensure the data remains valid until inference completes.
+
+=== Step 6: Run Inference
+
+Execute the model:
+
+[source,cpp]
+----
+std::vector<const char*> input_names = {input_name};
+std::vector<const char*> output_names = {output_name};
+
+auto output_tensors = session.Run(
+    Ort::RunOptions{nullptr},
+    input_names.data(), &input_tensor, 1,
+    output_names.data(), 1);
+----
+
+This is where the actual inference happens. The call blocks until inference completes.
+
+=== Step 7: Extract Results
+
+Process the output tensors:
+
+[source,cpp]
+----
+float* output_data = output_tensors[0].GetTensorMutableData<float>();
+auto output_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
+
+// Process output_data according to your application's needs
+----
+
+The output tensor contains the model's predictions, ready for postprocessing.
+
+== Integration with Vulkan Applications
+
+Now let's discuss how to integrate ONNX Runtime into a Vulkan-based application effectively.
+
+=== Separate Contexts Approach
+
+The simplest and most reliable approach is to run ONNX Runtime and Vulkan in separate contexts, transferring data via CPU memory:
+
+1. Render your frame with Vulkan
+2. If you need ML inference, read relevant data from GPU to CPU
+3. Run ONNX Runtime inference on CPU or GPU (via its own execution provider)
+4. Transfer results back to GPU if needed for rendering
+
+This approach is straightforward and works on all platforms. The data transfers add latency, but for many applications (where inference doesn't happen every frame), this overhead is acceptable.
+
+=== DirectML Integration on Windows
+
+On Windows, you can use ONNX Runtime's DirectML execution provider for tighter GPU integration:
+
+[source,cpp]
+----
+session_options.AppendExecutionProvider_DML(0); // Device ID 0
+----
+
+DirectML runs on the same GPU as Vulkan, managed by the OS. While they don't share memory directly, they share GPU compute resources. This can be more efficient than CPU-GPU transfers, especially for large models.
+
+The tradeoff is platform specificity—this only works on Windows with DirectX 12 support.
+
+=== Memory Sharing (Advanced)
+
+On some platforms, you can share memory between Vulkan and ONNX Runtime using external memory extensions. This is complex and platform-specific, but it eliminates data transfers:
+
+1. Allocate memory with Vulkan using external memory extensions
+2. Export the memory handle
+3. Import the handle into ONNX Runtime (if the execution provider supports it)
+4. Both Vulkan and ONNX Runtime access the same physical memory
+
+This approach requires careful synchronization and is only worth the complexity for very high-throughput scenarios where data transfer is a proven bottleneck.
+
+== When to Use ONNX Runtime
+
+ONNX Runtime is ideal when:
+
+*Cross-Framework Compatibility*: You need to work with models from different training frameworks (PyTorch, TensorFlow, etc.).
+
+*Desktop/Server Deployment*: You're targeting platforms with substantial compute resources where ONNX Runtime's optimizations shine.
+
+*Execution Provider Flexibility*: You want the ability to switch between CPU, CUDA, TensorRT, DirectML, or other backends without changing code.
+
+*Broad Operator Support*: Your models use a wide variety of operations, and you need comprehensive support out of the box.
+
+*Production Reliability*: You need a battle-tested solution that's proven to work at scale.
+
+For Vulkan applications, ONNX Runtime provides the best balance of performance, reliability, and ease of integration for most use cases.
+
+== Summary
+
+ONNX Runtime is a high-performance, cross-platform ML inference engine that supports models from any framework. Its framework-agnostic design, multiple execution providers, and production-proven reliability make it an excellent choice for Vulkan applications.
+
+The basic workflow—create environment, load model, prepare inputs, run inference, extract outputs—is straightforward and consistent across platforms. Integration with Vulkan can be as simple as separate contexts with CPU data transfer, or as sophisticated as shared GPU resources via DirectML on Windows.
+
+For most Vulkan-based applications that need ML inference, ONNX Runtime should be your first choice. It provides the reliability and performance you need without the complexity of implementing inference from scratch.
+
+xref:ML_Inference/Third_Party_Libraries/01_introduction.adoc[Previous: Introduction] | xref:ML_Inference/Third_Party_Libraries/03_tensorflow_lite.adoc[Next: TensorFlow Lite]

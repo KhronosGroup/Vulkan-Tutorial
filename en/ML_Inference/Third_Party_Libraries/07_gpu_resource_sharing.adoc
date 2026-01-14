@@ -1,0 +1,564 @@
+::pp: {plus}{plus}
+
+= GPU Resource Sharing
+
+== Introduction
+
+Here's a scenario that comes up constantly when integrating ML inference with Vulkan rendering: you've rendered a frame to a texture, and now you want to run ML inference on that texture—maybe for object detection, style transfer, or some other analysis. The naive approach is to read the texture back to CPU memory, pass it to your ML library, wait for inference to complete, and continue. But this approach is painfully slow. You're stalling the GPU, waiting for data transfers, and completely losing the performance benefits of GPU acceleration.
+
+There's a better way: *GPU resource sharing*. Instead of copying data back and forth between CPU and GPU, you share GPU memory directly between Vulkan and your ML inference library. The texture lives on the GPU, Vulkan renders to it, the ML library reads from it, and no expensive CPU roundtrips are involved. This is the key to real-time ML inference in graphics applications.
+
+This chapter explores how to implement GPU resource sharing between Vulkan and ML inference libraries. We'll cover the Vulkan extensions that enable external memory sharing, the platform-specific mechanisms for different operating systems, how to import shared memory into various ML libraries, and the synchronization primitives needed to ensure correctness.
+
+== Why GPU Resource Sharing Matters
+
+Before diving into the technical details, let's understand why this matters and what performance gains you can expect.
+
+=== The Cost of CPU Roundtrips
+
+Consider a typical frame in a game or graphics application running at 60 FPS. You have 16.67 milliseconds to render the frame and run any ML inference. Let's trace through what happens without GPU resource sharing:
+
+*Step 1: Render to texture* (2ms) - Vulkan renders your scene to a texture. This is fast—the GPU is doing what it does best.
+
+*Step 2: Read texture to CPU* (3-5ms) - You issue a vkCmdCopyImageToBuffer command, insert a pipeline barrier, and wait for the transfer to complete. For a 1920×1080 RGBA texture, that's 8.3MB of data. Even with PCIe 3.0's theoretical 16 GB/s bandwidth, real-world transfers are slower due to overhead, synchronization, and other bus traffic.
+
+*Step 3: ML inference on CPU or separate GPU context* (5-10ms) - Your ML library processes the data. If it's using the GPU, it has to upload the data again—another transfer.
+
+*Step 4: Read results back* (1-2ms) - If the ML library produced GPU results, you need to read them back to CPU, then potentially upload to Vulkan again.
+
+Total: 11-19ms. You've already blown your 16.67ms frame budget, and we haven't even accounted for the actual rendering work or other game logic. The result? Dropped frames, stuttering, poor user experience.
+
+=== The Zero-Copy Alternative
+
+With GPU resource sharing, the same workflow looks like this:
+
+*Step 1: Render to shared texture* (2ms) - Vulkan renders to a texture that's allocated with external memory support.
+
+*Step 2: Synchronize* (<0.1ms) - Signal a semaphore or fence to indicate rendering is complete.
+
+*Step 3: ML inference on shared memory* (5-10ms) - The ML library reads directly from the shared GPU memory. No transfer needed.
+
+*Step 4: Synchronize* (<0.1ms) - Wait for inference to complete before using results.
+
+Total: 7-12ms. You've eliminated 4-7ms of transfer overhead—enough to make the difference between hitting your frame budget and missing it. For real-time applications, this is the difference between feasible and infeasible.
+
+=== Beyond Performance: Memory Efficiency
+
+GPU resource sharing also reduces memory usage. Without sharing, you need:
+
+- Vulkan texture memory (8.3MB for 1080p RGBA)
+- CPU staging buffer (8.3MB)
+- ML library input buffer (8.3MB)
+- Potentially ML library output buffer (varies)
+
+That's at least 25MB for a single frame's worth of data. With sharing, you need only the Vulkan texture memory—the ML library uses the same memory. For applications processing multiple frames in flight or working with higher resolutions, the memory savings multiply.
+
+== Vulkan External Memory Extensions
+
+Vulkan's external memory extensions provide the foundation for GPU resource sharing. These extensions allow Vulkan to allocate memory that can be shared with other APIs and processes.
+
+=== The Extension Family
+
+Several extensions work together to enable external memory:
+
+*VK_KHR_external_memory_capabilities* - Queries what types of external memory the device supports. You use this during device selection to ensure your target platform supports the sharing mechanisms you need.
+
+*VK_KHR_external_memory* - Core extension that defines the structures and concepts for external memory. This is the base that other extensions build on.
+
+*VK_KHR_external_memory_fd* (Linux) - Enables sharing via POSIX file descriptors. This is the standard mechanism on Linux and Android.
+
+*VK_KHR_external_memory_win32* (Windows) - Enables sharing via Windows NT handles. This is the standard mechanism on Windows.
+
+*VK_EXT_external_memory_dma_buf* (Linux) - Enables sharing via DMA-BUF, a Linux kernel mechanism for sharing buffers between devices. Particularly useful for embedded systems and when working with hardware video decoders.
+
+*VK_KHR_external_semaphore* and *VK_KHR_external_fence* - Enable sharing synchronization primitives, which we'll discuss later.
+
+=== Checking for Support
+
+Before attempting to use external memory, you need to verify that your device supports it. This happens during device selection:
+
+[source,cpp]
+----
+VkPhysicalDeviceExternalMemoryHostPropertiesEXT externalMemoryProps = {};
+externalMemoryProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT;
+
+VkPhysicalDeviceProperties2 deviceProps2 = {};
+deviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+deviceProps2.pNext = &externalMemoryProps;
+
+vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProps2);
+
+// Check if external memory is supported
+VkExternalMemoryHandleTypeFlagsKHR supportedHandleTypes = 0;
+
+#ifdef _WIN32
+    supportedHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+#else
+    supportedHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+#endif
+
+// Query if this handle type is supported for images
+VkPhysicalDeviceExternalImageFormatInfo externalImageFormatInfo = {};
+externalImageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+externalImageFormatInfo.handleType = supportedHandleTypes;
+
+VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
+imageFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+imageFormatInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+imageFormatInfo.type = VK_IMAGE_TYPE_2D;
+imageFormatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+imageFormatInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+imageFormatInfo.pNext = &externalImageFormatInfo;
+
+VkExternalImageFormatProperties externalImageFormatProps = {};
+externalImageFormatProps.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+
+VkImageFormatProperties2 imageFormatProps2 = {};
+imageFormatProps2.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+imageFormatProps2.pNext = &externalImageFormatProps;
+
+VkResult result = vkGetPhysicalDeviceImageFormatProperties2(
+    physicalDevice, &imageFormatInfo, &imageFormatProps2);
+
+if (result == VK_SUCCESS) {
+    // Check what operations are supported
+    bool canExport = externalImageFormatProps.externalMemoryProperties.externalMemoryFeatures &
+                     VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT_KHR;
+    bool canImport = externalImageFormatProps.externalMemoryProperties.externalMemoryFeatures &
+                     VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT_KHR;
+
+    if (canExport) {
+        // This device can export memory for sharing
+    }
+}
+----
+
+This query tells you whether the device supports exporting memory in the format and usage you need. Different devices have different capabilities—some might support external memory for images but not buffers, or support certain formats but not others.
+
+=== Allocating Exportable Memory
+
+Once you've confirmed support, you allocate memory with external memory support enabled. The key is adding VkExportMemoryAllocateInfo to the pNext chain when allocating memory:
+
+[source,cpp]
+----
+// Create image with external memory support
+VkExternalMemoryImageCreateInfo externalMemoryImageInfo = {};
+externalMemoryImageInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+#ifdef _WIN32
+    externalMemoryImageInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+#else
+    externalMemoryImageInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+#endif
+
+VkImageCreateInfo imageInfo = {};
+imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+imageInfo.pNext = &externalMemoryImageInfo;
+imageInfo.imageType = VK_IMAGE_TYPE_2D;
+imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+imageInfo.extent = {1920, 1080, 1};
+imageInfo.mipLevels = 1;
+imageInfo.arrayLayers = 1;
+imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+VkImage image;
+vkCreateImage(device, &imageInfo, nullptr, &image);
+
+// Get memory requirements
+VkMemoryRequirements memReqs;
+vkGetImageMemoryRequirements(device, image, &memReqs);
+
+// Allocate memory with export support
+VkExportMemoryAllocateInfo exportInfo = {};
+exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+exportInfo.handleTypes = externalMemoryImageInfo.handleTypes;
+
+VkMemoryAllocateInfo allocInfo = {};
+allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+allocInfo.pNext = &exportInfo;
+allocInfo.allocationSize = memReqs.size;
+allocInfo.memoryTypeIndex = findMemoryType(memReqs.memoryTypeBits,
+                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+VkDeviceMemory memory;
+vkAllocateMemory(device, &allocInfo, nullptr, &memory);
+
+// Bind memory to image
+vkBindImageMemory(device, image, memory, 0);
+----
+
+The critical addition is VkExternalMemoryImageCreateInfo in the image creation and VkExportMemoryAllocateInfo in the memory allocation. These tell Vulkan that this memory needs to be shareable with external APIs.
+
+=== Exporting Memory Handles
+
+After allocating exportable memory, you export a handle that other APIs can import:
+
+[source,cpp]
+----
+#ifdef _WIN32
+    // Windows: Export as NT handle
+    VkMemoryGetWin32HandleInfoKHR handleInfo = {};
+    handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+    handleInfo.memory = memory;
+    handleInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+
+    HANDLE win32Handle;
+    vkGetMemoryWin32HandleKHR(device, &handleInfo, &win32Handle);
+
+    // This handle can now be passed to DirectML, CUDA, or other APIs
+#else
+    // Linux: Export as file descriptor
+    VkMemoryGetFdInfoKHR fdInfo = {};
+    fdInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
+    fdInfo.memory = memory;
+    fdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+
+    int fd;
+    vkGetMemoryFdKHR(device, &fdInfo, &fd);
+
+    // This file descriptor can now be passed to CUDA, OpenCL, or other APIs
+#endif
+----
+
+The handle (NT handle on Windows, file descriptor on Linux) is an opaque reference to the GPU memory. You pass this handle to your ML library, which imports it into its own memory management system.
+
+== Platform-Specific Handle Types
+
+Different operating systems use different mechanisms for sharing resources between processes and APIs. Understanding these platform-specific details is essential for robust cross-platform support.
+
+=== Linux: File Descriptors and DMA-BUF
+
+On Linux, the primary mechanism for sharing GPU memory is POSIX file descriptors. Vulkan exports memory as a file descriptor, which other APIs can import.
+
+*POSIX File Descriptors* - The standard mechanism. File descriptors are integers that reference kernel objects. When you export Vulkan memory as a file descriptor, you're getting a reference to the underlying kernel memory object. This works with CUDA, OpenCL, and most other GPU APIs on Linux.
+
+*DMA-BUF* - A Linux kernel framework specifically designed for sharing buffers between devices. DMA-BUF is particularly important for embedded systems and when working with hardware video encoders/decoders. Vulkan supports DMA-BUF through VK_EXT_external_memory_dma_buf.
+
+The key consideration on Linux is file descriptor ownership. File descriptors are reference-counted by the kernel—the memory isn't freed until all file descriptors referencing it are closed. When you export a file descriptor from Vulkan, you're responsible for closing it when you're done (or passing that responsibility to the importing API).
+
+=== Windows: NT Handles
+
+On Windows, the mechanism is NT handles (also called Win32 handles). These are similar in concept to file descriptors but with Windows-specific semantics.
+
+*Opaque Handles* - The most common type. These are handles that don't expose the underlying memory directly—they're references managed by the graphics driver. Use VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR.
+
+*Named Handles* - Handles that have a name, allowing them to be shared across processes by name. Useful for inter-process communication but less common for ML inference scenarios.
+
+Windows handles have different lifetime semantics than Linux file descriptors. When you export a handle, you can specify whether it should be duplicated (creating a new reference) or transferred (moving ownership). For most ML inference scenarios, you want duplication—both Vulkan and the ML library maintain references, and the memory is freed when both release their references.
+
+=== macOS and iOS: IOSurface
+
+On Apple platforms, the mechanism is IOSurface, a macOS/iOS framework for sharing surfaces between processes and APIs.
+
+IOSurface is specifically designed for image data and provides efficient sharing between Metal (Apple's graphics API), Core Image, Core Video, and other frameworks. While Vulkan on macOS/iOS (via MoltenVK) can work with IOSurface, the integration is more complex because you're bridging between Vulkan and Metal under the hood.
+
+For ML inference on Apple platforms, the typical approach is to use Core ML, which integrates naturally with IOSurface. If you're using ONNX Runtime with Core ML execution provider, the runtime handles the IOSurface integration for you.
+
+=== Android: Hardware Buffers
+
+Android uses AHardwareBuffer, a framework for sharing buffers between different Android subsystems. AHardwareBuffer is built on top of Linux's DMA-BUF but provides a higher-level, Android-specific API.
+
+Vulkan on Android supports importing and exporting AHardwareBuffer through VK_ANDROID_external_memory_android_hardware_buffer. This is the standard mechanism for sharing GPU memory with Android's ML frameworks (TensorFlow Lite with GPU delegate, NNAPI, etc.).
+
+The key advantage of AHardwareBuffer is that it's the native Android mechanism—all Android GPU APIs understand it, and the Android framework handles the platform-specific details.
+
+== Importing Memory into ML Libraries
+
+Once you've exported memory from Vulkan, you need to import it into your ML inference library. Each library has its own API for this, but the concepts are similar.
+
+=== ONNX Runtime with CUDA Execution Provider
+
+ONNX Runtime's CUDA execution provider can import external memory using CUDA's external memory API:
+
+[source,cpp]
+----
+#ifdef _WIN32
+    // Windows: Import NT handle
+    cudaExternalMemoryHandleDesc externalMemoryHandleDesc = {};
+    externalMemoryHandleDesc.type = cudaExternalMemoryHandleTypeOpaqueWin32;
+    externalMemoryHandleDesc.handle.win32.handle = win32Handle;
+    externalMemoryHandleDesc.size = memorySize;
+
+    cudaExternalMemory_t externalMemory;
+    cudaImportExternalMemory(&externalMemory, &externalMemoryHandleDesc);
+#else
+    // Linux: Import file descriptor
+    cudaExternalMemoryHandleDesc externalMemoryHandleDesc = {};
+    externalMemoryHandleDesc.type = cudaExternalMemoryHandleTypeOpaqueFd;
+    externalMemoryHandleDesc.handle.fd = fd;
+    externalMemoryHandleDesc.size = memorySize;
+
+    cudaExternalMemory_t externalMemory;
+    cudaImportExternalMemory(&externalMemory, &externalMemoryHandleDesc);
+#endif
+
+// Map the external memory to a CUDA device pointer
+cudaExternalMemoryBufferDesc bufferDesc = {};
+bufferDesc.offset = 0;
+bufferDesc.size = memorySize;
+
+void* cudaPtr;
+cudaExternalMemoryGetMappedBuffer(&cudaPtr, externalMemory, &bufferDesc);
+
+// Now cudaPtr points to the same GPU memory as your Vulkan image
+// You can pass this pointer to ONNX Runtime as input
+----
+
+Once you have the CUDA pointer, you can create an ONNX Runtime tensor that wraps it:
+
+[source,cpp]
+----
+// Create ONNX Runtime tensor from CUDA memory
+std::vector<int64_t> shape = {1, 3, 1080, 1920}; // NCHW format
+Ort::MemoryInfo memoryInfo("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+Ort::Value inputTensor = Ort::Value::CreateTensor(
+    memoryInfo, cudaPtr, memorySize, shape.data(), shape.size(),
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+// Run inference with the shared memory tensor
+----
+
+The key insight: ONNX Runtime doesn't copy the data. It runs inference directly on the shared GPU memory.
+
+=== TensorFlow Lite with GPU Delegate
+
+TensorFlow Lite's GPU delegate can work with external memory on Android using AHardwareBuffer:
+
+[source,cpp]
+----
+// Export Vulkan memory as AHardwareBuffer (Android-specific)
+VkAndroidHardwareBufferPropertiesANDROID bufferProperties = {};
+bufferProperties.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
+
+vkGetAndroidHardwareBufferPropertiesANDROID(device, hardwareBuffer, &bufferProperties);
+
+// Create TFLite GPU delegate with external memory support
+TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION;
+
+TfLiteDelegate* delegate = TfLiteGpuDelegateV2Create(&options);
+
+// Import the hardware buffer into TFLite
+// (This is typically handled by TFLite's GPU delegate automatically when you
+//  provide the buffer through the appropriate API)
+----
+
+On desktop platforms, TensorFlow Lite's GPU delegate integration is more limited. You might need to use OpenCL interop or fall back to CPU-GPU transfers.
+
+=== DirectML (Windows)
+
+DirectML, being a DirectX 12 API, integrates naturally with Vulkan on Windows through shared NT handles:
+
+[source,cpp]
+----
+// Create DirectML device
+IDMLDevice* dmlDevice;
+DMLCreateDevice(d3d12Device, DML_CREATE_DEVICE_FLAG_NONE, IID_PPV_ARGS(&dmlDevice));
+
+// Import the Vulkan memory as a D3D12 resource
+D3D12_HEAP_PROPERTIES heapProps = {};
+heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+D3D12_RESOURCE_DESC resourceDesc = {};
+resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+resourceDesc.Width = 1920;
+resourceDesc.Height = 1080;
+resourceDesc.DepthOrArraySize = 1;
+resourceDesc.MipLevels = 1;
+resourceDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+resourceDesc.SampleDesc.Count = 1;
+resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+ID3D12Resource* sharedResource;
+d3d12Device->OpenSharedHandle(win32Handle, IID_PPV_ARGS(&sharedResource));
+
+// Create DirectML tensor descriptor wrapping the shared resource
+DML_BUFFER_TENSOR_DESC bufferTensorDesc = {};
+bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_FLOAT32;
+bufferTensorDesc.Flags = DML_TENSOR_FLAG_NONE;
+bufferTensorDesc.DimensionCount = 4;
+uint32_t sizes[] = {1, 3, 1080, 1920};
+bufferTensorDesc.Sizes = sizes;
+// ... (additional setup)
+
+// Bind the shared resource to DirectML operators
+----
+
+DirectML's integration is particularly clean on Windows because both Vulkan and DirectML are built on top of the same underlying Windows graphics infrastructure.
+
+== Synchronization: Ensuring Correctness
+
+Sharing memory is only half the battle. You also need to ensure that operations happen in the correct order—Vulkan finishes rendering before ML inference starts reading, and inference finishes before Vulkan uses the results. This requires synchronization.
+
+=== The Synchronization Problem
+
+GPUs are asynchronous. When you submit a command buffer to Vulkan, it returns immediately—the GPU executes the commands later. Similarly, when you launch a CUDA kernel or DirectML operation, it returns immediately. Without synchronization, you have race conditions:
+
+- ML inference might start reading before Vulkan finishes rendering (reading incomplete data)
+- Vulkan might start rendering the next frame before ML inference finishes (overwriting data that's still being read)
+- Results might not be visible when you expect them (cache coherency issues)
+
+Synchronization primitives solve these problems by providing explicit control over execution order and memory visibility.
+
+=== Vulkan Semaphores and Fences
+
+Vulkan provides two main synchronization primitives:
+
+*Semaphores* - GPU-GPU synchronization. Semaphores coordinate work between queues. One queue signals a semaphore when work completes, another queue waits on that semaphore before starting work.
+
+*Fences* - GPU-CPU synchronization. Fences allow the CPU to wait for GPU work to complete. You signal a fence from the GPU, then wait on it from the CPU.
+
+For external synchronization, you need *external semaphores* and *external fences*—versions that can be shared with other APIs.
+
+=== External Semaphores
+
+External semaphores work similarly to external memory:
+
+[source,cpp]
+----
+// Create exportable semaphore
+VkExportSemaphoreCreateInfo exportSemaphoreInfo = {};
+exportSemaphoreInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO;
+#ifdef _WIN32
+    exportSemaphoreInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+    exportSemaphoreInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+
+VkSemaphoreCreateInfo semaphoreInfo = {};
+semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+semaphoreInfo.pNext = &exportSemaphoreInfo;
+
+VkSemaphore renderCompleteSemaphore;
+vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderCompleteSemaphore);
+
+// Export the semaphore handle
+#ifdef _WIN32
+    VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
+    handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
+    handleInfo.semaphore = renderCompleteSemaphore;
+    handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+
+    HANDLE semaphoreHandle;
+    vkGetSemaphoreWin32HandleKHR(device, &handleInfo, &semaphoreHandle);
+#else
+    VkSemaphoreGetFdInfoKHR fdInfo = {};
+    fdInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR;
+    fdInfo.semaphore = renderCompleteSemaphore;
+    fdInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+
+    int semaphoreFd;
+    vkGetSemaphoreFdKHR(device, &fdInfo, &semaphoreFd);
+#endif
+----
+
+You then import this semaphore into your ML library (e.g., CUDA):
+
+[source,cpp]
+----
+// Import semaphore into CUDA
+cudaExternalSemaphoreHandleDesc semaphoreDesc = {};
+#ifdef _WIN32
+    semaphoreDesc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
+    semaphoreDesc.handle.win32.handle = semaphoreHandle;
+#else
+    semaphoreDesc.type = cudaExternalSemaphoreHandleTypeOpaqueFd;
+    semaphoreDesc.handle.fd = semaphoreFd;
+#endif
+
+cudaExternalSemaphore_t cudaSemaphore;
+cudaImportExternalSemaphore(&cudaSemaphore, &semaphoreDesc);
+----
+
+Now you can coordinate between Vulkan and CUDA:
+
+[source,cpp]
+----
+// Vulkan: Render and signal semaphore
+VkSubmitInfo submitInfo = {};
+submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+submitInfo.commandBufferCount = 1;
+submitInfo.pCommandBuffers = &renderCommandBuffer;
+submitInfo.signalSemaphoreCount = 1;
+submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
+
+vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+
+// CUDA: Wait on semaphore, then run inference
+cudaExternalSemaphoreWaitParams waitParams = {};
+cudaWaitExternalSemaphoresAsync(&cudaSemaphore, &waitParams, 1, cudaStream);
+
+// Launch CUDA kernels (or ONNX Runtime inference) on cudaStream
+// They will wait for the semaphore before executing
+
+// CUDA: Signal another semaphore when inference completes
+cudaExternalSemaphoreSignalParams signalParams = {};
+cudaSignalExternalSemaphoresAsync(&inferenceCompleteSemaphore, &signalParams, 1, cudaStream);
+
+// Vulkan: Wait on inference complete semaphore before using results
+VkSubmitInfo submitInfo2 = {};
+submitInfo2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+submitInfo2.waitSemaphoreCount = 1;
+submitInfo2.pWaitSemaphores = &inferenceCompleteSemaphore;
+VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+submitInfo2.pWaitDstStageMask = &waitStage;
+submitInfo2.commandBufferCount = 1;
+submitInfo2.pCommandBuffers = &postProcessCommandBuffer;
+
+vkQueueSubmit(graphicsQueue, 1, &submitInfo2, VK_NULL_HANDLE);
+----
+
+This creates a dependency chain: Vulkan renders → signals semaphore → CUDA waits → CUDA runs inference → signals semaphore → Vulkan waits → Vulkan uses results. All GPU-side, no CPU involvement, maximum performance.
+
+=== Timeline Semaphores
+
+Vulkan 1.2 introduced timeline semaphores, which are even more powerful. Unlike binary semaphores (signaled or unsignaled), timeline semaphores have a 64-bit counter value. You can wait for specific values and signal specific values, enabling more complex synchronization patterns.
+
+Timeline semaphores are particularly useful for pipelining—running multiple frames in flight with ML inference on each frame, where you need to track which frame each operation corresponds to.
+
+== Practical Considerations
+
+GPU resource sharing is powerful but comes with practical challenges. Here are key considerations for robust implementations.
+
+=== Memory Layout and Format Compatibility
+
+Vulkan and your ML library might have different expectations about memory layout. Vulkan images use implementation-defined tiling for optimal performance, while ML libraries often expect linear layouts (row-major, tightly packed).
+
+For sharing to work, you typically need to use VK_IMAGE_TILING_LINEAR, which forces a linear layout that ML libraries can understand. The tradeoff is performance—linear tiling is slower for rendering than optimal tiling.
+
+Alternatively, you can use optimal tiling for rendering and insert a layout transition + copy to a linear staging image before ML inference. This adds overhead but might be faster overall if the rendering performance gain outweighs the copy cost.
+
+=== Format Conversions
+
+Vulkan and ML libraries might use different pixel formats. Vulkan commonly uses VK_FORMAT_B8G8R8A8_UNORM (BGRA), while ML models often expect RGB or planar YUV formats. You need to handle these conversions, either in a compute shader before inference or in preprocessing code.
+
+=== Driver and Platform Limitations
+
+Not all drivers support all external memory features. Some older drivers might not support external semaphores, or might support them only for certain memory types. Always check capabilities at runtime and have fallback paths.
+
+Mobile platforms, in particular, have more limitations. Android's AHardwareBuffer support varies by device and Android version. iOS's IOSurface integration through MoltenVK has quirks.
+
+=== Debugging
+
+When GPU resource sharing goes wrong, it's often hard to debug. Symptoms include:
+
+- Corruption (reading stale or incomplete data)
+- Crashes (accessing memory that's been freed)
+- Hangs (deadlocks from incorrect synchronization)
+
+Use validation layers aggressively. Enable Vulkan validation layers, CUDA's memory checker, and any debugging tools your ML library provides. Insert explicit synchronization (fences, cudaDeviceSynchronize) during debugging to isolate timing issues.
+
+== Summary
+
+GPU resource sharing is the key to efficient ML inference in Vulkan applications. By sharing memory directly between Vulkan and ML libraries, you eliminate expensive CPU roundtrips and reduce memory usage.
+
+The foundation is Vulkan's external memory extensions, which allow allocating memory that can be exported to other APIs. Platform-specific mechanisms (file descriptors on Linux, NT handles on Windows, IOSurface on macOS, AHardwareBuffer on Android) enable the actual sharing.
+
+Each ML library has its own API for importing external memory—CUDA's external memory API for ONNX Runtime, AHardwareBuffer for TensorFlow Lite on Android, D3D12 resource sharing for DirectML. The concepts are similar across libraries: export from Vulkan, import into the ML library, synchronize with external semaphores.
+
+The result is zero-copy, GPU-to-GPU data flow that makes real-time ML inference feasible in graphics applications. The implementation complexity is significant, but the performance gains are essential for demanding use cases.
+
+xref:ML_Inference/Third_Party_Libraries/06_integration_patterns.adoc[Previous: Integration Patterns] | xref:ML_Inference/Third_Party_Libraries/08_data_transfer_optimization.adoc[Next: Data Transfer Optimization]

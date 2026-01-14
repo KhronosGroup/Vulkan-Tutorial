@@ -1,0 +1,544 @@
+::pp: {plus}{plus}
+
+= Choosing the Right Library
+
+== Introduction
+
+You've learned about ONNX Runtime, TensorFlow Lite, PyTorch Mobile, and DirectML. You understand GPU resource sharing, data transfer optimization, and integration patterns. You've seen practical examples. Now comes the critical question: which library should you actually use for your project?
+
+This isn't a simple question with a universal answer. The "best" ML inference library depends on your specific requirements: target platforms, performance needs, model formats, development resources, and deployment constraints. Choosing the wrong library can mean wasted development time, poor performance, or deployment failures.
+
+This chapter provides a systematic framework for making this decision. We'll evaluate libraries across multiple dimensions—platform support, performance characteristics, model compatibility, integration complexity, and ecosystem maturity. We'll provide decision trees for common scenarios and recommendation matrices for different use cases. By the end, you'll have a clear methodology for choosing the right library for your Vulkan application.
+
+== The Decision Framework
+
+Let's start with a structured approach to evaluating ML inference libraries. Think of this as a checklist that helps you narrow down options systematically.
+
+=== Step 1: Platform Requirements (Eliminates Options)
+
+Start with hard constraints. Which platforms must your application support? This immediately eliminates some options.
+
+*Desktop Only (Windows/Linux/macOS)*
+
+If you're targeting only desktop platforms, you have the most flexibility:
+
+- ONNX Runtime: Excellent choice. Supports all desktop platforms, multiple execution providers (CPU, CUDA, TensorRT, DirectML, OpenVINO).
+- TensorFlow Lite: Works but less optimized for desktop than mobile. GPU delegate support varies by platform.
+- PyTorch Mobile: Primarily mobile-focused, desktop support is secondary.
+- DirectML: Windows only, but excellent if you're Windows-exclusive.
+
+*Mobile Only (Android/iOS)*
+
+For mobile-only applications:
+
+- TensorFlow Lite: The standard choice. Mature, well-optimized, excellent GPU delegate support on both platforms.
+- PyTorch Mobile: Good alternative, especially if you're already using PyTorch for training.
+- ONNX Runtime: Works on mobile but less optimized than TFLite. Consider if you need cross-framework compatibility.
+- DirectML: Not available on mobile.
+
+*Cross-Platform (Desktop + Mobile)*
+
+Need to support both desktop and mobile?
+
+- ONNX Runtime: Best cross-platform consistency. Same API, same model format everywhere.
+- TensorFlow Lite: Works everywhere but desktop support is less mature.
+- PyTorch Mobile: Possible but requires more platform-specific code.
+- DirectML: Can't be your only solution (Windows-only).
+
+*Embedded/Edge Devices*
+
+For embedded systems with limited resources:
+
+- TensorFlow Lite: Designed for this. Micro version (TFLite Micro) runs on microcontrollers.
+- ONNX Runtime: Has embedded support but larger footprint than TFLite.
+- PyTorch Mobile: Too heavy for most embedded systems.
+- DirectML: Not applicable.
+
+**Decision Rule**: Eliminate any library that doesn't support all your required platforms. Don't try to work around platform limitations—it's not worth the effort.
+
+=== Step 2: Model Format Compatibility
+
+What format are your models in? Can you convert them?
+
+*You Have ONNX Models*
+
+- ONNX Runtime: Native support, no conversion needed.
+- TensorFlow Lite: Requires conversion (ONNX → TensorFlow → TFLite). Possible but adds complexity.
+- PyTorch Mobile: Requires conversion (ONNX → PyTorch → TorchScript). Lossy for some operations.
+- DirectML: Can consume ONNX directly through ONNX Runtime.
+
+*You Have TensorFlow/Keras Models*
+
+- TensorFlow Lite: Direct conversion, well-supported.
+- ONNX Runtime: Requires conversion (TensorFlow → ONNX). Generally works well.
+- PyTorch Mobile: Requires conversion (TensorFlow → ONNX → PyTorch). Complex, error-prone.
+- DirectML: Via ONNX Runtime after TensorFlow → ONNX conversion.
+
+*You Have PyTorch Models*
+
+- PyTorch Mobile: Direct export to TorchScript, seamless.
+- ONNX Runtime: Export to ONNX, well-supported by PyTorch.
+- TensorFlow Lite: Requires PyTorch → ONNX → TensorFlow → TFLite. Painful.
+- DirectML: Via ONNX Runtime after PyTorch → ONNX export.
+
+*You're Training Custom Models*
+
+If you control the training pipeline, you can export to any format. Choose based on other criteria, but consider:
+
+- ONNX: Most flexible, works with all major training frameworks.
+- TFLite: Best if you're training in TensorFlow and targeting mobile.
+- TorchScript: Best if you're training in PyTorch and targeting mobile.
+
+**Decision Rule**: If you have existing models in a specific format and conversion is difficult, prefer the library that natively supports that format. If you control training, choose the format that best matches your deployment needs.
+
+=== Step 3: Performance Requirements
+
+How fast does inference need to be? What's your latency budget?
+
+*Real-Time (< 16ms per frame for 60 FPS)*
+
+For real-time applications like games or AR/VR:
+
+- ONNX Runtime with TensorRT: Best desktop performance on NVIDIA GPUs. TensorRT's aggressive optimizations can provide 2-5x speedup.
+- TensorFlow Lite with GPU delegate: Best mobile performance. Highly optimized for mobile GPUs.
+- DirectML: Excellent on Windows, especially for AMD/Intel GPUs where CUDA isn't available.
+- PyTorch Mobile: Generally slower than TFLite on mobile.
+
+*Interactive (< 100ms)*
+
+For interactive applications where users expect quick feedback:
+
+- Any library works. Focus on ease of integration rather than peak performance.
+- ONNX Runtime: Good default choice for cross-platform consistency.
+
+*Batch Processing (Throughput > Latency)*
+
+For offline processing where you care about throughput, not latency:
+
+- ONNX Runtime with CUDA: Excellent for large batches on NVIDIA GPUs.
+- TensorFlow Lite: Less optimized for large batches, but works.
+- DirectML: Good for Windows batch processing.
+
+**Decision Rule**: For real-time applications, choose the library with the best performance on your target hardware. For non-real-time applications, prioritize ease of integration.
+
+=== Step 4: Integration Complexity
+
+How much development effort can you invest in integration?
+
+*Minimal Effort (Days)*
+
+If you need something working quickly:
+
+- TensorFlow Lite: Simplest API, extensive documentation, many examples.
+- ONNX Runtime: Simple API, good documentation, but requires understanding execution providers.
+- PyTorch Mobile: Simple if you're already familiar with PyTorch.
+- DirectML: More complex, requires D3D12 knowledge.
+
+*Moderate Effort (Weeks)*
+
+If you can invest more time for better performance:
+
+- ONNX Runtime with GPU resource sharing: Moderate complexity, significant performance gains.
+- TensorFlow Lite with custom delegates: Allows optimization but requires understanding TFLite internals.
+- DirectML with Vulkan interop: Complex but provides excellent Windows performance.
+
+*Significant Effort (Months)*
+
+If you're building a production system and can invest heavily:
+
+- Custom Vulkan compute shaders: Maximum control and performance, but requires implementing everything yourself.
+- Hybrid approach: Use libraries for most operations, custom shaders for performance-critical parts.
+
+**Decision Rule**: Be realistic about your development resources. A simpler solution that ships is better than a perfect solution that never finishes.
+
+=== Step 5: Ecosystem and Support
+
+How mature is the library? What's the community like?
+
+*Ecosystem Maturity*
+
+- TensorFlow Lite: Most mature for mobile. Huge model zoo, extensive tooling, active community.
+- ONNX Runtime: Mature and growing. Good model zoo, improving tooling, strong industry backing.
+- PyTorch Mobile: Newer but growing fast. Smaller model zoo, improving documentation.
+- DirectML: Mature on Windows. Limited to Windows ecosystem.
+
+*Community and Support*
+
+- TensorFlow Lite: Largest community, most Stack Overflow answers, most tutorials.
+- ONNX Runtime: Growing community, good official documentation, responsive maintainers.
+- PyTorch Mobile: Active community, good documentation, tied to PyTorch ecosystem.
+- DirectML: Smaller community, good official documentation, Microsoft support.
+
+*Long-Term Viability*
+
+- TensorFlow Lite: Google-backed, widely deployed, safe long-term bet.
+- ONNX Runtime: Microsoft-backed, industry consortium support, safe long-term bet.
+- PyTorch Mobile: Facebook/Meta-backed, growing adoption, likely safe.
+- DirectML: Microsoft-backed, Windows-specific, safe for Windows-only apps.
+
+**Decision Rule**: For production applications, prefer libraries with mature ecosystems and strong backing. For experimental projects, newer libraries might offer advantages.
+
+== Platform-Specific Recommendations
+
+Let's get concrete with recommendations for specific platforms.
+
+=== Windows Desktop
+
+*Primary Recommendation: ONNX Runtime with DirectML*
+
+Why: DirectML provides excellent performance across all GPU vendors (NVIDIA, AMD, Intel). ONNX Runtime's DirectML execution provider is mature and well-optimized. You get good performance without vendor lock-in.
+
+*Alternative: ONNX Runtime with CUDA (NVIDIA only)*
+
+Why: If you're targeting only NVIDIA GPUs, CUDA execution provider provides better performance than DirectML. TensorRT execution provider provides even better performance but requires more setup.
+
+*When to Use TensorFlow Lite*: If you're already using TensorFlow for training and don't need peak performance. Simpler integration, but less optimized for desktop.
+
+=== Linux Desktop
+
+*Primary Recommendation: ONNX Runtime with CUDA*
+
+Why: Most Linux gaming/graphics systems have NVIDIA GPUs. CUDA execution provider provides excellent performance. TensorRT execution provider provides even better performance for production deployments.
+
+*Alternative: ONNX Runtime with CPU*
+
+Why: If you need to support systems without NVIDIA GPUs, CPU execution provider works everywhere. Performance is lower but acceptable for non-real-time applications.
+
+*When to Use TensorFlow Lite*: If you're targeting embedded Linux systems (Raspberry Pi, Jetson) where TFLite is well-optimized.
+
+=== macOS Desktop
+
+*Primary Recommendation: ONNX Runtime with CoreML*
+
+Why: CoreML execution provider leverages Apple's Neural Engine on M1/M2 Macs, providing excellent performance and power efficiency.
+
+*Alternative: ONNX Runtime with CPU*
+
+Why: Works on all Macs (Intel and Apple Silicon). Performance is acceptable for non-real-time applications.
+
+*When to Use TensorFlow Lite*: If you're also targeting iOS and want consistent code across platforms.
+
+=== Android Mobile
+
+*Primary Recommendation: TensorFlow Lite with GPU Delegate*
+
+Why: TFLite is the standard for Android ML. GPU delegate is mature, well-optimized, and works across diverse Android devices. Extensive documentation and examples.
+
+*Alternative: ONNX Runtime with NNAPI*
+
+Why: If you need cross-framework compatibility or have ONNX models. NNAPI execution provider leverages Android's neural network API, providing hardware acceleration.
+
+*When to Use PyTorch Mobile*: If you're training in PyTorch and want seamless export. Performance is comparable to TFLite.
+
+=== iOS Mobile
+
+*Primary Recommendation: TensorFlow Lite with GPU Delegate*
+
+Why: Mature, well-optimized, works reliably across iOS devices. Good integration with Metal.
+
+*Alternative: ONNX Runtime with CoreML*
+
+Why: CoreML execution provider leverages Apple's Neural Engine, providing excellent performance on newer devices (A12+). Better power efficiency than GPU delegate.
+
+*When to Use PyTorch Mobile*: If you're training in PyTorch. Performance is good, but ecosystem is smaller than TFLite.
+
+=== Embedded/Edge Devices
+
+*Primary Recommendation: TensorFlow Lite (or TFLite Micro)*
+
+Why: Designed for resource-constrained devices. Small footprint, optimized for low power, extensive embedded platform support.
+
+*Alternative: ONNX Runtime*
+
+Why: If you need cross-framework compatibility and have sufficient resources (>100MB RAM, >1GHz CPU). Larger footprint than TFLite but more flexible.
+
+*When to Use Custom Vulkan*: If you're on a platform with Vulkan support but no ML library support, or if you need absolute minimum latency and can invest in custom implementation.
+
+== Performance Comparison
+
+Let's compare performance across libraries for common operations. These are approximate figures based on typical hardware—your mileage will vary.
+
+=== Image Classification (ResNet-50, 224×224 input)
+
+*Desktop (NVIDIA RTX 3080)*
+
+- ONNX Runtime + TensorRT: ~2ms
+- ONNX Runtime + CUDA: ~4ms
+- ONNX Runtime + DirectML: ~6ms
+- TensorFlow Lite + GPU: ~8ms
+- ONNX Runtime + CPU: ~50ms
+
+*Mobile (Snapdragon 888)*
+
+- TensorFlow Lite + GPU: ~8ms
+- ONNX Runtime + NNAPI: ~10ms
+- PyTorch Mobile + GPU: ~12ms
+- TensorFlow Lite + CPU: ~80ms
+
+*Mobile (iPhone 13, A15 Bionic)*
+
+- ONNX Runtime + CoreML (Neural Engine): ~5ms
+- TensorFlow Lite + GPU: ~7ms
+- TensorFlow Lite + CPU: ~60ms
+
+=== Object Detection (YOLOv5s, 640×640 input)
+
+*Desktop (NVIDIA RTX 3080)*
+
+- ONNX Runtime + TensorRT: ~5ms
+- ONNX Runtime + CUDA: ~10ms
+- ONNX Runtime + DirectML: ~15ms
+- TensorFlow Lite + GPU: ~20ms
+
+*Mobile (Snapdragon 888)*
+
+- TensorFlow Lite + GPU: ~25ms
+- ONNX Runtime + NNAPI: ~30ms
+- PyTorch Mobile + GPU: ~35ms
+
+=== Key Takeaways
+
+- TensorRT provides the best desktop performance on NVIDIA GPUs (2-3x faster than raw CUDA)
+- DirectML provides good cross-vendor performance on Windows
+- TensorFlow Lite provides the best mobile performance
+- CoreML provides excellent performance on Apple devices
+- CPU inference is 10-20x slower than GPU inference
+
+**Decision Rule**: If performance is critical, benchmark on your target hardware with your specific models. These numbers are guidelines, not guarantees.
+
+== Migration Paths
+
+What if you need to switch libraries later? Understanding migration paths helps you avoid lock-in.
+
+=== From TensorFlow Lite to ONNX Runtime
+
+*Difficulty*: Moderate
+
+*Process*:
+1. Convert TFLite model to TensorFlow SavedModel
+2. Convert TensorFlow to ONNX using tf2onnx
+3. Validate conversion with test inputs
+4. Update inference code to use ONNX Runtime API
+
+*Gotchas*: Some TFLite-specific optimizations (quantization schemes) might not transfer perfectly. Expect to re-tune.
+
+=== From ONNX Runtime to TensorFlow Lite
+
+*Difficulty*: Moderate to Hard
+
+*Process*:
+1. Convert ONNX to TensorFlow using onnx-tf
+2. Convert TensorFlow to TFLite
+3. Apply quantization if needed
+4. Validate extensively—this path is error-prone
+
+*Gotchas*: Not all ONNX operators are supported in TFLite. Custom operators are particularly problematic.
+
+=== From PyTorch Mobile to ONNX Runtime
+
+*Difficulty*: Easy
+
+*Process*:
+1. Export PyTorch model to ONNX (well-supported)
+2. Load in ONNX Runtime
+3. Update inference code
+
+*Gotchas*: Dynamic shapes and control flow might not export perfectly.
+
+=== From Custom Vulkan to Library
+
+*Difficulty*: Easy (code-wise), Hard (performance-wise)
+
+*Process*:
+1. Export your model to library's format
+2. Replace custom inference code with library calls
+3. Re-optimize for library's characteristics
+
+*Gotchas*: You'll likely lose performance. Custom implementations are usually faster than libraries for specific use cases.
+
+**Decision Rule**: If you anticipate needing to switch libraries, prefer ONNX as your model format—it provides the most flexibility for migration.
+
+== Decision Trees
+
+Let's provide concrete decision trees for common scenarios.
+
+=== Decision Tree 1: Desktop Game with Real-Time Inference
+
+[source]
+----
+Start: Desktop game, need real-time ML inference
+
+Q: Target only NVIDIA GPUs?
+├─ Yes → ONNX Runtime + TensorRT
+│         (Best performance, but NVIDIA-only)
+│
+└─ No → Q: Windows-only?
+        ├─ Yes → ONNX Runtime + DirectML
+        │         (Good cross-vendor performance)
+        │
+        └─ No → Q: Linux-only?
+                ├─ Yes → ONNX Runtime + CUDA (if NVIDIA common)
+                │         or ONNX Runtime + CPU (if mixed GPUs)
+                │
+                └─ No (Cross-platform) → ONNX Runtime + best provider per platform
+                                         (DirectML on Windows, CUDA on Linux, CoreML on macOS)
+----
+
+=== Decision Tree 2: Mobile AR Application
+
+[source]
+----
+Start: Mobile AR app, need real-time inference
+
+Q: iOS-only?
+├─ Yes → Q: Targeting A12+ devices?
+│        ├─ Yes → ONNX Runtime + CoreML
+│        │         (Best performance on Neural Engine)
+│        │
+│        └─ No → TensorFlow Lite + GPU
+│                 (Broader device support)
+│
+└─ No → Q: Android-only?
+        ├─ Yes → TensorFlow Lite + GPU
+        │         (Industry standard, best support)
+        │
+        └─ No (Cross-platform) → TensorFlow Lite + GPU
+                                  (Most consistent across platforms)
+----
+
+=== Decision Tree 3: Embedded Vision System
+
+[source]
+----
+Start: Embedded device, computer vision
+
+Q: Memory available?
+├─ < 1MB → TensorFlow Lite Micro
+│          (Only option for microcontrollers)
+│
+├─ 1-100MB → TensorFlow Lite
+│            (Optimized for resource-constrained devices)
+│
+└─ > 100MB → Q: Need cross-framework compatibility?
+             ├─ Yes → ONNX Runtime
+             │         (More flexible, larger footprint)
+             │
+             └─ No → TensorFlow Lite
+                      (Smaller footprint, better optimized)
+----
+
+== Recommendation Matrix
+
+Here's a quick reference matrix for common scenarios:
+
+[cols="3,2,2,2,2", options="header"]
+|===
+|Use Case |Primary Choice |Alternative |Avoid |Notes
+
+|Desktop Game (NVIDIA)
+|ONNX Runtime + TensorRT
+|ONNX Runtime + CUDA
+|TensorFlow Lite
+|TensorRT provides 2-3x speedup
+
+|Desktop Game (AMD/Intel)
+|ONNX Runtime + DirectML
+|ONNX Runtime + CPU
+|CUDA-based solutions
+|DirectML works across vendors
+
+|Mobile Game (Android)
+|TensorFlow Lite + GPU
+|ONNX Runtime + NNAPI
+|PyTorch Mobile
+|TFLite is industry standard
+
+|Mobile Game (iOS)
+|TensorFlow Lite + GPU
+|ONNX Runtime + CoreML
+|PyTorch Mobile
+|CoreML for A12+ devices
+
+|Cross-Platform App
+|ONNX Runtime
+|TensorFlow Lite
+|Platform-specific solutions
+|ONNX provides consistency
+
+|Embedded Vision
+|TensorFlow Lite
+|ONNX Runtime
+|Heavy libraries
+|TFLite optimized for embedded
+
+|Batch Processing
+|ONNX Runtime + CUDA
+|TensorFlow Lite
+|Mobile-focused solutions
+|CUDA excels at large batches
+
+|Rapid Prototyping
+|TensorFlow Lite
+|ONNX Runtime
+|Custom implementations
+|TFLite has simplest API
+
+|Production System
+|ONNX Runtime
+|TensorFlow Lite
+|Experimental libraries
+|Mature ecosystem matters
+|===
+
+== Making the Final Decision
+
+After working through the framework, you should have narrowed down to one or two options. Here's how to make the final call:
+
+=== Build a Proof of Concept
+
+Don't commit without testing. Build a minimal proof of concept with your top choice:
+
+1. Load a representative model
+2. Run inference on representative data
+3. Measure performance on target hardware
+4. Evaluate integration complexity
+5. Check for any unexpected issues
+
+Spend a few days on this. It's worth it to avoid months of regret.
+
+=== Benchmark on Target Hardware
+
+Performance numbers from the internet are guidelines, not guarantees. Benchmark your specific models on your specific hardware:
+
+- Measure latency (min, max, average, p95, p99)
+- Measure throughput (inferences per second)
+- Measure memory usage (peak and average)
+- Measure power consumption (for mobile/embedded)
+
+If performance doesn't meet requirements, reconsider your choice.
+
+=== Consider the Team
+
+What's your team's expertise? If everyone knows TensorFlow, TensorFlow Lite might be easier despite slightly lower performance. If everyone knows PyTorch, PyTorch Mobile might be the path of least resistance.
+
+Developer productivity matters. A library that's 10% slower but 50% easier to integrate might be the better choice.
+
+=== Plan for the Future
+
+Where is your application going? If you're starting on desktop but plan to expand to mobile, choose a library that works well on both. If you're starting with simple models but plan to use more complex ones, ensure your library can handle them.
+
+Don't over-engineer for hypothetical futures, but don't paint yourself into a corner either.
+
+== Summary
+
+Choosing the right ML inference library for your Vulkan application requires evaluating multiple factors: platform requirements, model format compatibility, performance needs, integration complexity, and ecosystem maturity.
+
+For most desktop applications, ONNX Runtime provides the best balance of performance, flexibility, and cross-platform support. Use TensorRT execution provider on NVIDIA GPUs for maximum performance, DirectML on Windows for cross-vendor support, or CoreML on macOS for Apple Silicon optimization.
+
+For mobile applications, TensorFlow Lite is the industry standard, providing excellent performance and the most mature ecosystem. Consider ONNX Runtime with CoreML for iOS if targeting newer devices, or ONNX Runtime with NNAPI for Android if you need cross-framework compatibility.
+
+For embedded systems, TensorFlow Lite (or TFLite Micro for microcontrollers) is the clear choice, optimized for resource-constrained environments.
+
+The key is to be systematic: eliminate options based on hard constraints, evaluate remaining options across relevant dimensions, build a proof of concept, and benchmark on target hardware before committing. With this approach, you'll choose the library that best fits your specific needs.
+
+xref:ML_Inference/Third_Party_Libraries/09_practical_examples.adoc[Previous: Practical Examples] | xref:ML_Inference/Vulkan_Compute_for_ML/01_introduction.adoc[Next: Vulkan Compute for ML]

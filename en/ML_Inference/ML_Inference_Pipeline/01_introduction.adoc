@@ -1,0 +1,83 @@
+::pp: {plus}{plus}
+
+= ML Inference Pipeline: Introduction
+
+== Introduction
+
+You've completed the Vulkan tutorial. You can create graphics pipelines, manage memory, dispatch compute shaders. You understand how to make the GPU do what you want. Now you're looking at machine learning and wondering: how does this fit together? How do I take a trained neural network and actually run it on the GPU using Vulkan?
+
+That's what this chapter is about. Not the mathematics of training neural networks—that's a different beast entirely. We're focused on *inference*: taking a model that someone already trained and running it efficiently on your GPU. Think of it like this: someone else built the engine, tuned it, and handed you the keys. Your job is to drive it fast.
+
+But here's the thing: you can't just jump straight into writing compute shaders for neural networks. If you don't understand what a neural network actually *is*—what operations it performs, why those operations matter, how data flows through it—you'll be writing code blindly. You might get something working, but you won't understand why it works or how to fix it when it breaks.
+
+This chapter builds the foundation you need. We're going to explore what machine learning is, how neural networks work from first principles, what inference means, and how to think about neural networks as GPU compute operations. By the end, you'll have a clear mental model that connects high-level ML concepts to the low-level Vulkan code you'll write.
+
+== What This Chapter Covers
+
+We're going to take a journey from "what is machine learning?" to "how do I map this to GPU execution?" Here's the path:
+
+First, we'll talk about *what machine learning actually is*. Not the hype, not the buzzwords—the real thing. How does a computer learn patterns from data? Why is this useful? Where does it show up in real applications, especially graphics and real-time systems? This context matters because it helps you understand why GPU acceleration is crucial and where Vulkan-based inference makes sense.
+
+Then we'll dive into *neural networks from the ground up*. We'll start with simple mathematical functions and build up to complex networks. You'll see how biological neurons inspired artificial ones, why linear functions alone don't work, and why activation functions are essential. We'll work through concrete examples—like building an AND gate with a single neuron—so you understand exactly what's happening at each step. This isn't abstract theory; it's the foundation for the compute shaders you'll write.
+
+Next, we'll clarify the crucial distinction between *training and inference*. Training is where the learning happens—adjusting millions of weights through gradient descent and backpropagation. Inference is where you use those learned weights to make predictions. We're focused on inference, but understanding a bit about training helps you appreciate what you're implementing and why models are structured the way they are.
+
+We'll explore *transfer learning*—the practical reality that you'll almost never train models from scratch. Instead, you'll take pre-trained models and adapt them to your needs. Understanding how this works and why it's so powerful will shape how you approach Vulkan inference projects.
+
+Then we'll tackle *model formats*: TFLite and ONNX. These are the file formats that package trained models for deployment. You need to understand what's in these files, how they differ, and how to convert between them. This is practical knowledge you'll use immediately when loading models into your Vulkan application.
+
+Finally, we'll build a *mental model for GPU execution*. How does a neural network—this abstract mathematical thing—map to buffers, compute shaders, and pipeline barriers? How do you think about memory management, synchronization, and performance? This mental model bridges the gap between ML concepts and Vulkan implementation.
+
+== Who This Is For
+
+This chapter assumes you've completed the main Vulkan tutorial and you're comfortable with compute shaders. You should know how to create command buffers, dispatch compute work, manage GPU memory, and synchronize operations. If terms like "pipeline barrier" and "descriptor set" make sense to you, you're ready.
+
+You don't need machine learning experience. We'll build that from scratch. But if you've used ML frameworks like PyTorch or TensorFlow, you'll find it easier to connect the dots between what those frameworks do and what you'll implement in Vulkan.
+
+Mathematically, you should be comfortable with basic linear algebra—vectors, matrices, matrix multiplication. Understanding functions and their properties helps. Calculus isn't required, though we'll touch on concepts like gradients when explaining how training works (which helps you understand inference).
+
+== Why Bother With the Theory?
+
+You might be thinking: "I just want to run inference. Why do I need to understand all this background?" Fair question. Here's why it matters:
+
+*Debugging*: When your inference results are wrong—and they will be wrong at some point—you need to know where to look. Is it a preprocessing issue? A layer implementation bug? A synchronization problem? Understanding what each layer should do mathematically helps you identify where things went wrong.
+
+*Optimization*: Neural networks have bottlenecks, and they're not always where you expect. Understanding the operations helps you identify what's actually expensive and what optimizations will help. Should you fuse operations? Change memory layout? Use different work group sizes? You can't answer these questions without understanding what the operations do.
+
+*Adaptation*: New model architectures appear constantly. If you understand the fundamentals—what convolutions do, how attention works, why normalization matters—you can implement new layer types as they emerge. You're not locked into whatever operations you implemented first.
+
+*Decision Making*: Sometimes custom Vulkan inference is the right choice. Sometimes it's not. Understanding the tradeoffs—when custom implementation makes sense versus using existing libraries—requires understanding what you're actually implementing.
+
+The time you invest in understanding these fundamentals pays off every time you debug a problem, optimize performance, or implement a new model architecture.
+
+== How to Use This Chapter
+
+Read through the sections in order—each builds on the previous ones. Don't skip ahead unless you're already solid on the concepts. The chapter is designed to build understanding progressively, from simple to complex.
+
+Take your time with the examples. When we work through building an AND gate with a neuron, actually work through the math yourself. When we explain how convolutions work, trace through the operations. The concrete examples are where abstract concepts become real.
+
+If you get stuck on a concept, that's normal. Neural networks involve a lot of moving parts. Go back, re-read, work through the examples again. The investment in understanding pays off when you start implementing.
+
+And remember: this chapter is about building mental models. We're not implementing anything yet—that comes in later chapters. Right now, we're building the foundation that makes implementation make sense.
+
+== What's Inside
+
+Here's what we'll cover in the following sections:
+
+*xref:ML_Inference/ML_Inference_Pipeline/02_what_is_machine_learning.adoc[What Is Machine Learning?]* - We start with the basics: what machine learning is, how it differs from traditional programming, and where it's used in real applications. You'll understand why teaching computers to learn from examples is powerful and why GPU acceleration matters for real-time inference.
+
+*xref:ML_Inference/ML_Inference_Pipeline/03_neural_networks_fundamentals.adoc[Neural Networks Fundamentals]* - This is where we build understanding from the ground up. Starting with mathematical functions and biological inspiration, we'll construct artificial neurons, explore why non-linear activation functions are essential, and work through concrete examples. You'll understand what neural networks actually compute and why they're structured the way they are.
+
+*xref:ML_Inference/ML_Inference_Pipeline/04_inference_explained.adoc[Inference Explained]* - Here we distinguish training from inference and explore what inference means as a computational process. You'll learn how data flows through a network during inference, what preprocessing and postprocessing involve, and how to think about neural networks as sequences of GPU compute operations.
+
+*xref:ML_Inference/ML_Inference_Pipeline/05_transfer_learning.adoc[Transfer Learning]* - The practical reality is that you'll rarely train models from scratch. This section explains how to leverage pre-trained models, adapt them to your needs, and why this approach is so powerful. Understanding transfer learning shapes how you approach real-world inference projects.
+
+*xref:ML_Inference/ML_Inference_Pipeline/06_model_formats.adoc[Model Formats]* - Neural networks get packaged in various formats for deployment: TFLite and ONNX. You'll learn what these formats contain, how they differ, when to use each, and how to convert between them. This is practical knowledge you'll use immediately when working with trained models.
+
+*xref:ML_Inference/ML_Inference_Pipeline/07_mental_model_gpu_execution.adoc[Mental Model: GPU Execution]* - Finally, we tie everything together with a mental model that maps neural network concepts to GPU execution. How do layers become compute shaders? How do you manage memory for intermediate results? How do you synchronize operations? This mental model bridges the gap between ML theory and Vulkan implementation.
+
+Each section builds on the previous ones, creating a complete picture of what you're implementing and why. By the end of this chapter, you'll be ready to dive into the practical implementation details in the following chapters.
+
+Let's start by understanding what machine learning actually is and why it matters for GPU compute.
+
+xref:ML_Inference/introduction.adoc[Previous: ML Inference Introduction] | xref:ML_Inference/ML_Inference_Pipeline/02_what_is_machine_learning.adoc[Next: What Is Machine Learning?]

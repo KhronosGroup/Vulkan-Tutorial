@@ -38,9 +38,9 @@ Here's how we set it up:
 ----
 class SharedRenderTarget {
 public:
-    VkImage image;
-    VkDeviceMemory memory;
-    VkImageView imageView;
+    vk::raii::Image image = nullptr;
+    vk::raii::DeviceMemory memory = nullptr;
+    vk::raii::ImageView imageView = nullptr;
 
 #ifdef _WIN32
     HANDLE memoryHandle;
@@ -48,76 +48,76 @@ public:
     int memoryFd;
 #endif
 
-    void create(VkDevice device, VkPhysicalDevice physicalDevice,
+    void create(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice,
                 uint32_t width, uint32_t height) {
         // Create image with external memory support
-        VkExternalMemoryImageCreateInfo externalInfo = {};
-        externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        vk::ExternalMemoryImageCreateInfo externalInfo{
 #ifdef _WIN32
-        externalInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+            .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32
 #else
-        externalInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+            .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd
 #endif
+        };
 
-        VkImageCreateInfo imageInfo = {};
-        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageInfo.pNext = &externalInfo;
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-        imageInfo.extent = {width, height, 1};
-        imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
-        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                         VK_IMAGE_USAGE_SAMPLED_BIT;
-        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        vk::ImageCreateInfo imageInfo{
+            .pNext = &externalInfo,
+            .imageType = vk::ImageType::e2D,
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .extent = {width, height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eColorAttachment |
+                     vk::ImageUsageFlagBits::eSampled,
+            .sharingMode = vk::SharingMode::eExclusive,
+            .initialLayout = vk::ImageLayout::eUndefined
+        };
 
-        vkCreateImage(device, &imageInfo, nullptr, &image);
+        image = vk::raii::Image(device, imageInfo);
 
         // Allocate memory with export support
-        VkMemoryRequirements memReqs;
-        vkGetImageMemoryRequirements(device, image, &memReqs);
+        vk::MemoryRequirements memReqs = image.getMemoryRequirements();
 
-        VkExportMemoryAllocateInfo exportAllocInfo = {};
-        exportAllocInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-        exportAllocInfo.handleTypes = externalInfo.handleTypes;
+        vk::ExportMemoryAllocateInfo exportAllocInfo{
+            .handleTypes = externalInfo.handleTypes
+        };
 
-        VkMemoryAllocateInfo allocInfo = {};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &exportAllocInfo;
-        allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memReqs.memoryTypeBits,
-                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vk::MemoryAllocateInfo allocInfo{
+            .pNext = &exportAllocInfo,
+            .allocationSize = memReqs.size,
+            .memoryTypeIndex = findMemoryType(physicalDevice, memReqs.memoryTypeBits,
+                                             vk::MemoryPropertyFlagBits::eDeviceLocal)
+        };
 
-        vkAllocateMemory(device, &allocInfo, nullptr, &memory);
-        vkBindImageMemory(device, image, memory, 0);
+        memory = vk::raii::DeviceMemory(device, allocInfo);
+        image.bindMemory(*memory, 0);
 
         // Export memory handle
 #ifdef _WIN32
-        VkMemoryGetWin32HandleInfoKHR handleInfo = {};
-        handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
-        handleInfo.memory = memory;
-        handleInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
-        vkGetMemoryWin32HandleKHR(device, &handleInfo, &memoryHandle);
+        vk::MemoryGetWin32HandleInfoKHR handleInfo{
+            .memory = *memory,
+            .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32
+        };
+        memoryHandle = device.getMemoryWin32HandleKHR(handleInfo);
 #else
-        VkMemoryGetFdInfoKHR fdInfo = {};
-        fdInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
-        fdInfo.memory = memory;
-        fdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
-        vkGetMemoryFdKHR(device, &fdInfo, &memoryFd);
+        vk::MemoryGetFdInfoKHR fdInfo{
+            .memory = *memory,
+            .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd
+        };
+        memoryFd = device.getMemoryFdKHR(fdInfo);
 #endif
 
         // Create image view
-        VkImageViewCreateInfo viewInfo = {};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = image;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-        viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vk::ImageViewCreateInfo viewInfo{
+            .image = *image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+        };
 
-        vkCreateImageView(device, &viewInfo, nullptr, &imageView);
+        imageView = vk::raii::ImageView(device, viewInfo);
+        // RAII handles cleanup automatically
     }
 };
 ----
@@ -185,34 +185,33 @@ Just like we exported memory handles, we'll export semaphore handles that both V
 ----
 class ExternalSemaphore {
 public:
-    VkSemaphore vkSemaphore;
+    vk::raii::Semaphore vkSemaphore = nullptr;
     cl_semaphore_khr clSemaphore;
 
-    void create(VkDevice device, cl_context clContext) {
+    void create(const vk::raii::Device& device, cl_context clContext) {
         // Create Vulkan semaphore with export support
-        VkExportSemaphoreCreateInfo exportInfo = {};
-        exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO;
+        vk::ExportSemaphoreCreateInfo exportInfo{
 #ifdef _WIN32
-        exportInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+            .handleTypes = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32
 #else
-        exportInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+            .handleTypes = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd
 #endif
+        };
 
-        VkSemaphoreCreateInfo semInfo = {};
-        semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        semInfo.pNext = &exportInfo;
+        vk::SemaphoreCreateInfo semInfo{
+            .pNext = &exportInfo
+        };
 
-        vkCreateSemaphore(device, &semInfo, nullptr, &vkSemaphore);
+        vkSemaphore = vk::raii::Semaphore(device, semInfo);
 
         // Export and import into OpenCL
 #ifdef _WIN32
-        VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
-        handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
-        handleInfo.semaphore = vkSemaphore;
-        handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+        vk::SemaphoreGetWin32HandleInfoKHR handleInfo{
+            .semaphore = *vkSemaphore,
+            .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32
+        };
 
-        HANDLE semHandle;
-        vkGetSemaphoreWin32HandleKHR(device, &handleInfo, &semHandle);
+        HANDLE semHandle = device.getSemaphoreWin32HandleKHR(handleInfo);
 
         cl_semaphore_properties_khr props[] = {
             CL_SEMAPHORE_EXPORT_HANDLE_TYPES_KHR,
@@ -221,13 +220,12 @@ public:
             0
         };
 #else
-        VkSemaphoreGetFdInfoKHR fdInfo = {};
-        fdInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR;
-        fdInfo.semaphore = vkSemaphore;
-        fdInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+        vk::SemaphoreGetFdInfoKHR fdInfo{
+            .semaphore = *vkSemaphore,
+            .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd
+        };
 
-        int semFd;
-        vkGetSemaphoreFdKHR(device, &fdInfo, &semFd);
+        int semFd = device.getSemaphoreFdKHR(fdInfo);
 
         cl_semaphore_properties_khr props[] = {
             CL_SEMAPHORE_EXPORT_HANDLE_TYPES_KHR,
@@ -239,6 +237,7 @@ public:
 
         cl_int err;
         clSemaphore = clCreateSemaphoreWithPropertiesKHR(clContext, props, &err);
+        // RAII handles Vulkan semaphore cleanup automatically
     }
 };
 ----
@@ -331,21 +330,22 @@ void renderLoop() {
 
     while (!shouldClose()) {
         // Vulkan: Render scene
-        VkCommandBuffer cmd = beginFrame();
-        renderScene(cmd, renderTarget.imageView);
-        endFrame(cmd, renderComplete.vkSemaphore);
+        vk::raii::CommandBuffer cmd = beginFrame();
+        renderScene(*cmd, *renderTarget.imageView);
+        endFrame(*cmd, *renderComplete.vkSemaphore);
 
         // OpenCL/ONNX: Run inference (async)
         detector.runInference(clMemory, renderComplete, inferenceComplete,
                             1920, 1080);
 
         // Vulkan: Use results (waits for inference)
-        VkCommandBuffer postCmd = beginCommandBuffer();
+        vk::raii::CommandBuffer postCmd = beginCommandBuffer();
         // ... use inference results for visualization, gameplay, etc ...
-        submitWithWait(postCmd, inferenceComplete.vkSemaphore);
+        submitWithWait(*postCmd, *inferenceComplete.vkSemaphore);
 
         present();
     }
+    // RAII handles cleanup of all Vulkan resources automatically
 }
 ----
 
@@ -382,11 +382,11 @@ This is more straightforward than the desktop approach because Android's APIs ar
 class AndroidSharedImage {
 public:
     AHardwareBuffer* hardwareBuffer;
-    VkImage image;
-    VkDeviceMemory memory;
-    VkImageView imageView;
+    vk::raii::Image image = nullptr;
+    vk::raii::DeviceMemory memory = nullptr;
+    vk::raii::ImageView imageView = nullptr;
 
-    void create(VkDevice device, uint32_t width, uint32_t height) {
+    void create(const vk::raii::Device& device, uint32_t width, uint32_t height) {
         // Create AHardwareBuffer
         AHardwareBuffer_Desc bufferDesc = {};
         bufferDesc.width = width;
@@ -400,58 +400,59 @@ public:
         AHardwareBuffer_allocate(&bufferDesc, &hardwareBuffer);
 
         // Import into Vulkan
-        VkAndroidHardwareBufferFormatPropertiesANDROID formatInfo = {};
-        formatInfo.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID;
+        vk::AndroidHardwareBufferFormatPropertiesANDROID formatInfo{};
 
-        VkAndroidHardwareBufferPropertiesANDROID properties = {};
-        properties.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
-        properties.pNext = &formatInfo;
+        vk::AndroidHardwareBufferPropertiesANDROID properties{
+            .pNext = &formatInfo
+        };
 
-        vkGetAndroidHardwareBufferPropertiesANDROID(device, hardwareBuffer, &properties);
+        properties = device.getAndroidHardwareBufferPropertiesANDROID(hardwareBuffer);
 
         // Create Vulkan image
-        VkExternalMemoryImageCreateInfo externalInfo = {};
-        externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-        externalInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+        vk::ExternalMemoryImageCreateInfo externalInfo{
+            .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eAndroidHardwareBufferANDROID
+        };
 
-        VkImageCreateInfo imageInfo = {};
-        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageInfo.pNext = &externalInfo;
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.format = formatInfo.format;
-        imageInfo.extent = {width, height, 1};
-        imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
-        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        vk::ImageCreateInfo imageInfo{
+            .pNext = &externalInfo,
+            .imageType = vk::ImageType::e2D,
+            .format = formatInfo.format,
+            .extent = {width, height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eColorAttachment |
+                     vk::ImageUsageFlagBits::eSampled
+        };
 
-        vkCreateImage(device, &imageInfo, nullptr, &image);
+        image = vk::raii::Image(device, imageInfo);
 
         // Allocate and bind memory
-        VkImportAndroidHardwareBufferInfoANDROID importInfo = {};
-        importInfo.sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID;
-        importInfo.buffer = hardwareBuffer;
+        vk::ImportAndroidHardwareBufferInfoANDROID importInfo{
+            .buffer = hardwareBuffer
+        };
 
-        VkMemoryAllocateInfo allocInfo = {};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.pNext = &importInfo;
-        allocInfo.allocationSize = properties.allocationSize;
-        allocInfo.memoryTypeIndex = findMemoryType(properties.memoryTypeBits,
-                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vk::MemoryAllocateInfo allocInfo{
+            .pNext = &importInfo,
+            .allocationSize = properties.allocationSize,
+            .memoryTypeIndex = findMemoryType(properties.memoryTypeBits,
+                                             vk::MemoryPropertyFlagBits::eDeviceLocal)
+        };
 
-        vkAllocateMemory(device, &allocInfo, nullptr, &memory);
-        vkBindImageMemory(device, image, memory, 0);
+        memory = vk::raii::DeviceMemory(device, allocInfo);
+        image.bindMemory(*memory, 0);
 
         // Create image view
-        VkImageViewCreateInfo viewInfo = {};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = image;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = formatInfo.format;
-        viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vk::ImageViewCreateInfo viewInfo{
+            .image = *image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = formatInfo.format,
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+        };
 
-        vkCreateImageView(device, &viewInfo, nullptr, &imageView);
+        imageView = vk::raii::ImageView(device, viewInfo);
+        // RAII handles Vulkan cleanup automatically
     }
 };
 ----
@@ -543,12 +544,12 @@ void renderAndClassify() {
 
     while (running) {
         // Render to shared image
-        VkCommandBuffer cmd = beginFrame();
-        renderToTexture(cmd, sharedImage.imageView);
-        endFrame(cmd);
+        vk::raii::CommandBuffer cmd = beginFrame();
+        renderToTexture(*cmd, *sharedImage.imageView);
+        endFrame(*cmd);
 
         // Wait for rendering to complete
-        vkQueueWaitIdle(graphicsQueue);
+        graphicsQueue.waitIdle();
 
         // Run classification
         auto results = classifier.classify(sharedImage.hardwareBuffer);
@@ -562,6 +563,7 @@ void renderAndClassify() {
 
         present();
     }
+    // RAII handles cleanup of Vulkan resources automatically
 }
 ----
 
@@ -609,7 +611,7 @@ private:
         OpenCLSharedMemory clMemory;
         ExternalSemaphore renderComplete;
         ExternalSemaphore inferenceComplete;
-        VkFence frameFence;
+        vk::raii::Fence frameFence = nullptr;
 
         // Inference results (read asynchronously)
         std::vector<float> results;
@@ -631,10 +633,10 @@ public:
             frames[i].renderComplete.create(device);
             frames[i].inferenceComplete.create(device);
 
-            VkFenceCreateInfo fenceInfo = {};
-            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Start signaled
-            vkCreateFence(device, &fenceInfo, nullptr, &frames[i].frameFence);
+            vk::FenceCreateInfo fenceInfo{
+                .flags = vk::FenceCreateFlagBits::eSignaled  // Start signaled
+            };
+            frames[i].frameFence = vk::raii::Fence(device, fenceInfo);
         }
     }
 
@@ -642,8 +644,8 @@ public:
         auto& frame = frames[currentFrame];
 
         // Wait for this frame's resources to be available
-        vkWaitForFences(device, 1, &frame.frameFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(device, 1, &frame.frameFence);
+        vk::Result result = device.waitForFences(*frame.frameFence, VK_TRUE, UINT64_MAX);
+        device.resetFences(*frame.frameFence);
 
         // Check if previous inference results are ready
         if (frame.resultsReady.load()) {
@@ -653,9 +655,9 @@ public:
         }
 
         // Render current frame
-        VkCommandBuffer cmd = beginFrame();
-        renderScene(cmd, frame.renderTarget.imageView);
-        endFrame(cmd, frame.renderComplete.vkSemaphore);
+        vk::raii::CommandBuffer cmd = beginFrame();
+        renderScene(*cmd, *frame.renderTarget.imageView);
+        endFrame(*cmd, *frame.renderComplete.vkSemaphore);
 
         // Launch inference asynchronously
         std::thread([this, &frame]() {
@@ -671,14 +673,16 @@ public:
 
         // Signal fence when inference completes
         // (In practice, you'd use a callback or poll the semaphore)
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = &frame.inferenceComplete.vkSemaphore;
-        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        submitInfo.pWaitDstStageMask = &waitStage;
+        vk::Semaphore waitSemaphore = *frame.inferenceComplete.vkSemaphore;
+        vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eAllCommands;
 
-        vkQueueSubmit(graphicsQueue, 1, &submitInfo, frame.frameFence);
+        vk::SubmitInfo submitInfo{
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &waitSemaphore,
+            .pWaitDstStageMask = &waitStage
+        };
+
+        graphicsQueue.submit(submitInfo, *frame.frameFence);
 
         // Move to next frame
         currentFrame = (currentFrame + 1) % FRAMES_IN_FLIGHT;
@@ -691,6 +695,7 @@ private:
         // Use results for gameplay, visualization, etc.
         // Note: These are results from 3 frames ago due to pipelining
     }
+    // RAII handles cleanup of all frame resources automatically when object is destroyed
 };
 ----
 

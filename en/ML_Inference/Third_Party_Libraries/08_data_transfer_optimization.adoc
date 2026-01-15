@@ -110,18 +110,14 @@ Not all devices have dedicated transfer queues, but most modern GPUs do. Check d
 
 [source,cpp]
 ----
-uint32_t queueFamilyCount;
-vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-
-std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
+auto queueFamilies = physicalDevice.getQueueFamilyProperties();
 
 int transferQueueFamily = -1;
 for (int i = 0; i < queueFamilies.size(); i++) {
     // Look for a queue that supports transfer but not graphics
     // (indicating a dedicated transfer queue)
-    if ((queueFamilies[i].queueFlags & VK_QUEUE_TRANSFER_BIT) &&
-        !(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+    if ((queueFamilies[i].queueFlags & vk::QueueFlagBits::eTransfer) &&
+        !(queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)) {
         transferQueueFamily = i;
         break;
     }
@@ -158,53 +154,53 @@ You've hidden most of the transfer time by overlapping it with rendering.
 [source,cpp]
 ----
 // Frame N: Start transfer for frame N+1
-VkCommandBuffer transferCmd = beginTransferCommandBuffer();
-vkCmdCopyImage(transferCmd, sourceImage, ..., destImage, ...);
-endCommandBuffer(transferCmd);
+vk::raii::CommandBuffer transferCmd = beginTransferCommandBuffer();
+transferCmd.copyImage(sourceImage, ..., destImage, ...);
+transferCmd.end();
 
-VkSubmitInfo transferSubmit = {};
-transferSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-transferSubmit.commandBufferCount = 1;
-transferSubmit.pCommandBuffers = &transferCmd;
-transferSubmit.signalSemaphoreCount = 1;
-transferSubmit.pSignalSemaphores = &transferCompleteSemaphore;
-
-vkQueueSubmit(transferQueue, 1, &transferSubmit, VK_NULL_HANDLE);
-
-// Frame N: Render (runs in parallel with transfer)
-VkCommandBuffer renderCmd = beginRenderCommandBuffer();
-// ... rendering commands ...
-endCommandBuffer(renderCmd);
-
-VkSubmitInfo renderSubmit = {};
-renderSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-renderSubmit.commandBufferCount = 1;
-renderSubmit.pCommandBuffers = &renderCmd;
-renderSubmit.signalSemaphoreCount = 1;
-renderSubmit.pSignalSemaphores = &renderCompleteSemaphore;
-
-vkQueueSubmit(graphicsQueue, 1, &renderSubmit, VK_NULL_HANDLE);
-
-// Frame N: ML inference (waits for both transfer and render)
-VkCommandBuffer computeCmd = beginComputeCommandBuffer();
-// ... ML inference commands ...
-endCommandBuffer(computeCmd);
-
-VkSemaphore waitSemaphores[] = {transferCompleteSemaphore, renderCompleteSemaphore};
-VkPipelineStageFlags waitStages[] = {
-    VK_PIPELINE_STAGE_TRANSFER_BIT,
-    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+vk::SubmitInfo transferSubmit{
+    .commandBufferCount = 1,
+    .pCommandBuffers = &*transferCmd,
+    .signalSemaphoreCount = 1,
+    .pSignalSemaphores = &*transferCompleteSemaphore
 };
 
-VkSubmitInfo computeSubmit = {};
-computeSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-computeSubmit.waitSemaphoreCount = 2;
-computeSubmit.pWaitSemaphores = waitSemaphores;
-computeSubmit.pWaitDstStageMask = waitStages;
-computeSubmit.commandBufferCount = 1;
-computeSubmit.pCommandBuffers = &computeCmd;
+transferQueue.submit(transferSubmit);
 
-vkQueueSubmit(computeQueue, 1, &computeSubmit, VK_NULL_HANDLE);
+// Frame N: Render (runs in parallel with transfer)
+vk::raii::CommandBuffer renderCmd = beginRenderCommandBuffer();
+// ... rendering commands ...
+renderCmd.end();
+
+vk::SubmitInfo renderSubmit{
+    .commandBufferCount = 1,
+    .pCommandBuffers = &*renderCmd,
+    .signalSemaphoreCount = 1,
+    .pSignalSemaphores = &*renderCompleteSemaphore
+};
+
+graphicsQueue.submit(renderSubmit);
+
+// Frame N: ML inference (waits for both transfer and render)
+vk::raii::CommandBuffer computeCmd = beginComputeCommandBuffer();
+// ... ML inference commands ...
+computeCmd.end();
+
+std::array<vk::Semaphore, 2> waitSemaphores = {*transferCompleteSemaphore, *renderCompleteSemaphore};
+std::array<vk::PipelineStageFlags, 2> waitStages = {
+    vk::PipelineStageFlagBits::eTransfer,
+    vk::PipelineStageFlagBits::eComputeShader
+};
+
+vk::SubmitInfo computeSubmit{
+    .waitSemaphoreCount = 2,
+    .pWaitSemaphores = waitSemaphores.data(),
+    .pWaitDstStageMask = waitStages.data(),
+    .commandBufferCount = 1,
+    .pCommandBuffers = &*computeCmd
+};
+
+computeQueue.submit(computeSubmit);
 ----
 
 The transfer and render operations run in parallel. The compute operation waits for both to complete before starting. If the transfer finishes before rendering, you've completely hidden the transfer latency.
@@ -216,31 +212,38 @@ When using multiple queues, you need to handle queue ownership transfer for shar
 [source,cpp]
 ----
 // Release ownership from transfer queue
-VkImageMemoryBarrier releaseBarrier = {};
-releaseBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-releaseBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-releaseBarrier.dstAccessMask = 0;
-releaseBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-releaseBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-releaseBarrier.srcQueueFamilyIndex = transferQueueFamily;
-releaseBarrier.dstQueueFamilyIndex = computeQueueFamily;
-releaseBarrier.image = sharedImage;
-releaseBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+vk::ImageMemoryBarrier releaseBarrier{
+    .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+    .dstAccessMask = {},
+    .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .srcQueueFamilyIndex = transferQueueFamily,
+    .dstQueueFamilyIndex = computeQueueFamily,
+    .image = *sharedImage,
+    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+};
 
-vkCmdPipelineBarrier(transferCmd,
-    VK_PIPELINE_STAGE_TRANSFER_BIT,
-    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-    0, 0, nullptr, 0, nullptr, 1, &releaseBarrier);
+transferCmd.pipelineBarrier(
+    vk::PipelineStageFlagBits::eTransfer,
+    vk::PipelineStageFlagBits::eBottomOfPipe,
+    {}, {}, {}, releaseBarrier);
 
 // Acquire ownership on compute queue
-VkImageMemoryBarrier acquireBarrier = releaseBarrier;
-acquireBarrier.srcAccessMask = 0;
-acquireBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+vk::ImageMemoryBarrier acquireBarrier{
+    .srcAccessMask = {},
+    .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+    .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .srcQueueFamilyIndex = transferQueueFamily,
+    .dstQueueFamilyIndex = computeQueueFamily,
+    .image = *sharedImage,
+    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+};
 
-vkCmdPipelineBarrier(computeCmd,
-    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-    0, 0, nullptr, 0, nullptr, 1, &acquireBarrier);
+computeCmd.pipelineBarrier(
+    vk::PipelineStageFlagBits::eTopOfPipe,
+    vk::PipelineStageFlagBits::eComputeShader,
+    {}, {}, {}, acquireBarrier);
 ----
 
 This ensures correct synchronization and memory visibility across queue families.
@@ -256,38 +259,36 @@ Never transfer directly to device-local memory from the CPU. Use staging buffers
 [source,cpp]
 ----
 // Create staging buffer in host-visible memory
-VkBufferCreateInfo stagingInfo = {};
-stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-stagingInfo.size = dataSize;
-stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+vk::BufferCreateInfo stagingInfo{
+    .size = dataSize,
+    .usage = vk::BufferUsageFlagBits::eTransferSrc
+};
 
-VkBuffer stagingBuffer;
-vkCreateBuffer(device, &stagingInfo, nullptr, &stagingBuffer);
+vk::raii::Buffer stagingBuffer(device, stagingInfo);
 
-VkMemoryAllocateInfo allocInfo = {};
-allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-allocInfo.allocationSize = memReqs.size;
-allocInfo.memoryTypeIndex = findMemoryType(
-    memReqs.memoryTypeBits,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+auto memReqs = stagingBuffer.getMemoryRequirements();
+vk::MemoryAllocateInfo allocInfo{
+    .allocationSize = memReqs.size,
+    .memoryTypeIndex = findMemoryType(
+        memReqs.memoryTypeBits,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)
+};
 
-VkDeviceMemory stagingMemory;
-vkAllocateMemory(device, &allocInfo, nullptr, &stagingMemory);
-vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
+vk::raii::DeviceMemory stagingMemory(device, allocInfo);
+stagingBuffer.bindMemory(*stagingMemory, 0);
 
 // Map and copy data
-void* mapped;
-vkMapMemory(device, stagingMemory, 0, dataSize, 0, &mapped);
+void* mapped = stagingMemory.mapMemory(0, dataSize);
 memcpy(mapped, sourceData, dataSize);
-vkUnmapMemory(device, stagingMemory);
+stagingMemory.unmapMemory();
 
 // Transfer from staging to device-local buffer
-VkCommandBuffer cmd = beginTransferCommandBuffer();
-VkBufferCopy copyRegion = {0, 0, dataSize};
-vkCmdCopyBuffer(cmd, stagingBuffer, deviceBuffer, 1, &copyRegion);
-endCommandBuffer(cmd);
+vk::raii::CommandBuffer cmd = beginTransferCommandBuffer();
+vk::BufferCopy copyRegion{0, 0, dataSize};
+cmd.copyBuffer(*stagingBuffer, *deviceBuffer, copyRegion);
+cmd.end();
 
-vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
+transferQueue.submit(submitInfo);
 ----
 
 Why staging buffers? Because host-visible device-local memory (if it exists) is often slower than dedicated device-local memory. Staging through host-visible memory, then copying to device-local memory, is usually faster overall.
@@ -299,25 +300,24 @@ For buffers that you update frequently, keep them persistently mapped instead of
 [source,cpp]
 ----
 // Create buffer with persistent mapping
-VkBuffer frequentUpdateBuffer;
-VkDeviceMemory frequentUpdateMemory;
+vk::raii::Buffer frequentUpdateBuffer;
+vk::raii::DeviceMemory frequentUpdateMemory;
 // ... (create buffer and allocate memory) ...
 
 // Map once at initialization
-void* persistentMapping;
-vkMapMemory(device, frequentUpdateMemory, 0, VK_WHOLE_SIZE, 0, &persistentMapping);
+void* persistentMapping = frequentUpdateMemory.mapMemory(0, vk::WholeSize);
 
 // Each frame, just write to the mapped pointer
 // No need to map/unmap
 memcpy(persistentMapping, newData, dataSize);
 
 // Ensure visibility (if not using HOST_COHERENT)
-VkMappedMemoryRange range = {};
-range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-range.memory = frequentUpdateMemory;
-range.offset = 0;
-range.size = VK_WHOLE_SIZE;
-vkFlushMappedMemoryRanges(device, 1, &range);
+vk::MappedMemoryRange range{
+    .memory = *frequentUpdateMemory,
+    .offset = 0,
+    .size = vk::WholeSize
+};
+device.flushMappedMemoryRanges(range);
 ----
 
 Persistent mapping eliminates the overhead of mapping and unmapping, which can be significant for small, frequent updates.
@@ -331,8 +331,8 @@ On some platforms, you can use write-combined memory for staging buffers. Write-
 // Look for write-combined memory type
 allocInfo.memoryTypeIndex = findMemoryType(
     memReqs.memoryTypeBits,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // Prefer device-local if available
+    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+    vk::MemoryPropertyFlagBits::eDeviceLocal); // Prefer device-local if available
 
 // Write-combined memory is faster for sequential writes but slower for reads
 // Only use for upload (transfer source), not download (transfer destination)
@@ -373,11 +373,11 @@ When batching, memory layout matters. ML models typically expect batch-first lay
 [source,cpp]
 ----
 // Inefficient: Separate buffers for each image
-VkBuffer image1Buffer, image2Buffer, image3Buffer, image4Buffer;
+vk::raii::Buffer image1Buffer, image2Buffer, image3Buffer, image4Buffer;
 // Each buffer: [C, H, W]
 
 // Efficient: Single buffer with batch dimension
-VkBuffer batchBuffer;
+vk::raii::Buffer batchBuffer;
 // Layout: [N, C, H, W] where N=4
 // All images contiguous in memory
 ----
@@ -420,7 +420,7 @@ Format conversions are often unavoidable—Vulkan renders in one format, ML mode
 
 Implement format conversions as compute shaders rather than using CPU code or library functions:
 
-[source,glsl]
+[source,slang]
 ----
 #version 450
 
@@ -446,7 +446,7 @@ This runs entirely on the GPU, leveraging parallel execution. For a 1920×1080 i
 
 Combine format conversion with other operations to reduce memory traffic:
 
-[source,glsl]
+[source,slang]
 ----
 #version 450
 
@@ -509,17 +509,17 @@ Implementation requires careful synchronization to ensure frames don't interfere
 [source,cpp]
 ----
 const int maxFramesInFlight = 3;
-std::array<VkSemaphore, maxFramesInFlight> renderCompleteSemaphores;
-std::array<VkSemaphore, maxFramesInFlight> transferCompleteSemaphores;
-std::array<VkSemaphore, maxFramesInFlight> inferenceCompleteSemaphores;
-std::array<VkFence, maxFramesInFlight> frameFences;
+std::array<vk::raii::Semaphore, maxFramesInFlight> renderCompleteSemaphores;
+std::array<vk::raii::Semaphore, maxFramesInFlight> transferCompleteSemaphores;
+std::array<vk::raii::Semaphore, maxFramesInFlight> inferenceCompleteSemaphores;
+std::array<vk::raii::Fence, maxFramesInFlight> frameFences;
 
 int currentFrame = 0;
 
 void renderFrame() {
     // Wait for this frame's resources to be available
-    vkWaitForFences(device, 1, &frameFences[currentFrame], VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &frameFences[currentFrame]);
+    auto result = device.waitForFences(*frameFences[currentFrame], VK_TRUE, UINT64_MAX);
+    device.resetFences(*frameFences[currentFrame]);
 
     // Render
     submitRenderCommands(renderCompleteSemaphores[currentFrame]);
@@ -555,7 +555,7 @@ void renderFrame(int frameNumber) {
         submitInferenceCommands();
 
         // Wait for results (only when needed)
-        vkWaitForFences(device, 1, &inferenceFence, VK_TRUE, UINT64_MAX);
+        auto result = device.waitForFences(*inferenceFence, VK_TRUE, UINT64_MAX);
         processInferenceResults();
     }
 
@@ -572,17 +572,14 @@ Reuse memory for different purposes at different pipeline stages. If you have a 
 [source,cpp]
 ----
 // Allocate one large memory block
-VkDeviceMemory sharedMemory;
-vkAllocateMemory(device, &allocInfo, nullptr, &sharedMemory);
+vk::raii::DeviceMemory sharedMemory(device, allocInfo);
 
 // Create two buffers that alias the same memory
-VkBuffer transferBuffer;
-vkCreateBuffer(device, &transferBufferInfo, nullptr, &transferBuffer);
-vkBindBufferMemory(device, transferBuffer, sharedMemory, 0);
+vk::raii::Buffer transferBuffer(device, transferBufferInfo);
+transferBuffer.bindMemory(*sharedMemory, 0);
 
-VkBuffer inferenceBuffer;
-vkCreateBuffer(device, &inferenceBufferInfo, nullptr, &inferenceBuffer);
-vkBindBufferMemory(device, inferenceBuffer, sharedMemory, 0);
+vk::raii::Buffer inferenceBuffer(device, inferenceBufferInfo);
+inferenceBuffer.bindMemory(*sharedMemory, 0);
 
 // Use transferBuffer during transfer stage
 // Use inferenceBuffer during inference stage

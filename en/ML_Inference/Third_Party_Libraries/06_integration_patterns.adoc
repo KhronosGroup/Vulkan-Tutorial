@@ -74,22 +74,21 @@ The implementation is straightforward because the two systems are completely dec
 [source,cpp]
 ----
 // Vulkan rendering
-vkCmdDraw(...);  // Render your scene
-vkCmdCopyImageToBuffer(renderedImage, stagingBuffer, ...);  // Copy to staging buffer
+commandBuffer.draw(...);  // Render your scene
+commandBuffer.copyImageToBuffer(renderedImage, stagingBuffer, ...);  // Copy to staging buffer
 
 // Wait for rendering to complete
-vkQueueWaitIdle(graphicsQueue);
+graphicsQueue.waitIdle();
 
 // Map staging buffer to CPU
-void* data;
-vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+void* data = stagingBufferMemory.mapMemory(0, imageSize);
 
 // Run ML inference (library handles its own GPU context)
 std::vector<float> input = preprocessImage(data, width, height);
 std::vector<float> output = mlRuntime->run(input);
 
 // Unmap staging buffer
-vkUnmapMemory(device, stagingBufferMemory);
+stagingBufferMemory.unmapMemory();
 
 // Use output for next frame or display
 processResults(output);
@@ -162,34 +161,35 @@ The implementation is more complex because it requires platform-specific extensi
 [source,cpp]
 ----
 // 1. Create Vulkan image with external memory
-VkExternalMemoryImageCreateInfo externalInfo = {};
-externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-externalInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;  // Linux
+vk::ExternalMemoryImageCreateInfo externalInfo{
+    .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd  // Linux
+};
 
-VkImageCreateInfo imageInfo = {};
-imageInfo.pNext = &externalInfo;
-// ... other image creation parameters
-vkCreateImage(device, &imageInfo, nullptr, &sharedImage);
+vk::ImageCreateInfo imageInfo{
+    .pNext = &externalInfo
+    // ... other image creation parameters
+};
+vk::raii::Image sharedImage(device, imageInfo);
 
 // 2. Allocate memory with external memory
-VkExportMemoryAllocateInfo exportInfo = {};
-exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+vk::ExportMemoryAllocateInfo exportInfo{
+    .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd
+};
 
-VkMemoryAllocateInfo allocInfo = {};
-allocInfo.pNext = &exportInfo;
-// ... other allocation parameters
-vkAllocateMemory(device, &allocInfo, nullptr, &sharedMemory);
-vkBindImageMemory(device, sharedImage, sharedMemory, 0);
+vk::MemoryAllocateInfo allocInfo{
+    .pNext = &exportInfo
+    // ... other allocation parameters
+};
+vk::raii::DeviceMemory sharedMemory(device, allocInfo);
+sharedImage.bindMemory(*sharedMemory, 0);
 
 // 3. Export memory handle
-VkMemoryGetFdInfoKHR getFdInfo = {};
-getFdInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
-getFdInfo.memory = sharedMemory;
-getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+vk::MemoryGetFdInfoKHR getFdInfo{
+    .memory = *sharedMemory,
+    .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd
+};
 
-int memoryFd;
-vkGetMemoryFdKHR(device, &getFdInfo, &memoryFd);
+int memoryFd = device.getMemoryFdKHR(getFdInfo);
 
 // 4. Import into ML library (library-specific API)
 // For OpenCL:
@@ -201,7 +201,7 @@ desc.size = memorySize;
 clCreateBufferWithProperties(&clMem, &desc);
 
 // 5. Create semaphores for synchronization
-VkSemaphoreCreateInfo semaphoreInfo = {};
+vk::SemaphoreCreateInfo semaphoreInfo;
 // ... create Vulkan semaphores
 // Export and import semaphores similarly to memory
 ----
@@ -275,25 +275,26 @@ The implementation depends heavily on the ML library's Vulkan support. Conceptua
 [source,cpp]
 ----
 // Begin command buffer
-vkBeginCommandBuffer(commandBuffer, &beginInfo);
+commandBuffer.begin(beginInfo);
 
 // Render scene
-vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderPipeline);
-vkCmdDraw(commandBuffer, ...);
+commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *renderPipeline);
+commandBuffer.draw(...);
 
 // Barrier: rendering -> inference
-VkImageMemoryBarrier barrier = {};
-barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-barrier.image = renderedImage;
-// ... other barrier fields
+vk::ImageMemoryBarrier barrier{
+    .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+    .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+    .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .image = *renderedImage
+    // ... other barrier fields
+};
 
-vkCmdPipelineBarrier(commandBuffer,
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-    0, 0, nullptr, 0, nullptr, 1, &barrier);
+commandBuffer.pipelineBarrier(
+    vk::PipelineStageFlagBits::eColorAttachmentOutput,
+    vk::PipelineStageFlagBits::eComputeShader,
+    {}, {}, {}, barrier);
 
 // ML inference (library records compute dispatches)
 mlRuntime->recordInferenceCommands(commandBuffer, renderedImage, outputImage);
@@ -302,12 +303,12 @@ mlRuntime->recordInferenceCommands(commandBuffer, renderedImage, outputImage);
 // ... another barrier
 
 // Use inference results
-vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, compositePipeline);
-vkCmdDraw(commandBuffer, ...);
+commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *compositePipeline);
+commandBuffer.draw(...);
 
 // End and submit
-vkEndCommandBuffer(commandBuffer);
-vkQueueSubmit(queue, 1, &submitInfo, fence);
+commandBuffer.end();
+queue.submit(submitInfo, *fence);
 ----
 
 The key is that the ML library exposes an API to record its operations into your command buffer, rather than managing its own command submission.

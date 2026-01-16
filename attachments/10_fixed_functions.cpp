@@ -59,10 +59,7 @@ class HelloTriangleApplication
 	vk::raii::PipelineLayout pipelineLayout = nullptr;
 
 	std::vector<const char *> requiredDeviceExtension = {
-	    vk::KHRSwapchainExtensionName,
-	    vk::KHRSpirv14ExtensionName,
-	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName};
+	    vk::KHRSwapchainExtensionName};
 
 	void initWindow()
 	{

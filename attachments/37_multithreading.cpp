@@ -229,10 +229,7 @@ class MultithreadedApplication
 	std::vector<ParticleGroup> particleGroups;
 
 	std::vector<const char *> requiredDeviceExtension = {
-	    vk::KHRSwapchainExtensionName,
-	    vk::KHRSpirv14ExtensionName,
-	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName};
+	    vk::KHRSwapchainExtensionName};
 
 	// Helper functions
 	[[nodiscard]] static std::vector<const char *> getRequiredExtensions()

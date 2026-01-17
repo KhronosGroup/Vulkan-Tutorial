@@ -1,0 +1,196 @@
+::pp: {plus}{plus}
+
+= Hardcoded Forward Propagation
+
+The best way to understand how inference works is to build the simplest possible version first. No abstractions, no flexibility, no parsing complex file formats. Just hardcode a specific network and execute it.
+
+This is our starting point. It won't scale to different models, but it will work. And more importantly, it will make crystal clear what's actually happening during inference.
+
+== The Network: MNIST Digit Recognition
+
+We're implementing a simple neural network for MNIST—handwritten digit recognition. The network has this architecture:
+
+- **Input**: 28×28 grayscale image (784 pixels)
+- **First dense layer**: 784 inputs → 128 outputs, ReLU activation
+- **Second dense layer**: 128 inputs → 64 outputs, ReLU activation
+- **Output dense layer**: 64 inputs → 10 outputs (one per digit 0-9)
+
+Three layers, all fully connected (dense). No convolutions yet—we're keeping it simple.
+
+== The Binary Weight Format
+
+Instead of parsing ONNX or TensorFlow Lite, we use a dead-simple binary format. The Python training script exports weights like this:
+
+[source,python]
+----
+# After training in PyTorch/TensorFlow
+with open('mnist_weights.bin', 'wb') as f:
+    # Magic number for validation
+    f.write(struct.pack('I', 0x4D4E5354))  # 'MNST' in hex
+
+    # Version
+    f.write(struct.pack('I', 1))
+
+    # For each layer: count, then floats
+    for weights, bias in [(fc1_w, fc1_b), (fc2_w, fc2_b), (fc3_w, fc3_b)]:
+        f.write(struct.pack('I', weights.size))
+        f.write(weights.numpy().tobytes())
+
+        f.write(struct.pack('I', bias.size))
+        f.write(bias.numpy().tobytes())
+----
+
+The C++ code to read this is straightforward. You open the file, verify the magic number, read counts, read float arrays. See xref:attachments/ml_inference/weight_loader.hpp[weigh_loader.hpp] for the complete implementation—it's about 50 lines total.
+
+The key insight: we know exactly what's in this file because we control the format. No schema negotiation, no version compatibility issues. Just raw data.
+
+== One Layer, Step by Step
+
+Let's walk through executing a single dense layer. This is the core operation we'll repeat three times.
+
+Recall from the xref:ML_Inference/ML_Inference_Pipeline/04_inference_explained.adoc[ML Inference Pipeline section] that a dense (fully connected) layer performs matrix multiplication—connecting every input to every output through learned weights. It's one of the fundamental building blocks of neural networks.
+
+A dense layer computes: **output = input × weights + bias**
+
+Where input is a vector (N elements), weights is a matrix (M×N), bias is a vector (M elements), and output is a vector (M elements). This is matrix-vector multiplication followed by vector addition.
+
+=== Buffers
+
+We need four Vulkan buffers:
+
+[source,cpp]
+----
+vk::raii::Buffer inputBuffer;   // Input vector
+vk::raii::Buffer weightBuffer;  // Weight matrix
+vk::raii::Buffer biasBuffer;    // Bias vector
+vk::raii::Buffer outputBuffer;  // Output vector (result)
+----
+
+Each buffer needs device memory bound to it. We use host-visible memory because we're uploading from CPU and this is educational code. Production code would use staging buffers and device-local memory for better performance.
+
+=== The Compute Shader
+
+The dense layer shader is simple:
+
+[source,glsl]
+----
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(binding = 0) readonly buffer Input { float data[]; } input;
+layout(binding = 1) readonly buffer Weights { float data[]; } weights;
+layout(binding = 2) readonly buffer Bias { float data[]; } bias;
+layout(binding = 3) writeonly buffer Output { float data[]; } output;
+
+layout(push_constant) uniform Params {
+    uint inputSize;
+    uint outputSize;
+} params;
+
+void main() {
+    uint outIdx = gl_GlobalInvocationID.x;
+    if (outIdx >= params.outputSize) return;
+
+    float sum = 0.0;
+    for (uint i = 0; i < params.inputSize; ++i) {
+        sum += input.data[i] * weights.data[outIdx * params.inputSize + i];
+    }
+    sum += bias.data[outIdx];
+
+    output.data[outIdx] = max(0.0, sum);  // ReLU activation
+}
+----
+
+Each thread computes one output element. It reads the entire input vector, multiplies by the corresponding row of the weight matrix, adds the bias, and applies ReLU activation. ReLU (Rectified Linear Unit, covered in xref:ML_Inference/ML_Inference_Pipeline/03_neural_networks_fundamentals.adoc[Neural Networks Fundamentals]) is just `max(0, x)`—it passes positive values unchanged and zeros out negative values, introducing the non-linearity that makes deep networks powerful.
+
+The key line is `weights.data[outIdx * params.inputSize + i]`. The weight matrix is stored in row-major order. Thread computing output[j] reads row j of the weights.
+
+=== Dispatch
+
+To execute this shader, we dispatch enough workgroups to cover all output elements:
+
+[source,cpp]
+----
+uint32_t outputSize = 128;  // First layer: 784 → 128
+uint32_t workgroups = (outputSize + 63) / 64;  // Round up
+cmdBuffer.dispatch(workgroups, 1, 1);
+----
+
+With local_size_x = 64, each workgroup handles 64 outputs. For 128 outputs, we need 2 workgroups.
+
+=== Synchronization
+
+After the first layer executes, its output buffer becomes the input to the second layer. We need a pipeline barrier to ensure the write completes before the read begins.
+
+Vulkan compute operations execute asynchronously on the GPU. Without explicit synchronization, the second layer's shader might start reading from the output buffer before the first layer's shader finishes writing to it—causing incorrect results. Pipeline barriers (covered in detail in xref:ML_Inference/Vulkan_Compute_for_ML/06_synchronization.adoc[Vulkan Compute: Synchronization]) tell the GPU to wait until previous operations complete before starting new ones.
+
+[source,cpp]
+----
+vk::MemoryBarrier barrier{
+    .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
+    .dstAccessMask = vk::AccessFlagBits::eShaderRead
+};
+
+cmdBuffer.pipelineBarrier(
+    vk::PipelineStageFlagBits::eComputeShader,  // src stage
+    vk::PipelineStageFlagBits::eComputeShader,  // dst stage
+    {},
+    barrier,
+    nullptr,
+    nullptr
+);
+----
+
+This tells Vulkan: "wait for all compute shader writes to finish, then make them visible to subsequent compute shader reads."
+
+== The Complete Forward Pass
+
+Now we chain three layers together:
+
+1. Load weights from binary file into CPU memory
+2. Create Vulkan buffers, upload weights
+3. Dispatch layer 1 (784 → 128)
+4. Barrier
+5. Dispatch layer 2 (128 → 64)
+6. Barrier
+7. Dispatch layer 3 (64 → 10)
+8. Download output from GPU
+
+The code is repetitive—three times we set up descriptors, push constants, and dispatch. But that repetition is the point. Once you see it working, you'll notice what's the same and what's different between layers. That understanding drives the abstractions we build next.
+
+See xref:attachments/ml_inference/vulkan_mnist_inference.cpp[vulkan_mnist_inference.cpp] for the complete implementation. The core inference loop is about 150 lines, most of it Vulkan boilerplate.
+
+== What This Teaches Us
+
+This hardcoded approach reveals several insights:
+
+**Inference is sequential**. Each layer depends on the previous layer's output. You can't dispatch all three layers simultaneously—they have a dependency chain.
+
+**Most code is setup**. Creating buffers, setting up descriptor sets, configuring pipelines—this dominates the code. The actual compute dispatch is one line.
+
+**Data lives on GPU**. The intermediate results (layer outputs) never touch CPU. They're written by one shader, read by the next. This is critical for performance.
+
+**Pattern repetition**. Every layer follows the same pattern: bind descriptors, push constants, dispatch, barrier. The specifics (which buffers, what dimensions) change, but the structure is identical.
+
+That last point is key. The repetition means we can abstract. Instead of hardcoding three layers, we can define a Layer interface and instantiate it three times with different parameters.
+
+But before we build those abstractions, we need to understand one more thing: where do the weights actually come from?
+
+== Training and Exporting
+
+The hardcoded approach assumes you have `mnist_weights.bin`. Where does that come from?
+
+You train a model in PyTorch or TensorFlow, then export the weights. The training script is in xref:attachments/ml_inference/train_mnist.py[train_mnist.py]. It:
+
+1. Defines the network architecture (matching what we hardcoded)
+2. Trains on MNIST dataset for a few epochs
+3. Exports learned weights to binary format
+
+Training takes about 5 minutes on a CPU, achieving ~98% accuracy. Good enough for demonstration.
+
+The export code is the struct.pack snippet we showed earlier. Nothing fancy—just write floats to a file in a known order.
+
+Next chapter: we identify the patterns and build our first abstractions.
+
+xref:ML_Inference/Building_the_Inference_Engine/01_introduction.adoc[Previous: Introduction] | xref:ML_Inference/Building_the_Inference_Engine/03_from_hardcoded_to_flexible.adoc[Next: From Hardcoded to Flexible]

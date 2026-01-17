@@ -1,0 +1,218 @@
+::pp: {plus}{plus}
+
+= Model Formats as Input
+
+We've been manually constructing graphs—calling addTensor, addOperation, connecting everything by hand. This taught us what a graph is and how it works. But it's not practical. Real models have hundreds of operations. We need to load them from files.
+
+The industry has solved this problem with standard model formats. Instead of inventing our own, we use what already exists: ONNX and TensorFlow Lite.
+
+== Why Standard Formats?
+
+You could invent your own model format—a custom binary or JSON structure. But then you'd need custom exporters for every training framework. Want to load a PyTorch model? Write an exporter. TensorFlow? Another exporter. JAX? Another.
+
+Standard formats avoid this. PyTorch, TensorFlow, and most other frameworks can export to ONNX or TFLite. You write one parser, it works with models from any framework. This is why the industry converged on these standards.
+
+== ONNX: The Comprehensive Format
+
+ONNX (Open Neural Network Exchange) is designed for interoperability. It supports hundreds of operators, multiple data types, and complex graph structures. If you're building for desktop or server, ONNX is probably your choice.
+
+ONNX uses Protocol Buffers for serialization—a binary format defined by a schema. The schema defines message types for models, graphs, nodes, tensors, and attributes. When you parse an ONNX file, you deserialize these protobuf messages.
+
+Here's what's inside an ONNX file:
+
+**Model metadata**: Version, producer (which framework created it), documentation.
+
+**Graph**: The main computational graph with nodes (operations) and edges (tensors).
+
+**Initializers**: The learned weights and biases as TensorProto messages. These are part of the graph but represent constants, not operations.
+
+**Value information**: Shape and type information for tensors, helping with validation and optimization.
+
+To read an ONNX file, you use the ONNX C++ library:
+
+[source,cpp]
+----
+#include <onnx/onnx_pb.h>
+#include <fstream>
+
+onnx::ModelProto loadONNX(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    onnx::ModelProto model;
+    model.ParseFromIstream(&input);
+    return model;
+}
+----
+
+That gives you the parsed protobuf. Now you extract what you need:
+
+[source,cpp]
+----
+const auto& graph = model.graph();
+
+// Iterate operations
+for (const auto& node : graph.node()) {
+    std::string opType = node.op_type();  // "Conv", "Relu", "Gemm", etc.
+
+    for (const auto& inputName : node.input()) {
+        // Connect to input tensor
+    }
+
+    for (const auto& outputName : node.output()) {
+        // Connect to output tensor
+    }
+
+    // Extract attributes (kernel_shape, strides, etc.)
+    for (const auto& attr : node.attribute()) {
+        // Store in operation
+    }
+}
+
+// Extract weights
+for (const auto& initializer : graph.initializer()) {
+    std::string name = initializer.name();
+    std::vector<int64_t> shape(initializer.dims().begin(), initializer.dims().end());
+
+    // Get float data
+    const float* data = reinterpret_cast<const float*>(initializer.raw_data().data());
+    size_t count = initializer.raw_data().size() / sizeof(float);
+
+    // Create tensor with this data
+}
+----
+
+The key insight: ONNX gives you the same information we were creating manually—operation types, tensor shapes, connections, learned weights. We just extract it and build our ComputationGraph.
+
+== TensorFlow Lite: The Mobile-Optimized Format
+
+TFLite is designed for mobile and embedded devices. It uses FlatBuffers for serialization—a format optimized for zero-copy access and minimal parsing overhead. You can read parts of the model without deserializing everything.
+
+The structure is similar to ONNX but optimized differently:
+
+**Model**: Contains subgraphs (TFLite supports multiple graphs in one file).
+
+**Operators**: Like ONNX nodes, but with TFLite-specific operator types.
+
+**Tensors**: Unlike ONNX, tensors are explicit in TFLite—both intermediates and weights.
+
+**Buffers**: The actual weight data, separate from tensor metadata.
+
+Reading TFLite requires the TFLite schema:
+
+[source,cpp]
+----
+#include "tensorflow/lite/schema/schema_generated.h"
+#include <fstream>
+
+const tflite::Model* loadTFLite(const std::string& path) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    size_t size = input.tellg();
+    input.seekg(0);
+
+    std::vector<char> buffer(size);
+    input.read(buffer.data(), size);
+
+    return tflite::GetModel(buffer.data());
+}
+----
+
+FlatBuffers gives you direct pointers into the memory-mapped file—no deserialization needed:
+
+[source,cpp]
+----
+const tflite::Model* model = loadTFLite("model.tflite");
+const auto* subgraph = model->subgraphs()->Get(0);  // Primary graph
+
+// Iterate operators
+for (size_t i = 0; i < subgraph->operators()->size(); ++i) {
+    const auto* op = subgraph->operators()->Get(i);
+    const auto* opcode = model->operator_codes()->Get(op->opcode_index());
+
+    // Get operator type
+    auto builtin = opcode->builtin_code();  // ADD, CONV_2D, etc.
+
+    // Get inputs/outputs (indices into tensor array)
+    for (int32_t inputIdx : *op->inputs()) {
+        const auto* tensor = subgraph->tensors()->Get(inputIdx);
+        // Process input tensor
+    }
+}
+
+// Extract weights
+for (size_t i = 0; i < subgraph->tensors()->size(); ++i) {
+    const auto* tensor = subgraph->tensors()->Get(i);
+
+    if (tensor->buffer() > 0) {  // Has data (not an intermediate)
+        const auto* buffer = model->buffers()->Get(tensor->buffer());
+        const auto* data = buffer->data();  // Raw bytes
+
+        // Create tensor with this data
+    }
+}
+----
+
+The zero-copy nature means you're reading directly from the file. Fast and memory-efficient.
+
+== ONNX vs TFLite: When to Use Which?
+
+**ONNX**:
+- Comprehensive operator support
+- Better for desktop/server deployment
+- Good tooling and ecosystem
+- Protobuf serialization (parse everything upfront)
+- Typical use: Loading models for desktop applications
+
+**TFLite**:
+- Optimized for mobile/embedded
+- Zero-copy access with FlatBuffers
+- Smaller file sizes with quantization support
+- Built-in hardware delegate system
+- Typical use: Android/iOS apps, embedded devices
+
+For this tutorial, we focus on ONNX because it's more common for desktop Vulkan applications. But the concepts transfer—both give you a graph structure, operations, and weights. The parsing details differ, but the result is the same: a ComputationGraph you can execute.
+
+== From Format to Graph
+
+Regardless of format, the parsing flow is:
+
+1. **Read the file**: Deserialize protobuf (ONNX) or memory-map (TFLite)
+2. **Create tensors**: For each tensor in the model, create a Tensor object
+3. **Create operations**: For each operation, create an Operation object with the right type
+4. **Connect them**: Link operations to input/output tensors
+5. **Set weights**: For constant tensors, store the learned weights
+6. **Mark I/O**: Identify which tensors are graph inputs and outputs
+
+After this, you have a ComputationGraph identical in structure to what we built manually, but loaded from a trained model file.
+
+== The Complete Picture
+
+Let's see the full flow from training to inference:
+
+**Training** (PyTorch/TensorFlow):
+1. Define model architecture
+2. Train on dataset
+3. Export to ONNX or TFLite
+
+**Loading** (Our engine):
+1. Parse ONNX/TFLite file
+2. Build ComputationGraph
+3. Allocate GPU buffers
+4. Upload weights to GPU
+
+**Inference** (Our engine):
+1. Upload input to GPU
+2. Execute graph (dispatch operations in order)
+3. Download output from GPU
+
+The model format bridges training and inference. It's the handoff point between frameworks.
+
+== Implementation Note
+
+The full ONNX and TFLite parsers are complex—handling all operator types, all data types, all edge cases. That's hundreds of lines of code.
+
+For this tutorial, the complete parser is in xref:attachments/ml_inference[ml_inference]. It handles the core operators we support (Dense, Conv2D, ReLU, MaxPool). The pattern shown above extends to all operators—extract type, extract parameters, connect tensors.
+
+We're not going to paste 500 lines of parsing code in the tutorial. The concepts matter more than the syntax. You know what's in the files, you know what you need to extract, you know how to build the graph. The full implementation is in the attachments when you need it.
+
+Next chapter: putting everything together.
+
+xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Previous: Model Representation] | xref:ML_Inference/Building_the_Inference_Engine/06_putting_it_together.adoc[Next: Putting It Together]

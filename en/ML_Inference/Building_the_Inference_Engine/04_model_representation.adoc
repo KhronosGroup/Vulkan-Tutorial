@@ -1,0 +1,235 @@
+::pp: {plus}{plus}
+
+= Model Representation
+
+We've identified the layer abstraction and extracted common patterns. But we're still manually wiring layers together—creating them in order, connecting buffers, managing execution sequence. This doesn't scale.
+
+What we need is a data structure that represents the entire network: what operations exist, how they connect, what data flows between them. Then we can write code that walks this structure and executes automatically.
+
+This is the graph representation. Not graphics rendering graphs—computational graphs. Think of it as a blueprint for the network.
+
+== What's in a Graph?
+
+A computational graph has three fundamental components:
+
+**Tensors**: The data. Input images, intermediate activations, learned weights, final outputs. Each tensor has a shape (like [1, 28, 28] for a grayscale image), a data type (usually float32), and optionally, actual data (for weights and constants).
+
+**Operations**: The computations. Dense layer, convolution, ReLU, pooling. Each operation has a type, parameters specific to that type (like kernel size for convolution), and connections to input/output tensors.
+
+**Connections**: The edges between operations. Operation A produces tensor X. Operation B consumes tensor X as input. This dependency means B can't execute until A finishes.
+
+Together, these form a directed acyclic graph (DAG). Directed because data flows one way—from inputs toward outputs. Acyclic because there are no loops—you can't have operation A depending on B depending on C depending back on A.
+
+== Representing Tensors
+
+A tensor needs shape information and optionally holds data:
+
+[source,cpp]
+----
+class Tensor {
+public:
+    Tensor(std::string name, std::vector<int64_t> shape)
+        : name_(std::move(name)), shape_(std::move(shape)) {}
+
+    const std::string& name() const { return name_; }
+    const std::vector<int64_t>& shape() const { return shape_; }
+
+    // For constant tensors (weights, biases)
+    void setData(std::vector<float> data) { data_ = std::move(data); }
+    bool hasData() const { return data_.has_value(); }
+
+    // GPU buffer (set during allocation)
+    void setBuffer(vk::raii::Buffer buffer) { buffer_ = std::move(buffer); }
+
+private:
+    std::string name_;
+    std::vector<int64_t> shape_;
+    std::optional<std::vector<float>> data_;  // CPU data for constants
+    std::optional<vk::raii::Buffer> buffer_;  // GPU buffer when allocated
+};
+----
+
+Simple. A tensor knows its name (for debugging), shape (for validation), data (if it's a constant), and GPU buffer (once allocated).
+
+The shape is a vector of dimensions. A scalar is [], a vector is [N], a matrix is [M, N], an image is [height, width, channels], a batch of images is [batch, height, width, channels].
+
+== Representing Operations
+
+An operation has a type and connects tensors:
+
+[source,cpp]
+----
+enum class OpType {
+    Dense, Conv2D, ReLU, MaxPool, /* ... */
+};
+
+class Operation {
+public:
+    Operation(std::string name, OpType type)
+        : name_(std::move(name)), type_(type) {}
+
+    // Connections
+    void addInput(std::shared_ptr<Tensor> tensor) { inputs_.push_back(tensor); }
+    void addOutput(std::shared_ptr<Tensor> tensor) { outputs_.push_back(tensor); }
+
+    // Type-specific parameters stored as attributes
+    template<typename T>
+    void setAttribute(const std::string& name, T value) {
+        attributes_[name] = value;
+    }
+
+private:
+    std::string name_;
+    OpType type_;
+    std::vector<std::shared_ptr<Tensor>> inputs_;
+    std::vector<std::shared_ptr<Tensor>> outputs_;
+    std::unordered_map<std::string, std::any> attributes_;
+};
+----
+
+The inputs and outputs vectors define the graph structure. A dense layer has two inputs (data and weights) and one output. A convolution might have three inputs (data, weights, bias). An add operation has two inputs (the tensors being added) and one output.
+
+Attributes store operation-specific parameters. For convolution, that's kernel size, stride, padding. For pooling, it's pool size and stride. We use std::any for type erasure—different operations need different parameter types.
+
+== The Graph Container
+
+Now we need a container that holds all tensors and operations:
+
+[source,cpp]
+----
+class ComputationGraph {
+public:
+    std::shared_ptr<Tensor> addTensor(
+        std::string name,
+        std::vector<int64_t> shape
+    ) {
+        auto tensor = std::make_shared<Tensor>(name, shape);
+        tensors_[name] = tensor;
+        return tensor;
+    }
+
+    std::shared_ptr<Operation> addOperation(std::string name, OpType type) {
+        auto op = std::make_shared<Operation>(name, type);
+        operations_.push_back(op);
+        return op;
+    }
+
+    // Mark graph inputs/outputs
+    void addInput(std::shared_ptr<Tensor> tensor) { inputs_.push_back(tensor); }
+    void addOutput(std::shared_ptr<Tensor> tensor) { outputs_.push_back(tensor); }
+
+    // Access
+    const std::vector<std::shared_ptr<Tensor>>& inputs() const { return inputs_; }
+    const std::vector<std::shared_ptr<Tensor>>& outputs() const { return outputs_; }
+    const std::vector<std::shared_ptr<Operation>>& operations() const { return operations_; }
+
+private:
+    std::unordered_map<std::string, std::shared_ptr<Tensor>> tensors_;
+    std::vector<std::shared_ptr<Operation>> operations_;
+    std::vector<std::shared_ptr<Tensor>> inputs_;
+    std::vector<std::shared_ptr<Tensor>> outputs_;
+};
+----
+
+This is the central data structure. You build a graph by adding tensors and operations, connecting them together, then marking which tensors are graph inputs and outputs.
+
+== Building a Graph Manually
+
+Let's build our three-layer MNIST network as a graph:
+
+[source,cpp]
+----
+ComputationGraph graph;
+
+// Input tensor
+auto input = graph.addTensor("input", {1, 784});
+graph.addInput(input);
+
+// First dense layer
+auto fc1_weights = graph.addTensor("fc1_weights", {128, 784});
+fc1_weights->setData(weights.fc1_weights);  // Set constant data
+
+auto fc1_bias = graph.addTensor("fc1_bias", {128});
+fc1_bias->setData(weights.fc1_bias);
+
+auto fc1_output = graph.addTensor("fc1_output", {1, 128});
+
+auto fc1_op = graph.addOperation("fc1", OpType::Dense);
+fc1_op->addInput(input);
+fc1_op->addInput(fc1_weights);
+fc1_op->addInput(fc1_bias);
+fc1_op->addOutput(fc1_output);
+
+// Second dense layer (similar pattern)
+auto fc2_output = graph.addTensor("fc2_output", {1, 64});
+// ... create operation, connect tensors
+
+// Third dense layer
+auto fc3_output = graph.addTensor("fc3_output", {1, 10});
+// ... create operation, connect tensors
+
+graph.addOutput(fc3_output);
+----
+
+Notice the pattern: create tensors, create operation, connect inputs/outputs. The graph now contains the complete network structure.
+
+== Execution Order
+
+The graph tells us *what* to execute but not *when*. We need to determine execution order—which operations can run first, which must wait for others.
+
+This is a topological sort of the DAG. We start with operations that have no dependencies (consume only graph inputs or constants), execute them, then execute operations whose dependencies are now satisfied, and so on.
+
+Here's the idea (simplified):
+
+[source,cpp]
+----
+std::vector<std::shared_ptr<Operation>> computeExecutionOrder(
+    const ComputationGraph& graph
+) {
+    std::vector<std::shared_ptr<Operation>> ordered;
+    std::unordered_set<Operation*> executed;
+
+    // Keep trying to execute operations until all are done
+    while (ordered.size() < graph.operations().size()) {
+        for (const auto& op : graph.operations()) {
+            if (executed.count(op.get())) continue;  // Already executed
+
+            // Check if all input tensors are ready
+            bool ready = true;
+            for (const auto& input : op->inputs()) {
+                if (!input->hasData() && !isProducedByExecutedOp(input, executed)) {
+                    ready = false;
+                    break;
+                }
+            }
+
+            if (ready) {
+                ordered.push_back(op);
+                executed.insert(op.get());
+            }
+        }
+    }
+
+    return ordered;
+}
+----
+
+This gives us an execution order where each operation runs only after its inputs are available. For our simple sequential network, the order is trivial: fc1, fc2, fc3. For networks with skip connections or parallel branches, this algorithm figures out the correct order automatically.
+
+== What We've Gained
+
+The graph representation gives us:
+
+**Separation of concerns**: Building the graph is separate from executing it. You can build once, execute many times.
+
+**Automatic ordering**: The topological sort figures out execution order—we don't hardcode it.
+
+**Optimization opportunities**: With the full graph available, we can analyze it for fusion opportunities, memory reuse, parallelization.
+
+**Debugging**: We can visualize the graph, print it, validate it before execution.
+
+But we're still building the graph manually. Real models have dozens or hundreds of layers. We need to load graphs from model files instead of constructing them by hand.
+
+That's next: parsing model formats.
+
+xref:ML_Inference/Building_the_Inference_Engine/03_from_hardcoded_to_flexible.adoc[Previous: From Hardcoded to Flexible] | xref:ML_Inference/Building_the_Inference_Engine/05_model_formats_as_input.adoc[Next: Model Formats as Input]

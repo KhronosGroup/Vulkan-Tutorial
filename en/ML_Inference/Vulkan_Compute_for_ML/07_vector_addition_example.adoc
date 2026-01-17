@@ -1,0 +1,561 @@
+::pp: {plus}{plus}
+
+= Vector Addition Example
+
+== Introduction
+
+We've covered a lot of theory: compute pipelines, operations, data management, and synchronization. Now it's time to put it all together with a complete, working example that you can compile, run, and understand from start to finish.
+
+Vector addition might seem trivial—it's just adding corresponding elements from two arrays. But this simplicity is exactly why it's the perfect first example. It demonstrates the entire Vulkan compute pipeline without the complexity of actual ML operations obscuring the fundamentals. Once you understand this pattern, scaling to convolutions, matrix multiplications, and full neural networks is straightforward.
+
+This chapter walks through a complete vector addition implementation: Vulkan initialization, buffer allocation, shader creation, command buffer recording, execution, and result verification. By the end, you'll have a working template you can adapt for any ML operation.
+
+== The Problem
+
+We want to compute: `C[i] = A[i] + B[i]` for all elements in vectors A and B.
+
+For example:
+
+- A = [1.0, 2.0, 3.0, 4.0]
+- B = [5.0, 6.0, 7.0, 8.0]
+- C = [6.0, 8.0, 10.0, 12.0]
+
+This is embarrassingly parallel—each output element is independent. Element C[0] doesn't depend on C[1], so we can compute all elements simultaneously on the GPU.
+
+== The Compute Shader
+
+Let's start with the shader, since it's the heart of the computation:
+
+[source,slang]
+----
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(binding = 0) readonly buffer InputA {
+    float data[];
+} inputA;
+
+layout(binding = 1) readonly buffer InputB {
+    float data[];
+} inputB;
+
+layout(binding = 2) writeonly buffer Output {
+    float data[];
+} output;
+
+layout(push_constant) uniform PushConstants {
+    uint elementCount;
+} pc;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+
+    if (index < pc.elementCount) {
+        output.data[index] = inputA.data[index] + inputB.data[index];
+    }
+}
+----
+
+Let's break this down:
+
+*Work Group Size*: `local_size_x = 256` means each work group has 256 threads. This is a good default for most GPUs—large enough to utilize the hardware well, small enough to not exhaust resources.
+
+*Descriptor Bindings*: Three storage buffers—two inputs (readonly) and one output (writeonly). The readonly/writeonly qualifiers help the compiler optimize.
+
+*Push Constants*: We pass the element count as a push constant. This is more efficient than a uniform buffer for small amounts of data.
+
+*Bounds Checking*: `if (index < pc.elementCount)` ensures we don't write past the end of the buffer when the element count isn't a multiple of 256.
+
+*Global Invocation ID*: `gl_GlobalInvocationID.x` gives each thread a unique index. Thread 0 processes element 0, thread 1 processes element 1, and so on.
+
+== The C++ Implementation
+
+Now let's implement the host-side code. We'll break it into logical sections.
+
+=== Setup: Vulkan Initialization
+
+First, we need basic Vulkan setup. This is standard Vulkan initialization—nothing ML-specific yet.
+
+[source,cpp]
+----
+class VectorAddition {
+private:
+    vk::raii::Context context;
+    vk::raii::Instance instance;
+    vk::raii::PhysicalDevice physicalDevice;
+    vk::raii::Device device;
+    vk::raii::Queue computeQueue;
+    uint32_t queueFamilyIndex;
+
+    vk::raii::CommandPool commandPool;
+    vk::raii::CommandBuffer commandBuffer;
+
+    vk::raii::DescriptorPool descriptorPool;
+    vk::raii::DescriptorSetLayout descriptorSetLayout;
+    vk::raii::DescriptorSet descriptorSet;
+
+    vk::raii::PipelineLayout pipelineLayout;
+    vk::raii::Pipeline pipeline;
+
+    vk::raii::Buffer bufferA, bufferB, bufferC;
+    vk::raii::DeviceMemory memoryA, memoryB, memoryC;
+
+    const uint32_t ELEMENT_COUNT = 1024 * 1024;  // 1M elements
+
+public:
+    void initialize() {
+        createInstance();
+        selectPhysicalDevice();
+        createDevice();
+        createCommandPool();
+        createDescriptorSetLayout();
+        createPipeline();
+        createBuffers();
+        createDescriptorSet();
+        createCommandBuffer();
+    }
+
+    void run() {
+        fillInputBuffers();
+        executeCompute();
+        verifyResults();
+    }
+
+    // RAII handles cleanup automatically - no explicit cleanup needed!
+};
+----
+
+=== Creating the Descriptor Set Layout
+
+The descriptor set layout describes what resources the shader expects:
+
+[source,cpp]
+----
+void createDescriptorSetLayout() {
+    std::array<vk::DescriptorSetLayoutBinding, 3> bindings{{
+        // Binding 0: Input A (readonly)
+        {
+            .binding = 0,
+            .descriptorType = vk::DescriptorType::eStorageBuffer,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eCompute
+        },
+        // Binding 1: Input B (readonly)
+        {
+            .binding = 1,
+            .descriptorType = vk::DescriptorType::eStorageBuffer,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eCompute
+        },
+        // Binding 2: Output C (writeonly)
+        {
+            .binding = 2,
+            .descriptorType = vk::DescriptorType::eStorageBuffer,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eCompute
+        }
+    }};
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{
+        .bindingCount = static_cast<uint32_t>(bindings.size()),
+        .pBindings = bindings.data()
+    };
+
+    descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
+}
+----
+
+=== Creating the Pipeline
+
+The compute pipeline combines the shader with the descriptor set layout:
+
+[source,cpp]
+----
+void createPipeline() {
+    // Load shader (assume we have compiled SPIR-V from slang)
+    std::vector<uint32_t> shaderCode = loadShaderCode("vector_add.comp.spv");
+
+    vk::ShaderModuleCreateInfo shaderInfo{
+        .codeSize = shaderCode.size() * sizeof(uint32_t),
+        .pCode = shaderCode.data()
+    };
+
+    vk::raii::ShaderModule shaderModule(device, shaderInfo);
+
+    // Push constant range for element count
+    vk::PushConstantRange pushConstantRange{
+        .stageFlags = vk::ShaderStageFlagBits::eCompute,
+        .offset = 0,
+        .size = sizeof(uint32_t)
+    };
+
+    // Pipeline layout
+    vk::PipelineLayoutCreateInfo layoutInfo{
+        .setLayoutCount = 1,
+        .pSetLayouts = &*descriptorSetLayout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstantRange
+    };
+
+    pipelineLayout = vk::raii::PipelineLayout(device, layoutInfo);
+
+    // Compute pipeline
+    vk::PipelineShaderStageCreateInfo stageInfo{
+        .stage = vk::ShaderStageFlagBits::eCompute,
+        .module = *shaderModule,
+        .pName = "main"
+    };
+
+    vk::ComputePipelineCreateInfo pipelineInfo{
+        .stage = stageInfo,
+        .layout = *pipelineLayout
+    };
+
+    pipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+    // Shader module is automatically cleaned up by RAII
+}
+----
+
+=== Creating Buffers
+
+We need three buffers: two for input, one for output.
+
+[source,cpp]
+----
+void createBuffers() {
+    vk::DeviceSize bufferSize = ELEMENT_COUNT * sizeof(float);
+
+    // Create buffer A
+    bufferA = createBuffer(bufferSize,
+                           vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                           vk::MemoryPropertyFlagBits::eDeviceLocal,
+                           memoryA);
+
+    // Create buffer B
+    bufferB = createBuffer(bufferSize,
+                           vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                           vk::MemoryPropertyFlagBits::eDeviceLocal,
+                           memoryB);
+
+    // Create buffer C
+    bufferC = createBuffer(bufferSize,
+                           vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferSrc,
+                           vk::MemoryPropertyFlagBits::eDeviceLocal,
+                           memoryC);
+}
+
+vk::raii::Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                               vk::MemoryPropertyFlags properties,
+                               vk::raii::DeviceMemory& memory) {
+    vk::BufferCreateInfo bufferInfo{
+        .size = size,
+        .usage = usage,
+        .sharingMode = vk::SharingMode::eExclusive
+    };
+
+    vk::raii::Buffer buffer(device, bufferInfo);
+
+    auto memReqs = buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo{
+        .allocationSize = memReqs.size,
+        .memoryTypeIndex = findMemoryType(memReqs.memoryTypeBits, properties)
+    };
+
+    memory = vk::raii::DeviceMemory(device, allocInfo);
+    buffer.bindMemory(*memory, 0);
+
+    return buffer;
+}
+----
+
+=== Filling Input Buffers
+
+We need to upload data to the GPU. We'll use a staging buffer for this:
+
+[source,cpp]
+----
+void fillInputBuffers() {
+    vk::DeviceSize bufferSize = ELEMENT_COUNT * sizeof(float);
+
+    // Create staging buffer
+    vk::raii::DeviceMemory stagingMemory = nullptr;
+    vk::raii::Buffer stagingBuffer = createBuffer(bufferSize,
+                                                   vk::BufferUsageFlagBits::eTransferSrc,
+                                                   vk::MemoryPropertyFlagBits::eHostVisible |
+                                                   vk::MemoryPropertyFlagBits::eHostCoherent,
+                                                   stagingMemory);
+
+    // Fill buffer A
+    float* data = static_cast<float*>(stagingMemory.mapMemory(0, bufferSize));
+    for (uint32_t i = 0; i < ELEMENT_COUNT; i++) {
+        data[i] = static_cast<float>(i);
+    }
+    stagingMemory.unmapMemory();
+    copyBuffer(stagingBuffer, bufferA, bufferSize);
+
+    // Fill buffer B
+    data = static_cast<float*>(stagingMemory.mapMemory(0, bufferSize));
+    for (uint32_t i = 0; i < ELEMENT_COUNT; i++) {
+        data[i] = static_cast<float>(i * 2);
+    }
+    stagingMemory.unmapMemory();
+    copyBuffer(stagingBuffer, bufferB, bufferSize);
+
+    // RAII handles cleanup automatically
+}
+
+void copyBuffer(vk::raii::Buffer& src, vk::raii::Buffer& dst, vk::DeviceSize size) {
+    vk::CommandBufferAllocateInfo allocInfo{
+        .commandPool = *commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+
+    vk::raii::CommandBuffers cmdBuffers(device, allocInfo);
+    vk::raii::CommandBuffer& cmdBuffer = cmdBuffers[0];
+
+    vk::CommandBufferBeginInfo beginInfo{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    };
+
+    cmdBuffer.begin(beginInfo);
+
+    vk::BufferCopy copyRegion{.size = size};
+    cmdBuffer.copyBuffer(*src, *dst, copyRegion);
+
+    cmdBuffer.end();
+
+    vk::SubmitInfo submitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*cmdBuffer
+    };
+
+    computeQueue.submit(submitInfo);
+    computeQueue.waitIdle();
+
+    // Command buffer automatically freed when cmdBuffers goes out of scope
+}
+----
+
+=== Recording the Command Buffer
+
+Now we record the actual compute work:
+
+[source,cpp]
+----
+void createCommandBuffer() {
+    vk::CommandBufferAllocateInfo allocInfo{
+        .commandPool = *commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+
+    vk::raii::CommandBuffers cmdBuffers(device, allocInfo);
+    commandBuffer = std::move(cmdBuffers[0]);
+
+    vk::CommandBufferBeginInfo beginInfo;
+
+    commandBuffer.begin(beginInfo);
+
+    // Bind pipeline
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *pipeline);
+
+    // Bind descriptor set
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                     *pipelineLayout, 0, *descriptorSet, nullptr);
+
+    // Push constants (element count)
+    commandBuffer.pushConstants(*pipelineLayout,
+                                vk::ShaderStageFlagBits::eCompute,
+                                0, sizeof(uint32_t), &ELEMENT_COUNT);
+
+    // Dispatch compute work
+    // Work groups = ceil(ELEMENT_COUNT / 256)
+    uint32_t workGroupCount = (ELEMENT_COUNT + 255) / 256;
+    commandBuffer.dispatch(workGroupCount, 1, 1);
+
+    commandBuffer.end();
+}
+----
+
+=== Executing the Compute Shader
+
+Submit the command buffer and wait for completion:
+
+[source,cpp]
+----
+void executeCompute() {
+    vk::SubmitInfo submitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*commandBuffer
+    };
+
+    vk::FenceCreateInfo fenceInfo;
+    vk::raii::Fence fence(device, fenceInfo);
+
+    computeQueue.submit(submitInfo, *fence);
+    auto result = device.waitForFences(*fence, VK_TRUE, UINT64_MAX);
+
+    // Fence automatically cleaned up by RAII
+}
+----
+
+=== Verifying Results
+
+Finally, read back the results and verify correctness:
+
+[source,cpp]
+----
+void verifyResults() {
+    vk::DeviceSize bufferSize = ELEMENT_COUNT * sizeof(float);
+
+    // Create staging buffer for readback
+    vk::raii::DeviceMemory stagingMemory = nullptr;
+    vk::raii::Buffer stagingBuffer = createBuffer(bufferSize,
+                                                   vk::BufferUsageFlagBits::eTransferDst,
+                                                   vk::MemoryPropertyFlagBits::eHostVisible |
+                                                   vk::MemoryPropertyFlagBits::eHostCoherent,
+                                                   stagingMemory);
+
+    // Copy result from GPU to staging buffer
+    copyBuffer(bufferC, stagingBuffer, bufferSize);
+
+    // Map and verify
+    float* results = static_cast<float*>(stagingMemory.mapMemory(0, bufferSize));
+
+    bool allCorrect = true;
+    for (uint32_t i = 0; i < ELEMENT_COUNT; i++) {
+        float expected = static_cast<float>(i) + static_cast<float>(i * 2);
+        float actual = results[i];
+
+        if (std::abs(expected - actual) > 0.001f) {
+            std::cout << "Mismatch at index " << i
+                      << ": expected " << expected
+                      << ", got " << actual << std::endl;
+            allCorrect = false;
+            break;
+        }
+    }
+
+    if (allCorrect) {
+        std::cout << "Success! All " << ELEMENT_COUNT
+                  << " elements computed correctly." << std::endl;
+    }
+
+    stagingMemory.unmapMemory();
+    // RAII handles cleanup automatically
+}
+----
+
+== Running the Example
+
+The main function ties everything together:
+
+[source,cpp]
+----
+int main() {
+    try {
+        VectorAddition app;
+        app.initialize();
+        app.run();
+        // No cleanup needed - RAII handles everything!
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+}
+----
+
+== Understanding the Flow
+
+Let's trace through what happens when you run this program:
+
+*Initialization Phase*:
+
+1. Create Vulkan instance and device
+2. Create command pool for allocating command buffers
+3. Create descriptor set layout describing shader resources
+4. Load and compile shader, create compute pipeline
+5. Allocate three buffers on GPU (A, B, C)
+6. Create descriptor set binding buffers to shader bindings
+7. Record command buffer with compute dispatch
+
+*Execution Phase*:
+
+1. Upload input data (A and B) to GPU via staging buffer
+2. Submit command buffer to compute queue
+3. GPU executes shader: 4096 work groups × 256 threads = 1,048,576 threads
+4. Each thread computes one element: C[i] = A[i] + B[i]
+5. Wait for GPU to finish
+6. Copy results back to CPU via staging buffer
+7. Verify results match expected values
+
+*Cleanup Phase*:
+
+1. Destroy all Vulkan objects
+2. Free all memory
+
+== Key Takeaways
+
+This example demonstrates several important patterns:
+
+*Staging Buffers*: GPU memory (DEVICE_LOCAL) is fast but not directly accessible from CPU. We use staging buffers (HOST_VISIBLE) to transfer data between CPU and GPU.
+
+*Work Group Calculation*: With 1M elements and 256 threads per work group, we need 4096 work groups. The formula `(elementCount + workGroupSize - 1) / workGroupSize` handles non-multiples correctly.
+
+*Bounds Checking*: The shader checks `if (index < elementCount)` to handle cases where the total thread count exceeds the element count.
+
+*Synchronization*: We use `vkQueueWaitIdle()` for simplicity. In production, you'd use fences or semaphores for more efficient synchronization.
+
+*Memory Management*: We allocate separate memory for each buffer. In production, you'd use a memory allocator to sub-allocate from larger blocks.
+
+== Extending to ML Operations
+
+This pattern scales to any ML operation:
+
+*Element-wise operations* (ReLU, sigmoid): Same structure, just change the shader computation.
+
+*Matrix operations*: Add more dimensions to the dispatch (workGroupsX, workGroupsY), adjust shader to compute matrix indices.
+
+*Convolutions*: More complex shader logic, but same overall structure—bind inputs/weights/outputs, dispatch work groups, synchronize.
+
+The fundamentals remain constant: create buffers, bind them to shaders, dispatch compute work, synchronize, read results. Everything we've learned in this chapter applies to implementing full neural network inference.
+
+== Common Pitfalls
+
+*Forgetting Bounds Checking*: Always check `if (index < elementCount)` in shaders. Without this, threads beyond the data range write to invalid memory.
+
+*Incorrect Work Group Count*: Using `elementCount / 256` instead of `(elementCount + 255) / 256` fails when elementCount isn't a multiple of 256.
+
+*Missing Synchronization*: Forgetting to wait for compute to complete before reading results leads to reading incomplete or garbage data.
+
+*Wrong Memory Properties*: Using DEVICE_LOCAL memory for staging buffers (can't map from CPU) or HOST_VISIBLE memory for compute buffers (slower GPU access).
+
+*Descriptor Set Mismatches*: Binding buffers to wrong descriptor bindings causes shaders to read/write wrong data.
+
+== Performance Considerations
+
+This example prioritizes clarity over performance. For production:
+
+*Persistent Buffers*: Reuse buffers across multiple inferences instead of allocating/deallocating each time.
+
+*Async Transfers*: Use a separate transfer queue to overlap data uploads with compute.
+
+*Memory Pooling*: Sub-allocate from large memory blocks instead of individual allocations per buffer.
+
+*Pipeline Caching*: Cache compiled pipelines to disk to avoid recompilation.
+
+*Batch Processing*: Process multiple inputs together to amortize overhead.
+
+== Summary
+
+This vector addition example demonstrates the complete Vulkan compute pipeline for ML operations. We created buffers, loaded a shader, recorded commands, executed on GPU, and verified results. The pattern is simple but powerful—it's the foundation for implementing any ML operation.
+
+The key insight: ML inference is just dispatching compute shaders with proper data management and synchronization. Vector addition uses this pattern. Matrix multiplication uses this pattern. Convolutions use this pattern. Full neural networks are just many of these patterns chained together.
+
+With this working example as a template, you're ready to implement more complex ML operations. The fundamentals remain the same—only the shader logic and buffer layouts change.
+
+xref:ML_Inference/Vulkan_Compute_for_ML/06_synchronization.adoc[Previous: Synchronization] | xref:ML_Inference/Models_and_Data/01_introduction.adoc[Next: Models and Data]

@@ -11,6 +11,8 @@ ebook/*.epub
 
 convert.py
 
+**/build/*
+**/vcpkg_installed/*
 attachments/build/**
 attachments/android/.gradle/**
 attachments/android/.idea

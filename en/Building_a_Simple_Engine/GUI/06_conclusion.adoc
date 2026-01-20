@@ -110,4 +110,4 @@ Remember that the code provided in this chapter is a starting point. Feel free t
 
 In the next chapter, we'll explore how to load and render 3D models, which will allow us to create more complex and visually interesting scenes.
 
-link:05_vulkan_integration.adoc[Previous: Vulkan Integration] | link:../Loading_Models/01_introduction.adoc[Next: Loading Models]
+xref:Building_a_Simple_Engine/GUI/05_vulkan_integration.adoc[Previous: Vulkan Integration] | xref:Building_a_Simple_Engine/Loading_Models/01_introduction.adoc[Next: Loading Models]

@@ -228,6 +228,9 @@ ImGuiVulkanUtil::ImGuiVulkanUtil(vk::raii::Device& device, vk::raii::PhysicalDev
 
 ImGuiVulkanUtil::~ImGuiVulkanUtil() {
     // Wait for device to finish operations before destroying resources
+    // NOTE: waitIdle() is acceptable in destructors/cleanup code but should NEVER be used
+    // in the main rendering loop as it causes severe performance issues. For frame
+    // synchronization, use fences and semaphores instead.
     if (device) {
         device->waitIdle();
     }
@@ -301,7 +304,7 @@ Now let's implement the method to initialize all Vulkan resources needed for ImG
 
 === Resource Initialization: Font Data Extraction and Memory Calculation
 
-First extract font atlas data from ImGui and calculates the memory requirements for GPU storage.
+First extract font atlas data from ImGui and calculate the memory requirements for GPU storage.
 
 [source,cpp]
 ----
@@ -572,6 +575,7 @@ void ImGuiVulkanUtil::updateBuffers() {
     vertexBuffer.unmap();
     indexBuffer.unmap();
 }
+----
 
 ==== Begin a rendering scope
 
@@ -841,4 +845,4 @@ With this implementation, you have a Vulkan implementation for ImGui that allows
 
 In the next section, we'll explore how to handle input for both the GUI and the 3D scene.
 
-link:01_introduction.adoc[Previous: Introduction] | link:03_input_handling.adoc[Next: Input Handling]
+xref:Building_a_Simple_Engine/GUI/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/GUI/03_input_handling.adoc[Next: Input Handling]

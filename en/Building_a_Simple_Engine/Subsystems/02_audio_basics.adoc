@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Subsystems: Audio Basics
 :doctype: book
@@ -240,4 +240,4 @@ While this basic audio system provides the essential functionality for playing s
 
 In the next section, we'll explore how Vulkan compute shaders can address these limitations by offloading audio processing to the GPU, particularly for implementing more realistic spatial audio through Head-Related Transfer Functions (HRTF).
 
-link:01_introduction.adoc[Previous: Introduction] | link:03_vulkan_audio.adoc[Next: Vulkan for Audio Processing]
+xref:Building_a_Simple_Engine/Subsystems/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Subsystems/03_vulkan_audio.adoc[Next: Vulkan for Audio Processing]

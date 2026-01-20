@@ -41,11 +41,13 @@ Throughout this tutorial series, you've gained knowledge and practical experienc
 This tutorial series has provided you with the essential tools for more
 advanced Vulkan development. With these fundamentals mastered, you're now ready to explore more complex topics and build more sophisticated applications.
 
-Future tutorial series will build upon these fundamentals to help you create
-more structured and reusable rendering solutions. Future, planned
-tutorials will assume you've completed all the chapters in this series and
-will guide you through implementing more sophisticated rendering techniques
-and architectures.
+1. link:Building_a_Simple_Engine/introduction.adoc[*Building a Simple Game Engine*] - Ready to take your Vulkan skills to the next level?
+This tutorial series will teach you how to structure your Vulkan code into a reusable and maintainable engine architecture.
+You'll learn engine architecture and design patterns, scene management with hierarchical object systems, camera systems and controls, efficient resource and memory management, Entity Component System (ECS) patterns, render system abstraction, input handling, and robust game loop design with proper timing.
+The series also covers essential math and rendering concepts needed for advanced techniques like Forward+ rendering with tiled lighting, shadow mapping techniques, HRTF spatial audio integration, GPU-accelerated physics simulation using compute shaders, and Ray Query for hybrid rendering effects.
+This series builds upon the fundamentals you've learned here to help you create more structured and reusable rendering solutions, and assumes you've completed all the chapters in this Core Vulkan series.
+
+Future, planned tutorials will guide you through implementing more sophisticated rendering techniques and architectures.
 
 Remember that Vulkan development is a continuous learning process. The graphics programming landscape is constantly evolving, and there's always more to learn and explore.
 

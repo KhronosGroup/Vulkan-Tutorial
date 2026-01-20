@@ -36,11 +36,7 @@ validation layers to enable.
 [,c++]
 ----
 std::vector<const char*> deviceExtensions = {
-    vk::KHRSwapchainExtensionName,
-    vk::KHRSpirv14ExtensionName,
-    vk::KHRSynchronization2ExtensionName,
-    vk::KHRCreateRenderpass2ExtensionName
-};
+    vk::KHRSwapchainExtensionName};
 ----
 
 It should be noted that the availability of a presentation queue,

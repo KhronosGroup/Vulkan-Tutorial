@@ -6,9 +6,10 @@ This chapter covers the implementation of basic lighting models and the use of p
 
 == Contents
 
-* link:01_introduction.adoc[Introduction]
-* link:02_lighting_models.adoc[Lighting Models]
-* link:03_push_constants.adoc[Push Constants]
-* link:04_lighting_implementation.adoc[Lighting Implementation]
-* link:05_vulkan_integration.adoc[Vulkan Integration]
-* link:06_conclusion.adoc[Conclusion]
+* xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Introduction]
+* xref:Building_a_Simple_Engine/Lighting_Materials/02_lighting_models.adoc[Lighting Models]
+* xref:Building_a_Simple_Engine/Lighting_Materials/03_push_constants.adoc[Push Constants]
+* xref:Building_a_Simple_Engine/Lighting_Materials/04_lighting_implementation.adoc[Lighting Implementation]
+* xref:Building_a_Simple_Engine/Lighting_Materials/05_vulkan_integration.adoc[Vulkan Integration]
+* xref:Building_a_Simple_Engine/Lighting_Materials/07_shadows.adoc[Shadows]
+* xref:Building_a_Simple_Engine/Lighting_Materials/06_conclusion.adoc[Conclusion]

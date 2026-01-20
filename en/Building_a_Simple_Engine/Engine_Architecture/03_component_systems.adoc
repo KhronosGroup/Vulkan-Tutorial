@@ -542,4 +542,4 @@ Component systems provide a flexible and modular approach to building game objec
 
 In the next section, we'll explore resource management systems, which are crucial for efficiently handling assets in your engine.
 
-link:02_architectural_patterns.adoc[Previous: Architectural Patterns] | link:04_resource_management.adoc[Next: Resource Management]
+xref:Building_a_Simple_Engine/Engine_Architecture/02_architectural_patterns.adoc[Previous: Architectural Patterns] | xref:Building_a_Simple_Engine/Engine_Architecture/04_resource_management.adoc[Next: Resource Management]

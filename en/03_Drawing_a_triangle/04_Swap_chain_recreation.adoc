@@ -79,22 +79,26 @@ You need to pass the previous swap chain to the `oldSwapchain` field in the `VkS
 
 Now we just need to figure out when swap chain recreation is necessary and call our new `recreateSwapChain` function.
 Luckily, Vulkan will usually just tell us that the swap chain is no longer adequate during presentation.
-The `vkAcquireNextImageKHR` and `vkQueuePresentKHR` functions can return the following special values to indicate this.
+The `vk::raii::SwapchainKHR::acquireNextImage` and `vk::raii::Queue::presentKHR` functions can return the following special values to indicate this.
 
-* `VK_ERROR_OUT_OF_DATE_KHR`: The swap chain has become incompatible with the surface and can no longer be used for rendering.
+* `vk::Result::eErrorOutOfDateKHR`: The swap chain has become incompatible with the surface and can no longer be used for rendering.
 Usually happens after a window resize.
-* `VK_SUBOPTIMAL_KHR`: The swap chain can still be used to successfully present to the surface, but the surface properties are no longer matched exactly.
+Note that “vk::Result::eErrorOutOfDateKHR” is actually an error code and would trigger an exception by default. By defining “VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS,” this is treated as a success code and can therefore be returned by “vk::raii::SwapchainKHR::acquireNextImage” and “vk::raii::Queue::presentKHR.”
+* `vk::Result::eSuboptimalKHR`: The swap chain can still be used to successfully present to the surface, but the surface properties are no longer matched exactly.
 
 [,c++]
 ----
-auto [result, imageIndex] = swapChain.acquireNextImage( UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr );
+auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
-if (result == vk::Result::eErrorOutOfDateKHR) {
-    recreateSwapChain();
-    return;
+if (result == vk::Result::eErrorOutOfDateKHR)
+{
+  recreateSwapChain();
+  return;
 }
-if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-    throw std::runtime_error("failed to acquire swap chain image!");
+if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+{
+  assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+  throw std::runtime_error("failed to acquire swap chain image!");
 }
 ----
 
@@ -102,90 +106,89 @@ If the swap chain turns out to be out of date when attempting to acquire an imag
 Therefore, we should immediately recreate the swap chain and try again in the next `drawFrame` call.
 
 You could also decide to do that if the swap chain is suboptimal, but I've chosen to proceed anyway in that case because we've already acquired an image.
-Both `VK_SUCCESS` and `VK_SUBOPTIMAL_KHR` are considered "success" return codes.
+Both `vk::Result::eSuccess` and `vk::Result::eSuboptimalKHR` are considered "success" return codes.
 
 [,c++]
 ----
-result = presentQueue.presentKHR( presentInfoKHR );
-if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
-    recreateSwapChain();
-} else if (result != vk::Result::eSuccess) {
-    throw std::runtime_error("failed to present swap chain image!");
+result = queue.presentKHR(presentInfoKHR);
+if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR))
+{
+  recreateSwapChain();
+}
+else
+{
+  // There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+  assert(result == vk::Result::eSuccess);
 }
 
 frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 ----
 
-The `vkQueuePresentKHR` function returns the same values with the same meaning.
+The `vk::raii::Queue::presentKHR` function returns the same values with the same meaning.
 In this case, we will also recreate the swap chain if it is suboptimal, because we want the best possible result.
 
 [,c++]
 ----
-try
+const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
+                                        .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
+                                        .swapchainCount     = 1,
+                                        .pSwapchains        = &*swapChain,
+                                        .pImageIndices      = &imageIndex};
+result = queue.presentKHR(presentInfoKHR);
+if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
 {
-    const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore[imageIndex], .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
-    result = queue.presentKHR(presentInfoKHR);
-    if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
-    {
-        framebufferResized = false;
-        recreateSwapChain();
-    }
-    else if (result != vk::Result::eSuccess)
-    {
-        throw std::runtime_error("failed to present swap chain image!");
-    }
+  framebufferResized = false;
+  recreateSwapChain();
 }
-catch (const vk::SystemError &e)
+else
 {
-    if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR))
-    {
-        recreateSwapChain();
-        return;
-    }
-    else
-    {
-        throw;
-    }
+  // There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+  assert(result == vk::Result::eSuccess);
 }
 ----
-
-Recent versions of Vulkan-hpp throw exceptions on unsuccessful return codes. To handle exceptions thrown by `vkQueuePresentKHR`, catch `vk::SystemError` and check the error code as shown above.
 
 == Fixing a deadlock
 
 If we try to run the code now, it is possible to encounter a deadlock.
-Debugging the code, we find that the application reaches `vkWaitForFences` but never continues past it.
-This is because when `vkAcquireNextImageKHR` returns `VK_ERROR_OUT_OF_DATE_KHR`, we recreate the swapchain and then return from `drawFrame`.
+Debugging the code, we find that the application reaches `vk::raii::Device::waitForFences` but never continues past it.
+This is because when `vk::raii::SwapchainKHR::acquireNextImage` returns `vk::Result::eErrorOutOfDateKHR`, we recreate the swapchain and then return from `drawFrame`.
 But before that happens, the current frame's fence was waited upon and reset.
-Since we return immediately, no work is submitted for execution and the fence will never be signaled, causing `vkWaitForFences` to halt forever.
+Since we return immediately, no work is submitted for execution and the fence will never be signaled, causing `vk::raii::Device::waitForFences` to halt forever.
 
 There is a simple fix thankfully.
 Delay resetting the fence until after we know for sure, we will be submitting work with it.
-Thus, if we return early, the fence is still signaled and `vkWaitForFences` wont deadlock the next time we use the same fence object.
+Thus, if we return early, the fence is still signaled and `vk::raii::Device::waitForFences` wont deadlock the next time we use the same fence object.
 
 The beginning of `drawFrame` should now look like this:
 
 [,c++]
 ----
-vkWaitForFences(device, 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
+auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+if (fenceResult != vk::Result::eSuccess)
+{
+  throw std::runtime_error("failed to wait for fence!");
+}
 
-uint32_t imageIndex;
-VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
+auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
-if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+if (result == vk::Result::eErrorOutOfDateKHR)
+{
     recreateSwapChain();
     return;
-} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+}
+else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+{
+    assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
     throw std::runtime_error("failed to acquire swap chain image!");
 }
 
 // Only reset the fence if we are submitting work
-vkResetFences(device, 1, &inFlightFences[frameIndex]);
+device.resetFences(*inFlightFences[frameIndex]);
 ----
 
 == Handling resizes explicitly
 
-Although many drivers and platforms trigger `VK_ERROR_OUT_OF_DATE_KHR` automatically after a window resize, it is not guaranteed to happen.
+Although many drivers and platforms trigger `vk::Result::eErrorOutOfDateKHR` automatically after a window resize, it is not guaranteed to happen.
 That's why we'll add some extra code to also handle resizes explicitly.
 First, add a new member variable that flags that a resize has happened:
 
@@ -203,12 +206,14 @@ The `drawFrame` function should then be modified to also check for this flag:
 if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
     framebufferResized = false;
     recreateSwapChain();
-} else if (result != vk::Result::eSuccess) {
+}
+else
+{
     ...
 }
 ----
 
-It is important to do this after `vkQueuePresentKHR` to ensure that the semaphores are in a consistent state, otherwise a signaled semaphore may never be properly waited upon.
+It is important to do this after `vk::raii::Queue::presentKHR` to ensure that the semaphores are in a consistent state, otherwise a signaled semaphore may never be properly waited upon.
 Now, to actually detect resizes, we can use the `glfwSetFramebufferSizeCallback` function in the GLFW framework to set up a callback:
 
 [,c++]

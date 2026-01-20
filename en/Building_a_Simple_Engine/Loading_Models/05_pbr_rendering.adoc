@@ -6,9 +6,9 @@
 
 === Building on PBR Knowledge
 
-In the xref:../Lighting_Materials/01_introduction.adoc[Lighting & Materials chapter], we explored the fundamentals of Physically Based Rendering (PBR), including its core principles, the BRDF, and material properties. Now, we'll apply that knowledge to implement a PBR pipeline for the glTF models we've loaded.
+In the xref:Building_a_Simple_Engine/Lighting_Materials/01_introduction.adoc[Lighting & Materials chapter], we explored the fundamentals of Physically Based Rendering (PBR), including its core principles, the BRDF, and material properties. Now, we'll apply that knowledge to implement a PBR pipeline for the glTF models we've loaded.
 
-As we learned in the link:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
+As we learned in the xref:15_GLTF_KTX2_Migration.adoc[glTF and KTX2 Migration chapter], glTF uses PBR with the metallic-roughness workflow for its material system. This aligns perfectly with the PBR concepts we've already covered, making it straightforward to render our glTF models with physically accurate lighting.
 
 === Leveraging glTF's PBR Materials
 
@@ -61,7 +61,7 @@ This uniform buffer includes:
 
 [NOTE]
 ====
-We introduced push constants earlier in xref:../Lighting_Materials/03_push_constants.adoc[push constants]; here we focus on how the same mechanism carries glTF metallic‑roughness material knobs efficiently per draw.
+We introduced push constants earlier in xref:Building_a_Simple_Engine/Lighting_Materials/03_push_constants.adoc[push constants]; here we focus on how the same mechanism carries glTF metallic‑roughness material knobs efficiently per draw.
 ====
 
 We'll use link:https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-pushconstant[push constants] to pass material properties to the shader:
@@ -540,18 +540,21 @@ link:https://learnopengl.com/PBR/IBL/Diffuse-irradiance[IBL] uses environment ma
 ==== Subsurface Scattering
 
 For materials like skin, wax, or marble where light penetrates the surface:
+
 * link:https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-14-advanced-techniques-realistic-real-time-skin[Simulates how light scatters within translucent materials]
 * Can be approximated with techniques like subsurface scattering profiles
 
 ==== Clear Coat
 
 For materials with a thin, glossy layer on top:
+
 * link:https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_materials_clearcoat[Automotive paint, varnished wood, etc.]
 * Implemented as an additional specular lobe
 
 ==== Anisotropy
 
 For materials with directional reflections:
+
 * link:https://google.github.io/filament/Filament.html#materialsystem/anisotropicmodel[Brushed metal, hair, fabric, etc.]
 * Requires additional material parameters and modified BRDFs
 
@@ -571,4 +574,4 @@ In the next chapter, we'll explore how to render multiple objects with different
 
 If you want to dive deeper into lighting and materials, refer back to the Lighting & Materials chapter, where we explored the theory behind PBR in detail.
 
-xref:04_loading_gltf.adoc[Previous: Loading a glTF Model] | xref:06_multiple_objects.adoc[Next: Rendering Multiple Objects]
+xref:Building_a_Simple_Engine/Loading_Models/04_loading_gltf.adoc[Previous: Loading a glTF Model] | xref:Building_a_Simple_Engine/Loading_Models/06_multiple_objects.adoc[Next: Rendering Multiple Objects]

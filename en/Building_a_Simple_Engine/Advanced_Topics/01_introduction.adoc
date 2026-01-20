@@ -1,0 +1,27 @@
+:pp: {plus}{plus}
+
+= Advanced Topics (Simple Engine)
+
+Welcome — this section collects short, conversational guides that explain what each feature is, why we use it, and how it’s implemented in the Simple Engine.
+
+Start anywhere that matches your interest:
+
+* xref:Building_a_Simple_Engine/Advanced_Topics/Planar_Reflections.adoc[Planar Reflections]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Ray_Query_Rendering.adoc[Ray Query Rendering]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Ray_Query_Reflections_and_Transparency.adoc[Ray Query Reflections and Transparency]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Rendering_Pipeline_Overview.adoc[Rendering Pipeline Overview]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Forward_ForwardPlus_Deferred.adoc[Forward, Forward+, Deferred]
+* xref:Building_a_Simple_Engine/Advanced_Topics/ForwardPlus_Rendering.adoc[Forward+ Rendering]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Culling.adoc[Frustum Culling and Distance LOD]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Mipmaps_and_LOD.adoc[Mipmaps and LOD]
+* xref:Building_a_Simple_Engine/Advanced_Topics/GLTF_Animation.adoc[glTF Animation & Transform Composition]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Push_Constants_Per_Object.adoc[Push Constants (per‑object material)]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Descriptor_Indexing_UpdateAfterBind.adoc[Descriptor Indexing & Stable Updates]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Separate_Image_Sampler_Descriptors.adoc[Separate Image/Sampler]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Synchronization_and_Streaming.adoc[Synchronization & Streaming]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Synchronization_2_Frame_Pacing.adoc[Synchronization 2 & Frame Pacing]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Robustness2.adoc[VK_EXT_robustness2]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Shader_Tile_Image.adoc[Shader Tile Image]
+
+xref:Building_a_Simple_Engine/introduction.adoc[Back to Building a Simple Engine]

@@ -127,10 +127,7 @@ class ComputeShaderApplication
 	double lastTime = 0.0f;
 
 	std::vector<const char *> requiredDeviceExtension = {
-	    vk::KHRSwapchainExtensionName,
-	    vk::KHRSpirv14ExtensionName,
-	    vk::KHRSynchronization2ExtensionName,
-	    vk::KHRCreateRenderpass2ExtensionName};
+	    vk::KHRSwapchainExtensionName};
 
 	void initWindow()
 	{
@@ -413,7 +410,7 @@ class ComputeShaderApplication
 		    .format           = swapChainSurfaceFormat.format,
 		    .components       = {vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity},
 		    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
-		for (auto& image : swapChainImages)
+		for (auto &image : swapChainImages)
 		{
 			imageViewCreateInfo.image = image;
 			swapChainImageViews.emplace_back(device, imageViewCreateInfo);
@@ -811,7 +808,7 @@ class ComputeShaderApplication
 	void drawFrame()
 	{
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, nullptr, *inFlightFences[frameIndex]);
-		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+		auto fenceResult          = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
 		if (fenceResult != vk::Result::eSuccess)
 		{
 			throw std::runtime_error("failed to wait for fence!");
@@ -884,7 +881,7 @@ class ComputeShaderApplication
 			if (result != vk::Result::eSuccess)
 			{
 				throw std::runtime_error("failed to wait for semaphore!");
-			}			
+			}
 
 			vk::PresentInfoKHR presentInfo{
 			    .waitSemaphoreCount = 0,        // No binary semaphores needed
@@ -893,30 +890,18 @@ class ComputeShaderApplication
 			    .pSwapchains        = &*swapChain,
 			    .pImageIndices      = &imageIndex};
 
-			try
+			result = queue.presentKHR(presentInfo);
+			// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+			// here and does not need to be caught by an exception.
+			if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
 			{
-				result = queue.presentKHR(presentInfo);
-				if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
-				{
-					framebufferResized = false;
-					recreateSwapChain();
-				}
-				else if (result != vk::Result::eSuccess)
-				{
-					throw std::runtime_error("failed to present swap chain image!");
-				}
+				framebufferResized = false;
+				recreateSwapChain();
 			}
-			catch (const vk::SystemError &e)
+			else
 			{
-				if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR))
-				{
-					recreateSwapChain();
-					return;
-				}
-				else
-				{
-					throw;
-				}
+				// There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+				assert(result == vk::Result::eSuccess);
 			}
 		}
 		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;

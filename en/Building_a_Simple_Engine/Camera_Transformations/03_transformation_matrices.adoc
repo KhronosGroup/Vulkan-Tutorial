@@ -173,4 +173,4 @@ glm::mat4 childWorldModel = parentModel * localModel;
 
 In the next section, we'll implement a camera system that uses these transformation concepts to navigate our 3D scenes.
 
-link:04_camera_implementation.adoc[Next: Camera Implementation]
+xref:Building_a_Simple_Engine/Camera_Transformations/02_math_foundations.adoc[Previous: Mathematical Foundations] | xref:Building_a_Simple_Engine/Camera_Transformations/04_camera_implementation.adoc[Next: Camera Implementation]

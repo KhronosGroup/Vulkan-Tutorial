@@ -124,7 +124,7 @@ glTF comes in two formats, each with its own advantages:
 
 [NOTE]
 ====
-This section provides a brief overview of PBR materials as they relate to glTF loading. For a more comprehensive explanation of PBR concepts and lighting models, please refer to the link:../../Lighting_Materials/02_lighting_models.adoc#physically-based-rendering-pbr[Physically Based Rendering section] in the Lighting Materials chapter.
+This section provides a brief overview of PBR materials as they relate to glTF loading. For a more comprehensive explanation of PBR concepts and lighting models, please refer to the xref:Building_a_Simple_Engine/Lighting_Materials/02_lighting_models.adoc#physically-based-rendering-pbr[Physically Based Rendering section] in the Lighting Materials chapter.
 ====
 
 Materials define how surfaces look when rendered. Modern games and engines use Physically Based Rendering (PBR), which simulates how light interacts with real-world materials based on physical principles.
@@ -164,6 +164,8 @@ The PBR model in glTF is based on the "metallic-roughness" workflow, which uses 
 These properties can be specified as constant values or as texture maps for
 spatial variation across the surface. We'll go into details about PBR in the
 next few chapters.
+
+image::images/bookstand.png[Bookstand with complex PBR materials - demonstrating wood, glass, metal, and paper textures with varied material properties]
 
 ==== Texture Formats and Compression
 
@@ -571,6 +573,7 @@ glTF uses a flexible animation system that can represent various animation techn
 * *Targets*: The properties being animated (translation, rotation, scale, or weights for morph targets)
 
 glTF supports three interpolation methods:
+
 * *LINEAR*: Smooth transitions with constant velocity
 * *STEP*: Sudden changes with no interpolation
 * *CUBICSPLINE*: Smooth curves with control points for acceleration and deceleration
@@ -770,6 +773,7 @@ To optimize texture memory usage:
 3. *Texture Streaming*: For very large scenes, implement texture streaming to load higher resolution textures only when needed
 4. *Memory Budgeting*: Implement a texture budget system that can reduce texture quality when memory is constrained
 5. *Format Selection*: Choose the appropriate format based on the texture content:
+
    - BC7/ASTC for color textures with alpha
    - BC1/ETC1 for color textures without alpha
    - BC5/ETC2 for normal maps
@@ -805,4 +809,4 @@ In the next chapter, we'll explore how to render these models using
 physically-based rendering techniques, bringing our loaded assets to life
 with realistic lighting and materials.
 
-link:03_model_system.adoc[Previous: Implementing the Model Loading System] | link:05_pbr_rendering.adoc[Next: Implementing PBR Rendering]
+xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Previous: Implementing the Model Loading System] | xref:Building_a_Simple_Engine/Loading_Models/05_pbr_rendering.adoc[Next: Implementing PBR Rendering]

@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Asset Pipeline Concepts
 :doctype: book
@@ -47,6 +47,7 @@ assets/
 ----
 
 This example demonstrates all four principles:
+
 - *Categorization*: Assets are grouped by type (models, textures, shaders, config)
 - *Hierarchy*: Assets are organized in a nested structure (e.g., models > characters > player)
 - *Discoverability*: Common assets are placed in dedicated folders (e.g., common textures, core shaders) making them easy to find
@@ -372,4 +373,4 @@ At runtime, our engine will:
 
 By implementing these specific approaches, our engine will have a robust and efficient asset pipeline that aligns with the general concepts discussed earlier in this chapter.
 
-link:03_model_system.adoc[Next: Implementing the Model Loading System]
+xref:Building_a_Simple_Engine/Loading_Models/01_introduction.adoc[Previous: Introduction] | xref:Building_a_Simple_Engine/Loading_Models/03_model_system.adoc[Next: Implementing the Model Loading System]

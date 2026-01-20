@@ -381,8 +381,8 @@ void setupInstanceBuffers() {
         void* instanceBufferMapped = device.mapMemory(instanceBufferMemory, 0, bufferSize, {});
 
         // Store buffer and memory
-        instanceBuffers.push_back(instanceBuffer);
-        instanceBufferMemories.push_back(instanceBufferMemory);
+        instanceBuffers.push_back(std::move(instanceBuffer));
+        instanceBufferMemories.push_back(std::move(instanceBufferMemory));
         instanceBuffersMapped.push_back(instanceBufferMapped);
 
         // Set the instance buffer index for this node
@@ -784,4 +784,4 @@ In this chapter, we've explored how to manage and render multiple objects in a 3
 
 These techniques form the foundation for creating complex, visually rich 3D scenes. In the next chapter, we'll build upon this foundation to implement a complete scene rendering system that integrates all the components we've developed so far.
 
-link:05_pbr_rendering.adoc[Previous: Understanding Physically Based Rendering] | link:07_scene_rendering.adoc[Next: Rendering the Scene]
+xref:Building_a_Simple_Engine/Loading_Models/05_pbr_rendering.adoc[Previous: Understanding Physically Based Rendering] | xref:Building_a_Simple_Engine/Loading_Models/07_scene_rendering.adoc[Next: Rendering the Scene]

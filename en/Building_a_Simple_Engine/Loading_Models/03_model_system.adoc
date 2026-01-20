@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Loading Models: Implementing the Model Loading System
 :doctype: book
@@ -13,7 +13,7 @@
 
 === Building on glTF Knowledge
 
-As we learned in the link:../../15_GLTF_KTX2_Migration.html[glTF and KTX2 Migration chapter], glTF is a modern 3D format that supports a wide range of features including PBR materials, animations, and scene hierarchies. In this chapter, we'll leverage these capabilities to build a more robust engine.
+As we learned in the xref:15_GLTF_KTX2_Migration.adoc[glTF and KTX2 Migration chapter], glTF is a modern 3D format that supports a wide range of features including PBR materials, animations, and scene hierarchies. In this chapter, we'll leverage these capabilities to build a more robust engine.
 
 While the previous chapter covered the basics of loading glTF models, here we'll focus on organizing the loaded data into a proper scene graph and implementing animation support. This approach will allow us to create more complex and dynamic scenes.
 
@@ -334,18 +334,16 @@ struct Model {
     }
 
     Node* findNode(const std::string& name) {
-        for (auto node : linearNodes) {
-            if (node->name == name) {
-                return node;
-            }
-        }
-        return nullptr;
+        auto nodeIt = std::ranges::find_if(linearNodes, [&name](auto const& node) {
+            return node->name == name;
+        });
+        return (nodeIt != linearNodes.end()) ? *nodeIt : nullptr;
     }
 
     void updateAnimation(uint32_t index, float deltaTime) {
-        if (animations.empty() || index >= animations.size()) {
-            return;
-        }
+        assert(!animations.empty() && index < animations.size());
+
+
 
         Animation& animation = animations[index];
         animation.currentTime += deltaTime;
@@ -356,10 +354,11 @@ struct Model {
         for (auto& channel : animation.channels) {
             AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
 
-            // Find the current key frame
-            for (size_t i = 0; i < sampler.inputs.size() - 1; i++) {
-                if (animation.currentTime >= sampler.inputs[i] && animation.currentTime <= sampler.inputs[i + 1]) {
-                    float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+            // Find the current key frame using binary search
+            auto keyFrameIt = std::ranges::lower_bound(sampler.inputs, animation.currentTime);
+            if (keyFrameIt != sampler.inputs.end() && keyFrameIt != sampler.inputs.begin()) {
+                size_t i = std::distance(sampler.inputs.begin(), keyFrameIt) - 1;
+                float t = (animation.currentTime - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
 
                     switch (channel.path) {
                         case AnimationChannel::TRANSLATION: {
@@ -393,4 +392,4 @@ struct Model {
 
 Now that we've designed our model system's architecture and implemented the core data structures, the next step is to actually load 3D models from glTF files. In the next chapter, we'll explore how to parse glTF files using the tinygltf library and populate our scene graph with the loaded data. We'll learn how to extract meshes, materials, textures, and animations from glTF files and convert them into our engine's internal representation.
 
-link:02_project_setup.adoc[Previous: Setting Up the Project] | link:04_loading_gltf.adoc[Next: Loading a glTF Model]
+xref:Building_a_Simple_Engine/Loading_Models/02_project_setup.adoc[Previous: Setting Up the Project] | xref:Building_a_Simple_Engine/Loading_Models/04_loading_gltf.adoc[Next: Loading a glTF Model]

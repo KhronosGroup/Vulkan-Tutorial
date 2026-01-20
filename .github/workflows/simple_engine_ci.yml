@@ -1,0 +1,476 @@
+name: SimpleEngine CI
+
+on:
+  push:
+    paths:
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/simple_engine_ci.yml'
+  pull_request:
+    paths:
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/simple_engine_ci.yml'
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: attachments/simple_engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Clang + Ninja + ccache (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build ccache
+
+      - name: Select Clang toolchain (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC dev environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Ninja + sccache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y ninja sccache
+          $chocoBin = "C:\ProgramData\chocolatey\bin"
+          if (Test-Path $chocoBin) {
+            $chocoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          "SCCACHE_DIR=$env:LOCALAPPDATA\Mozilla\sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: ccache (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-ccache-
+
+      - name: sccache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: ${{ runner.os }}-sccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-sccache-
+
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        id: cache-vulkan-windows
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
+
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ("${{ steps.cache-vulkan-windows.outputs.cache-hit }}" -ne "true") {
+            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+              throw "Chocolatey is required on windows-latest runners"
+            }
+
+            if (Test-Path "C:\VulkanSDK") {
+              Write-Host "Using existing Vulkan SDK at C:\VulkanSDK"
+            } else {
+              Write-Host "Downloading Vulkan SDK installer..."
+              choco install -y aria2
+              $installer = Join-Path $env:TEMP "vulkan-sdk.exe"
+              aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+
+              Write-Host "Installing Vulkan SDK (silent, default feature set)..."
+              # NOTE: Do not pass --components here. LunarG has changed component IDs over time,
+              # and specifying them can cause 'Component(s) not found' failures.
+              Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+            }
+          } else {
+            Write-Host "Vulkan SDK cache hit. Setting up environment..."
+          }
+
+          $vulkanPath = ""
+          if (Test-Path "C:\VulkanSDK") {
+            $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $vulkanPath) {
+            throw "Vulkan SDK not found after install/cache restore"
+          }
+
+          Write-Host "Found Vulkan SDK at: $vulkanPath"
+          "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Vulkan SDK diagnostics (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "VULKAN_SDK: $env:VULKAN_SDK"
+          Write-Host "Vulkan_INCLUDE_DIR: $env:Vulkan_INCLUDE_DIR"
+          Write-Host "Vulkan_LIBRARY: $env:Vulkan_LIBRARY"
+          if (Test-Path "$env:Vulkan_INCLUDE_DIR\vulkan\vulkan.hpp") {
+            Write-Host "vulkan.hpp found"
+          } else {
+            Write-Warning "vulkan.hpp NOT found at $env:Vulkan_INCLUDE_DIR\vulkan\vulkan.hpp"
+          }
+
+      - name: Cache Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-vulkan-linux
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
+
+      - name: Install Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # `spirv-opt` is required by `slangc` for SPIR-V downstream optimization on Linux.
+          # Prefer the SDK-provided tools when present, but install a system fallback to make CI robust.
+          sudo apt-get install -y curl ca-certificates xz-utils spirv-tools
+
+          SDK_DIR="${RUNNER_TEMP}/VulkanSDK"
+
+          if [ "${{ steps.cache-vulkan-linux.outputs.cache-hit }}" != "true" ]; then
+            echo "Downloading Vulkan SDK from LunarG..."
+            # Use the official LunarG download endpoint (latest Linux tarball).
+            SDK_TGZ="${RUNNER_TEMP}/vulkansdk-linux.tar.xz"
+
+            download_ok=0
+            for url in \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz?Human=true" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz?Human=true"
+            do
+              echo "Attempting: $url"
+              if curl -L --fail -o "$SDK_TGZ" "$url"; then
+                download_ok=1
+                break
+              fi
+            done
+            if [ "$download_ok" -ne 1 ]; then
+              echo "Failed to download Vulkan SDK from LunarG (all endpoints returned non-200)." >&2
+              exit 1
+            fi
+
+            rm -rf "$SDK_DIR"
+            mkdir -p "$SDK_DIR"
+            tar -xJf "$SDK_TGZ" -C "$SDK_DIR"
+          else
+            echo "Using cached Vulkan SDK from $SDK_DIR"
+          fi
+
+          # The tarball extracts into a versioned subdirectory.
+          VULKAN_SDK_PATH="$(find "$SDK_DIR" -maxdepth 1 -type d -name '1.*' | sort -r | head -n 1)"
+          if [ -z "${VULKAN_SDK_PATH:-}" ]; then
+            echo "Failed to locate extracted Vulkan SDK directory under $SDK_DIR" >&2
+            exit 1
+          fi
+
+          # LunarG Linux tarballs commonly have:
+          # - tools in:            <version>/bin (often includes slangc)
+          # - headers/libs in:     <version>/x86_64/{include,lib}
+          # We set VULKAN_SDK to the version root for tool discovery, and use VULKAN_SDK_SYSROOT
+          # to point CMake's FindVulkan at the correct include/lib paths.
+          SDK_SYSROOT="$VULKAN_SDK_PATH"
+          if [ -d "$VULKAN_SDK_PATH/x86_64" ]; then
+            SDK_SYSROOT="$VULKAN_SDK_PATH/x86_64"
+          fi
+
+          echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
+          echo "VULKAN_SDK_SYSROOT=$SDK_SYSROOT" >> "$GITHUB_ENV"
+
+          # Ensure SDK tools are on PATH regardless of whether they're in <version>/bin or <version>/x86_64/bin.
+          if [ -d "$VULKAN_SDK_PATH/bin" ]; then
+            echo "$VULKAN_SDK_PATH/bin" >> "$GITHUB_PATH"
+          fi
+          if [ -d "$SDK_SYSROOT/bin" ]; then
+            echo "$SDK_SYSROOT/bin" >> "$GITHUB_PATH"
+          fi
+
+          # Prefer the sysroot for FindVulkan so we don't accidentally pick up runner system headers.
+          echo "CMAKE_PREFIX_PATH=$SDK_SYSROOT" >> "$GITHUB_ENV"
+
+          # Force CMake's FindVulkan to use the SDK headers/libs instead of runner system headers.
+          echo "Vulkan_INCLUDE_DIR=$SDK_SYSROOT/include" >> "$GITHUB_ENV"
+          if [ -f "$SDK_SYSROOT/lib/libvulkan.so" ]; then
+            echo "Vulkan_LIBRARY=$SDK_SYSROOT/lib/libvulkan.so" >> "$GITHUB_ENV"
+          elif [ -f "$SDK_SYSROOT/lib/libvulkan.so.1" ]; then
+            echo "Vulkan_LIBRARY=$SDK_SYSROOT/lib/libvulkan.so.1" >> "$GITHUB_ENV"
+          fi
+
+          # If slangc exists, capture its full path so we can pass it directly to CMake.
+          if command -v slangc >/dev/null 2>&1; then
+            echo "SLANGC_EXECUTABLE=$(command -v slangc)" >> "$GITHUB_ENV"
+          fi
+
+          # Ensure SDK-shipped shared libraries (e.g. slang-glslang-*) can be located at runtime.
+          # Also provide a small compatibility shim for Slang's attempt to load `pthread`.
+          compat_dir="${RUNNER_TEMP}/slang-compat"
+          mkdir -p "$compat_dir"
+          pthread_path="$(ldconfig -p | awk '/libpthread\.so\.0/{print $NF; exit 0}' || true)"
+          if [ -n "${pthread_path:-}" ] && [ -f "$pthread_path" ]; then
+            ln -sf "$pthread_path" "$compat_dir/libpthread.so"
+          fi
+
+          echo "LD_LIBRARY_PATH=$compat_dir:${SDK_SYSROOT}/lib:${VULKAN_SDK_PATH}/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Vulkan SDK diagnostics (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "VULKAN_SDK=$VULKAN_SDK"
+          echo "VULKAN_SDK_SYSROOT=${VULKAN_SDK_SYSROOT:-}"
+          echo "Vulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR:-}"
+          echo "Vulkan_LIBRARY=${Vulkan_LIBRARY:-}"
+          echo "SLANGC_EXECUTABLE=${SLANGC_EXECUTABLE:-}"
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+          echo "PATH=$PATH"
+          echo "which slangc: $(command -v slangc || echo 'NOT FOUND')"
+          echo "which spirv-opt: $(command -v spirv-opt || echo 'NOT FOUND')"
+          if command -v spirv-opt >/dev/null 2>&1; then
+            spirv-opt --version || true
+          fi
+          if command -v slangc >/dev/null 2>&1; then
+            slangc --version || slangc --help || true
+          fi
+          if [ -f "${VULKAN_SDK}/include/vulkan/vulkan.hpp" ]; then
+            echo "Using SDK vulkan.hpp at: ${VULKAN_SDK}/include/vulkan/vulkan.hpp"
+            head -n 5 "${VULKAN_SDK}/include/vulkan/vulkan.hpp" || true
+          else
+            echo "WARNING: SDK vulkan.hpp not found under ${VULKAN_SDK}/include/vulkan/vulkan.hpp" >&2
+            if [ -n "${VULKAN_SDK_SYSROOT:-}" ] && [ -f "${VULKAN_SDK_SYSROOT}/include/vulkan/vulkan.hpp" ]; then
+              echo "Found sysroot vulkan.hpp at: ${VULKAN_SDK_SYSROOT}/include/vulkan/vulkan.hpp"
+              head -n 5 "${VULKAN_SDK_SYSROOT}/include/vulkan/vulkan.hpp" || true
+            fi
+          fi
+
+      # Use the engine's dependency install scripts instead of calling vcpkg directly in CI.
+      - name: Cache vcpkg (Windows)
+        if: runner.os == 'Windows'
+        id: cache-vcpkg-windows
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/vcpkg
+            ${{ runner.temp }}/vcpkg-cache
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('attachments/simple_engine/vcpkg.json') }}
+
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows' && steps.cache-vcpkg-windows.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          if (-not (Test-Path $vcpkgRoot)) {
+            git clone https://github.com/microsoft/vcpkg $vcpkgRoot
+          }
+          Push-Location $vcpkgRoot
+          .\bootstrap-vcpkg.bat
+          Pop-Location
+
+          "VCPKG_INSTALLATION_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vcpkgRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set vcpkg env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          $vcpkgCache = Join-Path $env:RUNNER_TEMP "vcpkg-cache"
+          if (-not (Test-Path $vcpkgCache)) {
+            New-Item -Path $vcpkgCache -ItemType Directory
+          }
+          "VCPKG_INSTALLATION_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vcpkgRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgCache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKG_BINARY_SOURCES=clear;files,$vcpkgCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call install_dependencies_windows.bat
+
+      - name: Cache dependencies (Linux)
+        if: runner.os == 'Linux'
+        id: cache-deps-linux
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.cache/simple_engine_deps
+            /home/runner/.local
+          key: ${{ runner.os }}-deps-v1
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git ninja-build pkg-config \
+            ca-certificates curl zip unzip tar \
+            libglfw3-dev libglm-dev libopenal-dev \
+            nlohmann-json3-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxi-dev \
+            zlib1g-dev libpng-dev libzstd-dev
+
+          WORK_ROOT="/home/runner/.cache/simple_engine_deps"
+          LOCAL_INSTALL="/home/runner/.local"
+          mkdir -p "${WORK_ROOT}"
+
+          # build tinygltf
+          if [ ! -f "${LOCAL_INSTALL}/lib/cmake/tinygltf/tinygltfConfig.cmake" ]; then
+            # Clean up any partial/failed clones before re-attempting
+            rm -rf "${WORK_ROOT}/tinygltf" "${WORK_ROOT}/tinygltf-build"
+            git clone --depth 1 https://github.com/syoyo/tinygltf.git "${WORK_ROOT}/tinygltf"
+            cmake -S "${WORK_ROOT}/tinygltf" -B "${WORK_ROOT}/tinygltf-build" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+              -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF -DTINYGLTF_BUILD_GL_EXAMPLES=OFF \
+              -DTINYGLTF_BUILD_STB_IMAGE=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}"
+            cmake --build "${WORK_ROOT}/tinygltf-build" --parallel
+            cmake --install "${WORK_ROOT}/tinygltf-build"
+          fi
+
+          # build ktx
+          if [ ! -f "${LOCAL_INSTALL}/lib/cmake/KTX/KTXConfig.cmake" ]; then
+            # Clean up any partial/failed clones before re-attempting
+            rm -rf "${WORK_ROOT}/KTX-Software" "${WORK_ROOT}/KTX-Software-build"
+            git clone --depth 1 --branch v4.3.2 https://github.com/KhronosGroup/KTX-Software.git "${WORK_ROOT}/KTX-Software"
+            cmake -S "${WORK_ROOT}/KTX-Software" -B "${WORK_ROOT}/KTX-Software-build" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+              -DKTX_FEATURE_TESTS=OFF -DKTX_FEATURE_TOOLS=OFF \
+              -DKTX_FEATURE_VULKAN=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}" \
+              -DVulkan_INCLUDE_DIR="${Vulkan_INCLUDE_DIR}"
+            cmake --build "${WORK_ROOT}/KTX-Software-build" --parallel
+            cmake --install "${WORK_ROOT}/KTX-Software-build"
+          fi
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $extraArgs = @()
+          if ($env:Vulkan_INCLUDE_DIR) {
+            $extraArgs += "-DVulkan_INCLUDE_DIR=$env:Vulkan_INCLUDE_DIR"
+          }
+          if ($env:Vulkan_LIBRARY) {
+            $extraArgs += "-DVulkan_LIBRARY=$env:Vulkan_LIBRARY"
+          }
+
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            $extraArgs
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra_args=()
+          if [ -n "${Vulkan_INCLUDE_DIR:-}" ]; then
+            extra_args+=("-DVulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR}")
+          fi
+          if [ -n "${Vulkan_LIBRARY:-}" ]; then
+            extra_args+=("-DVulkan_LIBRARY=${Vulkan_LIBRARY}")
+          fi
+          if [ -n "${SLANGC_EXECUTABLE:-}" ]; then
+            extra_args+=("-DSLANGC_EXECUTABLE=${SLANGC_EXECUTABLE}")
+          fi
+
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_PREFIX_PATH="/home/runner/.local;${VULKAN_SDK_SYSROOT}" \
+            "${extra_args[@]}"
+
+      - name: Build
+        run: cmake --build build --target SimpleEngine --parallel 4
+
+      - name: Cache stats
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache -s
+          fi
+          if command -v sccache >/dev/null 2>&1; then
+            sccache -s
+          fi
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  android:
+    name: Build (Android)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: attachments/simple_engine/android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('attachments/simple_engine/android/**/*.gradle*', 'attachments/simple_engine/android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace

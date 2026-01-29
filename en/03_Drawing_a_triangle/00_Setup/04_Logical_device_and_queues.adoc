@@ -174,7 +174,7 @@ device = vk::raii::Device( physicalDevice, deviceCreateInfo );
 
 Passed parameters are the physical device to interface with, and the create
 info we`ve just specified. Additional and optional parameters include the allocation callbacks pointer and a pointer
-specifying where to store the created logical device handle. In our case the function call returns the `vk::Device` handle directly.
+specifying where to store the created logical device handle. In our case, the function call returns the `vk::Device` handle directly.
 Similarly to the instance creation function, this call can throw errors based on enabling non-existent
 extensions or specifying the desired usage of unsupported features.
 

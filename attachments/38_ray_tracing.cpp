@@ -106,10 +106,7 @@ struct UniformBufferObject
 struct PushConstant
 {
 	uint32_t materialIndex;
-#if LAB_TASK_LEVEL >= LAB_TASK_REFLECTIONS
-	// TASK11
 	uint32_t reflective;
-#endif        // LAB_TASK_LEVEL >= LAB_TASK_REFLECTIONS
 };
 
 class VulkanRaytracingApplication
@@ -121,6 +118,14 @@ class VulkanRaytracingApplication
 		initVulkan();
 		mainLoop();
 		cleanup();
+	}
+
+	~VulkanRaytracingApplication()
+	{
+		if (*device)
+		{
+			device.waitIdle();
+		}
 	}
 
   private:
@@ -1629,6 +1634,8 @@ class VulkanRaytracingApplication
 			    .materialIndex = sub.materialID < 0 ? 0u : static_cast<uint32_t>(sub.materialID),
 #if LAB_TASK_LEVEL >= LAB_TASK_REFLECTIONS
 			    .reflective = sub.reflective
+#else
+				.reflective = 0u
 #endif        // LAB_TASK_LEVEL >= LAB_TASK_REFLECTIONS
 			};
 			commandBuffer.pushConstants<PushConstant>(pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pushConstant);
@@ -1829,7 +1836,19 @@ class VulkanRaytracingApplication
 			throw std::runtime_error("failed to wait for fence!");
 		}
 
-		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+		vk::Result result;
+		uint32_t   imageIndex;
+		try
+		{
+			auto res   = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+			result     = res.result;
+			imageIndex = res.value;
+		}
+		catch (const vk::OutOfDateKHRError &e)
+		{
+			recreateSwapChain();
+			return;
+		}
 
 		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
 		// here and does not need to be caught by an exception.
@@ -1872,7 +1891,14 @@ class VulkanRaytracingApplication
 		                                        .swapchainCount     = 1,
 		                                        .pSwapchains        = &*swapChain,
 		                                        .pImageIndices      = &imageIndex};
-		result = presentQueue.presentKHR(presentInfoKHR);
+		try
+		{
+			result = presentQueue.presentKHR(presentInfoKHR);
+		}
+		catch (const vk::OutOfDateKHRError &e)
+		{
+			result = vk::Result::eErrorOutOfDateKHR;
+		}
 		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
 		// here and does not need to be caught by an exception.
 		if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)

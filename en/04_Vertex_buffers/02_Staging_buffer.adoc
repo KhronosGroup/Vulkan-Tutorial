@@ -206,6 +206,6 @@ However, for this tutorial, it's okay to use a separate allocation for every res
 In the xref:./03_Index_buffer.adoc[next chapter,] we'll learn about index buffers for vertex reuse.
 
 link:/attachments/20_staging_buffer.cpp[C{pp} code] /
-link:/attachments/18_shader_vertexbuffer.slang[slang shader] /
-link:/attachments/18_shader_vertexbuffer.vert[GLSL Vertex shader] /
-link:/attachments/18_shader_vertexbuffer.frag[GLSL Fragment shader]
+link:/attachments/19_shader_vertexbuffer.slang[slang shader] /
+link:/attachments/19_shader_vertexbuffer.vert[GLSL Vertex shader] /
+link:/attachments/19_shader_vertexbuffer.frag[GLSL Fragment shader]

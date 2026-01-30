@@ -14,6 +14,7 @@ In a high-level framework like PyTorch, this is handled for you. In Vulkan, the 
 
 === The Barrier Analogy
 Think of your inference pipeline as a **Relay Race**.
+
 *   **The Runners**: Your compute shaders (Convolution, ReLU, Pooling).
 *   **The Baton**: The tensor data in GPU memory.
 
@@ -132,6 +133,7 @@ for (int i = 0; i < layers.size(); ++i) {
 Because Vulkan commands are recorded into a buffer and executed later, by the time the GPU actually runs Layer 1, the CPU has already updated `globalSet` to point to Layer 50's weights!
 
 **The Solution**:
+
 1.  **Allocate One Set Per Layer**: The safest approach.
 2.  **Use Dynamic Offsets**: One large buffer for all weights, with an offset passed at bind time.
 3.  **Use Push Descriptors**: (If supported) Update the descriptors directly in the command stream.

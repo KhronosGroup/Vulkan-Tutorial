@@ -13,6 +13,7 @@ In this chapter, we are going to learn how to prove that your math is correct. W
 The only way to debug a neural network is to compare it against a **Golden Reference**—a known-correct implementation that you trust implicitly. Typically, this is the original model running in PyTorch or ONNX Runtime (CPU).
 
 The strategy is simple but rigorous:
+
 1.  **Harvest**: Extract the output of every single layer from the Golden Reference.
 2.  **Compare**: Run your Vulkan implementation and "dump" the output of every corresponding compute shader.
 3.  **Binary Search**: Find the *first* layer where the results diverge. The bug is guaranteed to be in that layer’s shader or its input configuration.
@@ -59,6 +60,7 @@ Floating-point numbers are approximations. In Vulkan, your GPU might use a diffe
 
 === Absolute vs. Relative Tolerance
 If you check for an absolute difference of latexmath:[10^{-5}]:
+
 *   For a value of `0.1`, a difference of `0.00001` is reasonable.
 *   For a value of `1000.0`, a difference of `0.00001` is **impossible** to achieve due to how floating point precision works.
 
@@ -186,17 +188,20 @@ If your final prediction is wrong, follow this path:
 
 === 1. Check Preprocessing
 Dump your `preprocessedInput` buffer. Does it match `ref_input.npy`?
+
 *   **Common Bug**: R/B channel swaps. Red pixels in the Blue channel will completely change the high-level features.
 *   **Common Bug**: Normalization range. Did you subtract the mean then divide by stddev? Or did you just scale to [0, 1]?
 
 === 2. Check Weights and Layout
 Vulkan compute kernels often prefer **Weight-Major** layout for performance, while ONNX/PyTorch use **Filter-Major** layout.
+
 *   **Filter-Major (NCHW)**: `[Out_Channels, In_Channels, H, W]`
 *   **Optimal GPU Layout**: `[H, W, In_Channels, Out_Channels]`
 *   **The Bug**: If you upload the weights without transposing them to match your shader's loop order, every convolution will be garbage.
 
 === 3. Check Padding and Stride
 If Layer 1 matches but Layer 2 is shifted by one pixel, your padding logic is wrong.
+
 *   **Symmetry**: Is your padding `(1, 1, 1, 1)`? Or did you accidentally apply `(2, 0, 2, 0)`?
 *   **Rounding**: In Pooling layers, does your implementation floor or ceil the output dimensions? Vulkan and PyTorch must agree.
 
@@ -230,6 +235,7 @@ If Layer 1 matches but Layer 2 is shifted by one pixel, your padding logic is wr
 == Integrating Verification into CI
 
 A professional ML pipeline runs verification on every commit. You should add a `--verify` flag to your C{pp} application that:
+
 1.  Loads the `.npy` files.
 2.  Runs one inference pass.
 3.  Calculates MAE for each layer.

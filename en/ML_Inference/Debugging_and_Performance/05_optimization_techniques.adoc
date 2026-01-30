@@ -12,6 +12,7 @@ As we saw in the profiling chapter, most ML kernels are **Memory Bound**. The GP
 
 === The Concept: Tile and Halo
 Think of a 3x3 convolution. Every output pixel needs a 3x3 patch of input. If you have a 16x16 workgroup, you are calculating 256 output pixels.
+
 *   **Naive approach**: Each thread loads 9 pixels. Total loads: latexmath:[256 \times 9 = 2,304].
 *   **Tiled approach**: The threads cooperatively load a single 18x18 "Tile" into shared memory. Total loads: latexmath:[18 \times 18 = 324].
 
@@ -19,6 +20,7 @@ By using shared memory, you’ve reduced your memory traffic by **7x**!
 
 === The Math of Tiling
 To implement this, you must calculate three different indices:
+
 1.  **Global ID**: Where the thread writes in the final output.
 2.  **Local ID**: Where the thread sits within the workgroup.
 3.  **Shared ID**: Where the thread loads data into the shared tile (accounting for the **Halo** of pixels needed for the convolution kernel).
@@ -83,6 +85,7 @@ Fusing these operations is essentially "free" because the compute units were alr
 Most GPUs have 128-bit wide memory buses and SIMD units. If you read a single `float` (32-bit), you are only using 25% of the bandwidth.
 
 Advanced ML engines use **NC/4HW4** layout. This means you group 4 channels together into a single `vec4`.
+
 *   Instead of `float data[]`, your buffer is `vec4 data[]`.
 *   A single load instruction now fetches 4 channels at once.
 *   The GPU can perform "Dot Products" on these `vec4` values using specialized hardware instructions.
@@ -95,6 +98,7 @@ Advanced ML engines use **NC/4HW4** layout. This means you group 4 channels toge
 == Quantization: FP16 and INT8
 
 If your hardware supports it, switching from FP32 to **FP16** (Half Precision) is the easiest performance win.
+
 *   **Bandwidth**: You cut your memory traffic in half.
 *   **Compute**: Modern GPUs (NVIDIA Tensor Cores, AMD Matrix Cores) can do twice as many FP16 operations per cycle as FP32.
 

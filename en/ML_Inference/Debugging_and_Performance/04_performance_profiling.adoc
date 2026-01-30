@@ -13,6 +13,7 @@ In this chapter, we are going to learn how to see through the "black box" of the
 On modern GPUs, arithmetic is almost "free." The real cost is **Data Movement**. A typical GPU can perform thousands of additions in the time it takes to fetch a single float from VRAM.
 
 When you profile an ML kernel, you are usually looking for one of three bottlenecks:
+
 1.  **Memory Bound**: You are waiting for data. Your compute units are sitting idle because the memory bus is saturated.
 2.  **Compute Bound**: You are doing so much math that the memory bus is actually waiting for *you*.
 3.  **Latency Bound**: You aren't launching enough threads to hide the cost of memory access. Your GPU is mostly "stalled."
@@ -82,6 +83,7 @@ How do you know if a kernel is "fast enough"? We use the **Roofline Model**. It 
 
 === The Calculation
 Imagine a 3x3 convolution on a 224x224x64 tensor.
+
 *   **FLOPs**: latexmath:[224 \times 224 \times 64 \times (3 \times 3 \times 64 \times 2) \approx 3.6 \text{ Billion FLOPs}]
 *   **Bytes**: Loading weights, input, and writing output latexmath:[\approx 50 \text{ Megabytes}]
 *   **Intensity**: latexmath:[3.6 \text{ GB} / 50 \text{ MB} \approx 72 \text{ FLOPs/Byte}]
@@ -98,14 +100,17 @@ If your GPU's peak compute is only **15 TFLOPS**, then you are **Compute Bound**
 
 === 1. The "Small Dispatch" Penalty
 GPUs love big batches. If you dispatch a kernel with only 64 threads, most of the GPU's thousands of cores will be idle.
+
 *   **The Fix**: Batch your inputs (N > 1) or merge multiple layers into a single kernel (Kernel Fusion).
 
 === 2. Uncoalesced Memory Access
 When a warp (32 threads) reads memory, it wants to read a **contiguous 128-byte block**. If thread 0 reads index 0 and thread 1 reads index 1000, the GPU has to perform two separate memory transactions.
+
 *   **The Fix**: Ensure your `pixelIdx` calculation keeps adjacent threads reading adjacent memory addresses.
 
 === 3. Pipeline Barrier Stalls
 Every `vkCmdPipelineBarrier` is a potential "stop the world" event.
+
 *   **The Fix**: Group independent dispatches together. If your network has two branches that don't depend on each other, dispatch both *then* put a single barrier.
 
 == Summary: Data-Driven Optimization

@@ -1,0 +1,187 @@
+= Debugging Vulkan Compute for ML: Taming the Explicit
+:pp: {plus}{plus}
+:stem: latexmath
+
+You’ve implemented your neural network layers as Vulkan compute shaders. Your application compiles, the validation layers are quiet, and the GPU is definitely doing *something*. But as we discussed in the introduction, ML is the land of silent failures. "It runs" is only the first 10% of the journey.
+
+Debugging Vulkan compute is a unique skill set. You aren't just looking for logic errors in your GLSL; you are looking for **orchestration errors**. In this chapter, we’re going to look at the three biggest friction points in Vulkan ML: Synchronization, Descriptor Management, and Workgroup Math.
+
+== The Relay Race: Understanding Pipeline Barriers
+
+The single most common bug in Vulkan ML is missing or incorrect synchronization. Neural networks are strictly sequential: Layer latexmath:[N] must finish writing its output before Layer latexmath:[N+1] can begin reading it.
+
+In a high-level framework like PyTorch, this is handled for you. In Vulkan, the GPU is a wild horse—it will try to execute everything at once to maximize throughput unless you explicitly pull the reins.
+
+=== The Barrier Analogy
+Think of your inference pipeline as a **Relay Race**.
+*   **The Runners**: Your compute shaders (Convolution, ReLU, Pooling).
+*   **The Baton**: The tensor data in GPU memory.
+
+If the second runner (ReLU) starts running before the first runner (Convolution) has handed over the baton, they are running with empty hands. In Vulkan terms, this is a **Data Race**. The ReLU shader will read uninitialized memory, stale data from a previous frame, or a partial result that is half-written.
+
+=== Implementing the Handshake
+We use `vkCmdPipelineBarrier` to implement this handshake. A proper barrier between two layers looks like this:
+
+[source,cpp]
+----
+// Transitioning from Layer 1 (Convolution) to Layer 2 (ReLU)
+vk::BufferMemoryBarrier barrier{
+    .srcAccessMask = vk::AccessFlagBits::eShaderWrite, // Wait for Convolution to finish writing
+    .dstAccessMask = vk::AccessFlagBits::eShaderRead,  // Ensure ReLU can safely read
+    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    .buffer = activationBuffer,
+    .offset = 0,
+    .size = VK_WHOLE_SIZE
+};
+
+cmd.pipelineBarrier(
+    vk::PipelineStageFlagBits::eComputeShader, // Source stage
+    vk::PipelineStageFlagBits::eComputeShader, // Destination stage
+    {},                                        // Dependency flags
+    nullptr, nullptr, barrier                  // Memory, Buffer, and Image barriers
+);
+----
+
+**The Common Pitfall**: Using `eShaderRead` as the `srcAccessMask`. Remember: the `src` is what you are **finishing**, and the `dst` is what you are **starting**. If you tell Vulkan to wait for a read before starting a read, you haven't protected your writes!
+
+== The Geometry of Parallelism: Workgroup Math
+
+In the "Building the Inference Engine" chapter, we introduced workgroups. Now, let's look at the math that causes 90% of "partial render" bugs.
+
+When you dispatch a compute shader, you define a grid of threads.
+[latexmath]
+++++
+\text{Total Threads} = \text{Workgroups} \times \text{Local Size}
+++++
+
+=== The "Rounding Up" Problem
+If you have a tensor of width latexmath:[W = 225] and you use a local workgroup size of latexmath:[16], how many workgroups do you need?
+
+If you do simple integer division:
+[latexmath]
+++++
+225 / 16 = 14 \text{ (Integer)}
+++++
+[latexmath]
+++++
+14 \times 16 = 224
+++++
+
+You just missed the last column of your image! Your network is now "blind" to the rightmost edge of every frame. To fix this, we must always **Round Up**:
+
+[latexmath]
+++++
+\text{Workgroups} = \left\lceil \frac{\text{Tensor Dimension}}{\text{Workgroup Size}} \right\rceil = \frac{\text{Tensor Dimension} + \text{Workgroup Size} - 1}{\text{Workgroup Size}}
+++++
+
+In C{pp}:
+[source,cpp]
+----
+uint32_t groupCount = (tensorWidth + localSize - 1) / localSize;
+cmd.dispatch(groupCount, heightCount, depthCount);
+----
+
+=== The "Out of Bounds" Safety Net
+Rounding up creates a new problem: some threads will now be "outside" the tensor. If your shader writes to `data[index]` without checking, you will corrupt adjacent memory or trigger a GPU page fault.
+
+**Every ML shader must have a boundary check:**
+[source,glsl]
+----
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+
+    // Safety check: Don't process pixels that don't exist
+    if (pos.x >= params.width || pos.y >= params.height) {
+        return;
+    }
+
+    // Real work happens here...
+}
+----
+
+== Memory Visibility: The Cache Ghost
+
+Even if your synchronization is perfect, your results might still be wrong due to **Memory Visibility**.
+
+GPUs have multiple levels of cache (L1, L2). When a shader writes to a buffer, that data might stay in the L2 cache and not be written back to the actual VRAM. If your next layer is executed on a different "Compute Unit" that has its own L1 cache, it might read a "stale" version of the data from VRAM.
+
+Vulkan’s barriers handle this via **Access Flags**.
+*   `eShaderWrite` ensures that the L1/L2 caches are **flushed** (pushed to VRAM).
+*   `eShaderRead` ensures that the L1/L2 caches are **invalidated** (forced to re-read from VRAM).
+
+**Debugging Tip**: If your results change every time you run the app (non-deterministic), you almost certainly have a visibility bug.
+
+== Descriptor Set Chaos
+
+In a deep network like MobileNetV2, you might have 50+ convolution layers. Each one needs its own Weights, Bias, and Activation buffers.
+
+**The Bug**: Binding "Layer 2" weights while running "Layer 3" compute dispatch.
+**The Cause**: High-level loops that reuse descriptor set indices.
+
+[source,cpp]
+----
+// DANGEROUS: Reusing the same descriptor set for different dispatches in one frame
+for (int i = 0; i < layers.size(); ++i) {
+    updateDescriptorSet(globalSet, layers[i].weights); // This is an CPU-GPU race!
+    cmd.bindDescriptorSets(..., globalSet);
+    cmd.dispatch(...);
+}
+----
+
+Because Vulkan commands are recorded into a buffer and executed later, by the time the GPU actually runs Layer 1, the CPU has already updated `globalSet` to point to Layer 50's weights!
+
+**The Solution**:
+1.  **Allocate One Set Per Layer**: The safest approach.
+2.  **Use Dynamic Offsets**: One large buffer for all weights, with an offset passed at bind time.
+3.  **Use Push Descriptors**: (If supported) Update the descriptors directly in the command stream.
+
+== The Detective's Toolkit: RenderDoc for ML
+
+RenderDoc is the most important tool in your arsenal. It allows you to "freeze time" and look at exactly what the GPU saw at the moment of failure.
+
+=== How to Debug a Broken Layer
+1.  **Capture the Frame**: Run your app in RenderDoc and press `F12` during inference.
+2.  **Find the Dispatch**: Look for `vkCmdDispatch` calls. Use `VK_EXT_debug_utils` to name your layers so you don't get lost (e.g., "Conv_Layer_5").
+3.  **Inspect Inputs**: Click the "Pipeline State" tab and look at the "Read" buffers. Are the weights actually there? Or is the buffer full of zeros?
+4.  **Inspect Outputs**: Click the "Mesh View" or "Raw Data" to see the output buffer. If the first 10 numbers match your reference but the rest are zero, you have a **Workgroup Dispatch** bug.
+5.  **Shader Debugging**: If the data is correct but the math is wrong, you can right-click a thread and "Debug Shader". You can step through your GLSL code line-by-line, watching the registers change.
+
+== Shared Memory Synchronization
+
+If you are using **Shared Memory** (tiling) for optimization, you have a new category of bugs: **Intra-workgroup races**.
+
+`barrier()` in GLSL only synchronizes **execution**. It ensures every thread reached that line. It does **NOT** guarantee that memory writes are visible.
+
+[source,glsl]
+----
+sharedData[gl_LocalInvocationIndex] = inputVal;
+barrier(); // Every thread is here...
+float val = sharedData[neighborIndex]; // ...but did the neighbor finish writing?
+----
+
+**The Fix**: Use `memoryBarrierShared()` followed by `groupMemoryBarrier()`.
+
+[source,glsl]
+----
+sharedData[idx] = val;
+memoryBarrierShared(); // Flush writes to shared memory
+barrier();             // Wait for all threads
+// Now it is safe to read
+----
+
+== Troubleshooting Checklist
+
+When your output is `NaN` or garbage:
+
+1.  **Validation Layers**: Are there any "Sync" warnings?
+2.  **Descriptor Check**: Is RenderDoc showing the correct Weight buffer for the current layer?
+3.  **Workgroup Check**: Are you rounding up and checking bounds?
+4.  **Barrier Check**: Is there a barrier between EVERY layer dispatch?
+5.  **Layout Check**: Is your data NCHW when the shader expects NCHW?
+
+Debugging Vulkan ML is about being **Explicit**. You cannot assume the driver will "do the right thing." You must tell it exactly when to wait, where to look, and how much to compute.
+
+Next, we'll look at how to quantify "correctness" using mathematical verification against golden references.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_verifying_correctness.adoc[Next: Verifying Correctness]

@@ -1,0 +1,127 @@
+= Optimization Techniques: Squeezing the Silicon
+:pp: {plus}{plus}
+:stem: latexmath
+
+Profiling has identified your bottlenecks. You know which layers are slow and whether you are bound by memory bandwidth or compute throughput. Now, it is time to apply the **Optimization Recipes** that turn a prototype into a production-grade inference engine.
+
+In this chapter, we will master the three pillars of GPU optimization: **Data Reuse** (Tiling), **Instruction Efficiency** (Fusion), and **Hardware Acceleration** (FP16/Quantization). These aren't just micro-optimizations; applied correctly, they can provide a **10x to 50x** speedup over naive implementations.
+
+== Shared Memory Tiling: The Software Cache
+
+As we saw in the profiling chapter, most ML kernels are **Memory Bound**. The GPU's compute units are hungry for data, but the memory bus is too slow to feed them. The solution is to use **Shared Memory**—a tiny, lightning-fast pool of memory that lives directly on the Compute Unit.
+
+=== The Concept: Tile and Halo
+Think of a 3x3 convolution. Every output pixel needs a 3x3 patch of input. If you have a 16x16 workgroup, you are calculating 256 output pixels.
+*   **Naive approach**: Each thread loads 9 pixels. Total loads: latexmath:[256 \times 9 = 2,304].
+*   **Tiled approach**: The threads cooperatively load a single 18x18 "Tile" into shared memory. Total loads: latexmath:[18 \times 18 = 324].
+
+By using shared memory, you’ve reduced your memory traffic by **7x**!
+
+=== The Math of Tiling
+To implement this, you must calculate three different indices:
+1.  **Global ID**: Where the thread writes in the final output.
+2.  **Local ID**: Where the thread sits within the workgroup.
+3.  **Shared ID**: Where the thread loads data into the shared tile (accounting for the **Halo** of pixels needed for the convolution kernel).
+
+[source,glsl]
+----
+layout(local_size_x = 16, local_size_y = 16) in;
+shared float tile[18][18]; // 16x16 output + 1 pixel halo on each side
+
+void main() {
+    ivec2 localPos = ivec2(gl_LocalInvocationID.xy);
+    ivec2 globalPos = ivec2(gl_GlobalInvocationID.xy);
+
+    // Cooperative Load: Each thread loads its 'center' pixel
+    tile[localPos.y + 1][localPos.x + 1] = inputData[globalPos];
+
+    // Halo Load: Only certain threads load the edges
+    if (localPos.x == 0) tile[localPos.y + 1][0] = inputData[globalPos - ivec2(1, 0)];
+    // ... load other edges and corners ...
+
+    memoryBarrierShared();
+    barrier();
+
+    // Compute: Every read now comes from fast shared memory!
+    float sum = 0.0;
+    for(int m = -1; m <= 1; m++) {
+        for(int n = -1; n <= 1; n++) {
+            sum += tile[localPos.y + 1 + m][localPos.x + 1 + n] * weights[...];
+        }
+    }
+}
+----
+
+== Kernel Fusion: Fighting the Memory Wall
+
+In a typical network, you might have: **Convolution latexmath:[\to] Bias Add latexmath:[\to] Batch Norm latexmath:[\to] ReLU**.
+
+If you implement these as four separate kernels, you are writing and reading from VRAM four times.
+[latexmath]
+++++
+\text{Memory Traffic} = \text{Read(Input)} + \text{Write(Conv)} + \text{Read(Conv)} + \text{Write(Bias)} + \dots
+++++
+
+**Kernel Fusion** merges these into a single compute dispatch. The intermediate values (like the raw convolution sum) stay in the GPU's **Registers**, which are even faster than Shared Memory.
+
+=== The Fused Recipe
+A professional "Fused Convolution" kernel looks like this:
+[source,glsl]
+----
+void main() {
+    float sum = performConvolution(); // Done in registers
+    sum += bias[channel];             // Bias Add (Free)
+    sum = (sum - mean) * invStdDev;   // Batch Norm (Free)
+    sum = max(0.0, sum);              // ReLU (Free)
+    outputData[idx] = sum;            // ONE write to VRAM
+}
+----
+Fusing these operations is essentially "free" because the compute units were already waiting for the memory write to finish anyway.
+
+== Vectorization: NC/4HW4 Layout
+
+Most GPUs have 128-bit wide memory buses and SIMD units. If you read a single `float` (32-bit), you are only using 25% of the bandwidth.
+
+Advanced ML engines use **NC/4HW4** layout. This means you group 4 channels together into a single `vec4`.
+*   Instead of `float data[]`, your buffer is `vec4 data[]`.
+*   A single load instruction now fetches 4 channels at once.
+*   The GPU can perform "Dot Products" on these `vec4` values using specialized hardware instructions.
+
+[latexmath]
+++++
+\text{Throughput Gain} \approx 4\times \text{ (on many architectures)}
+++++
+
+== Quantization: FP16 and INT8
+
+If your hardware supports it, switching from FP32 to **FP16** (Half Precision) is the easiest performance win.
+*   **Bandwidth**: You cut your memory traffic in half.
+*   **Compute**: Modern GPUs (NVIDIA Tensor Cores, AMD Matrix Cores) can do twice as many FP16 operations per cycle as FP32.
+
+=== INT8 Math
+For mobile and embedded devices, you can go even further with **INT8**. This requires dequantizing the values in the shader using a pre-calculated **Scale** and **Zero Point**.
+
+[latexmath]
+++++
+\text{Value} = \text{Scale} \times (\text{QuantizedValue} - \text{ZeroPoint})
+++++
+
+In your shader, you perform the math in integers and only convert back to float at the very end.
+
+== Async Compute: Overlapping the World
+
+Vulkan allows you to submit work to multiple **Queues**. If your ML inference is running on the **Compute Queue**, it can run simultaneously with your UI rendering on the **Graphics Queue**.
+
+*   **The Secret**: If your GPU has idle compute units while it’s busy rasterizing shadows, the Compute Queue will "fill the gaps," effectively making your ML inference cost **Zero milliseconds** of frame time.
+
+== Summary: The Optimization Workflow
+
+1.  **Fuse** everything you can. Never write intermediate results to VRAM if they are only needed by the next layer.
+2.  **Tile** your convolutions and matrix multiplications using Shared Memory.
+3.  **Vectorize** your data into `vec4` (NC/4HW4) to saturate the memory bus.
+4.  **Down-convert** to FP16 or INT8 if accuracy allows.
+5.  **Overlap** inference with rendering using Async Compute.
+
+With these techniques, you have transformed your Vulkan implementation from a functional prototype into a high-performance engine capable of real-time AI in the most demanding applications.
+
+xref:04_performance_profiling.adoc[Previous: Performance Profiling] | xref:../Desktop_Applications/01_introduction.adoc[Next: Desktop Applications]

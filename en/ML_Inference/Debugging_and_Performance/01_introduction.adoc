@@ -1,0 +1,46 @@
+= Debugging and Performance: The Art of Verification and Speed
+:pp: {plus}{plus}
+:stem: latexmath
+
+You've built your ML inference application. You've orchestrated descriptor sets, written compute shaders, and handled the complex dance of Vulkan resource management. It compiles, it runs without crashing, and it even spits out a tensor of numbers. But here’s the million-dollar question: **Is it actually working?**
+
+In traditional graphics, if you have a bug, it’s usually obvious. Your screen is flickering magenta, your shadows are detached from the ground, or your character is a mess of jagged triangles. In Machine Learning, bugs are often **silent**. A misconfigured normalization constant or a slightly wrong memory barrier won't crash your app; it will simply produce an output that is "mostly right" but mathematically incorrect.
+
+Imagine you’re building an autonomous vehicle system. If your inference engine has a numerical drift of just 1%, it might not miss the road entirely, but it might misidentify a "Stop" sign as a "Speed Limit" sign. That's the stakes we're playing with.
+
+This chapter isn't just about finding crashes—it's about finding **truth**. We are going to move from "it seems to work" to "I have verified every decimal place against a ground truth." Once we have correctness, we will then turn our attention to the second pillar of engineering: **Performance**. Because in the real world, a perfect model that runs at 2 FPS is just as useless as a broken model that runs at 60 FPS.
+
+== The "Silent Failure" Problem
+
+Vulkan Compute for ML is a high-wire act. You have all the power of explicit GPU control, but you also have all the responsibility. Unlike high-level frameworks like TensorFlow or PyTorch—which handle the "plumbing" of synchronization and memory layout for you—Vulkan expects you to be the master of every byte.
+
+If you miss a single pipeline barrier, you might encounter a **Race Condition**. On your powerful development GPU, it might work 99% of the time because the hardware is fast enough to finish the write before the next read. But as soon as you deploy to a different vendor's chip or an integrated laptop GPU, that same code might start producing garbage.
+
+Some of the most common "silent killers" in Vulkan ML include:
+
+*   **Synchronization Gaps**: Your ReLU shader reads from the convolution output buffer before the GPU has finished flushing the writes.
+*   **Numerical Drift**: Using `float16` for high-dynamic-range data without proper scaling, leading to "NaN" (Not a Number) results that propagate through the entire network.
+*   **Layout Mismatches**: Your shader expects a Planar (NCHW) tensor, but your preprocessing is still outputting Interleaved (HWC) data. The network "sees" a scrambled mess but tries its best to classify it anyway.
+*   **Quantization Noise**: Converting 32-bit weights to 8-bit integers without proper calibration, causing the network to "hallucinate" patterns that don't exist.
+
+== The Expert Mindset: Verify, Profile, Optimize
+
+To solve these problems, we adopt a three-stage engineering discipline:
+
+1.  **Verify Correctness (The "Ground Truth" Phase)**: We compare our Vulkan results against a "Golden Reference" (usually PyTorch or ONNX Runtime CPU). We don't just check the final output; we check **every single layer**. If Layer 5 matches but Layer 6 diverges, we know exactly where the bug is hiding.
+2.  **Profile Bottlenecks (The "Detective" Phase)**: We use tools like **RenderDoc**, **Nsight**, and **Radeon GPU Profiler** to look under the hood. We ask the GPU: "Are you waiting for memory? Are you stalled on a barrier? Are your warps idle?" We don't guess—we measure.
+3.  **Optimize the Critical Path (The "Formula 1" Phase)**: Once we know *where* the slow part is, we apply high-performance patterns: Kernel Fusion, Shared Memory Tiling, and Async Compute. We aim to reach the hardware's theoretical limits.
+
+== What You’ll Master
+
+By the end of this chapter, you won't just be someone who "knows Vulkan"—you'll be a performance engineer. You will learn:
+
+*   **Numerical Verification**: How to calculate Mean Squared Error (latexmath:[MSE]) and Mean Absolute Error (latexmath:[MAE]) to quantify your implementation's accuracy.
+*   **Vulkan Debugging**: Using RenderDoc to inspect compute dispatches and buffer contents in real-time.
+*   **GPU Architecture**: Understanding how "Warps" and "Wavefronts" execute your code and how to keep them saturated.
+*   **Optimization Recipes**: Practical guides for Kernel Fusion (Conv+ReLU) and Shared Memory Tiling to maximize memory bandwidth.
+*   **Async Compute**: How to use multiple Vulkan queues to overlap ML inference with graphics rendering, effectively getting "free" performance.
+
+Debugging and optimization are not "extra" steps; they are the core of the development process. Let's start by learning how to prove that our code is actually doing what we think it's doing.
+
+xref:../Building_the_Inference_Engine/06_putting_it_together.adoc[Previous: Putting it Together] | xref:02_debugging_vulkan_compute.adoc[Next: Debugging Vulkan Compute]

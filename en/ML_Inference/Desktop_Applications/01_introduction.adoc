@@ -1,0 +1,100 @@
+= Desktop Applications
+
+== From Theory to Practice
+
+You've built an inference engine. You've loaded ONNX models and run them on the GPU. You've verified that your results match PyTorch's output to within floating-point precision. That's excellent—you understand the fundamentals.
+
+Now let's build something you can actually use.
+
+This chapter shifts from educational exercises to practical desktop applications. We're going to build complete programs that classify images in real-time, integrate ML inference with graphics rendering, and demonstrate where Vulkan's explicit control provides real advantages over high-level frameworks.
+
+Here's what makes this different from the MNIST example: we're not just verifying that inference works, we're building applications with real user interfaces, handling arbitrary inputs, and optimizing for interactive performance. The goal isn't to prove you understand convolutions—it's to deliver 60 FPS with live camera input while your graphics pipeline renders the results.
+
+== What We'll Build
+
+This chapter builds a complete desktop image classification application that demonstrates practical ML inference integration with Vulkan. We'll start with static image classification, then extend it to real-time camera input, showing you how to build responsive interactive applications.
+
+The application uses MobileNetV2 to classify images into one of 1000 ImageNet categories. You'll learn the complete workflow: loading pre-trained models, preprocessing inputs (resize, normalize, color conversion), running inference efficiently, post-processing outputs (softmax, top-k selection), and visualizing results.
+
+More importantly, you'll see how to integrate ML inference into a Vulkan graphics application without sacrificing performance. We'll cover async compute for overlapping transfers with computation, efficient CPU-GPU synchronization, and the pipeline design needed to maintain 30+ FPS with live camera input while rendering results.
+
+This follows the same teaching pattern we established with MNIST: start with the problem, walk through the solution step by step, and explain concepts as they become necessary. We won't dump theory upfront—we'll teach what you need when you need it.
+
+== Chapter Structure
+
+This section is organized into focused, practical chapters:
+
+**xref:02_image_classification.adoc[Image Classification: From MNIST to CNNs]**: Understanding why fully connected networks fail for images and how CNNs solve the problem. You'll learn convolution operations, building convolutional layers, pooling, and modern architectural patterns. This builds on your MNIST knowledge to handle real-world image classification with proper CNN architectures.
+
+**xref:03_practical_implementation.adoc[CPU Baseline Implementation]**: Building a working image classifier using ONNX Runtime. Load models, preprocess correctly, run inference, verify against PyTorch. This is your reference implementation.
+
+**xref:04_ci_render_validation.adoc[CI/CD Render Validation]**: Using ML to validate Vulkan renders in continuous integration. Train classifiers to detect rendering bugs, integrate with GitHub Actions, measure semantic similarity, and verify UI layout—practical ML for engineering problems.
+
+**xref:05_real_time_camera.adoc[Real-Time Camera Integration]**: Extending the classifier to process webcam input at 30+ FPS. GPU-accelerated preprocessing, async compute pipelines, threading for responsiveness, and performance tuning for interactive applications.
+
+**xref:06_rl_automated_exploration.adoc[RL-Based Automated Exploration]**: Using reinforcement learning to automatically explore and test Vulkan applications. Curiosity-driven agents with Random Network Distillation, automated bug discovery, benchmarking, and GUI automation for CI and beyond.
+
+**xref:07_ray_tracing_optimization.adoc[Ray Tracing Optimization]**: Using AI to optimize high-performance ray tracing. You'll learn about AI-driven denoising, adaptive sampling to maximize your ray budget, and using ML to detect areas that need temporal updates.
+
+**xref:08_future_directions.adoc[Future Directions: RAG, GANs, and Beyond]**: Exploring advanced refinements for your desktop applications. Learn how to use GANs for style transfer and RAG for intelligent engineering diagnostics.
+
+Each chapter focuses on one practical topic, building incrementally from static images to real-time interactive applications to automated testing and intelligent exploration.
+
+== The Two-Path Approach
+
+Remember the dual-path teaching method from the introduction? It appears throughout these chapters:
+
+**Path 1 - ONNX Runtime** (the pragmatic path): Use ONNX Runtime for the neural network inference while handling preprocessing and visualization with Vulkan. This is what you'd actually do in production. ONNX Runtime gives you a battle-tested implementation of hundreds of operators, automatic optimization, and broad hardware support. Your Vulkan code focuses on what it does best: image processing and graphics.
+
+**Path 2 - Custom Vulkan** (the educational path): Implement the entire pipeline in Vulkan compute shaders, including the neural network layers. This path helps you understand what's happening under the hood and gives you appreciation for the complexity that ONNX Runtime handles automatically. It also demonstrates the techniques you'd use if you were implementing custom operations or integrating tightly with a rendering pipeline.
+
+In practice, most applications use a hybrid approach. You might use ONNX Runtime for the main network but implement custom preprocessing or post-processing in Vulkan for performance or integration reasons. Understanding both paths gives you the flexibility to make informed architectural decisions.
+
+== Prerequisites
+
+Before diving into these applications, make sure you're comfortable with:
+
+- The Vulkan compute pipeline (covered in the "Vulkan Compute for ML" chapter)
+- Loading and parsing ONNX models (covered in "Building the Inference Engine")
+- Implementing basic neural network layers in compute shaders (also in "Building the Inference Engine")
+- The MNIST example from the previous chapter
+
+We'll build on these foundations without re-teaching the basics. If something feels unfamiliar, refer back to those chapters for detailed explanations.
+
+You'll also need to install ONNX Runtime if you haven't already. The "Third Party Libraries" chapter covers installation, but here's the quick version for Linux:
+
+[source,bash]
+----
+# Download ONNX Runtime
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-1.17.0.tgz
+tar xzf onnxruntime-linux-x64-1.17.0.tgz
+
+# Add to your CMakeLists.txt:
+# set(ONNXRUNTIME_DIR "${CMAKE_SOURCE_DIR}/third_party/onnxruntime-linux-x64-1.17.0")
+----
+
+For Windows and macOS, grab the appropriate package from the ONNX Runtime releases page. The API is identical across platforms.
+
+== A Word on Performance Expectations
+
+Let's set realistic expectations. When we talk about "real-time" performance, we mean different things depending on the application:
+
+**Image classification**: Processing a single 224×224 image should take under 20ms on a mid-range GPU. That's fast enough for interactive applications where you classify images on demand.
+
+**Camera classification**: We're targeting 30+ FPS, which means a frame budget of 33ms. On modern hardware with proper pipelining, 60 FPS (16ms budget) is achievable.
+
+**Batch processing**: If you're classifying thousands of images offline, throughput matters more than latency. Batch inference with proper GPU utilization can process hundreds of images per second.
+
+These numbers assume you're using optimized models (like MobileNetV2) and reasonable input sizes. If you try to run ResNet-152 at 1024×1024 resolution on integrated graphics, you're going to be disappointed. Part of deploying ML inference is choosing models that match your hardware and performance requirements.
+
+We'll measure actual performance numbers as we build each application, and we'll discuss optimization strategies when performance doesn't meet expectations. But remember: the goal is building working applications that demonstrate concepts, not achieving state-of-the-art benchmark numbers. Once you understand the pipeline, optimization becomes an engineering exercise rather than a mystery.
+
+== Getting Started
+
+In the next chapter, we'll build our first real application: an image classifier using MobileNetV2. We'll start simple—load an image from disk, classify it, print the results—then gradually add preprocessing, a GUI, and real-time performance.
+
+This is where the tutorial shifts from "how does this work" to "how do I build this". The tone changes slightly: less theory, more code, more practical problem-solving. We'll still explain the concepts, but always in the context of solving actual problems rather than as abstract knowledge.
+
+Ready? Let's build something real.
+
+xref:../Building_the_Inference_Engine/05_mnist_example.adoc[Previous: Complete MNIST Example] | xref:02_image_classification.adoc[Next: Image Classification Concepts]

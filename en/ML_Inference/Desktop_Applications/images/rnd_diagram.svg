@@ -1,0 +1,53 @@
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="white"/>
+
+  <!-- Input -->
+  <rect x="50" y="160" width="140" height="80" rx="5" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
+  <text x="120" y="195" font-family="Arial" font-size="14" text-anchor="middle" fill="#01579b">Current State</text>
+  <text x="120" y="215" font-family="Arial" font-size="12" text-anchor="middle" fill="#01579b">(Image Frame)</text>
+
+  <!-- Networks -->
+  <!-- Target -->
+  <rect x="300" y="60" width="200" height="100" rx="10" fill="#f5f5f5" stroke="#424242" stroke-width="2"/>
+  <text x="400" y="90" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#424242">Target Network</text>
+  <text x="400" y="115" font-family="Arial" font-size="12" text-anchor="middle" fill="#424242">Random Weights</text>
+  <text x="400" y="135" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#c62828">FIXED</text>
+
+  <!-- Predictor -->
+  <rect x="300" y="240" width="200" height="100" rx="10" fill="#fff3e0" stroke="#ef6c00" stroke-width="2"/>
+  <text x="400" y="270" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#ef6c00">Predictor Network</text>
+  <text x="400" y="295" font-family="Arial" font-size="12" text-anchor="middle" fill="#ef6c00">Starts Random</text>
+  <text x="400" y="315" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#2e7d32">TRAINABLE</text>
+
+  <!-- Arrows from Input -->
+  <path d="M 190 180 L 300 120" fill="none" stroke="#01579b" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 190 220 L 300 280" fill="none" stroke="#01579b" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Error Calculation -->
+  <rect x="580" y="150" width="120" height="100" rx="10" fill="#f1f8e9" stroke="#33691e" stroke-width="2"/>
+  <text x="640" y="180" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#33691e">MSE</text>
+  <text x="640" y="205" font-family="Arial" font-size="12" text-anchor="middle" fill="#33691e">Prediction</text>
+  <text x="640" y="225" font-family="Arial" font-size="12" text-anchor="middle" fill="#33691e">Error</text>
+
+  <!-- Arrows to Error -->
+  <path d="M 500 110 L 580 180" fill="none" stroke="#424242" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 500 290 L 580 220" fill="none" stroke="#ef6c00" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Reward Output -->
+  <rect x="720" y="170" width="60" height="60" rx="30" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
+  <text x="750" y="205" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#2e7d32">Reward</text>
+
+  <path d="M 700 200 L 710 200" fill="none" stroke="#33691e" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Backprop arrow -->
+  <path d="M 640 250 Q 640 370 400 370 L 400 340" fill="none" stroke="#2e7d32" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+  <text x="520" y="360" font-family="Arial" font-size="11" text-anchor="middle" fill="#2e7d32">Minimize Error (Backprop)</text>
+
+  <!-- Definitions -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="context-stroke" />
+    </marker>
+  </defs>
+</svg>

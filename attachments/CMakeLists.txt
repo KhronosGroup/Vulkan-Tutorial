@@ -125,6 +125,24 @@ function (add_slang_shader_target TARGET)
   add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
 endfunction()
 
+function(sync_directory SRC_DIR DST_DIR TARGET_NAME LABEL)
+  file(GLOB_RECURSE FILES "${SRC_DIR}/*")
+
+  foreach(FILE IN LISTS FILES)
+    file(RELATIVE_PATH REL_PATH "${SRC_DIR}" "${FILE}")
+    set(DST_FILE "${DST_DIR}/${REL_PATH}")
+    get_filename_component(DST_DIR_PATH "${DST_FILE}" DIRECTORY)
+
+    add_custom_command(
+      TARGET ${TARGET_NAME}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${DST_DIR_PATH}"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FILE}" "${DST_FILE}"
+      COMMENT "${LABEL}: Syncing ${REL_PATH}"
+    )
+  endforeach()
+endfunction()
+
 function (add_chapter CHAPTER_NAME)
   cmake_parse_arguments (CHAPTER "" "SHADER" "LIBS;TEXTURES;MODELS" ${ARGN})
   add_executable (${CHAPTER_NAME} ${CHAPTER_NAME}.cpp)
@@ -172,6 +190,46 @@ function (add_chapter CHAPTER_NAME)
     list(TRANSFORM CHAPTER_TEXTURES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/assets/")
     file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
   endif ()
+
+  # Post-build step to copy assets to executable directory
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*" OR 
+      ${CMAKE_GENERATOR} MATCHES "Ninja Multi-Config")
+
+    set(EXECUTABLE_DIR $<TARGET_FILE_DIR:${CHAPTER_NAME}>)
+
+    add_custom_target(${CHAPTER_NAME}_postbuild ALL
+      COMMENT "${CHAPTER_NAME}: Post-build asset sync"
+    )
+
+    add_dependencies(${CHAPTER_NAME}_postbuild ${CHAPTER_NAME})
+
+    if(DEFINED CHAPTER_SHADER)
+      sync_directory(
+        "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders"
+        "${EXECUTABLE_DIR}/shaders"
+        ${CHAPTER_NAME}
+        "${CHAPTER_NAME}: Shaders"
+      )
+    endif()
+
+    if(DEFINED CHAPTER_MODELS)
+      sync_directory(
+        "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models"
+        "${EXECUTABLE_DIR}/models"
+        ${CHAPTER_NAME}
+        "${CHAPTER_NAME}: Models"
+      )
+    endif()
+
+    if(DEFINED CHAPTER_TEXTURES)
+      sync_directory(
+        "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures"
+        "${EXECUTABLE_DIR}/textures"
+        ${CHAPTER_NAME}
+        "${CHAPTER_NAME}: Textures"
+      )
+    endif()
+  endif()
 endfunction ()
 
 add_chapter (00_base_code)

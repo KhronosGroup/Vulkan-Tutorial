@@ -11,6 +11,8 @@ ebook/*.epub
 
 convert.py
 
+**/[B,b]uild/*
+
 attachments/build/**
 attachments/android/.gradle/**
 attachments/android/.idea

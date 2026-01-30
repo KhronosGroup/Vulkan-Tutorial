@@ -86,15 +86,10 @@ bool VulkanDevice::pickPhysicalDevice() {
         }
 
         // Check for required features
-        auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>();
+        auto features = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features>();
         bool supportsRequiredFeatures = (features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering == VK_TRUE);
         if (!supportsRequiredFeatures) {
           std::cout << "  - Does not support required features (dynamicRendering)" << std::endl;
-        }
-
-        if (features.template get<vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT>().attachmentFeedbackLoopLayout == VK_FALSE) {
-          supportsRequiredFeatures = false;
-          std::cout << "  - Does not support required feature (attachmentFeedbackLoopLayout)" << std::endl;
         }
 
         return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && swapChainAdequate && supportsRequiredFeatures;
@@ -142,12 +137,10 @@ bool VulkanDevice::createLogicalDevice(bool enableValidationLayers, const std::v
     // Enable required features using StructureChain
     vk::StructureChain<
       vk::PhysicalDeviceFeatures2,
-      vk::PhysicalDeviceVulkan13Features,
-      vk::PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT
+      vk::PhysicalDeviceVulkan13Features
     > featureChain{
       {.features = {.depthClamp = vk::True, .samplerAnisotropy = vk::True}},
-      {.synchronization2 = vk::True, .dynamicRendering = vk::True},
-      {.attachmentFeedbackLoopLayout = vk::True}
+      {.synchronization2 = vk::True, .dynamicRendering = vk::True}
     };
     auto& features = featureChain.get<vk::PhysicalDeviceFeatures2>();
 

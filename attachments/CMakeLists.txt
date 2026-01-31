@@ -178,13 +178,13 @@ function (add_chapter CHAPTER_NAME)
       ${CMAKE_GENERATOR} MATCHES "Ninja Multi-Config")
 
     set(EXECUTABLE_DIR $<TARGET_FILE_DIR:${CHAPTER_NAME}>)
-    
+
     if(DEFINED CHAPTER_SHADER)
       sync_directory(
         "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders"
         "${EXECUTABLE_DIR}/shaders"
         ${CHAPTER_NAME}
-        "${CHAPTER_NAME}-Shaders"
+        "${CHAPTER_NAME} - Shaders"
       )
     endif()
     if(DEFINED CHAPTER_MODELS)
@@ -192,7 +192,7 @@ function (add_chapter CHAPTER_NAME)
         "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models"
         "${EXECUTABLE_DIR}/models"
         ${CHAPTER_NAME}
-        "${CHAPTER_NAME}-Models"
+        "${CHAPTER_NAME} - Models"
       )
     endif()
     if(DEFINED CHAPTER_TEXTURES)
@@ -200,7 +200,7 @@ function (add_chapter CHAPTER_NAME)
         "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures"
         "${EXECUTABLE_DIR}/textures"
         ${CHAPTER_NAME}
-        "${CHAPTER_NAME}-Textures"
+        "${CHAPTER_NAME} - Textures"
       )
     endif()
   endif()
@@ -211,7 +211,7 @@ function(sync_directory SRC_DIR DST_DIR TARGET_NAME LABEL)
     TARGET ${TARGET_NAME}
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${DST_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_DIR}" "${DST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SRC_DIR}" "${DST_DIR}"
     COMMENT "${LABEL}: Syncing directory"
   )
 endfunction()

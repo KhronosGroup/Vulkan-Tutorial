@@ -1,5 +1,5 @@
 = Debugging Vulkan Compute for ML: Taming the Explicit
-:pp: {plus}{plus}
+:pp: ++
 :stem: latexmath
 
 You’ve implemented your neural network layers as Vulkan compute shaders. Your application compiles, the validation layers are quiet, and the GPU is definitely doing *something*. But as we discussed in the introduction, ML is the land of silent failures. "It runs" is only the first 10% of the journey.
@@ -44,7 +44,35 @@ cmd.pipelineBarrier(
 );
 ----
 
+=== Execution vs. Memory Barriers
+This is the part that trips up even experienced graphics programmers.
+
+1.  **Execution Barrier**: Tells the GPU: "Don't start the next shader until the previous one is finished."
+2.  **Memory Barrier**: Tells the GPU: "Ensure the data written by the first shader is actually flushed out of the L1/L2 caches and is visible to the next shader."
+
+In Vulkan, `vkCmdPipelineBarrier` handles **both**. By setting the `srcStage` and `dstStage`, you handle execution. By setting the `srcAccess` and `dstAccess`, you handle memory visibility.
+
 **The Common Pitfall**: Using `eShaderRead` as the `srcAccessMask`. Remember: the `src` is what you are **finishing**, and the `dst` is what you are **starting**. If you tell Vulkan to wait for a read before starting a read, you haven't protected your writes!
+
+=== Global Memory Barriers for ML
+In a deep network, you might be tempted to create a `VkBufferMemoryBarrier` for every single transition. While precise, this can lead to "Barrier Bloat" and messy code.
+
+Professional ML engines often use **Global Memory Barriers**. Instead of specifying a specific buffer, you set the `bufferCount` to 0 and provide a generic `VkMemoryBarrier`.
+
+[source,cpp]
+----
+vk::MemoryBarrier globalBarrier{
+    .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
+    .dstAccessMask = vk::AccessFlagBits::eShaderRead
+};
+
+// This protects ALL buffers currently being used by the compute pipe
+cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                    vk::PipelineStageFlagBits::eComputeShader,
+                    {}, globalBarrier, nullptr, nullptr);
+----
+
+While slightly less efficient (the GPU might flush more than it needs to), it is much harder to get wrong. Start with global barriers during debugging, and move to buffer-specific barriers only when you need to squeeze out the last 1% of performance.
 
 == The Geometry of Parallelism: Workgroup Math
 
@@ -134,9 +162,9 @@ Because Vulkan commands are recorded into a buffer and executed later, by the ti
 
 **The Solution**:
 
-1.  **Allocate One Set Per Layer**: The safest approach.
-2.  **Use Dynamic Offsets**: One large buffer for all weights, with an offset passed at bind time.
-3.  **Use Push Descriptors**: (If supported) Update the descriptors directly in the command stream.
+1.  **Allocate One Set Per Layer**: The safest approach. If you have 50 layers, create 50 descriptor sets at startup.
+2.  **Use Dynamic Offsets**: Pack all weights for the entire model into one massive `VkBuffer`. When binding, provide an offset. This is highly efficient and recommended for production engines.
+3.  **Use Push Descriptors**: (If supported) Update the descriptors directly in the command stream. This avoids the need for descriptor sets entirely but has limited support on older hardware.
 
 == The Detective's Toolkit: RenderDoc for ML
 
@@ -146,7 +174,9 @@ RenderDoc is the most important tool in your arsenal. It allows you to "freeze t
 1.  **Capture the Frame**: Run your app in RenderDoc and press `F12` during inference.
 2.  **Find the Dispatch**: Look for `vkCmdDispatch` calls. Use `VK_EXT_debug_utils` to name your layers so you don't get lost (e.g., "Conv_Layer_5").
 3.  **Inspect Inputs**: Click the "Pipeline State" tab and look at the "Read" buffers. Are the weights actually there? Or is the buffer full of zeros?
-4.  **Inspect Outputs**: Click the "Mesh View" or "Raw Data" to see the output buffer. If the first 10 numbers match your reference but the rest are zero, you have a **Workgroup Dispatch** bug.
+4.  **Inspect Outputs**: Click the "Mesh View" or "Raw Data" to see the output buffer.
+    *   **Pro Tip**: In the Mesh View, you can configure the format to "3D" and see your tensor as a volume. If you see a "checkerboard" of zeros, your indexing math is wrong.
+    *   **Pro Tip**: Use the "Byte Comparison" tool to compare the GPU buffer against a binary dump from your CPU reference.
 5.  **Shader Debugging**: If the data is correct but the math is wrong, you can right-click a thread and "Debug Shader". You can step through your GLSL code line-by-line, watching the registers change.
 
 == Shared Memory Synchronization
@@ -172,15 +202,36 @@ barrier();             // Wait for all threads
 // Now it is safe to read
 ----
 
+== Handling NaNs and Infs
+
+In ML, once a single `NaN` (Not a Number) appears, it's like a virus. It will multiply and destroy every subsequent calculation.
+
+=== Why do NaNs happen?
+1.  **Division by zero**: Common in Batch Norm if the variance is zero.
+2.  **Overflow**: latexmath:[e^x] in Softmax where latexmath:[x] is too large.
+3.  **Uninitialized Memory**: Reading from a buffer you forgot to clear.
+
+=== Debugging NaNs
+Vulkan has a specialized extension: `VK_EXT_device_fault`. If supported by your driver, it can pinpoint the exact instruction that produced an invalid floating-point result.
+
+Alternatively, you can write a "Sanity Shader" that runs after each layer:
+[source,glsl]
+----
+if (isnan(value) || isinf(value)) {
+    atomicAdd(errorCounter, 1);
+}
+----
+
 == Troubleshooting Checklist
 
 When your output is `NaN` or garbage:
 
-1.  **Validation Layers**: Are there any "Sync" warnings?
+1.  **Validation Layers**: Are there any "Sync" warnings? (Enable `VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT`).
 2.  **Descriptor Check**: Is RenderDoc showing the correct Weight buffer for the current layer?
 3.  **Workgroup Check**: Are you rounding up and checking bounds?
 4.  **Barrier Check**: Is there a barrier between EVERY layer dispatch?
 5.  **Layout Check**: Is your data NCHW when the shader expects NCHW?
+6.  **Readback Check**: Did you use a `VkFence` to wait for the GPU to finish before trying to read the result on the CPU?
 
 Debugging Vulkan ML is about being **Explicit**. You cannot assume the driver will "do the right thing." You must tell it exactly when to wait, where to look, and how much to compute.
 

@@ -246,7 +246,7 @@ ONNX has a rich ecosystem:
 
 *Runtimes*:
 
-- ONNX Runtime (Microsoft): High-performance, supports CPU, CUDA, TensorRT, DirectML
+- ONNX Runtime (Microsoft): High-performance, supports CPU, WebGPU, DirectML, CUDA
 - TensorRT (NVIDIA): Optimized for NVIDIA GPUs
 - OpenVINO (Intel): Optimized for Intel hardware
 - ONNX.js: Run ONNX models in web browsers
@@ -279,7 +279,7 @@ ONNX isn't perfect:
 
 *Conversion Issues*: Not all operations convert perfectly. Dynamic shapes, control flow, and custom operations can be problematic. You might need to modify your model to make it ONNX-compatible.
 
-*Runtime Performance Varies*: ONNX Runtime is fast, but performance depends on which execution provider you use (CPU, CUDA, TensorRT, etc.). Some runtimes are better optimized than others.
+*Runtime Performance Varies*: ONNX Runtime is fast, but performance depends on which execution provider you use (WebGPU, DirectML, CPU, etc.). Some runtimes are better optimized than others.
 
 *Operator Coverage*: While ONNX supports many operators, cutting-edge research might use operations not yet in the standard. You'd need custom operators, which reduces portability.
 

@@ -30,21 +30,21 @@ This cross-platform consistency is rare in the ML world. Many frameworks have pl
 
 === Multiple Execution Providers
 
-Here's where ONNX Runtime really shines: it supports multiple "execution providers"—backends that actually run the inference. You can choose the best provider for your hardware:
+Here's where ONNX Runtime really shines: it supports multiple "execution providers"—backends that actually run the inference. Our primary recommendation is to use **WebGPU** for a "write once, run everywhere" experience, while choosing specific providers when targeting specific hardware speedups:
 
-*CPU Execution Provider*: Optimized CPU inference using libraries like Intel MKL-DNN or ARM Compute Library. Works everywhere, no GPU required.
+*   **WebGPU Execution Provider**: The modern standard for generic cross-platform GPU compute. It works on Windows, Linux, Android, and macOS by automatically selecting the best underlying API. On Windows, it leverages **DirectML** (DirectX 12), while on Linux and Android, it uses **Vulkan**. This is the best choice if you want your application to run generically on almost any modern hardware.
 
-*CUDA Execution Provider*: Leverages NVIDIA GPUs using CUDA. Provides excellent performance on NVIDIA hardware.
+*   **DirectML Execution Provider**: Uses Microsoft's DirectML API for hardware-accelerated machine learning on Windows. While WebGPU uses this behind the scenes on Windows, you can choose to use the DirectML provider explicitly if your application is Windows-exclusive and you want to leverage its native performance more directly.
 
-*TensorRT Execution Provider*: Uses NVIDIA's TensorRT library for even more aggressive optimization on NVIDIA GPUs. Can provide 2-5x speedup over raw CUDA for certain models.
+*   **CPU Execution Provider**: Optimized CPU inference using libraries like Intel MKL-DNN or ARM Compute Library. Works everywhere as a reliable fallback when no GPU is available.
 
-*DirectML Execution Provider*: Uses Microsoft's DirectML API for GPU acceleration on Windows. Works with NVIDIA, AMD, and Intel GPUs—any GPU with DirectX 12 support.
+*   **CUDA / TensorRT Execution Providers**: Leverage NVIDIA-specific hardware features like Tensor Cores. While these lock you into NVIDIA hardware, they provide significant speedups and are recommended if you are building for server-side deployment or NVIDIA-specific embedded devices like the Jetson.
 
-*OpenVINO Execution Provider*: Optimized for Intel hardware (CPUs, integrated GPUs, VPUs).
+*   **OpenVINO Execution Provider**: Optimized specifically for Intel hardware (CPUs, integrated GPUs, VPUs).
 
-*CoreML Execution Provider*: Leverages Apple's CoreML framework on iOS and macOS, accessing the Neural Engine on Apple Silicon.
+*   **CoreML Execution Provider**: Leverages Apple's CoreML framework, accessing the Neural Engine on Apple Silicon for maximum efficiency on iOS and macOS.
 
-The key insight: you write your code once, using ONNX Runtime's API. At runtime, you select which execution provider to use. The same model, the same code, automatically optimized for whatever hardware you're running on.
+The key insight: use **WebGPU** if you want to run everywhere generically. Switch to a specific provider like **DirectML** or **CUDA** only when you need the extra performance gain offered by a specific vendor's hardware.
 
 == Why ONNX Runtime for Vulkan Applications?
 
@@ -58,11 +58,14 @@ For most ML workloads, you don't need the same level of control that Vulkan prov
 
 This lets you focus your engineering effort where it matters most: the unique aspects of your application. The rendering pipeline, the user experience, the game mechanics, the creative features. Let ONNX Runtime handle the ML inference.
 
-=== DirectML Integration on Windows
+=== Cross-Vendor GPU Support via WebGPU
 
-On Windows, ONNX Runtime's DirectML execution provider is particularly interesting for Vulkan applications. DirectML is built on top of Direct3D 12, which shares the same GPU with Vulkan. While they're separate APIs, they can coexist on the same hardware.
+Unlike CUDA-centric workflows that lock you into NVIDIA hardware, using ONNX Runtime with the WebGPU execution provider ensures your application runs on any modern GPU by leveraging the native API of your platform.
 
-This means you can run Vulkan rendering and ONNX Runtime inference on the same GPU, with the OS handling resource management. It's not as tightly integrated as a custom Vulkan implementation, but it's far simpler and leverages years of optimization work in DirectML.
+*   **Universal Reach**: Your AMD, Intel, and NVIDIA users all get GPU-accelerated AI without needing platform-specific code.
+*   **Backends**: On Windows, WebGPU utilizes **DirectML** (DirectX 12). On Linux and Android, it leverages **Vulkan**. You get the performance of the local API while maintaining a single integration path.
+*   **Developer Simplicity**: You just request the `webgpu` provider. ONNX Runtime handles the heavy lifting of selecting the correct backend for the current environment.
+*   **Zero-Copy Potential**: Since both your rendering (Vulkan) and your inference (via WebGPU using the Vulkan backend on Linux) can share the same underlying driver resources, you can minimize expensive PCIe data movement.
 
 === Broad Model Support
 
@@ -106,16 +109,24 @@ For Python development or prototyping, package managers provide easy installatio
 pip install onnxruntime
 ----
 
-*GPU-enabled version* (requires CUDA):
+*GPU-enabled version (DirectML for Windows)*:
 [source,bash]
 ----
+pip install onnxruntime-directml
+----
+
+*GPU-enabled version (WebGPU)*:
+[source,bash]
+----
+# WebGPU providers are typically included in standard or GPU builds.
 pip install onnxruntime-gpu
 ----
 
 For C++ development on Windows, NuGet provides packages:
 [source,powershell]
 ----
-Install-Package Microsoft.ML.OnnxRuntime.Gpu
+# Cross-vendor GPU acceleration (DirectML)
+Install-Package Microsoft.ML.OnnxRuntime.DirectML
 ----
 
 === Building from Source
@@ -160,11 +171,11 @@ target_link_libraries(your_target PRIVATE onnxruntime)
 
 === Platform-Specific Considerations
 
-*Linux*: ONNX Runtime requires glibc 2.27 or later (Ubuntu 18.04+, CentOS 8+). For GPU support, install CUDA 11.0 or later.
+*Linux*: ONNX Runtime requires glibc 2.27 or later (Ubuntu 18.04+, CentOS 8+). For GPU support, ensure your WebGPU drivers are up to date.
 
-*Windows*: Requires Visual Studio 2019 or later runtime. For GPU support, install CUDA or ensure DirectX 12 is available (it's included in Windows 10/11).
+*Windows*: Requires Visual Studio 2019 or later runtime. For GPU support, ensure DirectX 12 (for DirectML) or WebGPU drivers are available.
 
-*macOS*: CPU-only support. ONNX Runtime doesn't provide GPU acceleration on macOS through its own execution providers, though you can use the CoreML provider to access Apple's Neural Engine.
+*macOS*: CPU-only support by default. You can use the CoreML provider to access Apple's Neural Engine, or the WebGPU provider via Metal.
 
 === Runtime Dependencies
 
@@ -174,7 +185,7 @@ When you distribute your application, include the ONNX Runtime shared library:
 - Linux: `libonnxruntime.so`
 - macOS: `libonnxruntime.dylib`
 
-For GPU execution providers, users need the appropriate drivers and runtimes (CUDA, DirectX 12, etc.) installed on their systems.
+For GPU execution providers, users need the appropriate drivers and runtimes (Vulkan, DirectX 12, etc.) installed on their systems.
 
 == Using ONNX Runtime: The Basics
 
@@ -209,10 +220,8 @@ session_options.SetIntraOpNumThreads(4);
 session_options.SetGraphOptimizationLevel(
     GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-// For GPU execution (CUDA example)
-OrtCUDAProviderOptions cuda_options;
-cuda_options.device_id = 0;
-session_options.AppendExecutionProvider_CUDA(cuda_options);
+// For WebGPU execution (this will give DirectML in Windows, and Vulkan in Linux and Android)
+session_options.AppendExecutionProvider("WebGPU");
 ----
 
 The execution provider selection happens here. You can add multiple providers—ONNX Runtime will try them in order and use the first one that works.
@@ -347,7 +356,7 @@ ONNX Runtime is ideal when:
 
 *Desktop/Server Deployment*: You're targeting platforms with substantial compute resources where ONNX Runtime's optimizations shine.
 
-*Execution Provider Flexibility*: You want the ability to switch between CPU, CUDA, TensorRT, DirectML, or other backends without changing code.
+*Execution Provider Flexibility*: You want the ability to switch between CPU, WebGPU, DirectML, or other backends without changing code.
 
 *Broad Operator Support*: Your models use a wide variety of operations, and you need comprehensive support out of the box.
 

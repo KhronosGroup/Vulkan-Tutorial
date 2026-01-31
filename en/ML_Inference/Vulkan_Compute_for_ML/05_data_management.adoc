@@ -55,7 +55,7 @@ The choice depends on your operations:
 *NCHW advantages*:
 
 - Better for operations that process entire channels (batch normalization, channel-wise operations)
-- Historically preferred by CUDA and many ML frameworks
+- Historically preferred by many ML frameworks and high-performance computing APIs
 - Can enable better vectorization for channel-wise operations
 
 *NHWC advantages*:

@@ -368,7 +368,7 @@ How does PyTorch Mobile stack up against TensorFlow Lite and ONNX Runtime?
 
 - Framework-agnostic—works with models from any framework
 - Better desktop/server performance
-- More execution providers (CUDA, TensorRT, DirectML, etc.)
+- More execution providers (WebGPU, DirectML, CUDA, etc.)
 - Smaller size for mobile deployment
 
 *When to choose PyTorch Mobile*: You're committed to PyTorch and want the simplest deployment path.

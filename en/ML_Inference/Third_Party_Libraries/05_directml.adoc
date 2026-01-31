@@ -48,9 +48,9 @@ This ecosystem integration makes DirectML a natural choice for Windows developer
 
 === The Cross-Platform Question
 
-DirectML is Windows-only. If you need to deploy on Linux, macOS, Android, or iOS, DirectML isn't an option. This is a significant limitation compared to CUDA (Windows/Linux), ONNX Runtime (all platforms), or TensorFlow Lite (mobile-focused).
+DirectML is Windows-only. If you need to deploy on Linux, macOS, Android, or iOS, DirectML isn't an option. This is a significant limitation compared to the WebGPU execution provider, which works across all platforms.
 
-For Windows-exclusive applications (many PC games, Windows-specific tools), this isn't a problem. For cross-platform applications, you'll need a different solution for non-Windows platforms, or use a cross-platform framework like ONNX Runtime that can use DirectML on Windows and other backends elsewhere.
+For Windows-exclusive applications (many PC games, Windows-specific tools), targeting DirectML directly or via its specific ONNX Runtime provider is a great choice. For cross-platform applications, you should use **WebGPU**. WebGPU will automatically use DirectML behind the scenes on Windows, giving you the same hardware acceleration while maintaining a single codebase that also runs on Linux and Android via Vulkan.
 
 == Architecture: DirectX 12 for Machine Learning
 
@@ -243,7 +243,7 @@ ONNX Runtime provides several advantages over direct DirectML usage:
 
 *Model Format Support*: ONNX Runtime loads ONNX models directly. With direct DirectML, you'd need to parse the model format yourself and create operators manually.
 
-*Cross-Platform*: ONNX Runtime works on all platforms. On Windows, it uses DirectML. On Linux, it uses OpenCL or CPU. On mobile, it uses platform-specific backends. Your code is portable.
+*Cross-Platform*: ONNX Runtime works on all platforms. You select which execution provider to use.  You may use WebGPU on all platforms as a default for GPU acceleration as this translates to being backed by DirectML in Windows and Vulkan in Linux/Android.  However, there's some capabilites that might occur in more specific execution providers so adjust to your needs.  It is reasonable to target CPU as a standard on all platforms, then expect WebGPU, and then use CUDA or similar on NVIDIA or Metal on Apple as an example.
 
 *Optimization*: ONNX Runtime applies graph optimizations automatically—operator fusion, constant folding, memory planning, etc.
 
@@ -304,11 +304,11 @@ TensorFlow Lite is mobile-focused and not optimized for desktop GPUs. On Windows
 
 TensorFlow Lite's strength is mobile deployment, where its aggressive optimization and small size matter. On Windows desktop, these advantages are less relevant, and DirectML's better desktop GPU utilization wins.
 
-=== DirectML vs ONNX Runtime (Other Backends)
+=== DirectML vs ONNX Runtime (Generic Backends)
 
-ONNX Runtime with DirectML (on Windows) vs ONNX Runtime with CUDA (on Linux with NVIDIA GPU) is roughly comparable. CUDA is often slightly faster, but DirectML is competitive.
+ONNX Runtime with the **WebGPU** execution provider is the generic way to run everywhere. On Windows platforms, WebGPU will use DirectML behind the scenes to achieve its acceleration.
 
-ONNX Runtime with DirectML vs ONNX Runtime with CPU is a huge difference. DirectML provides 5-50x speedup depending on the model and GPU.
+DirectML provides a 5-50x speedup compared to CPU-only inference. While targeting DirectML explicitly provides the best possible integration for Windows-only software, the performance gain from using the generic WebGPU provider is virtually identical on Windows, making WebGPU the better choice for most cross-platform developers.
 
 == When DirectML Makes Sense
 
@@ -328,13 +328,13 @@ DirectML isn't always the right choice. Here's when it shines and when to consid
 
 === When to Consider Alternatives
 
-*Cross-Platform Deployment*: If you need to deploy on Linux, macOS, or mobile, DirectML doesn't help. Use ONNX Runtime with platform-appropriate backends, or TensorFlow Lite for mobile.
+*Cross-Platform Deployment*: If you need to deploy on Linux, macOS, or mobile, DirectML doesn't help. Use ONNX Runtime with the **WebGPU** backend for generic cross-platform acceleration.
 
-*NVIDIA-Only Applications*: If you know all your users have NVIDIA GPUs, CUDA might provide better performance.
+*NVIDIA-Only Applications*: If you know all your users have NVIDIA GPUs, using the specific **CUDA** or **TensorRT** providers might provide better performance for your specific hardware target.
 
 *Mobile Deployment*: DirectML is desktop-only. For mobile, use TensorFlow Lite, PyTorch Mobile, or platform-specific solutions.
 
-*Linux Development*: DirectML is Windows-only. On Linux, use CUDA (NVIDIA), ROCm (AMD), or CPU backends.
+*Linux Development*: DirectML is Windows-only. On Linux, use the **WebGPU** backend for generic cross-vendor acceleration, as it will automatically leverage **Vulkan** for performance.
 
 == Summary
 

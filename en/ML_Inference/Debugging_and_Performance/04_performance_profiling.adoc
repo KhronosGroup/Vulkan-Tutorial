@@ -1,5 +1,5 @@
 = Performance Profiling: Mastering the Roofline
-:pp: {plus}{plus}
+:pp: ++
 :stem: latexmath
 
 Your Vulkan ML implementation is correct—outputs match PyTorch to within floating-point tolerance. Now you want to make it fast. But where do you start?
@@ -8,17 +8,17 @@ Optimization without measurement is just **Guesswork**. You might spend days han
 
 In this chapter, we are going to learn how to see through the "black box" of the GPU. We will move from basic timing to deep hardware profiling, using the **Roofline Model** to understand exactly why your code is slow and how much faster it can realistically get.
 
-== The Performance Mindset: Why Profile First?
+== The Performance Mindset: The Three Bottlenecks
 
 On modern GPUs, arithmetic is almost "free." The real cost is **Data Movement**. A typical GPU can perform thousands of additions in the time it takes to fetch a single float from VRAM.
 
-When you profile an ML kernel, you are usually looking for one of three bottlenecks:
+When you profile an ML kernel, you are looking for one of three regimes:
 
-1.  **Memory Bound**: You are waiting for data. Your compute units are sitting idle because the memory bus is saturated.
-2.  **Compute Bound**: You are doing so much math that the memory bus is actually waiting for *you*.
-3.  **Latency Bound**: You aren't launching enough threads to hide the cost of memory access. Your GPU is mostly "stalled."
+1.  **Memory Bound**: Your compute units are sitting idle because the memory bus is saturated. You are waiting for weights or activations to arrive from VRAM.
+2.  **Compute Bound**: You are doing so much math (e.g., a massive 7x7 convolution) that the memory bus is actually waiting for *you*.
+3.  **Latency Bound**: You aren't launching enough threads to hide the cost of memory access. Even though the memory bus isn't full, individual threads are stalled waiting for data.
 
-Profiling tells you which regime you’re in. If you are Memory Bound, adding more math (like a more complex activation) is literally free. If you are Compute Bound, you need to simplify your algorithms.
+Profiling tells you which regime you’re in. If you are Memory Bound, adding more math (like a more complex activation) is literally free. If you are Compute Bound, you need to simplify your algorithms or use faster hardware instructions.
 
 == Setting Up for Profiling
 
@@ -26,13 +26,15 @@ Before you pull out the heavy tools, you must ensure your environment is set up 
 
 *   **Release Mode**: Never profile a Debug build. Debug builds often include extra synchronization and disable compiler optimizations that are critical for GPU performance.
 *   **GPU "Warm-up"**: The first few inferences are always slow due to shader compilation, memory allocation, and driver overhead. Run the model 10-20 times before you start timing.
-*   **Fixed Clock Speeds**: (Advanced) For professional benchmarking, use tools like `nvidia-smi` to lock your GPU clock speed. This prevents "Thermal Throttling" from making your results non-deterministic.
+*   **Fixed Clock Speeds**: For professional benchmarking, use tools like `nvidia-smi -lgc` to lock your GPU clock speed. This prevents "Thermal Throttling" from making your results non-deterministic.
 
 == Tool 1: Vulkan Timestamp Queries (The Stopwatch)
 
 The most basic way to profile is using Vulkan's built-in **Timestamp Queries**. These allow you to measure exactly how many GPU cycles passed between any two points in your command buffer.
 
 === Implementing Timestamps
+To use timestamps, you need a **Query Pool**.
+
 [source,cpp]
 ----
 // 1. Create a Query Pool
@@ -44,6 +46,8 @@ auto queryPool = device.createQueryPool(poolInfo);
 
 // 2. Record the timestamps in your command buffer
 cmd.resetQueryPool(queryPool, 0, 2);
+
+// We use 'eBottomOfPipe' to ensure the work is actually FINISHED
 cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, queryPool, 0);
 
 // ... Dispatch your compute shader ...
@@ -56,32 +60,33 @@ device.getQueryPoolResults(queryPool, 0, 2, sizeof(results), results,
                            sizeof(uint64_t), vk::QueryResultFlagBits::e64);
 
 // 4. Convert cycles to milliseconds
-float ms = (results[1] - results[0]) * timestampPeriod / 1e6f;
+// 'timestampPeriod' is from VkPhysicalDeviceLimits
+float ms = (results[1] - results[0]) * physicalDeviceLimits.timestampPeriod / 1e6f;
 ----
 
-**The Benefit**: Low overhead. You can leave these in your app to show a real-time "Performance HUD."
+**The Benefit**: Extremely low overhead. You can leave these in your app to show a real-time "Performance HUD" or log the cost of every layer in your CI logs.
 
-== Tool 2: NVIDIA Nsight Compute (The Microscope)
-
-If Timestamps tell you *that* a kernel is slow, Nsight Compute tells you *why*. It provides a deep dive into the hardware's internal counters.
-
-=== Key Metrics to Watch:
-*   **Memory Throughput**: If this is > 80%, you are **Memory Bound**. You need to reuse data more effectively (Tiling).
-*   **Compute (SM) Throughput**: If this is > 80%, you are **Compute Bound**. You might need to use faster instructions (like FP16 or Tensor Cores).
-*   **Occupancy**: This tells you what percentage of the GPU's "thread slots" are full.
-    *   **Low Occupancy (< 20%)**: Usually means your shader uses too many registers or too much Shared Memory.
-    *   **High Occupancy (> 50%)**: Good! It means your GPU has plenty of work to "hide" memory latency.
-
-== The Roofline Model: Your Theoretical Limit
+== Tool 2: The Roofline Model (The Map)
 
 How do you know if a kernel is "fast enough"? We use the **Roofline Model**. It graphs performance (GFLOPS) against **Arithmetic Intensity** (Operations per Byte).
 
+=== The Mathematical Foundation
+Every GPU has two physical limits:
+1.  **Peak Compute**: The maximum number of floating-point operations it can do per second (GFLOPS).
+2.  **Peak Bandwidth**: The maximum number of bytes it can read from memory per second (GB/s).
+
 [latexmath]
 ++++
-\text{Arithmetic Intensity} = \frac{\text{Floating Point Operations (FLOPs)}}{\text{Total Bytes Transferred}}
+\text{Arithmetic Intensity} (I) = \frac{\text{Total FLOPs}}{\text{Total Bytes Transferred}}
 ++++
 
-=== The Calculation
+The "Roofline" is defined as:
+[latexmath]
+++++
+\text{Attainable Performance} = \min(\text{Peak Compute}, \text{Peak Bandwidth} \times I)
+++++
+
+=== Case Study: 3x3 Convolution
 Imagine a 3x3 convolution on a 224x224x64 tensor.
 
 *   **FLOPs**: latexmath:[224 \times 224 \times 64 \times (3 \times 3 \times 64 \times 2) \approx 3.6 \text{ Billion FLOPs}]
@@ -94,24 +99,35 @@ If your GPU has a peak memory bandwidth of **500 GB/s**, your "theoretical ceili
 500 \text{ GB/s} \times 72 \text{ FLOPs/Byte} = 36,000 \text{ GFLOPS (36 TFLOPS)}
 ++++
 
-If your GPU's peak compute is only **15 TFLOPS**, then you are **Compute Bound** for this operation. No amount of memory optimization will make it faster!
+If your GPU's peak compute is only **15 TFLOPS**, then you are **Compute Bound**. No amount of memory optimization will make it faster! You must use faster math (like FP16 or Tensor Cores) to move the "roof" higher.
+
+== Tool 3: NVIDIA Nsight Compute (The Microscope)
+
+If Timestamps tell you *that* a kernel is slow, Nsight Compute tells you *why*. It provides a deep dive into the hardware's internal counters.
+
+=== Key Metrics to Watch:
+*   **DRAM Throughput**: If this is > 80%, you are **Memory Bound**. You need to reuse data more effectively (Tiling).
+*   **Compute (SM) Throughput**: If this is > 80%, you are **Compute Bound**.
+*   **Occupancy**: Tells you what percentage of the GPU's "thread slots" are full.
+    *   **Low Occupancy (< 20%)**: Usually means your shader uses too many registers or too much Shared Memory. The GPU can't launch enough threads to hide memory latency.
+    *   **High Occupancy (> 50%)**: Good! Your GPU is "saturated" with work.
 
 == Common Bottlenecks in Vulkan ML
 
-=== 1. The "Small Dispatch" Penalty
-GPUs love big batches. If you dispatch a kernel with only 64 threads, most of the GPU's thousands of cores will be idle.
+=== 1. Uncoalesced Memory Access
+When a **Warp** (32 threads) reads memory, it wants to read a **contiguous 128-byte block**. If thread 0 reads index 0 and thread 1 reads index 1000, the GPU has to perform two separate memory transactions.
 
-*   **The Fix**: Batch your inputs (N > 1) or merge multiple layers into a single kernel (Kernel Fusion).
+*   **The Fix**: Ensure your `pixelIdx` calculation keeps adjacent threads reading adjacent memory addresses. This is why **NCHW** layout is often faster for compute than **NHWC**.
 
-=== 2. Uncoalesced Memory Access
-When a warp (32 threads) reads memory, it wants to read a **contiguous 128-byte block**. If thread 0 reads index 0 and thread 1 reads index 1000, the GPU has to perform two separate memory transactions.
+=== 2. Register Pressure
+Each GPU Compute Unit has a fixed number of **Registers** (fastest memory). If your shader uses 128 registers per thread, the GPU might only be able to run 256 threads at once. If you can reduce it to 64 registers, you can run 512 threads.
 
-*   **The Fix**: Ensure your `pixelIdx` calculation keeps adjacent threads reading adjacent memory addresses.
+*   **The Fix**: Avoid huge arrays inside your GLSL code. Let the compiler manage variables.
 
-=== 3. Pipeline Barrier Stalls
-Every `vkCmdPipelineBarrier` is a potential "stop the world" event.
+=== 3. Warp Divergence
+If you have an `if` statement in your shader where half the threads go one way and half the other, the GPU has to execute **both paths** sequentially for the entire warp.
 
-*   **The Fix**: Group independent dispatches together. If your network has two branches that don't depend on each other, dispatch both *then* put a single barrier.
+*   **The Fix**: Keep your shaders "flat." Use `clamp()` or `max()` instead of `if` statements where possible.
 
 == Summary: Data-Driven Optimization
 

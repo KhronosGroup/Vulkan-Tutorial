@@ -64,7 +64,7 @@ This chapter provides comprehensive coverage of integrating third-party ML libra
 
 === Library-Specific Chapters
 
-*xref:ML_Inference/Third_Party_Libraries/02_onnx_runtime.adoc[ONNX Runtime]* - Microsoft's framework-agnostic, cross-platform inference engine. Supports models from PyTorch, TensorFlow, and other frameworks. Offers multiple execution providers (CPU, CUDA, TensorRT, DirectML) for flexible hardware acceleration.
+*xref:ML_Inference/Third_Party_Libraries/02_onnx_runtime.adoc[ONNX Runtime]* - Microsoft's framework-agnostic, cross-platform inference engine. Supports models from PyTorch, TensorFlow, and other frameworks. Recommends the **WebGPU** execution provider for generic cross-platform acceleration (utilizing **Vulkan** or **DirectML** natively), while supporting specialized providers like **CUDA** for hardware-specific optimizations.
 
 *xref:ML_Inference/Third_Party_Libraries/03_tensorflow_lite.adoc[TensorFlow Lite]* - Google's mobile-focused library optimized for size, efficiency, and battery life. Excellent quantization support for model compression. Best choice when targeting mobile platforms (Android, iOS).
 

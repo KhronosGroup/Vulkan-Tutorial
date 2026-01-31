@@ -155,6 +155,7 @@ The zero-copy nature means you're reading directly from the file. Fast and memor
 == ONNX vs TFLite: When to Use Which?
 
 **ONNX**:
+
 - Comprehensive operator support
 - Better for desktop/server deployment
 - Good tooling and ecosystem
@@ -162,6 +163,7 @@ The zero-copy nature means you're reading directly from the file. Fast and memor
 - Typical use: Loading models for desktop applications
 
 **TFLite**:
+
 - Optimized for mobile/embedded
 - Zero-copy access with FlatBuffers
 - Smaller file sizes with quantization support
@@ -188,17 +190,20 @@ After this, you have a ComputationGraph identical in structure to what we built 
 Let's see the full flow from training to inference:
 
 **Training** (PyTorch/TensorFlow):
+
 1. Define model architecture
 2. Train on dataset
 3. Export to ONNX or TFLite
 
 **Loading** (Our engine):
+
 1. Parse ONNX/TFLite file
 2. Build ComputationGraph
 3. Allocate GPU buffers
 4. Upload weights to GPU
 
 **Inference** (Our engine):
+
 1. Upload input to GPU
 2. Execute graph (dispatch operations in order)
 3. Download output from GPU

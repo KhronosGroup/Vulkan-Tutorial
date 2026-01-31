@@ -92,7 +92,7 @@ Getting inference working is one thing. Getting it fast is another. There are ma
 
 *Batching*: Processing multiple inputs together can improve throughput by better utilizing the GPU. Instead of running inference on one image at a time, process 4 or 8 or 16 together. This increases latency but dramatically improves throughput.
 
-*Hardware-specific features*: Modern GPUs have specialized hardware for certain operations. Tensor cores on NVIDIA GPUs accelerate matrix multiplication. Understanding your target hardware and leveraging its capabilities can provide substantial speedups.
+*Hardware-specific features*: Modern GPUs have specialized hardware for certain operations. For example, Tensor cores on NVIDIA GPUs, WMMA on AMD, or XMX on Intel accelerate matrix multiplication. Understanding your target hardware and leveraging its capabilities (often via cross-vendor APIs like WebGPU or Vulkan) can provide substantial speedups.
 
 The challenge is knowing which optimizations matter for your specific model and hardware. Profiling is essential—measure where time is actually spent, then optimize those hotspots.
 

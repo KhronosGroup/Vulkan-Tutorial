@@ -1,0 +1,50 @@
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="400" fill="#f9f9f9" />
+
+  <!-- Build Host (x86) -->
+  <rect x="50" y="50" width="300" height="300" rx="10" fill="#e3f2fd" stroke="#2196f3" stroke-width="2" />
+  <text x="200" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#2196f3">Build Host (x86_64)</text>
+
+  <!-- Tools inside Host -->
+  <rect x="70" y="100" width="120" height="60" rx="5" fill="#fff" stroke="#2196f3" stroke-width="1" />
+  <text x="130" y="135" text-anchor="middle" font-family="Arial" font-size="14">Compiler</text>
+
+  <rect x="70" y="180" width="120" height="60" rx="5" fill="#fff" stroke="#2196f3" stroke-width="1" />
+  <text x="130" y="215" text-anchor="middle" font-family="Arial" font-size="14">CMake</text>
+
+  <!-- Sysroot inside Host -->
+  <rect x="210" y="100" width="120" height="140" rx="5" fill="#c8e6c9" stroke="#4caf50" stroke-width="2" />
+  <text x="270" y="130" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold" fill="#1b5e20">Sysroot</text>
+  <text x="270" y="150" text-anchor="middle" font-family="Arial" font-size="10" fill="#1b5e20">(ARM Libs/Headers)</text>
+
+  <!-- Target device (ARM) -->
+  <rect x="450" y="50" width="300" height="300" rx="10" fill="#fff3e0" stroke="#ff9800" stroke-width="2" />
+  <text x="600" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#e65100">Target Host (ARM64)</text>
+
+  <!-- Tools inside Target -->
+  <rect x="540" y="100" width="120" height="60" rx="5" fill="#fff" stroke="#ff9800" stroke-width="1" />
+  <text x="600" y="135" text-anchor="middle" font-family="Arial" font-size="14">GDB Server</text>
+
+  <rect x="540" y="180" width="120" height="60" rx="5" fill="#fff" stroke="#ff9800" stroke-width="1" />
+  <text x="600" y="215" text-anchor="middle" font-family="Arial" font-size="14">Vulkan Driver</text>
+
+  <!-- Sync Arrow (rsync) -->
+  <path d="M 450 280 L 350 280" fill="none" stroke="#4caf50" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="400" y="270" text-anchor="middle" font-family="Arial" font-size="12" fill="#1b5e20">rsync -L</text>
+
+  <!-- Deploy Arrow (scp) -->
+  <path d="M 350 320 L 450 320" fill="none" stroke="#2196f3" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="400" y="315" text-anchor="middle" font-family="Arial" font-size="12" fill="#0d47a1">Deploy (Binary)</text>
+
+  <!-- Compile Loop -->
+  <path d="M 130 160 L 130 180" fill="none" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)" />
+  <path d="M 190 130 L 210 130" fill="none" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)" />
+
+</svg>

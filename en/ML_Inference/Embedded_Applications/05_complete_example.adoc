@@ -1,0 +1,281 @@
+= Complete Embedded Application: The Smart Wildlife Camera
+:pp: {plus}{plus}
+:stem: latexmath
+
+You have mastered cross-compilation, built zero-copy camera pipelines, and tuned your energy consumption using PID controllers. Now, it is time to bring it all together.
+
+In this final case study, we are going to build a **Smart Wildlife Camera**. This is a battery-powered, headless system designed to be bolted to a tree in a remote forest. It must sit silently for days, wake up only when it detects motion, classify the species it sees using a quantized neural network, and log the results to a hardened telemetry database.
+
+
+== The Mission Requirements
+
+To be successful in the field, our camera must meet several competing physical and logical constraints:
+
+*   **Platform**: Raspberry Pi 5 (8GB) with a Sony IMX219 link:https://mipi.org/specifications/csi-2[MIPI CSI] Camera.
+*   **Operating Environment**: Headless (no display), passive cooling (sealed IP67 case), solar-recharged battery.
+*   **Inference Goal**: Classify 50 species of local wildlife at latexmath:[\ge 15] FPS.
+*   **Energy Goal**: latexmath:[< 1.5W] average draw to survive a 48-hour mission on a 10,000mAh power bank.
+*   **Reliability**: Must auto-start on boot, survive kernel panics, and handle power fluctuations autonomously.
+
+== System Architecture: The "Asynchronous Triple-Thread"
+
+In an embedded product, we avoid the "Big Loop" pattern. A single stalled thread (e.g., waiting for an I/O write to a slow SD card) shouldn't stop the camera from seeing. We use three independent service threads coordinated by **Lock-Free Queues**.
+
+.Wildlife Camera Software Architecture
+----
++-----------------------------------------------------------+
+|                    Hardware Watchdog                      |
++-----------------------------------------------------------+
+          ^                      ^                      ^
+          | (Heartbeat)          | (Heartbeat)          | (Heartbeat)
++---------+----------+  +---------+----------+  +---------+----------+
+|  Capture Thread    |  |  Inference Thread  |  | Persistence Thread |
+|  (V4L2 + dmabuf)   |  |  (Vulkan + ONNX)   |  | (SQLite + LTE)     |
++---------+----------+  +---------+----------+  +---------+----------+
+          |                      ^                      ^
+          | [Filled dmabuf]      | [Inference Result]   |
+          +----------------------+----------------------+
+                      (Shared Memory / Zero-Copy)
+----
+
+1.  **The Capture Thread (V4L2)**: Grabs YUV frames and manages the `dmabuf` queue. It provides the "Pulse" of the system.
+2.  **The Inference Thread (Vulkan)**: Performs motion detection, format conversion, and ML inference on the GPU. It is the "Brain."
+3.  **The Persistence Thread (SQLite)**: Writes metadata to the SD card and manages cloud telemetry (via LTE/LoRa). It is the "Memory."
+
+== Phase 1: The Zero-Copy "Heart"
+
+We implement the pipeline from Chapter 3. The camera hardware writes directly into memory that our Vulkan compute shaders can access. We wrap the V4L2 and Vulkan logic into a robust `FrameManager` class.
+
+[source,cpp]
+----
+class FrameManager {
+public:
+    struct Frame {
+        int dmabufFd;
+        vk::raii::Image image;
+        vk::raii::DeviceMemory memory;
+        vk::raii::Fence fence; // Signals when GPU is done with this frame
+    };
+
+    void init(int width, int height) {
+        // 1. Setup V4L2
+        camera.open("/dev/video0");
+        camera.requestBuffers(4);
+
+        // 2. Setup Vulkan Imports
+        for (int i = 0; i < 4; ++i) {
+            int fd = camera.exportBuffer(i);
+            frames[i] = importExternalMemory(fd, width, height);
+        }
+    }
+
+    Frame& acquireNext() {
+        int index = camera.dequeueBuffer();
+        // Ensure the GPU has finished using this buffer from the previous cycle
+        device.waitForFences({*frames[index].fence}, true, UINT64_MAX);
+        device.resetFences({*frames[index].fence});
+        return frames[index];
+    }
+
+private:
+    V4L2Device camera;
+    std::array<Frame, 4> frames;
+};
+----
+
+== Phase 2: The Power-Aware Motion Trigger
+
+To survive for days, we don't run the heavy MobileNetV2 model on every frame. We run a **Lightweight Motion Detector** compute shader first. This shader costs latexmath:[< 0.1ms] of GPU time.
+
+[source,glsl]
+----
+// Simple Mean Absolute Difference (MAD) Shader
+// This kernel identifies changes in luminance (Y channel)
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    float current = texelFetch(samplerCurrent, pos, 0).r;
+    float previous = texelFetch(samplerPrevious, pos, 0).r;
+
+    // 1. Calculate pixel-level difference
+    float diff = abs(current - previous);
+
+    // 2. Atomically add to a global counter if movement is significant
+    if (diff > 0.15) {
+        atomicAdd(motionCounter, 1);
+    }
+}
+----
+
+If the `motionCounter` is below a threshold (e.g., less than 0.5% of the pixels changed), the **Inference Thread** immediately goes back to sleep using `vkWaitForFences`. This allows the SoC to stay in a low-power state latexmath:[95\%] of the time, only "waking up" the heavy neural network when an animal is actually present.
+
+== Phase 3: The Hardened Main Loop (Watchdog)
+
+Our `main()` function is designed for a "Field Device." In a remote forest, if the application hangs due to a driver race condition, there is no human to press the reset button. The **Hardware Watchdog**, managed via the link:https://www.kernel.org/doc/Documentation/watchdog/watchdog-api.txt[Linux Watchdog API], is our insurance policy.
+
+=== Watchdog Logic: The "Heartbeat" Math
+The kernel watchdog expects a "Heartbeat" (a write to `/dev/watchdog`) every latexmath:[T_{heart}] seconds. If the application crashes or deadlocks, the write stops, and the hardware forces a hard reset after latexmath:[T_{timeout}] seconds.
+
+[source,cpp]
+----
+// Heartbeat structure for thread monitoring
+struct ThreadStatus {
+    std::atomic<long long> lastHeartbeat{0};
+    void kick() {
+        lastHeartbeat = std::chrono::steady_clock::now().time_since_epoch().count();
+    }
+};
+
+void watchdogLoop(ThreadStatus& cap, ThreadStatus& inf) {
+    int fd = open("/dev/watchdog", O_WRONLY);
+    if (fd < 0) return;
+
+    while(running) {
+        auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+        // 10 second timeout
+        long long timeout = 10000000000LL;
+
+        if ((now - cap.lastHeartbeat) < timeout && (now - inf.lastHeartbeat) < timeout) {
+            ioctl(fd, WDIOC_KEEPALIVE, 0); // System is healthy
+        } else {
+            // BOOM: System will reboot in T-minus 10 seconds
+            syslog(LOG_CRIT, "Watchdog timeout! Cap: %lld, Inf: %lld",
+                   now - cap.lastHeartbeat, now - inf.lastHeartbeat);
+        }
+        std::this_thread::sleep_for(1s);
+    }
+}
+----
+
+== Phase 4: Self-Healing State Machine
+
+In the real world, things fail. A MIPI CSI camera might occasionally drop a frame or return a "Buffer Timeout" due to electrical noise. Instead of crashing, our app uses a **Self-Healing State Machine**.
+
+[source,cpp]
+----
+enum class SystemState { INITIALIZING, STREAMING, RECOVERING, SHUTDOWN };
+
+void captureLoop() {
+    SystemState state = SystemState::INITIALIZING;
+    while(state != SystemState::SHUTDOWN) {
+        try {
+            switch(state) {
+                case SystemState::INITIALIZING:
+                    camera.init();
+                    state = SystemState::STREAMING;
+                    break;
+                case SystemState::STREAMING:
+                    if (!camera.processFrame()) {
+                        state = SystemState::RECOVERING;
+                    }
+                    break;
+                case SystemState::RECOVERING:
+                    syslog(LOG_WARNING, "Camera timeout, resetting hardware...");
+                    camera.reset();
+                    std::this_thread::sleep_for(2s);
+                    state = SystemState::INITIALIZING;
+                    break;
+            }
+        } catch (const std::exception& e) {
+            state = SystemState::RECOVERING;
+        }
+    }
+}
+----
+
+== Phase 5: Runtime Performance Profiling
+
+In the field, you can't attach a debugger. You need **Live Telemetry** to understand why the system might be slowing down. We implement a lightweight profiling hook that logs the timing of each stage to our SQLite database.
+
+[source,cpp]
+----
+struct ProfileData {
+    float captureMs;
+    float preprocMs;
+    float inferenceMs;
+    float totalMs;
+};
+
+void logPerformance(const ProfileData& d) {
+    // Log to a specialized 'metrics' table
+    db.execute("INSERT INTO metrics (capture, preproc, inference, total) VALUES (?, ?, ?, ?)",
+               d.captureMs, d.preprocMs, d.inferenceMs, d.totalMs);
+}
+----
+
+=== Analyzing the Roofline in the Field
+By looking at the ratio of `preprocMs` to `inferenceMs`, you can identify bottlenecks:
+*   **High Preproc**: Your format conversion or normalization is unoptimized. Look into using `VK_KHR_sampler_ycbcr_conversion`.
+*   **High Inference**: Your model is too heavy for the SoC. Consider further quantization (INT8 or INT4) or pruning.
+
+== Phase 6: Model Versioning and A/B Testing
+
+One of the most powerful features of our engine is the ability to swap models at runtime without restarting the application. This allows for **A/B Testing** in the field.
+
+1.  **Staging**: Download a new `.onnx` model to a temporary folder.
+2.  **Validation**: Verify the hash and run a single "Warmup" inference on the GPU.
+3.  **Atomic Swap**: Update the `ModelPointer` in the inference thread.
+
+[source,cpp]
+----
+void updateModel(const std::string& newPath) {
+    auto nextModel = std::make_unique<VulkanModel>(newPath);
+    nextModel->warmup(); // Ensure shaders are compiled
+
+    // Atomic swap of the shared pointer
+    std::atomic_store(&currentModel, std::move(nextModel));
+    syslog(LOG_INFO, "Model updated to %s", newPath.c_str());
+}
+----
+
+== SQLite Telemetry: Logging the Truth
+
+SD cards have limited write cycles and are slow. We don't log raw images unless motion is high-confidence. We log observations to an ACID-compliant link:https://www.sqlite.org/docs.html[SQLite] database.
+
+=== Optimization for SD Cards
+We use several SQLite "Pragmas" to ensure we don't destroy the SD card with tiny random writes:
+1.  **WAL Mode**: Write-Ahead Logging allows concurrent reads and writes.
+2.  **Synchronous=NORMAL**: Reduces the number of `fsync` calls while maintaining power-loss safety.
+3.  **Page Size = 4096**: Matches the flash NAND block size to minimize "Write Amplification."
+
+[source,sql]
+----
+-- telemetry.db
+-- We log environment data alongside species predictions
+CREATE TABLE observations (
+    id INTEGER PRIMARY KEY,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    species_id INTEGER,
+    confidence FLOAT,
+    soc_temp FLOAT,
+    battery_v FLOAT
+);
+----
+
+== Production Hardening: The Linux OS
+
+A product isn't just an app; it's the whole OS. For our wildlife camera, we apply several Linux-level hardening steps:
+
+1.  **Read-Only RootFS**: We mount the system partition as read-only. This prevents SD card corruption during sudden power loss (e.g., battery dies).
+2.  **OOM Killer Tuning**: We set `/proc/self/oom_score_adj` to `-1000` for our camera app. If the system runs out of memory, the kernel will kill background services like `sshd` before it touches our AI pipeline.
+3.  **No Swap**: We disable the swap file entirely. In an ML app, swapping to an SD card is so slow that the watchdog would trigger before the first page was read.
+4.  **CPU Pinning**: We use `pthread_setaffinity_np` to pin our threads to specific "Little" cores on the SoC, leaving the "Big" cores for the heavy bursts of ML work.
+5.  **OverlayFS**: We use a RAM-backed link:https://www.kernel.org/doc/Documentation/filesystems/overlayfs.txt[OverlayFS] for `/var/log` and `/tmp`. This ensures that even if the camera writes thousands of log messages, it never touches the physical SD card, preventing write-wear.
+
+== Field Reliability: Handling Power Fluctuations
+
+In the field, solar power can be unstable. A professional embedded app must handle "Brownouts" gracefully.
+
+1.  **Early Warning**: Use a GPIO interrupt from your power management IC (PMIC) to signal when voltage drops below 3.3V.
+2.  **Safe Shutdown**: In your C++ signal handler, immediately close the SQLite database and call `sync()` to flush the SD card buffers before the power dies completely.
+
+== Summary
+
+By bringing together zero-copy vision, multi-threaded orchestration, and hardware-level reliability, you have built more than just a script—you have built a **Professional Edge AI Product**.
+
+*   **You understand the Hardware**: Talking directly to sensors and kernel watchdogs.
+*   **You understand the Physics**: Managing energy and thermals as primary constraints.
+*   **You understand the Discipline**: Building self-healing systems that survive in the field.
+
+In the final technical chapter, we will move from static world cameras to the world of **Stereo 3D Vision and OpenXR**.
+
+xref:04_power_optimization.adoc[Previous: Power Optimization] | xref:06_scene_understanding_openxr.adoc[Next: Scene Understanding in OpenXR]

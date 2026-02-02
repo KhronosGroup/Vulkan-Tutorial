@@ -85,7 +85,12 @@ find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
 function (add_shaders_target TARGET)
   cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
-  set (SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/shaders)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*" OR 
+      ${CMAKE_GENERATOR} MATCHES "Ninja Multi-Config")
+    set (SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/$<CONFIG>/shaders)
+  else()
+    set (SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/shaders)
+  endif()
   add_custom_command (
     OUTPUT ${SHADERS_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
@@ -104,7 +109,12 @@ endfunction ()
 
 function (add_slang_shader_target TARGET)
   cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
-  set (SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/shaders)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*" OR 
+      ${CMAKE_GENERATOR} MATCHES "Ninja Multi-Config")
+    set (SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/$<CONFIG>/shaders)
+  else()
+    set (SHADERS_DIR ${CMAKE_BINARY_DIR}/${SHADER_CHAPTER_NAME}/shaders)
+  endif()
   file(GLOB HAS_COMPUTE ${CHAPTER_SHADER}.comp)
   set (ENTRY_POINTS -entry vertMain -entry fragMain)
   if(HAS_COMPUTE)
@@ -167,43 +177,31 @@ function (add_chapter CHAPTER_NAME)
   if (DEFINED CHAPTER_MODELS)
     list(TRANSFORM CHAPTER_MODELS PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/assets/")
     file (COPY ${CHAPTER_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models)
-  endif ()
-  if (DEFINED CHAPTER_TEXTURES)
-    list(TRANSFORM CHAPTER_TEXTURES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/assets/")
-    file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
-  endif ()
-
-  # Post-build step to copy assets to executable directory
-  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*" OR 
+    
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*" OR 
       ${CMAKE_GENERATOR} MATCHES "Ninja Multi-Config")
-
-    set(EXECUTABLE_DIR $<TARGET_FILE_DIR:${CHAPTER_NAME}>)
-
-    if(DEFINED CHAPTER_SHADER)
-      sync_directory(
-        "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/shaders"
-        "${EXECUTABLE_DIR}/shaders"
-        ${CHAPTER_NAME}
-        "${CHAPTER_NAME} - Shaders"
-      )
-    endif()
-    if(DEFINED CHAPTER_MODELS)
       sync_directory(
         "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/models"
-        "${EXECUTABLE_DIR}/models"
+        "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/$<CONFIG>/models"
         ${CHAPTER_NAME}
         "${CHAPTER_NAME} - Models"
       )
     endif()
-    if(DEFINED CHAPTER_TEXTURES)
+  endif ()
+  if (DEFINED CHAPTER_TEXTURES)
+    list(TRANSFORM CHAPTER_TEXTURES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/assets/")
+    file (COPY ${CHAPTER_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures)
+
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*" OR 
+      ${CMAKE_GENERATOR} MATCHES "Ninja Multi-Config")
       sync_directory(
         "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/textures"
-        "${EXECUTABLE_DIR}/textures"
+        "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}/$<CONFIG>/textures"
         ${CHAPTER_NAME}
         "${CHAPTER_NAME} - Textures"
-      )
+      )  
     endif()
-  endif()
+  endif ()
 endfunction ()
 
 function(sync_directory SRC_DIR DST_DIR TARGET_NAME LABEL)

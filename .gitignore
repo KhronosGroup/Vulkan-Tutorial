@@ -14,6 +14,7 @@ convert.py
 **/[B,b]uild/*
 
 attachments/build/**
+attachments/vcpkg.json
 attachments/android/.gradle/**
 attachments/android/.idea
 attachments/android/.gradle/**

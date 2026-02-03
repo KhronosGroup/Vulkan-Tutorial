@@ -96,7 +96,7 @@ In this chapter, we will use the **Export MMAP to DMA-BUF** path. This is the mo
 A **dmabuf** is a kernel-level handle to a piece of physical RAM. Think of it as a pointer that can cross the border between different hardware drivers. By exporting a V4L2 buffer as a dmabuf, we can tell the GPU: "Don't allocate your own memory; just look at the memory at this physical address."
 
 .The Zero-Copy dmabuf Pipeline
-image::images/zero_copy_pipeline.svg[Diagram showing physical memory sharing between V4L2 sensor and Vulkan GPU via dmabuf, 800]
+image::images/ML_Inference/Embedded_Applications/zero_copy_pipeline.svg[Diagram showing physical memory sharing between V4L2 sensor and Vulkan GPU via dmabuf, 800]
 
 === Phase 1: Exporting from V4L2
 We ask the camera driver for a file descriptor that represents the physical memory of a specific buffer.
@@ -315,4 +315,4 @@ By mastering the zero-copy pipeline, you've removed the primary performance bott
 
 Next, we will look at how to manage the physical limits of our hardware using **Power and Thermal Optimization**.
 
-xref:02_cross_compilation.adoc[Previous: Cross-Compilation] | xref:04_power_optimization.adoc[Next: Power Optimization]
+xref:ML_Inference/Embedded_Applications/02_cross_compilation.adoc[Previous: Cross-Compilation] | xref:ML_Inference/Embedded_Applications/04_power_optimization.adoc[Next: Power Optimization]

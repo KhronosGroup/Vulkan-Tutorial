@@ -21,7 +21,7 @@ In cross-compilation, you live in two worlds simultaneously:
 2.  **The Target Host**: The ARM64 device where the resulting binary code will execute.
 
 .Cross-Compilation Ecosystem
-image::images/cross_compilation_architecture.svg[Diagram showing the relationship between Build Host, Target Host, and the Sysroot mirror, 800]
+image::images/ML_Inference/Embedded_Applications/cross_compilation_architecture.svg[Diagram showing the relationship between Build Host, Target Host, and the Sysroot mirror, 800]
 
 The biggest mistake beginners make is trying to link against their Build Host's libraries. If you link your ARM code against an x86 `libvulkan.so`, the linker will either scream in confusion ("File format not recognized") or produce a binary that crashes with an "Invalid Instruction" error the moment it hits the first Vulkan call.
 
@@ -307,4 +307,4 @@ Cross-compilation is the "Entry Fee" for professional embedded development. Once
 
 Next, we will look at how to feed raw, high-bandwidth data into this pipeline using **Low-Latency Camera Integration**.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_camera_integration.adoc[Next: Camera Integration]
+xref:ML_Inference/Embedded_Applications/01_introduction.adoc[Previous: Introduction] | xref:ML_Inference/Embedded_Applications/03_camera_integration.adoc[Next: Camera Integration]

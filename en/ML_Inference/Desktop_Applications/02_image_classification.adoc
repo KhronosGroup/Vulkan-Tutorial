@@ -92,7 +92,7 @@ Where:
 In your Vulkan compute shader, this is exactly the loop you would write. You'd read 9 values from an image, multiply them by 9 weights stored in a buffer, and write the sum to the output.
 
 .Convolution Operation - Filter Sliding Across Image
-image::images/2d_convolution_animation.gif[Convolution animation showing filter sliding across image,600]
+image::images/ML_Inference/Desktop_Applications/2d_convolution_animation.gif[Convolution animation showing filter sliding across image,600]
 
 Now you slide this same 3×3 filter across every position in the image. At position (0,0), you compute one output value. Slide one pixel to the right to (0,1), compute another. Keep sliding across and down until you've covered the entire 224×224 input, producing a 224×224 output where each value represents the edge strength at that position.
 
@@ -148,7 +148,7 @@ A convolutional layer contains multiple filters (usually 32-128 in early layers,
 When you apply all 32 filters to a 224×224 RGB input, you get 32 output images (called "feature maps"), each 224×224, each highlighting where a specific pattern appears.
 
 .Typical CNN Architecture
-image::images/cnn_layers.png[CNN layer architecture showing progression,800]
+image::images/ML_Inference/Desktop_Applications/cnn_layers.png[CNN layer architecture showing progression,800]
 
 Input: 224×224×3 (height × width × RGB channels)
 ↓
@@ -299,7 +299,7 @@ We mentioned reducing 224→112→56→28. Why?
 Max pooling takes the maximum value in each small region (typically 2×2) and outputs it. A 2×2 max pooling operation with stride 2 reduces a 4×4 input to a 2×2 output—you take the max of each non-overlapping 2×2 block.
 
 .Max Pooling Operation
-image::images/max_pooling.png[Max pooling with 2x2 filter,500]
+image::images/ML_Inference/Desktop_Applications/max_pooling.png[Max pooling with 2x2 filter,500]
 
 Modern architectures sometimes use strided convolution instead (convolution with stride=2 skips every other position), which is learnable rather than hard-coded like max pooling. But the principle is the same: progressively reduce spatial dimensions while increasing channel depth.
 
@@ -497,4 +497,4 @@ Next, we'll implement this. You'll build a complete image classification pipelin
 
 But now you understand *what* you're implementing and *why* it works. The code is just the expression of these concepts.
 
-xref:01_introduction.adoc[Previous: Desktop Applications Introduction] | xref:03_practical_implementation.adoc[Next: CPU Baseline Implementation]
+xref:ML_Inference/Desktop_Applications/01_introduction.adoc[Previous: Desktop Applications Introduction] | xref:ML_Inference/Desktop_Applications/03_practical_implementation.adoc[Next: CPU Baseline Implementation]

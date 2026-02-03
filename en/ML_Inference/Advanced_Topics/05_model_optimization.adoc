@@ -99,7 +99,7 @@ During training, we don't just teach the student to predict the right label (Dog
 For the most common convolution—the **3x3 kernel**—we can use the **Winograd latexmath:[F(2,3)] transform**. This is how high-end engines like NVIDIA cuDNN and ARM Compute Library achieve their record-breaking speeds.
 
 .Winograd Transform Pipeline
-image::images/winograd_flow.svg[Diagram showing the flow of data through Winograd transformation and element-wise multiplication, 800]
+image::images/ML_Inference/Advanced_Topics/winograd_flow.svg[Diagram showing the flow of data through Winograd transformation and element-wise multiplication, 800]
 
 *   **Traditional Conv**: Requires 9 multiplications per output pixel.
 *   **Winograd Conv**: Transforms the input and weights into a "Winograd Space," performs an element-wise multiplication, and transforms back.
@@ -171,4 +171,4 @@ You have now mastered the Advanced Topics of ML Inference. You can quantize, tun
 
 In our final section, we will take all these skills and apply them to the most challenging environment of all: **Embedded Applications**.
 
-xref:04_memory_management.adoc[Previous: Advanced Memory Management] | xref:../Embedded_Applications/01_introduction.adoc[Next: Embedded Applications]
+xref:ML_Inference/Advanced_Topics/04_memory_management.adoc[Previous: Advanced Memory Management] | xref:ML_Inference/Embedded_Applications/01_introduction.adoc[Next: Embedded Applications]

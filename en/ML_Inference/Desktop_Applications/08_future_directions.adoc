@@ -86,4 +86,4 @@ You now have the tools to build these things. The next step isn't just to follow
 
 Happy coding!
 
-xref:07_ray_tracing_optimization.adoc[Previous: Ray Tracing Optimization] | xref:../Advanced_Topics/01_introduction.adoc[Next: Advanced Topics]
+xref:ML_Inference/Desktop_Applications/07_ray_tracing_optimization.adoc[Previous: Ray Tracing Optimization] | xref:ML_Inference/Advanced_Topics/01_introduction.adoc[Next: Advanced Topics]

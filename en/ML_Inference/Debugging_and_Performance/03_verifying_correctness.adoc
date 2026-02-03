@@ -287,4 +287,4 @@ Verification is the difference between a hobbyist and a professional ML engineer
 
 In the next chapter, we will assume your implementation is 100% correct, and we will move on to the next challenge: **Performance Profiling**.
 
-xref:02_debugging_vulkan_compute.adoc[Previous: Debugging Vulkan Compute] | xref:04_performance_profiling.adoc[Next: Performance Profiling]
+xref:ML_Inference/Debugging_and_Performance/02_debugging_vulkan_compute.adoc[Previous: Debugging Vulkan Compute] | xref:ML_Inference/Debugging_and_Performance/04_performance_profiling.adoc[Next: Performance Profiling]

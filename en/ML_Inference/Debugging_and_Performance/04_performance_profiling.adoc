@@ -140,4 +140,4 @@ Performance profiling is the difference between "poking in the dark" and surgica
 
 In the next chapter, we will apply these insights to actual **Optimization Techniques**, learning the patterns that turn slow shaders into high-performance ML engines.
 
-xref:03_verifying_correctness.adoc[Previous: Verifying Correctness] | xref:05_optimization_techniques.adoc[Next: Optimization Techniques]
+xref:ML_Inference/Debugging_and_Performance/03_verifying_correctness.adoc[Previous: Verifying Correctness] | xref:ML_Inference/Debugging_and_Performance/05_optimization_techniques.adoc[Next: Optimization Techniques]

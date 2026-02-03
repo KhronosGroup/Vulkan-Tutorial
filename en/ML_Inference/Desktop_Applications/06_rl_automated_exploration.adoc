@@ -26,7 +26,7 @@ In most RL problems (like Atari games), the reward comes from the game score. Bu
 We're going to focus on **Curiosity-Driven Exploration**. Instead of rewarding the agent for "winning," we're going to reward it for being surprised.
 
 .Random Network Distillation (RND) Curiosity Mechanism
-image::images/rnd_diagram.svg[RND diagram showing Target and Predictor networks and how prediction error generates a reward,800]
+image::images/ML_Inference/Desktop_Applications/rnd_diagram.svg[RND diagram showing Target and Predictor networks and how prediction error generates a reward,800]
 
 == The Challenge: How do you reward a QA tester?
 
@@ -68,7 +68,7 @@ To make this work, we need three pieces:
 3.  **The Curiosity**: The RND module that calculates how "surprising" each frame is.
 
 .RL Agent and Vulkan Integration Architecture
-image::images/rl_system_architecture.svg[Architecture diagram showing the loop between Vulkan App, RL Agent, and RND Module,800]
+image::images/ML_Inference/Desktop_Applications/rl_system_architecture.svg[Architecture diagram showing the loop between Vulkan App, RL Agent, and RND Module,800]
 
 == Implementing the RND Module
 
@@ -411,4 +411,4 @@ RL-based automated exploration combines curiosity-driven learning with practical
 
 This approach finds bugs humans wouldn't think to test, explores performance characteristics automatically, and can even learn to demonstrate your application—all using ML techniques applied to real Vulkan applications.
 
-xref:05_real_time_camera.adoc[Previous: Real-Time Camera Integration] | xref:07_ray_tracing_optimization.adoc[Next: Ray Tracing Optimization]
+xref:ML_Inference/Desktop_Applications/05_real_time_camera.adoc[Previous: Real-Time Camera Integration] | xref:ML_Inference/Desktop_Applications/07_ray_tracing_optimization.adoc[Next: Ray Tracing Optimization]

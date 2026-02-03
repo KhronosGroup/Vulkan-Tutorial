@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Machine Learning Inference with Vulkan: Introduction
 
@@ -92,13 +92,13 @@ Let's begin our journey into ML inference with these chapters:
 
 3. xref:ML_Inference/Vulkan_Compute_for_ML/01_introduction.adoc[Vulkan Compute for ML] - Reviewing Vulkan compute pipelines, implementing compute shaders for ML operations, managing data transfers, synchronization with barriers and events, and building a complete "hello world" vector addition example.
 
-4. xref:ML_Inference/Models_and_Data/01_introduction.adoc[Models and Data] - Understanding ML model formats in depth, the anatomy of neural network models, exporting models from PyTorch and TensorFlow, model inspection and simplification tools, and translating between formats.
+4. xref:ML_Inference/Building_the_Inference_Engine/05_model_formats_as_input.adoc[Models and Data] - Understanding ML model formats in depth, the anatomy of neural network models, exporting models from PyTorch and TensorFlow, model inspection and simplification tools, and translating between formats.
 
-5. xref:ML_Inference/Building_Inference_Engine/01_introduction.adoc[Building the Inference Engine] - For specialized use cases: Loading models to Vulkan objects, parsing model files, creating network graphs, extracting weights, implementing common NN layers (convolution, pooling, activation functions, fully connected) in GLSL and Slang, and building a complete MNIST inference example.
+5. xref:ML_Inference/Building_the_Inference_Engine/01_introduction.adoc[Building the Inference Engine] - For specialized use cases: Loading models to Vulkan objects, parsing model files, creating network graphs, extracting weights, implementing common NN layers (convolution, pooling, activation functions, fully connected) in GLSL and Slang, and building a complete MNIST inference example.
 
 6. xref:ML_Inference/Advanced_Topics/01_introduction.adoc[Advanced Topics] - Quantization (what it is, why it matters, types, implementing quantized kernels), vendor-specific optimizations, debugging and validation techniques, performance tuning, and best practices including async compute for both third-party libraries and custom implementations.
 
-7. xref:ML_Inference/Deployment/01_introduction.adoc[Deployment] - Cross-platform deployment strategies: desktop applications (command-line and graphics engine integration with CI validation), Android apps (permissions, asset management, real-time inference), and embedded devices (cross-compilation, memory optimization, battery considerations, headless execution with SLAM examples). Covers deployment for both third-party library integration and custom Vulkan inference engines.
+7. xref:ML_Inference/Embedded_Applications/01_introduction.adoc[Deployment] - Cross-platform deployment strategies: desktop applications (command-line and graphics engine integration with CI validation), Android apps (permissions, asset management, real-time inference), and embedded devices (cross-compilation, memory optimization, battery considerations, headless execution with SLAM examples). Covers deployment for both third-party library integration and custom Vulkan inference engines.
 
 xref:conclusion.adoc[Previous: Main Tutorial Conclusion] | xref:ML_Inference/ML_Inference_Pipeline/01_introduction.adoc[Next: ML Inference Pipeline]
 

@@ -24,7 +24,7 @@ The problem? While the GPU is doing inference, your CPU is sitting idle. While t
 To fix this, we need to think in terms of **pipelines** and **concurrency**. We want to be rendering Frame N, while performing inference on Frame N-1, and capturing Frame N+2 from the camera—all at the same time.
 
 .Asynchronous Camera Inference Pipeline
-image::images/camera_pipeline_diagram.svg[Diagram showing the Producer-Consumer pipeline between camera capture, inference, and rendering,800]
+image::images/ML_Inference/Desktop_Applications/camera_pipeline_diagram.svg[Diagram showing the Producer-Consumer pipeline between camera capture, inference, and rendering,800]
 
 === Understanding Latency vs. Throughput
 
@@ -298,4 +298,4 @@ Real-time camera classification requires a multi-stage orchestration strategy:
 
 You now have a responsive real-time ML application—a bridge between the world of graphics and the world of artificial intelligence.
 
-xref:04_ci_render_validation.adoc[Previous: CI/CD Render Validation] | xref:06_rl_automated_exploration.adoc[Next: RL-Based Automated Exploration]
+xref:ML_Inference/Desktop_Applications/04_ci_render_validation.adoc[Previous: CI/CD Render Validation] | xref:ML_Inference/Desktop_Applications/06_rl_automated_exploration.adoc[Next: RL-Based Automated Exploration]

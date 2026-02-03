@@ -46,7 +46,7 @@ Since the **Volta** architecture, NVIDIA SMs (Streaming Multiprocessors) have co
 *   **The Workflow**: Threads in a **Warp** (32 threads) work cooperatively. The matrix latexmath:[A] is not loaded by one thread; its rows are distributed across all 32 threads. The Tensor Core "reaches into" the registers of all threads in the warp simultaneously to perform the multiplication.
 
 .Warp-Level Matrix Cooperation
-image::images/coop_matrix_warp.svg[Diagram showing Matrix A and B distribution across a GPU Warp for hardware acceleration, 800]
+image::images/ML_Inference/Advanced_Topics/coop_matrix_warp.svg[Diagram showing Matrix A and B distribution across a GPU Warp for hardware acceleration, 800]
 
 *   **The Bottleneck**: Tensor Cores are so fast that they are almost always **Memory Bound**. If you can't feed them 16x16 tiles of data every few clock cycles, they sit idle. This is why **Shared Memory Tiling** (Chapter 05) is mandatory when using them.
 
@@ -330,4 +330,4 @@ Matrix hardware is extremely picky about memory layout. If you ignore this, the 
 
 In the next chapter, we will look at the final hardware constraint: **Memory Management**. We’ll learn how to fit massive 10GB models into 4GB of GPU memory using professional pooling and streaming techniques.
 
-xref:02_quantization_strategies.adoc[Previous: Quantization Strategies] | xref:04_memory_management.adoc[Next: Advanced Memory Management]
+xref:ML_Inference/Advanced_Topics/02_quantization_strategies.adoc[Previous: Quantization Strategies] | xref:ML_Inference/Advanced_Topics/04_memory_management.adoc[Next: Advanced Memory Management]

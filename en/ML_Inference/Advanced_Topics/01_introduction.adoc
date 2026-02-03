@@ -86,4 +86,4 @@ You are no longer just writing shaders; you are building the foundations of mode
 
 Let's begin with the most powerful optimization in the ML toolkit: **Quantization**.
 
-xref:../Desktop_Applications/08_future_directions.adoc[Previous: Future Directions] | xref:02_quantization_strategies.adoc[Next: Quantization Strategies]
+xref:ML_Inference/Desktop_Applications/08_future_directions.adoc[Previous: Future Directions] | xref:ML_Inference/Advanced_Topics/02_quantization_strategies.adoc[Next: Quantization Strategies]

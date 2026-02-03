@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = CI/CD Render Validation
 :stem: latexmath
@@ -32,7 +32,7 @@ Think of how a human tester would verify your app. They wouldn't count every pix
 We'll mirror this approach in our CI pipeline, moving from fast, cheap checks to more sophisticated ML analysis.
 
 .Hierarchy of Validation for Graphics
-image::images/validation_hierarchy.svg[Pyramid showing Sanity, Functional, and Semantic validation levels,600]
+image::images/ML_Inference/Desktop_Applications/validation_hierarchy.svg[Pyramid showing Sanity, Functional, and Semantic validation levels,600]
 
 *   **Level 1: The "Don't Panic" Sanity Check.** We'll use high-tolerance pixel comparison and **LPIPS** to catch catastrophic failures (black screens, white screens, or static) in milliseconds.
 *   **Level 2: Reading the UI with OCR.** We'll use Optical Character Recognition to ensure your text isn't just rendering, but is actually legible and contained within its boxes.
@@ -128,7 +128,7 @@ Traditional pixel comparison treats an image like a spreadsheet of numbers. If o
 If the high-level features match, the images are perceptually similar, even if the pixels aren't mathematically identical.
 
 .LPIPS Perceptual Similarity Mechanism
-image::images/lpips_diagram.svg[LPIPS diagram showing how reference and test images are compared via feature maps,800]
+image::images/ML_Inference/Desktop_Applications/lpips_diagram.svg[LPIPS diagram showing how reference and test images are compared via feature maps,800]
 
 === Why Feature Maps Beat Pixels
 
@@ -584,4 +584,4 @@ Practical CI/CD render validation uses three complementary approaches:
 
 This combination provides robust testing: fast checks fail fast, text validation ensures readable UI, and ML validation catches semantic rendering issues across different environments.
 
-xref:03_practical_implementation.adoc[Previous: CPU Baseline Implementation] | xref:05_real_time_camera.adoc[Next: Real-Time Camera Integration]
+xref:ML_Inference/Desktop_Applications/03_practical_implementation.adoc[Previous: CPU Baseline Implementation] | xref:ML_Inference/Desktop_Applications/05_real_time_camera.adoc[Next: Real-Time Camera Integration]

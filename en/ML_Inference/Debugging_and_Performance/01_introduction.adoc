@@ -63,4 +63,4 @@ Debugging and optimization are not "extra" steps; they are the core of the devel
 
 Let's start by learning how to tame the wild horse that is the Vulkan Compute pipeline.
 
-xref:../Building_the_Inference_Engine/06_putting_it_together.adoc[Previous: Putting it Together] | xref:02_debugging_vulkan_compute.adoc[Next: Debugging Vulkan Compute]
+xref:ML_Inference/Building_the_Inference_Engine/06_putting_it_together.adoc[Previous: Putting it Together] | xref:ML_Inference/Debugging_and_Performance/02_debugging_vulkan_compute.adoc[Next: Debugging Vulkan Compute]

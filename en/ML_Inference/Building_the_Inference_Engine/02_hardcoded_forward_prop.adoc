@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Hardcoded Forward Propagation
 
@@ -40,7 +40,7 @@ with open('mnist_weights.bin', 'wb') as f:
         f.write(bias.numpy().tobytes())
 ----
 
-The C++ code to read this is straightforward. You open the file, verify the magic number, read counts, read float arrays. See xref:attachments/ml_inference/weight_loader.hpp[weigh_loader.hpp] for the complete implementation—it's about 50 lines total.
+The C++ code to read this is straightforward. You open the file, verify the magic number, read counts, read float arrays. See xref:attachment$ml_inference/weight_loader.hpp[weigh_loader.hpp] for the complete implementation—it's about 50 lines total.
 
 The key insight: we know exactly what's in this file because we control the format. No schema negotiation, no version compatibility issues. Just raw data.
 
@@ -159,7 +159,7 @@ Now we chain three layers together:
 
 The code is repetitive—three times we set up descriptors, push constants, and dispatch. But that repetition is the point. Once you see it working, you'll notice what's the same and what's different between layers. That understanding drives the abstractions we build next.
 
-See xref:attachments/ml_inference/vulkan_mnist_inference.cpp[vulkan_mnist_inference.cpp] for the complete implementation. The core inference loop is about 150 lines, most of it Vulkan boilerplate.
+See xref:attachment$ml_inference/vulkan_mnist_inference.cpp[vulkan_mnist_inference.cpp] for the complete implementation. The core inference loop is about 150 lines, most of it Vulkan boilerplate.
 
 == What This Teaches Us
 
@@ -181,7 +181,7 @@ But before we build those abstractions, we need to understand one more thing: wh
 
 The hardcoded approach assumes you have `mnist_weights.bin`. Where does that come from?
 
-You train a model in PyTorch or TensorFlow, then export the weights. The training script is in xref:attachments/ml_inference/train_mnist.py[train_mnist.py]. It:
+You train a model in PyTorch or TensorFlow, then export the weights. The training script is in xref:attachment$ml_inference/train_mnist.py[train_mnist.py]. It:
 
 1. Defines the network architecture (matching what we hardcoded)
 2. Trains on MNIST dataset for a few epochs

@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = Vector Addition Example
 
@@ -558,4 +558,4 @@ The key insight: ML inference is just dispatching compute shaders with proper da
 
 With this working example as a template, you're ready to implement more complex ML operations. The fundamentals remain the same—only the shader logic and buffer layouts change.
 
-xref:ML_Inference/Vulkan_Compute_for_ML/06_synchronization.adoc[Previous: Synchronization] | xref:ML_Inference/Models_and_Data/01_introduction.adoc[Next: Models and Data]
+xref:ML_Inference/Vulkan_Compute_for_ML/06_synchronization.adoc[Previous: Synchronization] | xref:ML_Inference/Building_the_Inference_Engine/05_model_formats_as_input.adoc[Next: Models and Data]

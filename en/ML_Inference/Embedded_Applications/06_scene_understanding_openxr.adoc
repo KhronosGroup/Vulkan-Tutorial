@@ -326,4 +326,4 @@ By leveraging Vulkan directly in your OpenXR project, you gain three critical ca
 
 This combination allows you to build XR applications that don't just "show" the world, but deeply "understand" and "modify" it in real-time, going far beyond the basic features provided by the standard runtime.
 
-xref:05_complete_example.adoc[Previous: Complete Example] | xref:07_conclusion.adoc[Next: Conclusion]
+xref:ML_Inference/Embedded_Applications/05_complete_example.adoc[Previous: Complete Example] | xref:ML_Inference/Embedded_Applications/07_conclusion.adoc[Next: Conclusion]

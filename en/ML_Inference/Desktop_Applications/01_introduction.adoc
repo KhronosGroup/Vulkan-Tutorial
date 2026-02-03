@@ -24,19 +24,19 @@ This follows the same teaching pattern we established with MNIST: start with the
 
 This section is organized into focused, practical chapters:
 
-**xref:02_image_classification.adoc[Image Classification: From MNIST to CNNs]**: Understanding why fully connected networks fail for images and how CNNs solve the problem. You'll learn convolution operations, building convolutional layers, pooling, and modern architectural patterns. This builds on your MNIST knowledge to handle real-world image classification with proper CNN architectures.
+**xref:ML_Inference/Desktop_Applications/02_image_classification.adoc[Image Classification: From MNIST to CNNs]**: Understanding why fully connected networks fail for images and how CNNs solve the problem. You'll learn convolution operations, building convolutional layers, pooling, and modern architectural patterns. This builds on your MNIST knowledge to handle real-world image classification with proper CNN architectures.
 
-**xref:03_practical_implementation.adoc[CPU Baseline Implementation]**: Building a working image classifier using ONNX Runtime. Load models, preprocess correctly, run inference, verify against PyTorch. This is your reference implementation.
+**xref:ML_Inference/Desktop_Applications/03_practical_implementation.adoc[CPU Baseline Implementation]**: Building a working image classifier using ONNX Runtime. Load models, preprocess correctly, run inference, verify against PyTorch. This is your reference implementation.
 
-**xref:04_ci_render_validation.adoc[CI/CD Render Validation]**: Using ML to validate Vulkan renders in continuous integration. Train classifiers to detect rendering bugs, integrate with GitHub Actions, measure semantic similarity, and verify UI layout—practical ML for engineering problems.
+**xref:ML_Inference/Desktop_Applications/04_ci_render_validation.adoc[CI/CD Render Validation]**: Using ML to validate Vulkan renders in continuous integration. Train classifiers to detect rendering bugs, integrate with GitHub Actions, measure semantic similarity, and verify UI layout—practical ML for engineering problems.
 
-**xref:05_real_time_camera.adoc[Real-Time Camera Integration]**: Extending the classifier to process webcam input at 30+ FPS. GPU-accelerated preprocessing, async compute pipelines, threading for responsiveness, and performance tuning for interactive applications.
+**xref:ML_Inference/Desktop_Applications/05_real_time_camera.adoc[Real-Time Camera Integration]**: Extending the classifier to process webcam input at 30+ FPS. GPU-accelerated preprocessing, async compute pipelines, threading for responsiveness, and performance tuning for interactive applications.
 
-**xref:06_rl_automated_exploration.adoc[RL-Based Automated Exploration]**: Using reinforcement learning to automatically explore and test Vulkan applications. Curiosity-driven agents with Random Network Distillation, automated bug discovery, benchmarking, and GUI automation for CI and beyond.
+**xref:ML_Inference/Desktop_Applications/06_rl_automated_exploration.adoc[RL-Based Automated Exploration]**: Using reinforcement learning to automatically explore and test Vulkan applications. Curiosity-driven agents with Random Network Distillation, automated bug discovery, benchmarking, and GUI automation for CI and beyond.
 
-**xref:07_ray_tracing_optimization.adoc[Ray Tracing Optimization]**: Using AI to optimize high-performance ray tracing. You'll learn about AI-driven denoising, adaptive sampling to maximize your ray budget, and using ML to detect areas that need temporal updates.
+**xref:ML_Inference/Desktop_Applications/07_ray_tracing_optimization.adoc[Ray Tracing Optimization]**: Using AI to optimize high-performance ray tracing. You'll learn about AI-driven denoising, adaptive sampling to maximize your ray budget, and using ML to detect areas that need temporal updates.
 
-**xref:08_future_directions.adoc[Future Directions: RAG, GANs, and Beyond]**: Exploring advanced refinements for your desktop applications. Learn how to use GANs for style transfer and RAG for intelligent engineering diagnostics.
+**xref:ML_Inference/Desktop_Applications/08_future_directions.adoc[Future Directions: RAG, GANs, and Beyond]**: Exploring advanced refinements for your desktop applications. Learn how to use GANs for style transfer and RAG for intelligent engineering diagnostics.
 
 Each chapter focuses on one practical topic, building incrementally from static images to real-time interactive applications to automated testing and intelligent exploration.
 
@@ -97,4 +97,4 @@ This is where the tutorial shifts from "how does this work" to "how do I build t
 
 Ready? Let's build something real.
 
-xref:../Building_the_Inference_Engine/05_mnist_example.adoc[Previous: Complete MNIST Example] | xref:02_image_classification.adoc[Next: Image Classification Concepts]
+xref:ML_Inference/Building_the_Inference_Engine/06_putting_it_together.adoc[Previous: Complete MNIST Example] | xref:ML_Inference/Desktop_Applications/02_image_classification.adoc[Next: Image Classification Concepts]

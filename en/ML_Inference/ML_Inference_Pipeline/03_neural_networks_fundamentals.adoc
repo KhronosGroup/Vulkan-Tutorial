@@ -34,7 +34,7 @@ Let's take inspiration from how the human brain works. Everything you've ever th
 
 Think about your own nervous system for a moment. When you touch something hot, you instantly pull your hand away. When you see a friend's face, you recognize them immediately. When you read these words, you understand their meaning. All of these processes—sensation, recognition, comprehension—happen through networks of neurons communicating with each other.
 
-image::images/biological_neuron.png[A biological neuron showing dendrites, cell body, and axon]
+image::images/ML_Inference/ML_Inference_Pipeline/biological_neuron.png[A biological neuron showing dendrites, cell body, and axon]
 
 A biological neuron has three main parts:
 
@@ -92,7 +92,7 @@ What we're building is inspired by biology but optimized for implementation on d
 
 With this biological understanding, we can replicate how the brain works by creating artificial neurons that take inputs, make decisions, and produce outputs. An artificial neuron with three inputs and one output would look like this:
 
-image::images/linear_perceptron.png[An artificial neuron (perceptron) with three inputs and one output]
+image::images/ML_Inference/ML_Inference_Pipeline/linear_perceptron.png[An artificial neuron (perceptron) with three inputs and one output]
 
 This means our artificial neuron has a mathematical function: `output = f(x, y, z)`.
 
@@ -140,7 +140,7 @@ Where:
 
 Now let's see what happens when we connect multiple neurons in a network:
 
-image::images/neural_network_example.png[A simple neural network with input layer, hidden layer, and output layer]
+image::images/ML_Inference/ML_Inference_Pipeline/neural_network_example.png[A simple neural network with input layer, hidden layer, and output layer]
 
 In this network, the output comes from node N6. Let's trace through the mathematics:
 
@@ -203,7 +203,7 @@ When the sigmoid output is greater than 0.5, we can consider the neuron "activat
 
 Let's see how this works with a simple example. We'll build a neural network that implements a logical AND function:
 
-image::images/basic_and_node.png[A single neuron implementing an AND gate with sigmoid activation]
+image::images/ML_Inference/ML_Inference_Pipeline/basic_and_node.png[A single neuron implementing an AND gate with sigmoid activation]
 
 The neuron computes: `output = σ(-30 + 20·X + 20·Y)`
 

@@ -102,7 +102,7 @@ Where latexmath:[P_{in}] is the power consumed by your Vulkan shaders. If latexm
 To prevent this, we implement a **Closed-Loop Software Controller**. A link:https://en.wikipedia.org/wiki/PID_controller[PID (Proportional-Integral-Derivative) controller] adjusts our "Inference Rate" to keep the temperature at a safe target (e.g., 75°C).
 
 .Thermal-Aware Inference PID Loop
-image::images/thermal_pid_loop.svg[Diagram showing the feedback loop between SoC temperature and inference duty cycle, 800]
+image::images/ML_Inference/Embedded_Applications/thermal_pid_loop.svg[Diagram showing the feedback loop between SoC temperature and inference duty cycle, 800]
 
 [source,cpp]
 ----
@@ -243,4 +243,4 @@ By mastering the physical limits of your hardware, you turn your code from a "ba
 
 Next, we will bring everything together into a **Complete Embedded Application**.
 
-xref:03_camera_integration.adoc[Previous: Camera Integration] | xref:05_complete_example.adoc[Next: Complete Example]
+xref:ML_Inference/Embedded_Applications/03_camera_integration.adoc[Previous: Camera Integration] | xref:ML_Inference/Embedded_Applications/05_complete_example.adoc[Next: Complete Example]

@@ -62,7 +62,7 @@ The most wasteful pattern in ML is allocating a unique buffer for every layer's 
 To alias memory, you must first calculate the **Liveness** of every tensor in your graph.
 
 .Tensor Liveness and Memory Aliasing
-image::images/tensor_liveness.svg[Diagram showing non-overlapping tensor intervals sharing the same memory offset, 600]
+image::images/ML_Inference/Advanced_Topics/tensor_liveness.svg[Diagram showing non-overlapping tensor intervals sharing the same memory offset, 600]
 
 1.  **Trace**: Walk the execution graph. For each tensor, mark the index of the first layer that writes to it and the last layer that reads from it.
 2.  **Overlap**: Two tensors can share the same memory if their `[First, Last]` intervals do not overlap.
@@ -192,4 +192,4 @@ Memory management is about **Logistics**. You aren't just a programmer; you are 
 
 In our final chapter of this section, we will look at **Model Optimization**—how to rewrite the network itself to be more efficient.
 
-xref:03_vendor_optimizations.adoc[Previous: Vendor-Specific Optimizations] | xref:05_model_optimization.adoc[Next: Model Optimization Techniques]
+xref:ML_Inference/Advanced_Topics/03_vendor_optimizations.adoc[Previous: Vendor-Specific Optimizations] | xref:ML_Inference/Advanced_Topics/05_model_optimization.adoc[Next: Model Optimization Techniques]

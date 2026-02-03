@@ -1,4 +1,4 @@
-::pp: {plus}{plus}
+:pp: {plus}{plus}
 
 = TensorFlow Lite
 
@@ -134,8 +134,8 @@ Use this when: Post-training quantization causes unacceptable accuracy loss.
 
 Here's how you typically quantize a model for TensorFlow Lite:
 
-1. Train your model in TensorFlow or Keras (full float32 precision)
-2. Convert to TensorFlow Lite format with quantization:
+* Train your model in TensorFlow or Keras (full float32 precision)
+* Convert to TensorFlow Lite format with quantization:
 
 [source,python]
 ----
@@ -148,8 +148,8 @@ converter.inference_output_type = tf.int8
 tflite_model = converter.convert()
 ----
 
-3. Validate the quantized model: run inference on test data, compare accuracy to the original model
-4. If accuracy is acceptable, deploy. If not, try quantization-aware training.
+* Validate the quantized model: run inference on test data, compare accuracy to the original model
+* If accuracy is acceptable, deploy. If not, try quantization-aware training.
 
 The `representative_dataset_gen` is a function that yields sample inputs. The converter runs these through the model to determine the range of activations, which informs the quantization parameters. This dataset doesn't need to be large—a few hundred examples is usually sufficient.
 

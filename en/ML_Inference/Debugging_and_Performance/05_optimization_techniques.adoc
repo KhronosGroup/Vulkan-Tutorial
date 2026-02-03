@@ -179,4 +179,4 @@ Use **Timeline Semaphores** to coordinate:
 
 With these techniques, you have transformed your Vulkan implementation from a functional prototype into a high-performance engine capable of real-time AI in the most demanding environments.
 
-xref:04_performance_profiling.adoc[Previous: Performance Profiling] | xref:../Desktop_Applications/01_introduction.adoc[Next: Desktop Applications]
+xref:ML_Inference/Debugging_and_Performance/04_performance_profiling.adoc[Previous: Performance Profiling] | xref:ML_Inference/Desktop_Applications/01_introduction.adoc[Next: Desktop Applications]

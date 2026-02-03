@@ -32,7 +32,7 @@ Think of it like a digital photograph. An uncompressed RAW file (FP32) has milli
 Quantization is a mapping function latexmath:[f(x)] that squashes a continuous infinite range of real numbers into a small, discrete set of integers.
 
 .Quantization Mapping: FP32 to INT8
-image::images/quantization_mapping.svg[Diagram showing mapping from continuous float range to discrete integer points, 600]
+image::images/ML_Inference/Advanced_Topics/quantization_mapping.svg[Diagram showing mapping from continuous float range to discrete integer points, 600]
 
 === 1. Symmetric Quantization (The Speed King)
 
@@ -443,4 +443,4 @@ Quantization is the "Superpower" of ML deployment. It allows you to run models o
 
 Whether you choose the library or the shader, you are now equipped to shrink your models and saturate your silicon. In the next chapter, we will look at how to take these quantized models and tune them for the specific matrix hardware of NVIDIA, AMD, and Intel.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_vendor_optimizations.adoc[Next: Vendor-Specific Optimizations]
+xref:ML_Inference/Advanced_Topics/01_introduction.adoc[Previous: Introduction] | xref:ML_Inference/Advanced_Topics/03_vendor_optimizations.adoc[Next: Vendor-Specific Optimizations]

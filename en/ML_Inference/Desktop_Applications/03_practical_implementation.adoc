@@ -170,7 +170,7 @@ std::vector<float> ImageClassifier::runInference(const std::vector<float>& input
 
 Once you have the 1000 scores (logits), you must apply Softmax to get probabilities. As we saw in the math section, this involves latexmath:[e^{\text{logit}}].
 
-A logit of `88.0` is common. But latexmath:[e^{88}] is roughly `1.6 \times 10^{38}`—the absolute limit of a 32-bit float. A logit of `90.0` will overflow and return `Infinity`, crashing your app or giving you `NaN` (Not a Number) results.
+A logit of 88.0 is common. But latexmath:[e^{88}] is roughly latexmath:[1.6 \times 10^{38}]—the absolute limit of a 32-bit float. A logit of 90.0 will overflow and return `Infinity`, crashing your app or giving you `NaN` (Not a Number) results.
 
 We solve this using the **Max-Subtraction Trick**:
 
@@ -257,4 +257,4 @@ You've built a working CPU baseline image classifier:
 
 This baseline works but is slow. The next chapters accelerate it with GPU preprocessing, add threading for responsiveness, and integrate real-time camera input.
 
-xref:02_image_classification.adoc[Previous: Image Classification Concepts] | xref:04_ci_render_validation.adoc[Next: CI/CD Render Validation]
+xref:ML_Inference/Desktop_Applications/02_image_classification.adoc[Previous: Image Classification Concepts] | xref:ML_Inference/Desktop_Applications/04_ci_render_validation.adoc[Next: CI/CD Render Validation]

@@ -83,7 +83,7 @@ The industry standard for reconstruction is the **U-Net**. It was originally des
 The U-Net is designed specifically to handle the **Scale Problem** in images.
 
 .AI Denoising Architecture (U-Net)
-image::images/rt_denoising_diagram.svg[U-Net diagram showing Encoder, Decoder, and Skip Connections, 800]
+image::images/ML_Inference/Desktop_Applications/rt_denoising_diagram.svg[U-Net diagram showing Encoder, Decoder, and Skip Connections, 800]
 
 Let's break down the three parts of the "U" in detail:
 
@@ -296,7 +296,7 @@ In a naive renderer, every pixel gets the same number of rays. But in a real sce
 **Adaptive Sampling** is the art of spending your computation budget only where the noise is "stubborn." Instead of casting 8 rays per pixel everywhere, we aim to cast 1 ray on the flat wall and 64 rays on the chandelier. This ensures that every part of the image reaches the same level of quality at the same time.
 
 .Adaptive Sampling Workflow
-image::images/adaptive_sampling_diagram.svg[Diagram showing Probe Pass, Heatmap Generation, and Targeted Pass, 800]
+image::images/ML_Inference/Desktop_Applications/adaptive_sampling_diagram.svg[Diagram showing Probe Pass, Heatmap Generation, and Targeted Pass, 800]
 
 === The Theory of Variance: Where Does Noise Hide?
 
@@ -933,4 +933,4 @@ The most important thing to remember is that an AI denoiser is never truly "fini
 
 By treating your graphics pipeline as a living, learning system, you can ensure that your application always looks its best, no matter how complex the world becomes.
 
-xref:06_rl_automated_exploration.adoc[Previous: RL-Based Automated Exploration] | xref:08_future_directions.adoc[Next: Future Directions]
+xref:ML_Inference/Desktop_Applications/06_rl_automated_exploration.adoc[Previous: RL-Based Automated Exploration] | xref:ML_Inference/Desktop_Applications/08_future_directions.adoc[Next: Future Directions]

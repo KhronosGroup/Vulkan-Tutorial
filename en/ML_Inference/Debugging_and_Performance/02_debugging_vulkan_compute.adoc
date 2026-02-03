@@ -237,4 +237,4 @@ Debugging Vulkan ML is about being **Explicit**. You cannot assume the driver wi
 
 Next, we'll look at how to quantify "correctness" using mathematical verification against golden references.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_verifying_correctness.adoc[Next: Verifying Correctness]
+xref:ML_Inference/Debugging_and_Performance/01_introduction.adoc[Previous: Introduction] | xref:ML_Inference/Debugging_and_Performance/03_verifying_correctness.adoc[Next: Verifying Correctness]

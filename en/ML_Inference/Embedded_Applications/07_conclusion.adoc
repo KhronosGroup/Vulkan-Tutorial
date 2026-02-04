@@ -85,4 +85,4 @@ To continue your journey into high-performance embedded ML, the following resour
 
 You have the tools to move further into the ML space and work with the current state of the art.
 
-xref:ML_Inference/Embedded_Applications/06_scene_understanding_openxr.adoc[Previous: Scene Understanding in OpenXR]
+xref:ML_Inference/Embedded_Applications/06_scene_understanding_openxr.adoc[Previous: Scene Understanding in OpenXR] | xref:ML_Inference/glossary.adoc[Next: ML Inference Glossary]

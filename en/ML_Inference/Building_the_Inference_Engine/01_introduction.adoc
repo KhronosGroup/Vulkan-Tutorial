@@ -50,7 +50,7 @@ We touch on these in later sections, but our inference engine keeps things simpl
 
 Before continuing, you should be comfortable with:
 
-- Vulkan compute shaders (covered in the main tutorial's compute chapter)
+- Vulkan compute shaders (covered in the main tutorial's xref:11_Compute_shader.adoc[compute chapter])
 - Basic neural network concepts (covered in the ML Inference Pipeline section)
 - C++ programming, especially RAII and smart pointers
 

@@ -214,3 +214,4 @@
 *** xref:ML_Inference/Embedded_Applications/05_complete_example.adoc[Complete Example]
 *** xref:ML_Inference/Embedded_Applications/06_scene_understanding_openxr.adoc[Scene Understanding with OpenXR]
 *** xref:ML_Inference/Embedded_Applications/07_conclusion.adoc[Conclusion]
+** xref:ML_Inference/glossary.adoc[Glossary]

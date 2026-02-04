@@ -2,6 +2,11 @@
 
 = ML Inference Pipeline: Introduction
 
+[NOTE]
+====
+This chapter serves as a background "textbook" section that teaches Machine Learning concepts from first principles. It is meant to be a very dense and complete read. Students who are already familiar with Machine Learning may wish to skip to the next chapter: xref:ML_Inference/Third_Party_Libraries/01_introduction.adoc[Integrating Third-Party ML Libraries].
+====
+
 == Introduction
 
 You've completed the Vulkan tutorial. You can create graphics pipelines, manage memory, dispatch compute shaders. You understand how to make the GPU do what you want. Now you're looking at machine learning and wondering: how does this fit together? How do I take a trained neural network and actually run it on the GPU using Vulkan?

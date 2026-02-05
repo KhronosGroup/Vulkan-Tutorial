@@ -15,7 +15,7 @@ Compared to the original tutorial, this version of the tutorial is teaching up-t
 * Dynamic rendering instead of render passes
 * Timeline semaphores
 * link:https://shader-slang.org/[Slang] as the primary shading language
-* Modern C++ (20) with modules
+* Modern C++ (20)
 * link:https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp] with link:https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization[RAII]
 
 It also contains Vulkan usage clarifications, improved synchronization and new content.

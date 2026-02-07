@@ -1,0 +1,56 @@
+:pp: {plus}{plus}
+
+= Choosing the Right ML Compiler
+
+== Introduction
+
+There isn’t a single “best” ML compiler—there’s a best fit for your constraints. Optimize for inputs (ONNX, StableHLO, TFLite, NNEF), target platforms (desktop, mobile, embedded), required backends (Vulkan, Metal, CUDA), developer workflow, runtime footprint, and how much effort you’ll invest in tuning.
+
+== Start with the non‑negotiables
+
+Decide what you absolutely must have. If Vulkan is required across your platforms, your first candidates are xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE] and xref:ML_Inference/Third_Party_Libraries/13_apache_tvm.adoc[TVM]. If a tiny runtime and ahead‑of‑time packaging are essential, favor IREE or TVM’s AOT/CRT path. When you need device‑specific auto‑tuning for a particular phone or iGPU, TVM shines. If your training pipeline already speaks StableHLO/XLA, prefer exporting StableHLO and compiling with IREE for Vulkan; for non‑Vulkan targets, XLA stays in its lane. And if your team is standardized on Modular’s tools and their backends cover your hardware, MAX/Mojo can be the most comfortable fit.
+
+== A Simple Decision Flow
+
+[source]
+----
+Inputs: ONNX / StableHLO / TFLite / NNEF
+Targets: Vulkan / Metal / CUDA / CPU
+
+          ┌───────────────────────────────────────────────────────┐
+          │ Need Vulkan and small runtime?                        │
+          └───────────────┬───────────────────────────────────────┘
+                          Yes                         No
+                           │                           │
+                           ▼                           ▼
+                     Use IREE first              Prefer XLA/MAX/CPU
+                     (StableHLO→SPIR‑V)          backends as needed
+                           │
+                           │ Need device‑specific tuning? (mobile/iGPU)
+                           ├──────────► Yes: Consider TVM (Vulkan/OpenCL)
+                           │               with auto‑scheduler
+                           │
+                           └──────────► No: Ship IREE AOT
+----
+
+This flow gets you to an initial choice quickly. From there, build a proof‑of‑concept to validate.
+
+== Scenario guidance
+
+If you’re shipping Vulkan on desktop and Android and want a small, simple runtime, start with IREE. If your world is one phone or one iGPU where every millisecond matters, use TVM on Vulkan and tune. If your organization already exports StableHLO from TensorFlow/JAX, keep that export and compile with IREE for Vulkan. If you’re happily inside Modular’s ecosystem and your devices are supported, MAX/Mojo may be the least friction.
+
+== NNEF considerations
+
+If your source of truth is NNEF, convert to ONNX or StableHLO first. From StableHLO, use IREE to reach Vulkan; from ONNX, import into TVM (Relay) and target Vulkan. For non‑Vulkan targets, follow the native downstream (MAX/Metal, XLA/CUDA). Script the conversion and test on a tiny sample so surprises show up early.
+
+== Proof‑of‑Concept Checklist
+
+Use your real model on your real device:
+
+1) Compile once per candidate (IREE/TVM/MAX) with identical inputs.
+2) Run N warmup + M timed runs. Record latency (p50/p95), throughput, and memory.
+3) Verify correctness: compare outputs against a golden reference (ONNX Runtime/CPU).
+4) Inspect artifact sizes and runtime dependencies.
+5) Choose based on evidence, not marketing.
+
+xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[Previous: OpenXLA] | xref:ML_Inference/Vulkan_Compute_for_ML/01_introduction.adoc[Next: Vulkan Compute for ML]

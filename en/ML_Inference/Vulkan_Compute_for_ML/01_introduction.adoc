@@ -88,4 +88,4 @@ Each section builds on the previous ones, creating a complete picture of how to 
 
 Let's begin by reviewing Vulkan compute pipelines with an ML focus.
 
-xref:ML_Inference/Third_Party_Libraries/10_choosing_library.adoc[Previous: Choosing the Right Library] | xref:ML_Inference/Vulkan_Compute_for_ML/02_compute_pipeline_review.adoc[Next: Vulkan Compute Pipeline Review]
+xref:ML_Inference/Third_Party_Libraries/16_choosing_compiler.adoc[Previous: Choosing the Right ML Compiler] | xref:ML_Inference/Vulkan_Compute_for_ML/02_compute_pipeline_review.adoc[Next: Vulkan Compute Pipeline Review]

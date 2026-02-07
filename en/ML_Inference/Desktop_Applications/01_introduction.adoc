@@ -40,15 +40,17 @@ This section is organized into focused, practical chapters:
 
 Each chapter focuses on one practical topic, building incrementally from static images to real-time interactive applications to automated testing and intelligent exploration.
 
-== The Two-Path Approach
+== The Three-Path Approach
 
-Remember the dual-path teaching method from the introduction? It appears throughout these chapters:
+Remember the three-path teaching method from the introduction? It appears throughout these chapters:
 
 **Path 1 - ONNX Runtime** (the pragmatic path): Use ONNX Runtime for the neural network inference while handling preprocessing and visualization with Vulkan. This is what you'd actually do in production. ONNX Runtime gives you a battle-tested implementation of hundreds of operators, automatic optimization, and broad hardware support. Your Vulkan code focuses on what it does best: image processing and graphics.
 
 **Path 2 - Custom Vulkan** (the educational path): Implement the entire pipeline in Vulkan compute shaders, including the neural network layers. This path helps you understand what's happening under the hood and gives you appreciation for the complexity that ONNX Runtime handles automatically. It also demonstrates the techniques you'd use if you were implementing custom operations or integrating tightly with a rendering pipeline.
 
-In practice, most applications use a hybrid approach. You might use ONNX Runtime for the main network but implement custom preprocessing or post-processing in Vulkan for performance or integration reasons. Understanding both paths gives you the flexibility to make informed architectural decisions.
+**Path 3 - ML Compiler** (the compiler-driven path): Use an ML compiler (IREE, Apache TVM, OpenXLA, MAX/Mojo) to lower models into optimized kernels with a minimal runtime, often targeting Vulkan via SPIR‑V. This can deliver near hand‑written performance with better portability and a smaller runtime footprint than generic libraries—without requiring you to write shaders.
+
+In practice, most applications use a hybrid approach. You might use ONNX Runtime for the main network, compile select models with an ML compiler when it provides a better balance of performance and footprint, and still implement custom pre/post-processing in Vulkan for tight integration. Understanding all three paths gives you the flexibility to make informed architectural decisions.
 
 == Prerequisites
 
@@ -97,4 +99,4 @@ This is where the tutorial shifts from "how does this work" to "how do I build t
 
 Ready? Let's build something real.
 
-xref:ML_Inference/Building_the_Inference_Engine/06_putting_it_together.adoc[Previous: Complete MNIST Example] | xref:ML_Inference/Desktop_Applications/02_image_classification.adoc[Next: Image Classification Concepts]
+xref:ML_Inference/Building_the_Inference_Engine/07_putting_it_together.adoc[Previous: Complete MNIST Example] | xref:ML_Inference/Desktop_Applications/02_image_classification.adoc[Next: Image Classification Concepts]

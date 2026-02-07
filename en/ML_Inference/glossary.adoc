@@ -159,4 +159,23 @@ A technique where a pre-trained model (trained on a large dataset) is used as a 
 Weights::
 The learnable parameters of a neural network that determine the strength and direction of influence one neuron has on another.
 
-xref:ML_Inference/Embedded_Applications/07_conclusion.adoc[Previous: Conclusion: The Future of High-Performance ML]
+Intermediate Representation (IR)::
+An abstract program representation used by compilers between high‑level models and low‑level machine code or kernels. In ML, IRs make it possible to run common optimizations (fusion, layout transforms, quantization) before generating target‑specific code such as SPIR‑V or LLVM.
+
+MLIR (Multi‑Level Intermediate Representation)::
+A compiler infrastructure for building domain‑specific IRs and transformations. Projects like IREE use MLIR to represent and lower ML graphs toward backends such as Vulkan (via SPIR‑V), Metal, CUDA, or CPU.
+
+Dialect (MLIR)::
+In MLIR, a dialect is a collection of operations and types that model a particular domain or compilation stage. Examples relevant to this tutorial include StableHLO (portable ML graph ops), Linalg (linear algebra building blocks), TOSA (portable NN ops), and MHLO (an older dialect closely related to StableHLO). Compilers compose and transform between dialects on the way to target code such as SPIR‑V for Vulkan.
+
+StableHLO::
+A standardized ML IR (part of OpenXLA) that captures model graphs in a portable form. Many frameworks/tools can export to StableHLO, and downstream compilers (e.g., IREE or XLA) can consume it. See xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA].
+
+XLA (Accelerated Linear Algebra)::
+An ML compiler (within OpenXLA) commonly used by TensorFlow and JAX. XLA lowers StableHLO/HLO to optimized executables for CPUs/GPUs. For Vulkan targets in this tutorial, we use IREE rather than XLA directly. See xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA].
+
+OpenXLA::
+An umbrella project that includes StableHLO, XLA, IREE, and related tooling. It standardizes export formats (StableHLO) and provides compilers/runtimes that produce efficient artifacts for diverse backends.
+
+SPIR‑V::
+The portable binary intermediate language for Vulkan shaders and compute kernels. ML compilers like IREE emit SPIR‑V when targeting Vulkan so models execute via Vulkan compute pipelines.

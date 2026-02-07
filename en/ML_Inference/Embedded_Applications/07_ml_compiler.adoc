@@ -1,0 +1,22 @@
+:pp: {plus}{plus}
+
+= ML Compilers on Embedded Devices
+
+== Why ML Compilers for Embedded
+
+Embedded devices demand small footprints, predictable latency, and efficient use of limited memory and bandwidth. ML compilers can ahead‑of‑time compile your models into target‑specific kernels (often SPIR‑V for Vulkan), producing artifacts that are smaller and faster than generic interpreter runtimes.
+
+== Typical Flow
+
+1. Convert/export model to ONNX or StableHLO (or NNEF→ONNX/StableHLO via conversion).
+2. Compile for the device GPU using IREE or TVM targeting Vulkan.
+3. Package artifacts alongside a minimal runtime.
+4. Integrate command submission with your existing Vulkan queues.
+
+== Practical Tips
+
+- Prefer static shapes where possible; dynamic shapes can increase code size and reduce optimization opportunities.
+- Use INT8 quantization if supported; compilers can insert and fold quant/dequant for you.
+- Profile on‑device; embedded GPUs vary widely in capabilities and driver quality.
+
+xref:ML_Inference/Embedded_Applications/06_scene_understanding_openxr.adoc[Previous: Scene Understanding with OpenXR] | xref:ML_Inference/Embedded_Applications/08_nnef_example.adoc[Next: NNEF on Embedded: A Small Example]

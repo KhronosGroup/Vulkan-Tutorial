@@ -1,0 +1,49 @@
+:pp: {plus}{plus}
+
+= ML Compilers: Overview and When to Use Them
+
+== Introduction
+
+ML compilers take trained models and compile them into highly optimized, target‑specific executables or kernels. Instead of invoking a general‑purpose runtime to interpret graphs at run time, an ML compiler lowers the model through a series of IRs, performs aggressive graph and kernel optimizations, and emits code tuned for your hardware (GPU, CPU, DSP/NPU, or Vulkan/Metal/DirectX backends).
+
+This section introduces the ML Compiler path in our three‑path approach to inference:
+
+*Path 1: Third‑Party Runtimes* (ONNX Runtime, TensorFlow Lite, etc.) — fast to integrate, widely supported.
+
+*Path 2: Custom Vulkan* — educational and sometimes necessary for tight graphics integration.
+
+*Path 3: ML Compilers* — a middle ground that preserves a high‑level workflow while generating efficient, portable binaries or command streams, often with Vulkan/WebGPU/Metal backends.
+
+=== 60‑Second Primer: MLIR, StableHLO, XLA, and IREE
+
+- MLIR is a compiler infrastructure for building IRs and transformations. It organizes operations and types into “dialects.” Projects like IREE use MLIR to progressively lower ML graphs toward targets like Vulkan (via SPIR‑V). See xref:ML_Inference/glossary.adoc[Glossary].
+- StableHLO is a standardized ML IR (and an MLIR dialect). Treat it like a portable “assembly” for neural networks after export from frameworks.
+- XLA is a compiler (in the OpenXLA ecosystem) used by TensorFlow/JAX to lower StableHLO/HLO to CPUs/GPUs.
+- IREE is another OpenXLA project that compiles StableHLO/MLIR to deployable artifacts for targets like Vulkan (via SPIR‑V), Metal, CUDA, and CPU, with a small runtime.
+
+Common MLIR dialects you may see mentioned: StableHLO, TOSA, Linalg, and MHLO. Don’t worry about the details—the chapters show concrete commands and code; the Glossary has concise definitions.
+
+For Vulkan, the path you’ll use in this section is typically: StableHLO → IREE → SPIR‑V (Vulkan). If MLIR/StableHLO are unfamiliar, skim xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA] and see short definitions in xref:ML_Inference/glossary.adoc[Glossary].
+
+== What ML Compilers Do
+
+1. Import a model (ONNX, TFLite, StableHLO/XLA, TorchScript, etc.).
+2. Lower it into one or more intermediate representations (IRs).
+3. Apply graph‑level and kernel‑level optimizations (fusion, tiling, quantization, layout transforms).
+4. Generate code for the selected backend (SPIR‑V, LLVM, CUDA, Metal, etc.).
+5. Package artifacts and minimal runtime stubs for deployment.
+
+== Relation to Model Formats (including NNEF)
+
+Compilers frequently accept ONNX and/or StableHLO/XLA. Some also support NNEF (Neural Network Exchange Format) or provide conversion tools. In practice, ONNX and StableHLO are most common today; however, if your toolchain or vendor uses NNEF, an ML compiler can be a practical way to bring NNEF models onto Vulkan through SPIR‑V or via a WebGPU path.
+
+== When To Choose an ML Compiler
+
+- You want ahead‑of‑time (AOT) or just‑in‑time (JIT) specialization for your exact device.
+- You need performance beyond generic runtimes but don’t want to hand‑write shaders.
+- You require multiple backends (Vulkan, Metal, CUDA) from one source model.
+- You plan to use quantization or mixed precision and want compiler‑driven validation.
+
+In the following chapters, we’ll cover several options: IREE (OpenXLA project), Apache TVM, Modular’s MAX/Mojo toolchain, and OpenXLA’s XLA/StableHLO ecosystem — ending with a short “Choosing a Compiler” guide.
+
+xref:ML_Inference/Third_Party_Libraries/10_choosing_library.adoc[Previous: Choosing the Right Library] | xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[Next: IREE]

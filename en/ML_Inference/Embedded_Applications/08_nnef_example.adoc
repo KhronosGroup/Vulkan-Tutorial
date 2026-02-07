@@ -1,0 +1,29 @@
+:pp: {plus}{plus}
+
+= NNEF on Embedded: A Small Example
+
+== Goal
+
+Demonstrate an end‑to‑end flow where an NNEF model is converted and deployed to an embedded device with a Vulkan GPU via an ML compiler.
+
+== Steps Overview
+
+1. Start from an NNEF model (e.g., a small CNN for image classification).
+2. Convert NNEF→ONNX using a converter tool, or NNEF→StableHLO if available in your toolchain.
+3. Choose a compiler: IREE (Vulkan SPIR‑V) or TVM (Vulkan/OpenCL).
+4. Compile for your device GPU.
+5. Integrate the artifacts into your Vulkan app and dispatch.
+
+== Example: NNEF→ONNX→IREE (Vulkan)
+
+1. Convert the model to ONNX.
+2. Use `iree-compile --target=vulkan-*` to produce SPIR‑V backed modules.
+3. Load with IREE’s minimal runtime on device; bind input/output buffers from your Vulkan memory.
+4. Dispatch and verify outputs against a CPU reference to validate numerical correctness.
+
+== Notes
+
+- If your device favors WebGPU/Metal, compilers may target those paths as well; for Vulkan‑capable devices, SPIR‑V is preferred.
+- Validate with small test images and report latency/throughput; tune workgroup sizes and quantization pragmatically.
+
+xref:ML_Inference/Embedded_Applications/07_ml_compiler.adoc[Previous: ML Compilers on Embedded Devices] | xref:ML_Inference/Embedded_Applications/09_conclusion.adoc[Next: Conclusion]

@@ -541,4 +541,4 @@ For embedded systems, TensorFlow Lite (or TFLite Micro for microcontrollers) is 
 
 The key is to be systematic: eliminate options based on hard constraints, evaluate remaining options across relevant dimensions, build a proof of concept, and benchmark on target hardware before committing. With this approach, you'll choose the library that best fits your specific needs.
 
-xref:ML_Inference/Third_Party_Libraries/09_practical_examples.adoc[Previous: Practical Examples] | xref:ML_Inference/Vulkan_Compute_for_ML/01_introduction.adoc[Next: Vulkan Compute for ML]
+xref:ML_Inference/Third_Party_Libraries/09_practical_examples.adoc[Previous: Practical Examples] | xref:ML_Inference/Third_Party_Libraries/11_ML_Compilers.adoc[Next: ML Compilers]

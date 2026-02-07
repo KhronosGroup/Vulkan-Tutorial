@@ -220,4 +220,4 @@ We're not going to paste 500 lines of parsing code in the tutorial. The concepts
 
 Next chapter: putting everything together.
 
-xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Previous: Model Representation] | xref:ML_Inference/Building_the_Inference_Engine/06_putting_it_together.adoc[Next: Putting It Together]
+xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Previous: Model Representation] | xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[Next: NNEF Deep Dive]

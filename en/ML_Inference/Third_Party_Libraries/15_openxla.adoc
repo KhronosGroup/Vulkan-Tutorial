@@ -1,0 +1,31 @@
+:pp: {plus}{plus}
+
+= OpenXLA: XLA, StableHLO, and Where Vulkan Fits
+
+== Overview
+
+OpenXLA is the umbrella for XLA, StableHLO, and related projects (including IREE) that together form a modern, open ML compiler stack. StableHLO is the standardized IR that many frameworks can export to (JAX and TensorFlow most directly), and XLA provides mature lowering to CPU and GPU backends. Vulkan is typically reached via IREE, which consumes StableHLO/MLIR and emits SPIR‑V.
+
+Why this page exists: in the IREE chapter we mention StableHLO and XLA early. This short chapter gives you the mental model so those terms don’t feel like inside baseball.
+
+== How to think about it
+
+Treat StableHLO as the language your model speaks after export. From that common language, you choose a downstream compiler for your target. If you’re headed to Vulkan, you’ll use IREE to lower StableHLO to SPIR‑V and ship a small runtime that records Vulkan dispatches. If you’re targeting CUDA/ROCm/CPU, you’ll stay with XLA’s backends (or other downstreams) and never touch Vulkan.
+
+This separation is useful because training teams can standardize on producing StableHLO, while deployment teams choose the right downstream per platform without changing the training export.
+
+== A tiny practical workflow (Vulkan case)
+
+Export to StableHLO from training (or convert), compile with IREE for Vulkan using `--iree-hal-target-backends=vulkan`, then load the `.vmfb` in your app via IREE’s runtime. The full, step‑by‑step version is in xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE].
+
+If your team already uses XLA in training, the StableHLO/IREE path minimizes friction when targeting Vulkan.
+
+== Limitations and expectations
+
+OpenXLA/XLA themselves do not directly target Vulkan in the way you’d ship a Vulkan binary. Vulkan is a first‑class target of IREE. Keep the mental model clear: StableHLO → IREE → SPIR‑V (Vulkan) for this tutorial.
+
+== NNEF interop
+
+If your source is NNEF, convert to ONNX or StableHLO first. From StableHLO, follow the IREE flow to reach Vulkan. This keeps the pipeline simple and repeatable.
+
+xref:ML_Inference/Third_Party_Libraries/14_mojo_max.adoc[Previous: Mojo / MAX] | xref:ML_Inference/Third_Party_Libraries/16_choosing_compiler.adoc[Next: Choosing the Right Compiler]

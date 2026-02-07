@@ -68,17 +68,19 @@ The "Machine Learning Inference with Vulkan" series is designed to give you both
 
 Throughout this series, we encourage you to experiment with different models, try various optimization strategies, and adapt the techniques to your specific use cases. Machine learning inference is a rapidly evolving field, and understanding it at the Vulkan level gives you the flexibility to implement cutting-edge techniques—whether by integrating existing libraries or building custom solutions.
 
-=== The Dual-Path Teaching Approach
+=== The Three-Path Teaching Approach
 
-This tutorial takes a unique approach: wherever possible, we teach *both* methods of achieving ML inference goals.
+This tutorial takes a unique approach: wherever possible, we teach *three* methods of achieving ML inference goals.
 
 *Path 1: Third-Party Libraries* - The recommended approach for most production applications. You'll learn to integrate mature ML frameworks (TensorFlow Lite, ONNX Runtime, PyTorch Mobile, DirectML) with your Vulkan applications, bridging between ML inference and your rendering pipeline.
 
 *Path 2: Custom Vulkan Implementation* - Building your own inference engine using Vulkan compute shaders. This path provides deep insight into how ML inference actually works at the GPU level, helping you understand what happens "under the hood" of those third-party libraries.
 
-Why teach both? Because understanding the internals makes you better at using the libraries in production. When you know how convolutions map to GPU operations, how memory is managed, and where synchronization matters, you make better architectural decisions, debug issues more effectively, and optimize more intelligently. Someone familiar with the core concepts of the internals is better able to understand how to use the libraries in production.
+*Path 3: ML Compiler* - Use an ML compiler (IREE, Apache TVM, OpenXLA, MAX/Mojo) to lower models into optimized kernels for Vulkan and other backends. This strikes a balance between ease of integration and performance/portability.
 
-Throughout the tutorial, you'll get practice with both approaches. The chapters on fundamentals and Vulkan compute teach you to implement operations yourself. The third-party libraries chapter shows you how to use production-ready solutions. Later chapters often present both options, letting you choose based on your specific needs.
+Why teach all three? Because understanding the internals makes you better at using libraries and compilers in production. When you know how convolutions map to GPU operations, how memory is managed, and where synchronization matters, you make better architectural decisions, debug issues more effectively, and optimize more intelligently. Someone familiar with the core concepts of the internals is better able to understand how to use these tools in production.
+
+Throughout the tutorial, you'll get practice across the three approaches. The chapters on fundamentals and Vulkan compute teach you to implement operations yourself. The third-party libraries chapter shows production-ready solutions. The ML Compilers section introduces a compiler-driven path that often provides near hand-written performance with minimal runtime overhead.
 
 === How to Use This Tutorial
 

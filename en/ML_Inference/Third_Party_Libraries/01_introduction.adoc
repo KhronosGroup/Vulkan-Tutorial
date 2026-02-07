@@ -10,17 +10,19 @@ This might seem contradictory in a tutorial series about ML inference with Vulka
 
 This chapter explores how to integrate third-party ML inference libraries with your Vulkan applications. You'll learn how to bridge between ML frameworks and your Vulkan rendering pipeline, share GPU resources efficiently, synchronize between inference and rendering, and choose the right library for your specific needs.
 
-== The Dual-Path Philosophy
+== The Three-Path Philosophy
 
-This tutorial takes a unique teaching approach: throughout the series, wherever possible, we offer *two ways* to achieve your ML inference goals.
+This tutorial takes a unique teaching approach: throughout the series, wherever possible, we offer *three ways* to achieve your ML inference goals.
 
 *Path 1: Third-Party Libraries* - The recommended approach for most production applications. You'll learn to integrate mature, battle-tested ML frameworks with your Vulkan applications.
 
 *Path 2: Custom Vulkan Implementation* - Building your own inference engine using Vulkan compute shaders. This path teaches you how ML inference actually works at the GPU level.  In this tutorial, this is mostly an academic exercise, but understanding it is crucial for advanced optimization and debugging.  AI is a very sophisticated specialty in Computer Science, and this tutorial can only teach the basics.  If you find your needs require full inference in shader development, I've tried to make this a decent starting point; but by no means should you think this is a comprehensive guide to AI.
 
-Why teach both? Because someone familiar with the core concepts of the internals is better able to understand how to use the libraries in production. When you understand how convolutions map to GPU operations, how memory is managed, and where synchronization matters, you become better at debugging, optimization, decision making, and architecture design.
+*Path 3: ML Compiler* - Use an ML compiler to lower your model to optimized kernels and a minimal runtime (often targeting Vulkan via SPIR‑V). This provides performance and portability beyond generic runtimes without requiring you to hand‑code Vulkan shaders.
 
-The goal isn't to make you choose one path or the other—it's to give you the core understanding of both, so you can choose the right tool for each situation and be better able to apply that understanding.
+Why teach all three? Because someone familiar with the core concepts of the internals is better able to understand how to use the libraries and compilers in production. When you understand how convolutions map to GPU operations, how memory is managed, and where synchronization matters, you become better at debugging, optimization, decision making, and architecture design.
+
+The goal isn't to make you choose a single path—it’s to give you the core understanding of all three, so you can choose the right tool for each situation and apply that understanding effectively.
 
 == Why Use Third-Party Libraries?
 
@@ -83,6 +85,15 @@ This chapter provides comprehensive coverage of integrating third-party ML libra
 *xref:ML_Inference/Third_Party_Libraries/09_practical_examples.adoc[Practical Examples]* - Complete working examples for desktop, mobile, and real-time applications with source code, build instructions, and performance analysis.
 
 *xref:ML_Inference/Third_Party_Libraries/10_choosing_library.adoc[Choosing the Right Library]* - Systematic decision framework considering platform support, performance requirements, and integration complexity with recommendation matrices for different use cases.
+
+=== ML Compiler Chapters
+
+*xref:ML_Inference/Third_Party_Libraries/11_ML_Compilers.adoc[ML Compilers Overview]* - What ML compilers are and when to use them.
+*xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE]* - Vulkan‑centric compiler/runtime with AOT/JIT options and mobile/desktop focus.
+*xref:ML_Inference/Third_Party_Libraries/13_apache_tvm.adoc[Apache TVM]* - End‑to‑end compiler stack with auto‑tuning and Vulkan/OpenCL backends.
+*xref:ML_Inference/Third_Party_Libraries/14_mojo_max.adoc[Mojo / MAX]* - Modular’s compiler‑driven inference with developer‑friendly workflows.
+*xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA]* - XLA/StableHLO ecosystem with multiple backends, including Vulkan via IREE.
+*xref:ML_Inference/Third_Party_Libraries/16_choosing_compiler.adoc[Choosing the Right ML Compiler]* - Decision guidance across compilers and model formats (including NNEF considerations).
 
 == How to Navigate This Chapter
 

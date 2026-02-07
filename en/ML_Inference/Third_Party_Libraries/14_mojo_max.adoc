@@ -1,0 +1,55 @@
+:pp: {plus}{plus}
+
+= Mojo / MAX: Compiler‑Driven Inference from Modular
+
+== Overview
+
+Mojo (programming language) and MAX (inference engine) from Modular focus on giving developers a Python‑like experience with compiler‑level performance. The workflow emphasizes importing common model formats, performing graph and kernel optimizations, and deploying compact, production‑ready artifacts. The stack evolves rapidly; treat this chapter as practical guidance rather than a fixed spec.
+
+== Tools you’ll need
+
+Plan to validate in Python first. Have your training framework handy for export, an ONNX toolchain if you standardize on ONNX, and the MAX/Mojo SDK for your platform. Exact installers and CLIs change frequently—follow Modular’s current docs to get the right versions for your OS.
+
+== Positioning vs. IREE/TVM
+
+If you need a highly controllable open compiler with Vulkan AOT today, xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE] and xref:ML_Inference/Third_Party_Libraries/13_apache_tvm.adoc[TVM] are the most mature for Vulkan. MAX/Mojo prioritize developer ergonomics and an integrated experience. When they meet your platform needs, you get a very pleasant workflow with strong performance.
+
+== The idea before the commands
+
+MAX compiles your model once and gives you a packaged artifact plus a small runtime that you call from your app. Keep your preprocessing/post‑processing in Vulkan so you can share code with other paths in this tutorial. Treat MAX like a library boundary: tensors in, tensors out.
+
+== Practical workflow (high‑level)
+
+You’ll convert/import, compile/package, then run/deploy. Most teams standardize on ONNX as the handoff, with PyTorch→ONNX or TensorFlow→SavedModel/ONNX. Compile for your targets and ship the artifact with the runtime. In your app, call the packaged model like a library. Keep Vulkan preprocessing/post‑processing outside so the rest of your code stays the same across compilers.
+
+Because CLI and API details change over time, consult current documentation for exact invocations. The key architectural idea is consistent with the rest of this tutorial: compile once per model/config, ship a small runtime, and keep your Vulkan preprocessing/postprocessing separate for clarity and performance.
+
+== Target backends and Vulkan
+
+Backend coverage changes as releases land. On desktop, expect strong CPU and vendor GPU backends (CUDA/Metal). Vulkan support may arrive indirectly (SPIR‑V or WebGPU paths) depending on platform and release—verify on your target hardware. On mobile/embedded, double‑check supported backends and keep an eye on footprint.
+
+If Vulkan availability is a hard requirement and you need to ship now, prefer IREE/TVM. If MAX’s supported backends meet your hardware, it can be the most comfortable path for teams that value a cohesive toolchain.
+
+== Integration patterns
+
+Regardless of compiler choice, the integration pattern with your Vulkan app is the same:
+
+1) Preprocess in Vulkan: resize/normalize into a tensor buffer to avoid CPU overhead.
+2) Invoke the compiled model via the engine runtime.
+3) Post‑process in Vulkan/CPU and present.
+
+This keeps copies to a minimum and lets you overlap work using async compute.
+
+== Android and embedded notes
+
+Cross‑compile the runtime for your ABI, ship the packaged model with your assets, and measure on‑device. If you need duty‑cycle control for thermals, apply the same framing used in the Embedded chapters: run inference intermittently and use Vulkan to interpolate between results when visual continuity matters.
+
+== Troubleshooting
+
+If a model fails to import, simplify the graph at export, verify shapes, and try an alternate interchange (ONNX vs SavedModel). If runtime outputs look off, compare against a golden reference (CPU) and fix the first divergent layer before you chase performance.
+
+== NNEF Interop
+
+Use NNEF→ONNX conversion as the first step. Once in ONNX, follow the standard compiler import path for MAX/Mojo.
+
+xref:ML_Inference/Third_Party_Libraries/13_apache_tvm.adoc[Previous: Apache TVM] | xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[Next: OpenXLA]

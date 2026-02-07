@@ -1,0 +1,175 @@
+:pp: {plus}{plus}
+
+= NNEF Deep Dive
+
+NNEF (Neural Network Exchange Format) is a Khronos standard for sharing trained neural network models between tools, compilers, and runtimes. Let’s slow down and build the right mental model before touching any commands.
+
+== Tools you’ll need (context, not a shopping list)
+
+You don’t need a special SDK to learn this chapter. A text editor to open the graph file, your C++ toolchain and Vulkan SDK for the engine, and whatever you already use to run a “golden” reference (ONNX Runtime, PyTorch, or a small Python script) are enough. If you have an official NNEF parser handy, great—but we’ll design our loader so it’s just normal file I/O and string parsing feeding your own internal IR. The point isn’t to memorize a format; it’s to think like an engine author who can map model intent onto GPU work.
+
+== Why NNEF here?
+
+This chapter lives in the “Building the Inference Engine” track because NNEF is, first and foremost, a model format. That means we care about the language that describes a network—the graph structure, the operation attributes that define behavior, the tensors that carry data, and the files that hold weights. Engine authors need to read that language and map it onto their compute world (for us: Vulkan). Compiler users treat NNEF as one of the on‑ramps into a lowering pipeline. We’ll do both: learn to read it like an engine, and understand where it fits when a compiler does the heavy lifting for you.
+
+== The idea before the details
+
+Think of NNEF as a contract between whoever produced the model and whoever will run it. The contract spells out three things. First, the topology: which operations are present and how tensors connect them. Second, the semantics: for each operation, the attributes that make it behave a certain way—kernel sizes, strides, padding rules, activation kinds, normalization epsilons, and so on. Third, the data: every tensor’s dtype and shape, and if the model is quantized, the calibration information you’ll need to interpret integer values as real numbers. Once you can read that contract, the rest is bookkeeping and careful mapping to GPU buffers and kernels.
+
+We’ll lean heavily on a simple mental loop you can reuse everywhere: read → normalize → schedule.
+
+- Read: parse the graph and weights into a small internal IR (nodes, edges, tensors, attributes).
+- Normalize: pick one memory layout for activations inside your engine (e.g., NCHW), insert transposes once at the boundary if necessary, and make shapes explicit.
+- Schedule: plan buffers, bind descriptors, and decide dispatch sizes per operation.
+
+== What’s actually on disk
+
+In practice, you’ll receive NNEF as a small directory or a single archive. Inside there’s a human‑readable graph file (often named something like `graph.nnef`) and a set of binary files holding tensors for weights and constants. The split is intentional: keep the structure easy to review and diff; keep the numbers efficient to load. Treat this package as read‑only and deterministic—your loader should be able to parse it the same way, every time, without surprises.
+
+Two helpful consequences come from that design. You can open the graph in a text editor and understand the network without specialized tooling, which makes debugging far less mysterious. And you can stream large tensors to device‑local memory without first materializing everything in one giant CPU buffer.
+
+If you do look inside the graph file, don’t try to “learn a language.” Instead, keep asking three practical questions as you read a layer’s entry: what comes in (shape, dtype, layout), what constant parameters make it behave (kernel, stride, padding, epsilon, axis), and what shape must come out? That’s enough to drive both correctness and the Vulkan work you’ll set up later.
+
+== Reading the graph like an engine author
+
+When you build a loader, walk the model in three passes—even if you implement them together. Start with topology: compute a topological order over the DAG so you know which ops can run when their inputs are ready. Move to semantics: for each op, collect the attributes that will become constants in your shaders or specialization constants in your pipelines. Finish with tensors: confirm every tensor has a dtype and a shape, and write down the layout convention you’re using at the boundary (NCHW, NHWC, or something domain‑specific). The number one bug you’ll avoid is ambiguity about layout. Pick one internal layout and normalize to it at load time if you must; then keep it consistent for the whole graph.
+
+Here is a tiny internal IR you can start with. Keep it boring and explicit:
+
+[source]
+----
+// Not production code—just a minimal IR to guide your loader’s design.
+enum class DType { f32, f16, i8, i32 };
+
+struct Shape { int n=1, c=1, h=1, w=1; }; // choose one canonical layout internally
+
+struct TensorDesc {
+  std::string name;
+  DType dtype;
+  Shape shape;  // in your canonical layout
+  bool is_weight = false;
+  std::string weight_file; // if is_weight
+};
+
+struct Attrs {
+  // common conv/pool attrs; add more as needed
+  int kh=1, kw=1, sh=1, sw=1; // kernel & stride
+  int pad_top=0, pad_bottom=0, pad_left=0, pad_right=0;
+  // quantization (optional)
+  bool per_channel = false;
+  float scale = 1.0f; // per-tensor
+  std::vector<float> scales; // per-channel
+  int zero_point = 0;
+};
+
+struct Node {
+  std::string op; // "conv", "relu", "maxpool", ...
+  std::vector<std::string> inputs;  // tensor names
+  std::vector<std::string> outputs; // tensor names
+  Attrs attrs;
+};
+
+struct Graph {
+  std::vector<TensorDesc> tensors; // includes IO and weights/constants
+  std::vector<Node> nodes;         // in topological order
+};
+----
+
+Your NNEF reader fills this IR. Downstream, your Vulkan code doesn’t care that it came from NNEF—the whole point is to decouple “parse the model” from “execute the model.”
+
+== Shapes, layout, and the cost of being vague
+
+Axis order is where good intentions go to die. Camera and vision tooling love NHWC. Many hand‑rolled compute pipelines prefer NCHW because it makes tiling and vectorization straightforward. NNEF lets you be explicit, which is a gift—use it. If a model arrives in NHWC and you want NCHW internally, insert a transpose once near the input and keep the rest of the graph NCHW. Don’t try to be clever at every layer boundary. Consistency trumps small, local wins you might get by flipping layouts back and forth.
+
+For convolutions and pools, write the shape math on paper and keep it next to your code. In NCHW, with kernel `(kh, kw)`, stride `(sh, sw)`, and explicit padding, the output height/width are:
+
+[source]
+----
+out_h = floor((in_h + pad_top + pad_bottom - kh) / sh) + 1
+out_w = floor((in_w + pad_left + pad_right - kw) / sw) + 1
+----
+
+The output channel count is the filter count; the batch `n` stays the same. It’s mundane, but being explicit here prevents a week of “why does my feature map drift by one pixel every layer?”
+
+== Weights and memory planning
+
+Weights come as separate binary blobs. Your job is simple but important: verify their declared shapes and dtypes match the graph, upload them to device‑local memory once during initialization, and then plan your activation buffers so you don’t waste memory between layers. A tiny liveness analysis over the graph tells you when a buffer is no longer needed and can be reused by a later layer. On mobile and embedded targets, this is the difference between fitting comfortably and paging yourself into a stutter.
+
+You don’t need a full compiler to plan memory. Traverse nodes in order; record for each tensor how many remaining consumers it has. When it hits zero, its buffer can be recycled. Keep a small free‑list keyed by size class so you can reuse blocks without thrashing the allocator.
+
+== Quantization you’ll actually meet
+
+Quantized models are common, and NNEF carries the information you need to run them. You’ll see integer dtypes like `int8` for activations or weights, plus calibration data: scales and zero‑points. Sometimes a single scale covers a whole tensor (per‑tensor). Sometimes each output channel of a convolution gets its own scale (per‑channel). Your loader doesn’t have to do math; it has to preserve the metadata so your kernels can do the right thing at the right time. Multiply by the correct scale, apply clamping rules precisely, and be crystal‑clear about which axis “channel” refers to. Get those three right and quantized pipelines behave predictably.
+
+Dequant and requant are just carefully placed multiplies and adds. If `x_q` is an `int8` value produced assuming scale `Sx` and zero‑point `Zx`, then the real value is approximately `(x_q - Zx) * Sx`. When a kernel accumulates into `int32`, you apply the combined scales to land back in the next tensor’s quantization parameters, then clamp to `[-128, 127]` (or the relevant range). With per‑channel weight scales, the only real change is indexing into the right scale for each output channel of the convolution.
+
+== A tiny walk‑through (Conv → ReLU → MaxPool)
+
+Let’s narrate a simple path through the engine. The input is an image tensor `N x H x W x C_in` if you chose NHWC at the boundary. Convolution reads its attributes—kernel size, stride, padding—and from those you can compute the output shape deterministically. You bind the input image and the weight buffer, and write to a preplanned activation buffer. If the model is quantized, you apply the scale math in the kernel as required. ReLU is shape‑preserving and often fuseable; keep it separate at first for clarity. MaxPool then slides over the result with its own window and stride rules, producing another tensor whose shape is again fully determined by attributes. At this point, the first activation may be dead; reuse its memory for the pool output. Do this exercise on paper a couple of times. The patterns will stick.
+
+Here is what the Vulkan binding might look like in a first pass. Keep it simple: host copies at the API boundary, one descriptor set per op family, and push constants for the few integers each kernel needs. Don’t optimize before it works.
+
+[source]
+----
+// Pseudocode: recording a conv dispatch using pre-created pipeline/layout
+void record_conv(CommandBuffer& cb,
+                 const Tensor& in,
+                 const Tensor& weights,
+                 const Tensor& bias,
+                 Tensor& out,
+                 const Attrs& a) {
+  cb.bindPipeline(conv_pipeline);
+  cb.bindDescriptorSet(conv_ds_layout,
+    {
+      in.storage_buffer_descriptor(),
+      weights.storage_buffer_descriptor(),
+      bias.storage_buffer_descriptor(),
+      out.storage_buffer_descriptor()
+    });
+  struct PC { int in_h, in_w, in_c; int out_h, out_w, out_c; int kh, kw, sh, sw; int pad_t, pad_l; };
+  PC pc{in.h, in.w, in.c, out.h, out.w, out.c, a.kh, a.kw, a.sh, a.sw, a.pad_top, a.pad_left};
+  cb.pushConstants(pc);
+  // one thread per output element (or tile)—pick a mapping and stick to it
+  uint32_t gx = (out.w + 7) / 8; // example workgroup tiling
+  uint32_t gy = (out.h + 7) / 8;
+  uint32_t gz = out.c;          // or tile channels too
+  cb.dispatch(gx, gy, gz);
+}
+----
+
+== Validating correctness without getting clever
+
+Before you chase performance, prove you’re correct. The quickest way is to compare against a known‑good runtime. Convert the NNEF to ONNX if that’s the easiest thing to run on your machine, feed identical inputs to both paths, and compute a simple error metric like mean absolute error. With quantized models, allow small tolerances and, when things differ, bisect layer‑by‑layer. Nine times out of ten, you’ll find a layout mismatch or a missing scale application. This “golden comparison” harness pays for itself the first time it saves you a day of guesswork.
+
+If you prefer to keep the harness in C++, you can still drive a second path for comparison. For example, compile a CPU reference op-by-op (naive loops in fp32) and compare outputs tensor-by-tensor. It’s not fast—but it’s transparent, and it will tell you exactly which op went wrong.
+
+== How NNEF meets compilers
+
+Sometimes the best engine is a small loader wrapped around a compiler’s output. If you’re targeting Vulkan, the path often looks like this: keep your source of truth in the training framework or NNEF, convert to ONNX or StableHLO when the compiler prefers those dialects, then let IREE or TVM lower to SPIR‑V and hand you an artifact to load plus a tiny runtime API. You still validate the same way—with golden inputs and tolerances—but you spend more of your time integrating than authoring kernels. For many products, that’s the right call.
+
+If you go that route, your NNEF work still matters. The loader and graph understanding you built here are what let you compare compiler output to intent, verify shapes, and keep numerics honest.
+
+== Pitfalls you can avoid
+
+Implicit layout assumptions are the number one trap—write the convention down once, enforce it, and don’t drift. Silent dtype promotions are another: if you expect `fp16` and a tool quietly upgraded you to `fp32`, you’ll feel it in both performance and numerics. Padding rules are a magnet for off‑by‑one errors, so decide on a convention (TensorFlow‑style SAME/VALID or fully explicit sides) and be consistent. And for quantization, double‑check that per‑channel scales line up with the output channel axis of the producing op, not just “the dimension that happened to be the same length.”
+
+Another subtle footgun is broadcasting semantics in elementwise ops (add, mul). Be explicit about which axes are broadcast and how they align with your internal layout. Write the rules once and reuse them.
+
+== If you’re building the loader today
+
+Start tiny. Write a reader that opens the graph, lists the ops with their attributes, infers each output shape, and verifies every weight tensor matches what the graph declares. Stop there. Only when that feels boring should you wire up Vulkan: allocate persistent buffers, stream weights once to device‑local memory, and run a single conv‑relu‑pool chain. Keep your golden comparison next to that code and run it after every change.
+
+Here’s a bring‑up path that works well in practice:
+
+1. Parse and print: load the graph, print nodes in topo order with shapes/attrs, and assert weight shapes match. Stop.
+2. CPU truth: implement a minimal fp32 Conv+ReLU+Pool on CPU; feed fixed inputs; save outputs.
+3. Vulkan first light: implement the same trio in compute; copy in/out on host; compare to CPU truth with a small tolerance.
+4. Reuse memory: add the liveness‑based buffer reuse and prove your outputs don’t change.
+5. Add one op at a time: batch norm, matmul, add/mul (with broadcasting), softmax—each one lands with a new test vector.
+6. Only then: chase bandwidth with better tiling, fp16, specialization constants, and async compute overlap with your renderer.
+
+== Where to go next
+
+If you want to see this come alive in a product‑like context, jump ahead to the embedded applications section where we drive a small NNEF model end‑to‑end. If you’re eager to connect this to the broader system design, the next chapter—Putting It Together—shows how the loader and runtime fit into startup, frame orchestration, and validation in CI.
+
+xref:ML_Inference/Building_the_Inference_Engine/05_model_formats_as_input.adoc[Previous: Model Formats as Input] | xref:ML_Inference/Building_the_Inference_Engine/07_putting_it_together.adoc[Next: Putting It Together]

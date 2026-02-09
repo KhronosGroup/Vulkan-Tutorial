@@ -501,7 +501,7 @@ class VulkanApplication
 		    .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
 		    .apiVersion         = VK_API_VERSION_1_3};
 
-		auto extensions = getRequiredExtensions();
+		auto extensions = getRequiredInstanceExtensions();
 
 		vk::InstanceCreateInfo createInfo{
 		    .pApplicationInfo        = &appInfo,
@@ -1644,7 +1644,7 @@ class VulkanApplication
 		    std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
 	}
 
-	[[nodiscard]] std::vector<const char *> getRequiredExtensions() const
+	[[nodiscard]] std::vector<const char *> getRequiredInstanceExtensions() const
 	{
 		std::vector<const char *> extensions;
 

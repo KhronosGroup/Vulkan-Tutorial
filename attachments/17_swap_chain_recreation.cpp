@@ -164,36 +164,38 @@ class HelloTriangleApplication
 		}
 
 		// Check if the required layers are supported by the Vulkan implementation.
-		auto layerProperties = context.enumerateInstanceLayerProperties();
-		for (auto const &requiredLayer : requiredLayers)
+		auto layerProperties    = context.enumerateInstanceLayerProperties();
+		auto unsupportedLayerIt = std::ranges::find_if(requiredLayers,
+		                                               [&layerProperties](auto const &requiredLayer) {
+			                                               return std::ranges::none_of(layerProperties,
+			                                                                           [requiredLayer](auto const &layerProperty) { return strcmp(layerProperty.layerName, requiredLayer) == 0; });
+		                                               });
+		if (unsupportedLayerIt != requiredLayers.end())
 		{
-			if (std::ranges::none_of(layerProperties,
-			                         [requiredLayer](auto const &layerProperty) { return strcmp(layerProperty.layerName, requiredLayer) == 0; }))
-			{
-				throw std::runtime_error("Required layer not supported: " + std::string(requiredLayer));
-			}
+			throw std::runtime_error("Required layer not supported: " + std::string(*unsupportedLayerIt));
 		}
 
 		// Get the required extensions.
-		auto requiredExtensions = getRequiredExtensions();
+		auto requiredExtensions = getRequiredInstanceExtensions();
 
 		// Check if the required extensions are supported by the Vulkan implementation.
 		auto extensionProperties = context.enumerateInstanceExtensionProperties();
-		for (auto const &requiredExtension : requiredExtensions)
+		auto unsupportedPropertyIt =
+		    std::ranges::find_if(requiredExtensions,
+		                         [&extensionProperties](auto const &requiredExtension) {
+			                         return std::ranges::none_of(extensionProperties,
+			                                                     [requiredExtension](auto const &extensionProperty) { return strcmp(extensionProperty.extensionName, requiredExtension) == 0; });
+		                         });
+		if (unsupportedPropertyIt != requiredExtensions.end())
 		{
-			if (std::ranges::none_of(extensionProperties,
-			                         [requiredExtension](auto const &extensionProperty) { return strcmp(extensionProperty.extensionName, requiredExtension) == 0; }))
-			{
-				throw std::runtime_error("Required extension not supported: " + std::string(requiredExtension));
-			}
+			throw std::runtime_error("Required extension not supported: " + std::string(*unsupportedPropertyIt));
 		}
 
-		vk::InstanceCreateInfo createInfo{
-		    .pApplicationInfo        = &appInfo,
-		    .enabledLayerCount       = static_cast<uint32_t>(requiredLayers.size()),
-		    .ppEnabledLayerNames     = requiredLayers.data(),
-		    .enabledExtensionCount   = static_cast<uint32_t>(requiredExtensions.size()),
-		    .ppEnabledExtensionNames = requiredExtensions.data()};
+		vk::InstanceCreateInfo createInfo{.pApplicationInfo        = &appInfo,
+		                                  .enabledLayerCount       = static_cast<uint32_t>(requiredLayers.size()),
+		                                  .ppEnabledLayerNames     = requiredLayers.data(),
+		                                  .enabledExtensionCount   = static_cast<uint32_t>(requiredExtensions.size()),
+		                                  .ppEnabledExtensionNames = requiredExtensions.data()};
 		instance = vk::raii::Instance(context, createInfo);
 	}
 
@@ -202,12 +204,14 @@ class HelloTriangleApplication
 		if (!enableValidationLayers)
 			return;
 
-		vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
-		vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
-		vk::DebugUtilsMessengerCreateInfoEXT  debugUtilsMessengerCreateInfoEXT{
-		     .messageSeverity = severityFlags,
-		     .messageType     = messageTypeFlags,
-		     .pfnUserCallback = &debugCallback};
+		vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+		                                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+		                                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
+		vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(
+            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
+		vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{.messageSeverity = severityFlags,
+		                                                                      .messageType     = messageTypeFlags,
+		                                                                      .pfnUserCallback = &debugCallback};
 		debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
 	}
 
@@ -612,7 +616,7 @@ class HelloTriangleApplication
 		    std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
 	}
 
-	std::vector<const char *> getRequiredExtensions()
+	std::vector<const char *> getRequiredInstanceExtensions()
 	{
 		uint32_t glfwExtensionCount = 0;
 		auto     glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);

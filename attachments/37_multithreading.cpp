@@ -232,7 +232,7 @@ class MultithreadedApplication
 	    vk::KHRSwapchainExtensionName};
 
 	// Helper functions
-	[[nodiscard]] static std::vector<const char *> getRequiredExtensions()
+	[[nodiscard]] static std::vector<const char *> getRequiredInstanceExtensions()
 	{
 		uint32_t    glfwExtensionCount = 0;
 		auto        glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -566,7 +566,7 @@ class MultithreadedApplication
 		                                      .pEngineName        = "No Engine",
 		                                      .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
 		                                      .apiVersion         = vk::ApiVersion14};
-		auto                          extensions = getRequiredExtensions();
+		auto                          extensions = getRequiredInstanceExtensions();
 		vk::InstanceCreateInfo        createInfo{
 		           .pApplicationInfo        = &appInfo,
 		           .enabledLayerCount       = 0,

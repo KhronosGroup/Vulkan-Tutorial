@@ -14,6 +14,8 @@ Treat StableHLO as the language your model speaks after export. From that common
 
 This separation is useful because training teams can standardize on producing StableHLO, while deployment teams choose the right downstream per platform without changing the training export.
 
+Practical note: today, StableHLO export is most straightforward from JAX and TensorFlow; other ecosystems may require a conversion hop. When your end target is Vulkan, prefer StableHLO → IREE so you stay on a well‑supported path in this tutorial.
+
 == A tiny practical workflow (Vulkan case)
 
 Export to StableHLO from training (or convert), compile with IREE for Vulkan using `--iree-hal-target-backends=vulkan`, then load the `.vmfb` in your app via IREE’s runtime. The full, step‑by‑step version is in xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE].
@@ -23,6 +25,26 @@ If your team already uses XLA in training, the StableHLO/IREE path minimizes fri
 == Limitations and expectations
 
 OpenXLA/XLA themselves do not directly target Vulkan in the way you’d ship a Vulkan binary. Vulkan is a first‑class target of IREE. Keep the mental model clear: StableHLO → IREE → SPIR‑V (Vulkan) for this tutorial.
+
+== Incorporating IREE output into a Vulkan app
+
+IREE compiles your model to an artifact (commonly a `.vmfb` bytecode or ahead‑of‑time compiled module) and executes it via the IREE runtime. In a Vulkan application, this looks and feels just like using any other model runtime (e.g., ONNX Runtime or TFLite):
+
+- Initialize the runtime and select the Vulkan HAL backend
+- Load the compiled artifact
+- Create input/output buffers (usually via runtime helpers)
+- Invoke functions by name and read back results
+
+In other words, you embed IREE’s runtime library alongside your app, and let it own the SPIR‑V modules, descriptor sets, and dispatch scheduling.
+
+=== “Can I integrate the compiled model without IREE’s runtime?”
+
+Conceptually, IREE lowers to SPIR‑V kernels plus host‑side scheduling logic; however, the artifact and the runtime share an ABI that isn’t exported as “drop‑in” SPIR‑V + standalone host code. Extracting kernels and re‑implementing the host scheduling inside your own Vulkan engine is theoretically possible but not a supported/stable path today—you’d be relying on internal details and would need to replicate significant parts of the runtime (descriptor management, push constants, synchronization, pipelines, etc.).
+
+Practical guidance for this tutorial:
+
+- Treat IREE as a runtime you link and call, the same way you would link ONNX Runtime or TFLite. The xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE chapter] shows the minimal embedding.
+- If your app needs tighter interop (e.g., sharing a VkDevice or memory), look for the runtime’s supported hooks rather than trying to bypass it entirely.
 
 == NNEF interop
 

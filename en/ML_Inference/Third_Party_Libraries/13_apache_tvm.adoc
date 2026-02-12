@@ -134,6 +134,12 @@ The easiest path is to let TVM own its Vulkan context for the compiled module an
 
 If you need tighter interop (e.g., wrap an existing `VkDevice` or share memory), be aware that the Vulkan runtime integration lives inside TVM. Direct handle‑level interop is limited to what TVM exposes; most apps start with simple copies and then optimize data movement once the pipeline is correct.
 
+=== About the runtime (and avoiding it)
+
+TVM produces a compiled artifact (e.g., a shared library or AOT module) that is executed via TVM’s runtime (graph executor or AOT/CRT). In a Vulkan application, this is analogous to using ONNX Runtime or TFLite: you link TVM’s runtime, load the artifact, set inputs, run, and fetch outputs.
+
+While TVM’s Vulkan backend ultimately generates SPIR‑V, it does not currently export a clean, stable “standalone SPIR‑V + ready‑to‑drop host scheduling code” interface. Attempting to peel out kernels and re‑implement the host side within your own engine means re‑creating ABI details the runtime manages (descriptor set layouts, buffer binding order, pipeline lifetimes, synchronization, etc.). Practically, plan to embed the TVM runtime just like any other model runtime.
+
 == Android and Embedded Notes
 
 Vulkan makes TVM portable across vendors on Android. Cross‑compile the runtime for your ABI, deploy the compiled module, and use the auto‑scheduler with an on‑device runner (or RPC) to get tuned schedules. For very small devices, investigate the AOT + CRT path to minimize footprint.

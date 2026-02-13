@@ -1,5 +1,7 @@
 #include "vulkan_mnist_inference.h"
+#include "nnef_loader.hpp"
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -15,7 +17,11 @@ VulkanMNISTInference::~VulkanMNISTInference() {
 
 bool VulkanMNISTInference::loadWeights(const std::string& path) {
     try {
-        weights_ = WeightLoader::load(path);
+        if (std::filesystem::is_directory(path) || path.ends_with(".nnef") || std::filesystem::exists(path + "/graph.nnef")) {
+            weights_ = NNEFLoader::load(path);
+        } else {
+            weights_ = WeightLoader::load(path);
+        }
         createShaderModules();
         createBuffers();
         createPipelines();

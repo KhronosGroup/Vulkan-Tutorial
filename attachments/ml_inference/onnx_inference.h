@@ -5,11 +5,7 @@
 #include <vector>
 #include <memory>
 #include <array>
-
-struct PreprocessedImage {
-    std::vector<float> data;
-    std::vector<int64_t> shape;
-};
+#include "common/preprocessing/vulkan_preprocessing.h"
 
 class ONNXClassifier {
 public:

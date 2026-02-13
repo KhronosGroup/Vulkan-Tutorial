@@ -11,6 +11,7 @@ struct PushConstants {
 [[vk::push_constant]] PushConstants pc;
 
 [[vk::binding(0, 0)]] RWStructuredBuffer<float> outputImage; // RGB image
+[[vk::binding(1, 0)]] StructuredBuffer<float> heatmap;      // AI Heatmap (normalized 0-1)
 
 // Simple random function
 float rand(uint2 pixel, uint frame, uint sample) {
@@ -24,7 +25,17 @@ void main(uint3 id : SV_DispatchThreadID) {
     float3 color = float3(0, 0, 0);
     float2 uv = float2(id.xy) / float2(pc.width, pc.height);
 
-    for (uint i = 0; i < pc.samplesPerPixel; i++) {
+    // AI-Guided Adaptive Sampling
+    uint totalSamples = pc.samplesPerPixel;
+    if (pc.samplesPerPixel > 1) {
+        // We use the AI heatmap to determine how many of the requested additional samples to actually trace.
+        // heatmap is 256x256, so we map coordinates.
+        uint2 hCoord = uint2(id.x * 256 / pc.width, id.y * 256 / pc.height);
+        float hWeight = heatmap[hCoord.y * 256 + hCoord.x];
+        totalSamples = max(1u, uint(float(pc.samplesPerPixel) * clamp(hWeight, 0.05, 1.0)));
+    }
+
+    for (uint i = 0; i < totalSamples; i++) {
         float2 jitter = float2(rand(id.xy, pc.frameCount, i), rand(id.xy, pc.frameCount, i + 100)) - 0.5;
         float2 p = (float2(id.xy) + jitter) / float2(pc.width, pc.height) * 2.0 - 1.0;
         p.x *= float(pc.width) / float(pc.height);
@@ -53,7 +64,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         color += sampleColor;
     }
 
-    color /= float(pc.samplesPerPixel);
+    color /= float(totalSamples);
 
     // Write to planar RGB output (NCHW-like or interleaved? Let's use interleaved for simplicity in output)
     uint idx = (id.y * pc.width + id.x) * 3;

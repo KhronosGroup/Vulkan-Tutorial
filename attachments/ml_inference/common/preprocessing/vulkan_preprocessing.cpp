@@ -1,5 +1,4 @@
 #include "vulkan_preprocessing.h"
-#include "onnx_inference.h"
 #include <iostream>
 #include <fstream>
 #include <chrono>
@@ -102,7 +101,7 @@ void VulkanPreprocessor::createPipelines() {
         auto shaderModule = loadShader("shaders/image_resize.comp.spv");
 
         struct ResizePushConstants {
-            uint32_t srcWidth, srcHeight, dstWidth, dstHeight, isBgr;
+            uint32_t srcWidth, srcHeight, dstWidth, dstHeight, isBgr, srcStep;
         };
 
         vk::PushConstantRange pushConstantRange{
@@ -276,36 +275,46 @@ void VulkanPreprocessor::createDescriptorSets() {
 }
 
 PreprocessedImage VulkanPreprocessor::preprocess(const unsigned char* imageData,
-                                                  int width, int height, bool isBgr) {
-    auto startTime = std::chrono::high_resolution_clock::now();
+                                                  int width, int height, size_t step, bool isBgr) {
+    // auto startTime = std::chrono::high_resolution_clock::now();
 
-    uploadImage(imageData, width, height);
-    dispatchResize(width, height, isBgr);
+    uploadImage(imageData, width, height, step);
+    dispatchResize(width, height, step, isBgr);
     dispatchNormalize();
     auto result = downloadResult();
 
-    auto endTime = std::chrono::high_resolution_clock::now();
+    // auto endTime = std::chrono::high_resolution_clock::now();
+    /*
     float preprocessTime = std::chrono::duration<float, std::milli>(
         endTime - startTime).count();
 
-    std::cout << "Vulkan preprocessing: " << preprocessTime << " ms\n";
+    // std::cout << "Vulkan preprocessing: " << preprocessTime << " ms\n";
+    */
 
     return result;
 }
 
-void VulkanPreprocessor::uploadImage(const unsigned char* imageData, int width, int height) {
-    size_t imageSize = width * height * 3; // RGB or BGR
+void VulkanPreprocessor::uploadImage(const unsigned char* imageData, int width, int height, size_t step) {
+    size_t rowSize = width * 3;
+    size_t imageSize = rowSize * height;
 
-    // Map staging buffer and copy data directly (uint8)
+    // Map staging buffer and copy data
     void* mapped = stagingMemory.mapMemory(0, imageSize);
-    std::memcpy(mapped, imageData, imageSize);
+    if (step == rowSize) {
+        std::memcpy(mapped, imageData, imageSize);
+    } else {
+        // Handle row padding (stride)
+        for (int i = 0; i < height; ++i) {
+            std::memcpy((uint8_t*)mapped + i * rowSize, imageData + i * step, rowSize);
+        }
+    }
     stagingMemory.unmapMemory();
 
     // Copy from staging to device buffer
     copyBuffer(stagingBuffer, srcImageBuffer, imageSize);
 }
 
-void VulkanPreprocessor::dispatchResize(int srcWidth, int srcHeight, bool isBgr) {
+void VulkanPreprocessor::dispatchResize(int srcWidth, int srcHeight, size_t /*srcStep*/, bool isBgr) {
     vk::CommandBufferAllocateInfo allocInfo{
         .commandPool = *commandPool,
         .level = vk::CommandBufferLevel::ePrimary,
@@ -322,17 +331,18 @@ void VulkanPreprocessor::dispatchResize(int srcWidth, int srcHeight, bool isBgr)
                           {*resizeDescriptorSet}, nullptr);
 
     struct {
-        uint32_t srcWidth, srcHeight, dstWidth, dstHeight, isBgr;
+        uint32_t srcWidth, srcHeight, dstWidth, dstHeight, isBgr, srcStep;
     } pushConstants{
         static_cast<uint32_t>(srcWidth),
         static_cast<uint32_t>(srcHeight),
         TARGET_SIZE,
         TARGET_SIZE,
-        isBgr ? 1u : 0u
+        isBgr ? 1u : 0u,
+        static_cast<uint32_t>(srcWidth * 3) // We already packed the image in uploadImage
     };
 
     cmd.pushConstants(*resizeLayout, vk::ShaderStageFlagBits::eCompute,
-                     0, vk::ArrayProxy<const uint32_t>(5, &pushConstants.srcWidth));
+                     0, vk::ArrayProxy<const uint32_t>(6, &pushConstants.srcWidth));
 
     // Dispatch workgroups
     uint32_t workGroupsX = (TARGET_SIZE + 15) / 16;

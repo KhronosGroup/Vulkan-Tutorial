@@ -7,6 +7,7 @@ struct PushConstants {
     uint dstWidth;
     uint dstHeight;
     uint isBgr;
+    uint srcStep;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -15,7 +16,7 @@ struct PushConstants {
 [[vk::binding(1, 0)]] RWStructuredBuffer<float> dstImage; // Dest: HWC float format
 
 float fetch(uint x, uint y, uint channel) {
-    uint byteOffset = (y * pc.srcWidth + x) * 3 + channel;
+    uint byteOffset = y * pc.srcStep + x * 3 + channel;
     // ByteAddressBuffer.Load reads 4 bytes, we need to extract one
     uint wordOffset = byteOffset & ~3;
     uint bitShift = (byteOffset & 3) * 8;

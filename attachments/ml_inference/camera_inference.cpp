@@ -48,6 +48,18 @@ public:
 
     ~RealTimeClassifier() {
         if (renderer) renderer->WaitIdle();
+        
+        // Destroy all Vulkan resources before the window is destroyed.
+        // These members must be cleared while renderer (and its device/surface) is still alive.
+        displaySampler = nullptr;
+        displayView = nullptr;
+        displayMemory = nullptr;
+        displayImage = nullptr;
+        
+        preprocessor.reset();
+        imguiSystem.reset();
+        renderer.reset();
+
         if (window) {
             glfwDestroyWindow(window);
             glfwTerminate();

@@ -142,15 +142,39 @@ else()
     message(STATUS "ONNX Runtime not found. Some examples will be limited or skipped.")
 endif()
 
+# Auto-detect IREE Runtime from third_party directory
+if(NOT IREE_RUNTIME_DIR)
+    file(GLOB IREE_DIST_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/iree-dist-linux-x86_64-*")
+    if(IREE_DIST_DIRS)
+        list(GET IREE_DIST_DIRS 0 IREE_RUNTIME_DIR)
+    endif()
+endif()
+
+if(IREE_RUNTIME_DIR AND EXISTS "${IREE_RUNTIME_DIR}")
+    set(HAS_IREE TRUE)
+    message(STATUS "Using IREE Runtime from: ${IREE_RUNTIME_DIR}")
+    
+    # Add IREE to find_package path
+    set(IREERuntime_DIR "${IREE_RUNTIME_DIR}/lib/cmake/IREE")
+    # The distribution uses IREERuntime for the runtime package name
+    find_package(IREERuntime CONFIG REQUIRED)
+else()
+    set(HAS_IREE FALSE)
+    message(STATUS "IREE Runtime not found. IREE examples will be skipped.")
+endif()
+
 # Common library for shared components
 if(glfw3_FOUND OR GLFW_FOUND)
     add_library(ml_common STATIC
         common/renderer/renderer.cpp
+        common/preprocessing/vulkan_preprocessing.cpp
         common/imgui_system.cpp
+        common/vulkan_nnef_inference.cpp
         ${IMGUI_DIR}/imgui.cpp
         ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp
         ${IMGUI_DIR}/imgui_widgets.cpp
+        third_party/nnef-parser/src/nnef.cpp
     )
 
     target_include_directories(ml_common PUBLIC
@@ -158,6 +182,7 @@ if(glfw3_FOUND OR GLFW_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/common
         ${CMAKE_CURRENT_SOURCE_DIR}/common/renderer
         ${CMAKE_CURRENT_SOURCE_DIR}/common/preprocessing
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nnef-parser/include
         ${IMGUI_DIR}
     )
 
@@ -215,6 +240,9 @@ if(glfw3_FOUND OR GLFW_FOUND)
         if(HAS_ONNX_RUNTIME)
             list(APPEND MNIST_SOURCES "onnx_inference.cpp")
         endif()
+        if(HAS_IREE)
+            list(APPEND MNIST_SOURCES "iree_mnist_inference.cpp")
+        endif()
         
         add_ml_example(mnist "${MNIST_SOURCES}")
         
@@ -228,6 +256,26 @@ if(glfw3_FOUND OR GLFW_FOUND)
                 target_link_libraries(mnist PRIVATE ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so)
             endif()
             target_compile_definitions(mnist PRIVATE HAS_ONNX_RUNTIME)
+        endif()
+        
+        if(HAS_IREE)
+            target_include_directories(mnist PRIVATE ${IREE_RUNTIME_DIR}/include)
+            target_link_libraries(mnist PRIVATE 
+                iree_runtime_runtime
+                iree_hal_drivers_vulkan_registration_registration
+                iree_tooling_numpy_io
+                iree_io_stream
+                iree_base_base
+            )
+            target_compile_definitions(mnist PRIVATE HAS_IREE)
+            
+            # Ensure VMFB is copied
+            add_custom_command(TARGET mnist POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${CMAKE_CURRENT_SOURCE_DIR}/mnist_model.vmfb
+                    $<TARGET_FILE_DIR:mnist>/mnist_model.vmfb
+                COMMENT "Copying IREE VMFB for mnist"
+            )
         endif()
         
         message(STATUS "Building MNIST interactive inference application")
@@ -287,6 +335,34 @@ if(glfw3_FOUND OR GLFW_FOUND)
         endif()
 
         message(STATUS "Building real-time camera inference example")
+    endif()
+
+    # IREE Vulkan Inference Example
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/iree_vulkan_inference.cpp" AND HAS_IREE)
+        add_ml_example(iree_vulkan_inference "iree_vulkan_inference.cpp")
+        
+        target_include_directories(iree_vulkan_inference PRIVATE
+            ${IREE_RUNTIME_DIR}/include
+        )
+
+        target_link_libraries(iree_vulkan_inference PRIVATE 
+            iree_runtime_runtime
+            iree_hal_drivers_vulkan_registration_registration
+            iree_tooling_numpy_io
+            iree_io_stream
+            iree_base_base
+            Vulkan::Vulkan
+        )
+        
+        target_compile_definitions(iree_vulkan_inference PRIVATE HAS_IREE)
+        message(STATUS "Building IREE Vulkan inference example")
+    endif()
+
+    # Latency and Power Sampler Tool
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/latency_power_sampler.cpp")
+        add_executable(latency_power_sampler tools/latency_power_sampler.cpp)
+        # No heavy dependencies, just standard library
+        message(STATUS "Building latency and power sampler tool")
     endif()
 
 else()
@@ -371,6 +447,37 @@ endif()
         endif()
     endif()
 
+    # Desktop NNEF Engine
+    add_executable(nnef_inference nnef_inference.cpp)
+    target_link_libraries(nnef_inference PRIVATE ml_common Vulkan::Vulkan)
+    target_include_directories(nnef_inference PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common)
+    target_compile_definitions(nnef_inference PRIVATE 
+        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC
+        USE_NNEF
+    )
+    add_custom_command(TARGET nnef_inference POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_BINARY_DIR}/shaders
+            $<TARGET_FILE_DIR:nnef_inference>/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/models/mobilenetv2_nnef_optimized
+            $<TARGET_FILE_DIR:nnef_inference>/models/mobilenetv2_nnef_optimized
+    )
+
+    # Desktop IREE Engine (Sample 8)
+    if(HAS_IREE)
+        add_executable(iree_desktop_inference iree_vulkan_inference.cpp)
+        target_link_libraries(iree_desktop_inference PRIVATE 
+            iree_runtime_runtime
+            iree_hal_drivers_vulkan_registration_registration
+            iree_tooling_numpy_io
+            iree_io_stream
+            iree_base_base
+        )
+        target_include_directories(iree_desktop_inference PRIVATE ${IREE_RUNTIME_DIR}/include)
+    endif()
+
     # MNIST Robustness Test
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/mnist_robustness_test.cpp")
         add_executable(mnist_robustness_test 
@@ -452,6 +559,41 @@ endif()
         )
         
         add_test(NAME WeightLoader_Unit_Test COMMAND weight_loader_test)
+    endif()
+
+    # Wildlife Cam GTest
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/wildlife_cam_test.cpp" AND OpenCV_FOUND)
+        add_executable(wildlife_cam_test tests/wildlife_cam_test.cpp)
+        target_link_libraries(wildlife_cam_test PRIVATE 
+            ml_common
+            GTest::gtest_main
+            GTest::gmock
+            ${OpenCV_LIBRARIES}
+            Vulkan::Vulkan
+        )
+        target_include_directories(wildlife_cam_test PRIVATE 
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/common
+        )
+        target_compile_definitions(wildlife_cam_test PRIVATE 
+            VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+            VULKAN_HPP_DISPATCH_LOADER_DYNAMIC
+            USE_NNEF
+        )
+        
+        add_custom_command(TARGET wildlife_cam_test POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_BINARY_DIR}/shaders
+                $<TARGET_FILE_DIR:wildlife_cam_test>/shaders
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/models/mobilenetv2_nnef_optimized
+                $<TARGET_FILE_DIR:wildlife_cam_test>/models/mobilenetv2_nnef_optimized
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/sample_images
+                $<TARGET_FILE_DIR:wildlife_cam_test>/sample_images
+        )
+        
+        add_test(NAME WildlifeCam_GTest COMMAND wildlife_cam_test)
     endif()
 
 # RL Automated Exploration (Curiosity-driven RND example)
@@ -592,6 +734,12 @@ message(STATUS "")
 # Ensure all source files are visible in the IDE
 file(GLOB_RECURSE IDE_SOURCES *.cpp *.h *.hpp *.slang)
 add_custom_target(all_project_files SOURCES ${IDE_SOURCES})
+
+# Raspberry Pi wildlife cam (Sample 5)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/rPi/CMakeLists.txt")
+    add_subdirectory(rPi)
+endif()
+
 message(STATUS "Python Environment:")
 if(Python3_FOUND)
     message(STATUS "  Python: ${Python3_VERSION}")

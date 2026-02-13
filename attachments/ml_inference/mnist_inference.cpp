@@ -13,6 +13,9 @@
 #ifdef HAS_ONNX_RUNTIME
 #include "onnx_inference.h"
 #endif
+#ifdef HAS_IREE
+#include "iree_mnist_inference.h"
+#endif
 #include "common/mnist_ui.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
@@ -73,6 +76,21 @@ int main() {
         }
 #endif
 
+#ifdef HAS_IREE
+        std::unique_ptr<IREEMNISTInference> ireeEngine;
+        try {
+            ireeEngine = std::make_unique<IREEMNISTInference>("mnist_model.vmfb");
+            if (ireeEngine->isReady()) uiState.ireeReady = true;
+        } catch (...) {
+            try {
+                ireeEngine = std::make_unique<IREEMNISTInference>("../mnist_model.vmfb");
+                if (ireeEngine->isReady()) uiState.ireeReady = true;
+            } catch (...) {
+                std::cerr << "Warning: Could not load IREE MNIST model\n";
+            }
+        }
+#endif
+
         // Main loop
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
@@ -111,7 +129,7 @@ int main() {
                 if (uiState.inferenceMode == 0) {
                     // Vulkan Inference
                     uiState.probabilities = engine.infer(uiState.canvas.getPixels());
-                } else {
+                } else if (uiState.inferenceMode == 1) {
                     // ONNX Inference
 #ifdef HAS_ONNX_RUNTIME
                     if (onnxEngine) {
@@ -137,6 +155,13 @@ int main() {
                                 uiState.probabilities[p.first] = p.second;
                             }
                         }
+                    }
+#endif
+                } else if (uiState.inferenceMode == 2) {
+                    // IREE Inference
+#ifdef HAS_IREE
+                    if (ireeEngine) {
+                        uiState.probabilities = ireeEngine->infer(uiState.canvas.getPixels());
                     }
 #endif
                 }

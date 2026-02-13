@@ -41,13 +41,14 @@ private:
 
 struct MNISTUIState {
     DrawingCanvas canvas;
-    int inferenceMode = 0; // 0: Vulkan, 1: ONNX
+    int inferenceMode = 0; // 0: Vulkan, 1: ONNX, 2: IREE
     std::vector<float> probabilities = std::vector<float>(10, 0.0f);
     int predictedDigit = -1;
     float lastInferenceTimeMs = 0.0f;
     std::string statusMessage = "";
     bool engineReady = false;
     bool onnxReady = false;
+    bool ireeReady = false;
     bool isDrawing = false;
 };
 
@@ -107,6 +108,17 @@ inline MNISTUIEvents RenderMNISTUI(MNISTUIState& state, int width, int height) {
             ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(1, 0, 0, 1), "(ONNX Missing)");
+        }
+        ImGui::SameLine();
+
+        if (state.ireeReady) {
+            ImGui::RadioButton("IREE", &state.inferenceMode, 2);
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::RadioButton("IREE", &state.inferenceMode, 2);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1, 0, 0, 1), "(IREE Missing)");
         }
         ImGui::Separator();
         

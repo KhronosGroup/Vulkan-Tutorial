@@ -9,10 +9,29 @@ These examples demonstrate practical implementations of ML inference using Vulka
 == Examples
 
 === mnist
-Interactive MNIST digit recognition with drawable canvas. Uses custom Vulkan compute shaders for inference.
+Interactive MNIST digit recognition with drawable canvas. Supports multiple backends:
+* **Vulkan Compute**: Custom shaders written in Slang (Default).
+* **ONNX Runtime**: Desktop-standard inference (if available).
+* **IREE**: Modern ML compiler runtime targeting Vulkan SPIR-V.
+* **NNEF**: Engine-centric path using the Khronos Neural Network Exchange Format.
 
 === classification
 Image classification using MobileNetV2 and ONNX Runtime. Demonstrates Vulkan-based image preprocessing and third-party ML framework integration.
+
+=== iree_vulkan_inference
+Minimal C++ sample demonstrating the compiler/runtime embedding pattern on Vulkan using **IREE**. Shows how to load a pre-compiled model (`.vmfb`) and execute it on the Vulkan HAL.
+
+=== nnef_inference
+Headless C++ sample demonstrating a custom NNEF execution engine. Shows how to parse NNEF models, load binary weights, and execute them using a specialized Vulkan compute shader (`nnef_ops.slang`).
+
+=== nnef_pipeline
+Scripts and examples for converting NNEF models to ONNX and compiling them for Vulkan using IREE. Demonstrates the cross-format interoperability path for embedded and desktop ML.
+
+=== latency_power_sampler
+A tiny benchmark tool to measure p50/p90/p99 latency and system vitals (temperature, clocks) during command execution. Outputs results to a CSV file for analysis or CI integration.
+
+=== embedded_wildlife_cam
+An integrated embedded demo application designed for Raspberry Pi. Demonstrates a real-time pipeline: camera capture → Vulkan preprocessing → ML inference (IREE/NNEF/TFLITE) → overlay. Uses MobileNetV2 for real-world object recognition. Supports a custom GPU-accelerated NNEF backend. Runs headlessly and logs steady-state FPS.
 
 === ci_validation
 Headless Vulkan application demonstrating CI/CD render validation using Google Test (GTest). Shows how to capture frames offscreen and perform automated perceptual, functional, and semantic checks on the actual MNIST application UI.
@@ -51,6 +70,9 @@ Interactive real-time demonstration of AI-driven Ray Tracing optimization. Imple
 
 * ONNX Runtime 1.23.2+ (for third-party ONNX integration examples)
   - Provides support for **WebGPU (Dawn)** and **DirectML** acceleration.
+* IREE (Intermediate Representation Execution Environment)
+  - Used for the `iree_vulkan_inference` sample.
+  - Automatically downloaded and patched by the setup script.
 * TensorFlow Lite 2.14.0+ (for TensorFlow Lite integration examples)
 
 NOTE: CMake handles all dependency installation automatically. Use `-DML_INSTALL_OPTIONAL_DEPS=ON` to include optional packages, or run the provided setup scripts.
@@ -197,9 +219,31 @@ cd build
 rt_optimization.exe  # Windows
 ----
 
-Load an image and see the top-5 ImageNet classification predictions.
+==== IREE Vulkan Inference
 
-NOTE: The setup script automatically downloads ONNX Runtime and the MobileNetV2 model. CMake auto-detects everything!
+[source,bash]
+----
+cd build
+./iree_vulkan_inference mnist_model.vmfb --input test_input.npy
+----
+
+==== NNEF Inference
+
+[source,bash]
+----
+cd build
+./nnef_inference --model ./models/mobilenetv2_nnef_optimized --input test_input.bin
+----
+
+==== Latency and Power Sampler
+
+[source,bash]
+----
+cd build
+./latency_power_sampler --cmd "./iree_vulkan_inference mnist_model.vmfb --input test_input.npy" --iters 100 --out results.csv
+----
+
+NOTE: The setup script automatically downloads ONNX Runtime, IREE runtime, and the MobileNetV2 model. CMake auto-detects everything!
 
 NOTE: CMake automatically manages the entire workflow - Python environment, dependencies, shader compilation, and model training!
 
@@ -256,6 +300,24 @@ Autonomous QA agent demonstration using Reinforcement Learning concepts and GTes
 * **Headless Testing**: Integrates with the Vulkan headless renderer to perform autonomous exploration in CI environments.
 * **Bug Discovery**: Shows the foundation for agents that learn to find "surprising" states, such as UI glitches, layout overflows, or application crashes.
 
+=== IREE Vulkan Inference (`iree_vulkan_inference`)
+
+Minimal C++ sample demonstrating the compiler/runtime embedding pattern:
+
+* **IREE Vulkan HAL**: Uses IREE's Vulkan driver for hardware acceleration.
+* **Model Deployment**: Demonstrates how to load and run pre-compiled `.vmfb` modules.
+* **Flexible Entry Points**: Automatically detects common entry point names like `module.main` or `module.main_graph`.
+* **Numpy I/O**: Integrated `.npy` file support for easy verification against Python references.
+
+=== NNEF Inference (`nnef_inference`)
+
+Demonstrates a custom, high-performance ML engine path:
+
+* **Direct NNEF Support**: Loads and executes models in the Khronos Neural Network Exchange Format.
+* **Custom Vulkan Backend**: Uses a specialized compute shader (`nnef_ops.slang`) to implement core ML operators (Convolution, Pooling, Linear, etc.) directly on the GPU.
+* **Zero Overhead**: Minimal runtime footprint compared to general-purpose ML frameworks, ideal for engine integration.
+* **Cross-Backend Testing**: Used by the `embedded_wildlife_cam` to provide a native GPU alternative to TFLite and IREE.
+
 == Code Style
 
 All examples follow the tutorial's conventions:
@@ -270,6 +332,8 @@ All examples follow the tutorial's conventions:
 * Tutorial: `en/ML_Inference/`
 * Vulkan Tutorial: https://vulkan-tutorial.com
 * ONNX Runtime: https://onnxruntime.ai
+* NNEF (Khronos): https://www.khronos.org/nnef
+* IREE: https://iree.dev
 * TensorFlow Lite: https://www.tensorflow.org/lite
 
 == License

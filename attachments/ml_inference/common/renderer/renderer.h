@@ -45,7 +45,7 @@ public:
     void CopyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
     void CopyImageToBuffer(vk::Image image, vk::Buffer buffer, uint32_t width, uint32_t height);
     vk::raii::ShaderModule CreateShaderModule(const std::string& filename);
-    void WaitIdle() { device_.waitIdle(); }
+    void WaitIdle() { if (*device_) device_.waitIdle(); }
 
     // Dummy loading state (not used for MNIST)
     bool IsLoading() const { return false; }

@@ -54,50 +54,63 @@ public:
             auto startFrame = std::chrono::high_resolution_clock::now();
 
             if (renderer_.BeginFrame()) {
+                // RESET TIMES
+                probeTime_ = 0;
+                heatmapTime_ = 0;
+                targetedTime_ = 0;
+                denoiseTime_ = 0;
+
                 // 1. PROBE PASS (1 spp)
                 auto startProbe = std::chrono::high_resolution_clock::now();
                 dispatchRayTrace(1);
                 auto endProbe = std::chrono::high_resolution_clock::now();
                 probeTime_ = std::chrono::duration<float, std::milli>(endProbe - startProbe).count();
 
-                // Capture probe for visualization
-                lastProbePixels_ = downloadImage();
+                // 2. DOWNLOAD PROBE FOR AI (Needed if Adaptive or Heatmap view is on)
+                bool needsHeatmap = adaptiveEnabled_ || viewMode_ == 1;
+                std::vector<float> probePixels;
+                
+                if (needsHeatmap || viewMode_ == 2) {
+                    probePixels = downloadImage();
+                    lastProbePixels_ = probePixels;
+                }
 
-                // 2. AI VARIANCE PREDICTION
-                heatmapTime_ = 0;
-                if (adaptiveEnabled_ && !lastProbePixels_.empty()) {
+                // 3. AI VARIANCE PREDICTION
+                if (needsHeatmap && !probePixels.empty()) {
                     #ifdef HAS_ONNX_RUNTIME
                     if (errorPredictor_) {
                         PreprocessedImage img;
                         img.shape = {1, 3, 256, 256};
                         img.data.resize(3 * 256 * 256);
                         
-                        // Downsample lastProbePixels (800x600) to 256x256 for AI
+                        // Downsample probePixels (800x600) to 256x256 for AI
                         for (int y = 0; y < 256; ++y) {
                             for (int x = 0; x < 256; ++x) {
                                 int sx = x * 800 / 256;
                                 int sy = y * 600 / 256;
                                 int sidx = (sy * 800 + sx) * 3;
                                 int didx = (y * 256 + x);
-                                img.data[0 * 65536 + didx] = lastProbePixels_[sidx + 0];
-                                img.data[1 * 65536 + didx] = lastProbePixels_[sidx + 1];
-                                img.data[2 * 65536 + didx] = lastProbePixels_[sidx + 2];
+                                img.data[0 * 65536 + didx] = probePixels[sidx + 0];
+                                img.data[1 * 65536 + didx] = probePixels[sidx + 1];
+                                img.data[2 * 65536 + didx] = probePixels[sidx + 2];
                             }
                         }
 
                         auto res = errorPredictor_->runGeneric(img);
                         heatmapTime_ = res.inferenceTimeMs;
                         lastHeatmapData_ = res.data;
-                    } else {
-                        heatmapTime_ = 2.5f; 
+
+                        // UPLOAD TO GPU FOR GUIDANCE
+                        if (adaptiveEnabled_) {
+                            void* hData = heatmapMemoryBuffer_.mapMemory(0, 256 * 256 * sizeof(float));
+                            std::memcpy(hData, lastHeatmapData_.data(), 256 * 256 * sizeof(float));
+                            heatmapMemoryBuffer_.unmapMemory();
+                        }
                     }
-                    #else
-                    heatmapTime_ = 2.5f; 
                     #endif
                 }
 
-                // 3. TARGETED PASS
-                targetedTime_ = 0;
+                // 4. TARGETED PASS (Guided by Heatmap)
                 if (adaptiveEnabled_) {
                     auto startTargeted = std::chrono::high_resolution_clock::now();
                     dispatchRayTrace(31); // Adaptive samples
@@ -105,40 +118,39 @@ public:
                     targetedTime_ = std::chrono::duration<float, std::milli>(endTargeted - startTargeted).count();
                 }
 
-                // 4. AI DENOISING
-                denoiseTime_ = 0;
+                // 5. DOWNLOAD FINAL RESULT (From Pass 1 or Pass 3)
+                auto currentResultPixels = downloadImage();
+
+                // 6. AI DENOISING
                 if (denoiseEnabled_) {
                     #ifdef HAS_ONNX_RUNTIME
-                    if (denoiser_ && !lastProbePixels_.empty()) {
+                    if (denoiser_ && !currentResultPixels.empty()) {
                         PreprocessedImage multiChannel;
                         multiChannel.shape = {1, 10, 256, 256};
                         multiChannel.data.assign(10 * 256 * 256, 0.0f);
                         
-                        // Fill first 3 channels with probe data
+                        // Fill first 3 channels with current result data
                         for (int y = 0; y < 256; ++y) {
                             for (int x = 0; x < 256; ++x) {
                                 int sx = x * 800 / 256;
                                 int sy = y * 600 / 256;
                                 int sidx = (sy * 800 + sx) * 3;
                                 int didx = (y * 256 + x);
-                                multiChannel.data[0 * 65536 + didx] = lastProbePixels_[sidx + 0];
-                                multiChannel.data[1 * 65536 + didx] = lastProbePixels_[sidx + 1];
-                                multiChannel.data[2 * 65536 + didx] = lastProbePixels_[sidx + 2];
+                                multiChannel.data[0 * 65536 + didx] = currentResultPixels[sidx + 0];
+                                multiChannel.data[1 * 65536 + didx] = currentResultPixels[sidx + 1];
+                                multiChannel.data[2 * 65536 + didx] = currentResultPixels[sidx + 2];
                             }
                         }
 
                         auto res = denoiser_->runGeneric(multiChannel);
                         denoiseTime_ = res.inferenceTimeMs;
-                    } else {
-                        denoiseTime_ = 12.0f;
+                        lastDenoisedPixels_ = res.data;
                     }
-                    #else
-                    denoiseTime_ = 12.0f;
                     #endif
                 }
 
-                // Update display texture from buffer
-                updateDisplayTexture();
+                // Update display texture from buffers
+                updateDisplayTexture(currentResultPixels);
 
                 imgui_->NewFrame();
                 drawUI();
@@ -205,20 +217,49 @@ private:
         return imgui_->AddTexture(view, sampler);
     }
 
-    void updateDisplayTexture() {
-        // Download float pixels from GPU buffer (Final result)
-        auto floatPixels = downloadImage();
-        
+    void updateDisplayTexture(const std::vector<float>& floatPixels) {
+        // If denoised result is available and enabled, we use it for display
+        bool useDenoised = denoiseEnabled_ && !lastDenoisedPixels_.empty();
+
         // Convert to RGBA8 for display
         std::vector<uint8_t> rgbaPixels(800 * 600 * 4);
         std::vector<uint8_t> heatPixels(800 * 600 * 4);
         std::vector<uint8_t> probePixels(800 * 600 * 4);
 
         for (uint32_t i = 0; i < 800 * 600; ++i) {
-            // Main image (Final)
-            rgbaPixels[i * 4 + 0] = static_cast<uint8_t>(std::clamp(floatPixels[i * 3 + 0] * 255.0f, 0.0f, 255.0f));
-            rgbaPixels[i * 4 + 1] = static_cast<uint8_t>(std::clamp(floatPixels[i * 3 + 1] * 255.0f, 0.0f, 255.0f));
-            rgbaPixels[i * 4 + 2] = static_cast<uint8_t>(std::clamp(floatPixels[i * 3 + 2] * 255.0f, 0.0f, 255.0f));
+            int px = i % 800;
+            int py = i / 800;
+
+            if (useDenoised) {
+                // Bilinear upsample denoised result (256x256) back to 800x600
+                float fx = (static_cast<float>(px) + 0.5f) * 256.0f / 800.0f - 0.5f;
+                float fy = (static_cast<float>(py) + 0.5f) * 256.0f / 600.0f - 0.5f;
+                fx = std::clamp(fx, 0.0f, 255.0f);
+                fy = std::clamp(fy, 0.0f, 255.0f);
+                int x0 = static_cast<int>(fx);
+                int y0 = static_cast<int>(fy);
+                int x1 = std::min(x0 + 1, 255);
+                int y1 = std::min(y0 + 1, 255);
+                float wx = fx - static_cast<float>(x0);
+                float wy = fy - static_cast<float>(y0);
+                for (int c = 0; c < 3; ++c) {
+                    int off = c * 65536;
+                    float v00 = lastDenoisedPixels_[off + y0 * 256 + x0];
+                    float v01 = lastDenoisedPixels_[off + y0 * 256 + x1];
+                    float v10 = lastDenoisedPixels_[off + y1 * 256 + x0];
+                    float v11 = lastDenoisedPixels_[off + y1 * 256 + x1];
+                    float val = v00 * (1.0f - wx) * (1.0f - wy)
+                              + v01 * wx * (1.0f - wy)
+                              + v10 * (1.0f - wx) * wy
+                              + v11 * wx * wy;
+                    rgbaPixels[i * 4 + c] = static_cast<uint8_t>(std::clamp(val * 255.0f, 0.0f, 255.0f));
+                }
+            } else {
+                // Main image (Final from Ray Tracer)
+                rgbaPixels[i * 4 + 0] = static_cast<uint8_t>(std::clamp(floatPixels[i * 3 + 0] * 255.0f, 0.0f, 255.0f));
+                rgbaPixels[i * 4 + 1] = static_cast<uint8_t>(std::clamp(floatPixels[i * 3 + 1] * 255.0f, 0.0f, 255.0f));
+                rgbaPixels[i * 4 + 2] = static_cast<uint8_t>(std::clamp(floatPixels[i * 3 + 2] * 255.0f, 0.0f, 255.0f));
+            }
             rgbaPixels[i * 4 + 3] = 255;
 
             // Probe image (1spp)
@@ -322,8 +363,10 @@ private:
         float currentTotal = probeTime_ + heatmapTime_ + targetedTime_ + denoiseTime_;
 
         ImGui::BulletText("Pass 1: Probe (1spp): %.2f ms", probeTime_);
-        if (adaptiveEnabled_) {
+        if (heatmapTime_ > 0) {
             ImGui::BulletText("Pass 2: AI Heatmap: %.2f ms", heatmapTime_);
+        }
+        if (adaptiveEnabled_) {
             ImGui::BulletText("Pass 3: Adaptive Trace: %.2f ms", targetedTime_);
         }
         if (denoiseEnabled_) {
@@ -383,21 +426,44 @@ private:
         allocInfo.memoryTypeIndex = renderer_.FindMemoryType(memReqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
         outputMemory_ = vk::raii::DeviceMemory(device, allocInfo);
         outputBuffer_.bindMemory(*outputMemory_, 0);
+
+        // Heatmap buffer (256x256 floats)
+        vk::BufferCreateInfo hBufferInfo;
+        hBufferInfo.size = 256 * 256 * sizeof(float);
+        hBufferInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer;
+        heatmapBuffer_ = vk::raii::Buffer(device, hBufferInfo);
+        
+        auto hMemReqs = heatmapBuffer_.getMemoryRequirements();
+        vk::MemoryAllocateInfo hAllocInfo;
+        hAllocInfo.allocationSize = hMemReqs.size;
+        hAllocInfo.memoryTypeIndex = renderer_.FindMemoryType(hMemReqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        heatmapMemoryBuffer_ = vk::raii::DeviceMemory(device, hAllocInfo);
+        heatmapBuffer_.bindMemory(*heatmapMemoryBuffer_, 0);
+        
+        // Zero out heatmap initially
+        void* hData = heatmapMemoryBuffer_.mapMemory(0, 256 * 256 * sizeof(float));
+        std::memset(hData, 0, 256 * 256 * sizeof(float));
+        heatmapMemoryBuffer_.unmapMemory();
     }
 
     void createPipeline() {
         auto& device = renderer_.GetRaiiDevice();
         shaderModule_ = renderer_.CreateShaderModule("shaders/raytrace.comp.spv");
 
-        vk::DescriptorSetLayoutBinding binding;
-        binding.binding = 0;
-        binding.descriptorType = vk::DescriptorType::eStorageBuffer;
-        binding.descriptorCount = 1;
-        binding.stageFlags = vk::ShaderStageFlagBits::eCompute;
+        std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
+        bindings[0].binding = 0;
+        bindings[0].descriptorType = vk::DescriptorType::eStorageBuffer;
+        bindings[0].descriptorCount = 1;
+        bindings[0].stageFlags = vk::ShaderStageFlagBits::eCompute;
+
+        bindings[1].binding = 1;
+        bindings[1].descriptorType = vk::DescriptorType::eStorageBuffer;
+        bindings[1].descriptorCount = 1;
+        bindings[1].stageFlags = vk::ShaderStageFlagBits::eCompute;
 
         vk::DescriptorSetLayoutCreateInfo layoutInfo;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &binding;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
         descriptorSetLayout_ = vk::raii::DescriptorSetLayout(device, layoutInfo);
 
         vk::PushConstantRange pcRange;
@@ -421,7 +487,7 @@ private:
 
         vk::DescriptorPoolSize poolSize;
         poolSize.type = vk::DescriptorType::eStorageBuffer;
-        poolSize.descriptorCount = 1;
+        poolSize.descriptorCount = 2;
 
         vk::DescriptorPoolCreateInfo poolInfo;
         poolInfo.maxSets = 1;
@@ -440,13 +506,25 @@ private:
         buffInfo.offset = 0;
         buffInfo.range = VK_WHOLE_SIZE;
 
-        vk::WriteDescriptorSet write;
-        write.dstSet = *descriptorSet_;
-        write.dstBinding = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = vk::DescriptorType::eStorageBuffer;
-        write.pBufferInfo = &buffInfo;
-        device.updateDescriptorSets(write, nullptr);
+        vk::DescriptorBufferInfo hBuffInfo;
+        hBuffInfo.buffer = *heatmapBuffer_;
+        hBuffInfo.offset = 0;
+        hBuffInfo.range = VK_WHOLE_SIZE;
+
+        std::array<vk::WriteDescriptorSet, 2> writes;
+        writes[0].dstSet = *descriptorSet_;
+        writes[0].dstBinding = 0;
+        writes[0].descriptorCount = 1;
+        writes[0].descriptorType = vk::DescriptorType::eStorageBuffer;
+        writes[0].pBufferInfo = &buffInfo;
+
+        writes[1].dstSet = *descriptorSet_;
+        writes[1].dstBinding = 1;
+        writes[1].descriptorCount = 1;
+        writes[1].descriptorType = vk::DescriptorType::eStorageBuffer;
+        writes[1].pBufferInfo = &hBuffInfo;
+
+        device.updateDescriptorSets(writes, nullptr);
     }
 
     void dispatchRayTrace(uint32_t spp) {
@@ -498,6 +576,8 @@ private:
 
     vk::raii::Buffer outputBuffer_{nullptr};
     vk::raii::DeviceMemory outputMemory_{nullptr};
+    vk::raii::Buffer heatmapBuffer_{nullptr};
+    vk::raii::DeviceMemory heatmapMemoryBuffer_{nullptr};
     vk::raii::ShaderModule shaderModule_{nullptr};
     vk::raii::DescriptorSetLayout descriptorSetLayout_{nullptr};
     vk::raii::PipelineLayout pipelineLayout_{nullptr};
@@ -526,6 +606,7 @@ private:
 
     std::vector<float> lastHeatmapData_;
     std::vector<float> lastProbePixels_;
+    std::vector<float> lastDenoisedPixels_;
 
     bool adaptiveEnabled_ = true;
     bool denoiseEnabled_ = true;

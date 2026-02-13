@@ -36,7 +36,9 @@ Renderer::Renderer(GLFWwindow* window, uint32_t width, uint32_t height)
 }
 
 Renderer::~Renderer() {
-    device_.waitIdle();
+    if (*device_) {
+        device_.waitIdle();
+    }
 }
 
 void Renderer::createInstance() {

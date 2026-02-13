@@ -266,7 +266,7 @@ private:
         auto startTime = std::chrono::high_resolution_clock::now();
 
         // Preprocess with Vulkan Compute
-        auto preprocessed = vulkanPreprocessor->preprocess(image, imageWidth, imageHeight);
+        auto preprocessed = vulkanPreprocessor->preprocess(image, imageWidth, imageHeight, imageWidth * 3);
 
         auto preprocessEnd = std::chrono::high_resolution_clock::now();
         lastPreprocessTimeMs = std::chrono::duration<float, std::milli>(

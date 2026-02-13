@@ -26,11 +26,11 @@ echo ""
 
 # Run the Python setup script
 if [ "$1" == "--with-optional" ]; then
-    echo "Installing with optional dependencies (ONNX Runtime, TensorFlow Lite)..."
+    echo "Installing with optional dependencies (ONNX Runtime, IREE, TensorFlow Lite)..."
     python3 setup_python_env.py --with-optional
 else
     echo "Installing core dependencies only..."
-    echo "To include optional dependencies, run: ./setup_env.sh --with-optional"
+    echo "To include optional dependencies (ONNX Runtime, IREE), run: ./setup_env.sh --with-optional"
     echo ""
     python3 setup_python_env.py
 fi

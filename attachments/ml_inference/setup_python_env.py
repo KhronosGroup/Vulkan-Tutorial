@@ -68,9 +68,9 @@ def create_venv(venv_path):
         text=True
     )
 
-    # If it failed due to missing ensurepip, create without pip and install manually
-    if result.returncode != 0 and "ensurepip" in result.stderr:
-        print("System Python missing ensurepip, creating venv without pip...")
+    # If it failed, try without pip (common on some Debian/Ubuntu systems without python3-venv)
+    if result.returncode != 0:
+        print("Standard venv creation failed, trying without pip...")
         subprocess.run(
             [sys.executable, "-m", "venv", "--without-pip", str(venv_path)],
             check=True
@@ -82,16 +82,13 @@ def create_venv(venv_path):
         get_pip_url = "https://bootstrap.pypa.io/get-pip.py"
         get_pip_path = venv_path / "get-pip.py"
 
-        urllib.request.urlretrieve(get_pip_url, get_pip_path)
-
-        python_exe = get_python_executable(venv_path)
-        subprocess.run([str(python_exe), str(get_pip_path)], check=True)
-        get_pip_path.unlink()  # Clean up
-
-    elif result.returncode != 0:
-        # Some other error
-        print(f"Error creating venv: {result.stderr}")
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+        try:
+            urllib.request.urlretrieve(get_pip_url, get_pip_path)
+            python_exe = get_python_executable(venv_path)
+            subprocess.run([str(python_exe), str(get_pip_path)], check=True)
+        finally:
+            if get_pip_path.exists():
+                get_pip_path.unlink()  # Clean up
 
     print("✓ Virtual environment created")
     return False
@@ -119,13 +116,18 @@ def upgrade_pip(pip_exe):
 def check_missing_packages(python_exe, install_optional=False):
     """Check which packages are missing or need installation"""
     core_packages = ["torch", "torchvision", "onnx", "onnxscript", "numpy", "opencv-python", "lpips"]
-    optional_packages = ["onnxruntime", "tensorflow"] if install_optional else []
+    optional_packages = ["onnxruntime", "tensorflow", "iree-compiler", "iree-runtime", "nnef", "nnef-tools"] if install_optional else []
 
     missing = []
     for pkg in core_packages + optional_packages:
+        # Special case for packages with different import names
+        import_name = pkg
+        if pkg == "iree-compiler": import_name = "iree.compiler"
+        if pkg == "iree-runtime": import_name = "iree.runtime"
+        
         try:
             subprocess.run(
-                [str(python_exe), "-c", f"import {pkg}"],
+                [str(python_exe), "-c", f"import {import_name}"],
                 capture_output=True,
                 check=True
             )
@@ -153,6 +155,10 @@ def install_dependencies(pip_exe, python_exe, install_optional=False, venv_exist
     optional_packages = [
         "onnxruntime",
         "tensorflow-lite",
+        "iree-compiler",
+        "iree-runtime",
+        "nnef",
+        "nnef-tools",
     ]
 
     # Check what's missing if venv existed
@@ -226,6 +232,32 @@ def install_dependencies(pip_exe, python_exe, install_optional=False, venv_exist
             except subprocess.CalledProcessError:
                 print("✗ Warning: TensorFlow installation failed (non-fatal)")
 
+        if not venv_existed or "iree-compiler" in missing or "iree-runtime" in missing:
+            try:
+                subprocess.run([
+                    str(pip_exe), "install",
+                    "iree-compiler", "iree-runtime"
+                ], check=True)
+                print("✓ IREE Compiler and Runtime (Python) installed")
+            except subprocess.CalledProcessError:
+                print("✗ Warning: IREE installation failed (non-fatal)")
+
+        if not venv_existed or "nnef" in missing or "nnef-tools" in missing:
+            try:
+                # NNEF requires stdint.h on some modern compilers
+                env = os.environ.copy()
+                env["CFLAGS"] = env.get("CFLAGS", "") + " -include stdint.h"
+                env["CXXFLAGS"] = env.get("CXXFLAGS", "") + " -include stdint.h"
+                
+                print("\nInstalling NNEF and NNEF-tools...")
+                subprocess.run([
+                    str(pip_exe), "install",
+                    "nnef", "nnef-tools"
+                ], env=env, check=True)
+                print("✓ NNEF and NNEF-tools installed")
+            except subprocess.CalledProcessError:
+                print("✗ Warning: NNEF installation failed (non-fatal)")
+
     print("\n✓ All dependencies installed")
 
 def verify_installation(python_exe, check_optional=False):
@@ -254,16 +286,21 @@ def verify_installation(python_exe, check_optional=False):
     # Check optional packages
     if check_optional:
         print("\nOptional packages:")
-        for pkg in optional_packages:
+        optional_packages = [
+            ("onnxruntime", "onnxruntime"),
+            ("tensorflow", "tensorflow"),
+            ("iree-compiler", "iree.compiler"),
+            ("iree-runtime", "iree.runtime")
+        ]
+        for pkg, import_name in optional_packages:
             try:
                 result = subprocess.run(
-                    [str(python_exe), "-c", f"import {pkg}; print({pkg}.__version__)"],
+                    [str(python_exe), "-c", f"import {import_name}; print('installed')"],
                     capture_output=True,
                     text=True,
                     check=True
                 )
-                version = result.stdout.strip()
-                print(f"  ✓ {pkg:15s} {version}")
+                print(f"  ✓ {pkg:15s} installed")
             except subprocess.CalledProcessError:
                 print(f"  ✗ {pkg:15s} not installed (optional)")
 
@@ -287,11 +324,18 @@ def download_onnx_runtime(script_dir):
             shutil.rmtree(old_dir)
 
     sys_platform = platform.system()
+    arch = platform.machine()
+    
     if sys_platform == "Linux":
-        # Using the GPU version as suggested by the user
-        filename = f"onnxruntime-linux-x64-gpu-{version}.tgz"
-        url = f"https://github.com/microsoft/onnxruntime/releases/download/v{version}/{filename}"
-        extract_dir = third_party_dir / f"onnxruntime-linux-x64-gpu-{version}"
+        if arch == "aarch64":
+            filename = f"onnxruntime-linux-aarch64-{version}.tgz"
+            url = f"https://github.com/microsoft/onnxruntime/releases/download/v{version}/{filename}"
+            extract_dir = third_party_dir / f"onnxruntime-linux-aarch64-{version}"
+        else:
+            # Using the GPU version as suggested by the user
+            filename = f"onnxruntime-linux-x64-gpu-{version}.tgz"
+            url = f"https://github.com/microsoft/onnxruntime/releases/download/v{version}/{filename}"
+            extract_dir = third_party_dir / f"onnxruntime-linux-x64-gpu-{version}"
     elif sys_platform == "Windows":
         # Using the GPU version for Windows as well to be consistent
         filename = f"onnxruntime-win-x64-gpu-{version}.zip"
@@ -348,6 +392,132 @@ def download_onnx_runtime(script_dir):
             download_path.unlink()
         return False
 
+def download_iree_runtime(script_dir):
+    """Download IREE Runtime for C++ inference"""
+    print_header("IREE Runtime C++ Library")
+
+    # Use a recent stable-ish release candidate
+    version = "3.11.0rc20260211"
+    
+    # Create third_party directory
+    third_party_dir = script_dir / "third_party"
+    third_party_dir.mkdir(exist_ok=True)
+
+    sys_platform = platform.system()
+    arch = platform.machine()
+    
+    if sys_platform == "Linux":
+        if arch == "aarch64":
+            filename = f"iree-dist-{version}-linux-aarch64.tar.xz"
+            url = f"https://github.com/iree-org/iree/releases/download/iree-{version}/{filename}"
+            extract_dir = third_party_dir / f"iree-dist-linux-aarch64-{version}"
+        else:
+            filename = f"iree-dist-{version}-linux-x86_64.tar.xz"
+            url = f"https://github.com/iree-org/iree/releases/download/iree-{version}/{filename}"
+            extract_dir = third_party_dir / f"iree-dist-linux-x86_64-{version}"
+    else:
+        # Skip IREE on non-Linux for now as per plan focus on Desktop/Embedded Linux
+        print(f"! IREE C++ runtime download skipped for {sys_platform} (Linux focused)")
+        return True
+
+    # Check if already downloaded
+    if extract_dir.exists():
+        print(f"✓ IREE Runtime {version} already downloaded at {extract_dir}")
+        return True
+
+    print(f"Downloading IREE Runtime {version} for {sys_platform}...")
+    print(f"URL: {url}")
+
+    download_path = third_party_dir / filename
+
+    try:
+        # Download with progress
+        def reporthook(count, block_size, total_size):
+            percent = int(count * block_size * 100 / total_size) if total_size > 0 else 0
+            mb_downloaded = count * block_size / (1024 * 1024)
+            mb_total = total_size / (1024 * 1024) if total_size > 0 else 0
+            sys.stdout.write(f"\rProgress: {percent}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)")
+            sys.stdout.flush()
+
+        urllib.request.urlretrieve(url, download_path, reporthook=reporthook)
+        print()  # New line after progress
+
+        print("Extracting...")
+        # Note: tarfile supports .xz if lzma is available in Python
+        with tarfile.open(download_path, 'r:xz') as tar:
+            # We want to extract it into extract_dir
+            extract_dir.mkdir(exist_ok=True)
+            tar.extractall(extract_dir)
+
+        # Clean up download
+        download_path.unlink()
+
+        print(f"✓ IREE Runtime {version} extracted to {extract_dir}")
+        
+        # Patch missing headers (common in some rc distributions)
+        patch_iree_headers(extract_dir)
+        
+        return True
+
+    except Exception as e:
+        print(f"\n✗ Error downloading IREE Runtime: {e}")
+        if download_path.exists():
+            download_path.unlink()
+        return False
+
+def patch_iree_headers(iree_dist_dir):
+    """Fetch missing headers directly from GitHub if they are not in the distribution"""
+    print("Checking for missing IREE headers...")
+    
+    base_include = iree_dist_dir / "include" / "iree" / "base"
+    hal_include = iree_dist_dir / "include" / "iree" / "hal"
+    
+    missing_files = {
+        base_include: [
+            "allocator.h", "status.h", "status_cc.h", "assert.h", "attributes.h", 
+            "config.h", "target_platform.h", "wait_handle.h"
+        ],
+        hal_include: [
+            "allocator.h", "buffer.h", "resource_set.h", "driver.h", "semaphore.h",
+            "command_buffer.h", "event.h", "executable.h", "executable_layout.h",
+            "executable_loader.h", "queue.h", "fence.h", "descriptor_set_layout.h"
+        ]
+    }
+    
+    repo_url = "https://raw.githubusercontent.com/iree-org/iree/main/runtime/src/iree"
+    
+    for folder, files in missing_files.items():
+        folder.mkdir(parents=True, exist_ok=True)
+        for f in files:
+            target = folder / f
+            if not target.exists():
+                # We need to determine the relative path for the URL
+                rel_path = folder.relative_to(iree_dist_dir / "include" / "iree")
+                url = f"{repo_url}/{rel_path}/{f}"
+                print(f"  Downloading missing header: {f}...")
+                try:
+                    urllib.request.urlretrieve(url, target)
+                except Exception as e:
+                    print(f"  ! Failed to download {f}: {e}")
+
+    # Special case: Vulkan headers might be expected in a specific subfolder
+    vulkan_internal = hal_include / "drivers" / "vulkan"
+    if vulkan_internal.exists():
+        vulkan_headers_path = iree_dist_dir / "include" / "third_party" / "vulkan_headers" / "include" / "vulkan"
+        vulkan_headers_path.mkdir(parents=True, exist_ok=True)
+        # Link or copy system vulkan headers if possible, or just download a few key ones
+        # For this sample, we'll try to download vulkan.h and relevant ones if missing
+        v_headers = ["vulkan.h", "vulkan_core.h", "vk_platform.h"]
+        v_url = "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/include/vulkan"
+        for vh in v_headers:
+            v_target = vulkan_headers_path / vh
+            if not v_target.exists():
+                print(f"  Downloading missing Vulkan header: {vh}...")
+                try:
+                    urllib.request.urlretrieve(f"{v_url}/{vh}", v_target)
+                except:
+                    pass
+
 def setup_webgpu_environment(script_dir):
     """Attempt to set up or verify WebGPU (Dawn) executable environment"""
     print_header("WebGPU (Dawn) Executable Environment")
@@ -385,6 +555,52 @@ def setup_webgpu_environment(script_dir):
     print("If execution fails, ensure you have the latest GPU drivers and 'Dawn' libraries.")
     print("WebGPU requires Vulkan 1.3+ on Linux and Windows.")
     
+    # 3. TensorFlow Lite C API
+    print_header("TensorFlow Lite C API")
+    
+    tflite_version = "2.14.0"
+    tflite_dir = script_dir / "third_party" / f"tensorflow-lite-{tflite_version}"
+    
+    if tflite_dir.exists():
+        print(f"✓ TFLite C API {tflite_version} already setup")
+    else:
+        print(f"Setting up TFLite C API {tflite_version}...")
+        tflite_dir.mkdir(parents=True, exist_ok=True)
+        
+        # We download headers from LiteRT (the successor) or TF repo
+        headers = [
+            "c_api.h", "c_api_opaque.h", "c_api_types.h", "common.h"
+        ]
+        base_url = "https://raw.githubusercontent.com/tensorflow/tensorflow/v2.14.0/tensorflow/lite/c"
+        
+        include_dir = tflite_dir / "include" / "tensorflow" / "lite" / "c"
+        include_dir.mkdir(parents=True, exist_ok=True)
+        
+        for h in headers:
+            try:
+                urllib.request.urlretrieve(f"{base_url}/{h}", include_dir / h)
+                print(f"  Downloaded header: {h}")
+            except:
+                print(f"  ! Failed to download {h}")
+        
+        # Link or copy the .so from our ai-edge-litert package if available
+        # OR just use a placeholder for now if it's too complex to find
+        print("  Looking for TFLite/LiteRT library in venv...")
+        lib_found = False
+        if platform.system() == "Linux":
+            # Check LiteRT
+            litert_lib = script_dir / "venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages" / "ai_edge_litert" / "libLiteRt.so"
+            if litert_lib.exists():
+                lib_dir = tflite_dir / "lib"
+                lib_dir.mkdir(exist_ok=True)
+                import shutil
+                shutil.copy(litert_lib, lib_dir / "libtensorflowlite_c.so") # Rename for consistency
+                print(f"  ✓ Found LiteRT library and staged as libtensorflowlite_c.so")
+                lib_found = True
+        
+        if not lib_found:
+            print("  ! TFLite library not found in venv. TFLite backend might be disabled in CMake.")
+
     return True
 
 def download_classification_model(script_dir):
@@ -555,6 +771,12 @@ def main():
             print("\n✗ Failed to download ONNX Runtime")
             sys.exit(1)
 
+        # Download IREE Runtime C++ library (if optional enabled)
+        if args.with_optional:
+            if not download_iree_runtime(script_dir):
+                print("\n✗ Failed to download IREE Runtime")
+                # Non-fatal for now as it's a new feature
+        
         # Download classification model and labels
         if not download_classification_model(script_dir):
             print("\n✗ Failed to download classification model")

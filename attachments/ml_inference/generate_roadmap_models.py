@@ -35,12 +35,47 @@ class DenoisingUNet(nn.Module):
         self.dec1 = nn.Sequential(nn.Conv2d(64, 32, 3, padding=1), nn.ReLU())
         self.final = nn.Conv2d(32, out_channels, 1)
         
-        # Initialize to roughly identity for first 3 channels (RGB)
+        # Initialize ALL layers so the network acts as a very subtle spatial
+        # smoother for the RGB channels.  enc1 applies a gentle 3x3 weighted
+        # average that is close to identity (70% center, 30% neighbours).
+        # enc2 is identity so the low-res path adds no extra blur.  dec1 uses
+        # 95% from the full-res skip to keep the image sharp, with only 5%
+        # contribution from the mildly-smoothed low-res path.
         with torch.no_grad():
+            # Gentle 3x3 kernel: 70% center pixel + 30% spread over 8 neighbours
+            gentle = torch.ones(3, 3, dtype=torch.float32) * (0.30 / 8.0)
+            gentle[1, 1] = 0.70
+
+            # enc1: extract R,G,B from input channels 0,1,2 with gentle blur
+            self.enc1[0].weight.fill_(0.0)
+            self.enc1[0].bias.fill_(0.0)
+            for i in range(out_channels):
+                self.enc1[0].weight[i, i] = gentle
+            # enc2: identity pass-through (no extra blur at low-res)
+            self.enc2[0].weight.fill_(0.0)
+            self.enc2[0].bias.fill_(0.0)
+            for i in range(out_channels):
+                self.enc2[0].weight[i, i, 1, 1] = 1.0
+            # up1: upsample first 3 channels (stride-2 transposed conv)
+            self.up1.weight.fill_(0.0)
+            self.up1.bias.fill_(0.0)
+            for i in range(out_channels):
+                self.up1.weight[i, i, 0, 0] = 1.0
+                self.up1.weight[i, i, 0, 1] = 1.0
+                self.up1.weight[i, i, 1, 0] = 1.0
+                self.up1.weight[i, i, 1, 1] = 1.0
+            # dec1: almost entirely use the full-res skip for sharpness
+            # 5% from low-res smoothed path + 95% from enc1 skip (sharper)
+            self.dec1[0].weight.fill_(0.0)
+            self.dec1[0].bias.fill_(0.0)
+            for i in range(out_channels):
+                self.dec1[0].weight[i, i, 1, 1] = 0.05       # from up1 (smoothed)
+                self.dec1[0].weight[i, 32 + i, 1, 1] = 0.95  # from enc1 skip
+            # final: pass through first 3 channels of dec1 output
             self.final.weight.fill_(0.0)
+            self.final.bias.fill_(0.0)
             for i in range(out_channels):
                 self.final.weight[i, i, 0, 0] = 1.0
-            self.final.bias.fill_(0.0)
 
     def forward(self, x):
         e1 = self.enc1(x)

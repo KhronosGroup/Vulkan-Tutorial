@@ -136,9 +136,15 @@ TEST_F(VulkanRenderTest, MNIST_UI_Validation) {
     // Draw a '7' programmatically on the 28x28 canvas
     auto& canvas = uiState.canvas;
     // Top bar
-    for(int x=8; x<20; ++x) canvas.setPixel(x, 5, 1.0f);
+    for(int x=8; x<20; ++x) {
+        canvas.setPixel(x, 5, 1.0f);
+        canvas.setPixel(x, 6, 1.0f);
+    }
     // Diagonal
-    for(int i=0; i<12; ++i) canvas.setPixel(19-i, 5+i, 1.0f);
+    for(int i=0; i<12; ++i) {
+        canvas.setPixel(19-i, 5+i, 1.0f);
+        canvas.setPixel(18-i, 5+i, 1.0f);
+    }
 
     // Step 1: Render actual MNIST UI
     if (renderer->BeginFrame()) {
@@ -165,13 +171,32 @@ TEST_F(VulkanRenderTest, MNIST_UI_Validation) {
     if (!loaded) loaded = ocr.loadWeights("../mnist_weights.bin");
     ASSERT_TRUE(loaded) << "Failed to load MNIST weights for OCR validation";
     
-    // Search for the drawn digit in the rendered image
-    int minX = width, minY = height, maxX = 0, maxY = 0;
-    bool found = false;
+    // Search for the MNIST canvas first by its unique background color (30, 30, 30)
+    int canvasMinX = width, canvasMinY = height, canvasMaxX = 0, canvasMaxY = 0;
+    bool canvasFound = false;
     for (uint32_t y = 0; y < height; ++y) {
         for (uint32_t x = 0; x < width; ++x) {
-            uint8_t pixelVal = pixels[(y * width + x) * 4 + 0]; // Gray
-            if (pixelVal > 40) { 
+            uint8_t b = pixels[(y * width + x) * 4 + 0];
+            uint8_t g = pixels[(y * width + x) * 4 + 1];
+            uint8_t r = pixels[(y * width + x) * 4 + 2];
+            if (r == 30 && g == 30 && b == 30) {
+                canvasMinX = std::min(canvasMinX, (int)x); canvasMinY = std::min(canvasMinY, (int)y);
+                canvasMaxX = std::max(canvasMaxX, (int)x); canvasMaxY = std::max(canvasMaxY, (int)y);
+                canvasFound = true;
+            }
+        }
+    }
+    ASSERT_TRUE(canvasFound) << "Could not find the MNIST canvas area on screen!";
+
+    // Now search for the drawn digit ONLY within the canvas area
+    int minX = canvasMaxX, minY = canvasMaxY, maxX = canvasMinX, maxY = canvasMinY;
+    bool found = false;
+    for (int y = canvasMinY; y <= canvasMaxY; ++y) {
+        for (int x = canvasMinX; x <= canvasMaxX; ++x) {
+            uint8_t b = pixels[(y * width + x) * 4 + 0];
+            uint8_t g = pixels[(y * width + x) * 4 + 1];
+            uint8_t r = pixels[(y * width + x) * 4 + 2];
+            if (r > 200 && g > 200 && b > 200) { 
                 minX = std::min(minX, (int)x); minY = std::min(minY, (int)y);
                 maxX = std::max(maxX, (int)x); maxY = std::max(maxY, (int)y);
                 found = true;
@@ -181,11 +206,18 @@ TEST_F(VulkanRenderTest, MNIST_UI_Validation) {
     
     ASSERT_TRUE(found) << "Could not find any rendered digit on screen!";
     
+    // Extract the whole canvas and downsample it to 28x28
     std::vector<float> mnistInput(784, 0.0f);
-    int bw = maxX - minX + 1, bh = maxY - minY + 1;
+    int cw = canvasMaxX - canvasMinX + 1;
+    int ch = canvasMaxY - canvasMinY + 1;
+    
     for (int y = 0; y < 28; ++y) {
         for (int x = 0; x < 28; ++x) {
-            mnistInput[y*28+x] = pixels[((minY + y*bh/28) * width + (minX + x*bw/28)) * 4] / 255.0f;
+            // Sample center of each block
+            int sx = canvasMinX + (x * cw / 28) + (cw / 56);
+            int sy = canvasMinY + (y * ch / 28) + (ch / 56);
+            uint8_t val = pixels[(sy * width + sx) * 4 + 0]; // Blue channel
+            mnistInput[y*28+x] = (val > 100) ? 1.0f : 0.0f;
         }
     }
     auto res = ocr.infer(mnistInput);

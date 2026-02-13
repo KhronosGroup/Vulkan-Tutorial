@@ -5,7 +5,10 @@
 #include <memory>
 #include <array>
 
-struct PreprocessedImage;
+struct PreprocessedImage {
+    std::vector<float> data;
+    std::vector<int64_t> shape;
+};
 
 class VulkanPreprocessor {
 public:
@@ -16,7 +19,7 @@ public:
 
     ~VulkanPreprocessor() = default;
 
-    PreprocessedImage preprocess(const unsigned char* imageData, int width, int height, bool isBgr = false);
+    PreprocessedImage preprocess(const unsigned char* imageData, int width, int height, size_t step, bool isBgr = false);
 
 private:
     void createBuffers();
@@ -25,8 +28,8 @@ private:
     void createDescriptorPool();
     void createDescriptorSets();
 
-    void uploadImage(const unsigned char* imageData, int width, int height);
-    void dispatchResize(int srcWidth, int srcHeight, bool isBgr);
+    void uploadImage(const unsigned char* imageData, int width, int height, size_t step);
+    void dispatchResize(int srcWidth, int srcHeight, size_t srcStep, bool isBgr);
     void dispatchNormalize();
     PreprocessedImage downloadResult();
 

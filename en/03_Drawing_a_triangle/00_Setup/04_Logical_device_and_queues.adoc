@@ -165,17 +165,17 @@ link:https://docs.vulkan.org/spec/latest/chapters/raytracing.html#extendingvulka
 That means that the `enabledLayerCount` and `ppEnabledLayerNames` fields of
 `VkDeviceCreateInfo` are ignored by up-to-date implementations.
 
-As mentioned earlier, we need several device-specific extensions for our application to work properly.
+With the `vk::DeviceCreateInfo` filled in, we can now proceed with creating logical device.
 
 [,c++]
 ----
 device = vk::raii::Device( physicalDevice, deviceCreateInfo );
 ----
 
-The parameters are the physical device to interface with, and the usage
-info we just specified, the optional allocation callbacks pointer and a pointer
-to a variable to store the logical device handle in. Similarly to the instance
-creation function, this call can throw errors based on enabling non-existent
+Passed parameters are the physical device to interface with, and the create
+info we`ve just specified. Additional and optional parameters include the allocation callbacks pointer and a pointer
+specifying where to store the created logical device handle. In our case, the function call returns the `vk::Device` handle directly.
+Similarly to the instance creation function, this call can throw errors based on enabling non-existent
 extensions or specifying the desired usage of unsupported features.
 
 Logical devices don't interact directly with instances, which is why it's not

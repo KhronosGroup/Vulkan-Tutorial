@@ -327,4 +327,4 @@ This is the knowledge that lets you understand ML inference at a deep level, whe
 
 The code is in the attachments. Compile it, run it, modify it. Add a new layer type. Try a different model. Profile the performance. Break things and fix them. That's how you truly learn.
 
-xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[Previous: NNEF Deep Dive] | xref:ML_Inference/Debugging_and_Performance/01_introduction.adoc[Next: Debugging and Performance]
+xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[Previous: NNEF Introduction] | xref:ML_Inference/Debugging_and_Performance/01_introduction.adoc[Next: Debugging and Performance]

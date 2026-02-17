@@ -8,9 +8,9 @@ The industry has solved this problem with standard model formats. Instead of inv
 
 == Why Standard Formats?
 
-You could invent your own model format—a custom binary or JSON structure. But then you'd need custom exporters for every training framework. Want to load a PyTorch model? Write an exporter. TensorFlow? Another exporter. JAX? Another.
+You can absolutely design a bespoke binary or JSON model description. The problem shows up the moment you try to load models from different training stacks: every framework would need its own exporter. PyTorch today, TensorFlow tomorrow, JAX next week. That is busywork with little payoff.
 
-Standard formats avoid this. PyTorch, TensorFlow, and most other frameworks can export to ONNX or TFLite, and tools can emit or convert to NNEF. You write one parser, it works with models from many frameworks. This is why the industry converged on these standards.
+The industry settled on common formats so we can build one loader and ingest models trained anywhere. PyTorch and TensorFlow export to ONNX or TFLite, and Khronos tooling can emit NNEF or convert into it. With a standard on disk, our job reduces to turning a well‑defined graph into our `ComputationGraph` and running it.
 
 == ONNX: The Comprehensive Format
 
@@ -18,15 +18,7 @@ ONNX (Open Neural Network Exchange) is designed for interoperability. It support
 
 ONNX uses Protocol Buffers for serialization—a binary format defined by a schema. The schema defines message types for models, graphs, nodes, tensors, and attributes. When you parse an ONNX file, you deserialize these protobuf messages.
 
-Here's what's inside an ONNX file:
-
-**Model metadata**: Version, producer (which framework created it), documentation.
-
-**Graph**: The main computational graph with nodes (operations) and edges (tensors).
-
-**Initializers**: The learned weights and biases as TensorProto messages. These are part of the graph but represent constants, not operations.
-
-**Value information**: Shape and type information for tensors, helping with validation and optimization.
+Inside an ONNX file you will find a model header with version and producer information, a graph that lists operations and the tensors connecting them, a set of initializers that hold trained parameters as constant tensors, and value information carrying shapes and data types that help validate and optimize the graph. All of it is serialized as Protocol Buffer messages.
 
 To read an ONNX file, you use the ONNX C++ library:
 
@@ -86,15 +78,7 @@ The key insight: ONNX gives you the same information we were creating manually�
 
 TFLite is designed for mobile and embedded devices. It uses FlatBuffers for serialization—a format optimized for zero-copy access and minimal parsing overhead. You can read parts of the model without deserializing everything.
 
-The structure is similar to ONNX but optimized differently:
-
-**Model**: Contains subgraphs (TFLite supports multiple graphs in one file).
-
-**Operators**: Like ONNX nodes, but with TFLite-specific operator types.
-
-**Tensors**: Unlike ONNX, tensors are explicit in TFLite—both intermediates and weights.
-
-**Buffers**: The actual weight data, separate from tensor metadata.
+The structure is similar in spirit to ONNX but optimized for small devices. There is a model object that may contain multiple subgraphs. Operators correspond to nodes but use TFLite’s builtin enumeration. Tensors are explicit for both temporaries and parameters, and the raw bytes for weights live in separate buffers referenced by the tensor metadata. Because it uses FlatBuffers, you can access fields directly from memory without a full deserialize step.
 
 Reading TFLite requires the TFLite schema:
 
@@ -152,128 +136,59 @@ for (size_t i = 0; i < subgraph->tensors()->size(); ++i) {
 
 The zero-copy nature means you're reading directly from the file. Fast and memory-efficient.
 
-== NNEF: The Khronos Exchange Format
+== NNEF: The Khronos Exchange Format (use it natively)
 
-NNEF (Neural Network Exchange Format) is a Khronos standard for describing trained neural networks in a human‑readable graph file with accompanying binary tensors for weights/constants. It’s designed for interchange between tools, compilers, and runtimes—excellent when you want to decouple “how the model is described” from “how it’s executed.”
+NNEF (Neural Network Exchange Format) is a Khronos standard that stores a trained model as a readable text graph alongside separate binary files for tensor data. It was designed as an interchange format between tools, compilers, and runtimes. If you value precise, inspectable models and a clean hand‑off into your own IR, NNEF is a good fit.
 
-What a typical NNEF package looks like:
-
-- A text graph file (often `graph.nnef`) describing ops, tensor shapes/dtypes, and attributes
-- One or more binary files with the raw tensor data for weights/constants
-
-Parsing NNEF in C++ follows the same pattern as ONNX/TFLite: read → iterate ops/tensors → build your internal IR. If you use an official/third‑party NNEF parser you’ll get a small API to walk the graph; otherwise you can parse the text yourself and load the referenced binary blobs.
+An NNEF package is usually a directory. The `graph.nnef` file captures operators, tensors, shapes, data types, and attributes in text; the parameters referenced in the graph live in one or more companion binary files. In this tutorial, if your starting point is ONNX and you prefer to standardize on NNEF, treat the ONNX→NNEF step as acquisition. For execution, load NNEF directly with the official Khronos C{pp} parser from NNEF‑Tools rather than converting back to ONNX.
 
 [source,cpp]
 ----
-// Pseudocode – shape of a typical NNEF parsing loop
-#include <string>
+// Abbreviated sketch: ingest NNEF with the official Khronos C++ API,
+// then adapt to our ComputationGraph. See NNEF‑Tools cpp_api.md for exact APIs.
+// Repo: https://github.com/KhronosGroup/NNEF-Tools/tree/main/nnef-pyproject#nnef-parser---repository
 
-struct NnefTensor { std::string name; /* dtype, shape, is_weight, file */ };
-struct NnefNode   { std::string op;   /* inputs, outputs, attrs       */ };
+#include <nnef.h>          // Provided by NNEF‑Tools
+#include <filesystem>
 
-struct NnefGraph {
-  std::vector<NnefTensor> tensors;
-  std::vector<NnefNode>   nodes; // already in topo order or sortable
-};
+bool loadNNEFIntoEngine(const std::string& modelDir) {
+    // 1) Parse the text graph + associated weight binaries using the official API
+    //    (Open the directory and let the parser resolve referenced tensor files.)
+    //    Pseudocode:
+    //    nnef::Graph graph = nnef::parseDirectory(modelDir);
 
-NnefGraph loadNNEF(const std::string& dir);
+    // 2) Create tensors in our engine (I/O + constants)
+    //    Iterate the NNEF graph’s tensors; for constants, map the external binary
+    //    and upload into device buffers.
 
-void importNNEFIntoEngine(const std::string& modelDir) {
-  NnefGraph g = loadNNEF(modelDir);
+    // 3) Create operations and wire their inputs/outputs
+    //    For each NNEF node, map op type + attributes to our Operation.
 
-  // Create tensors (IO + weights)
-  for (const auto& t : g.tensors) {
-    addTensor(t.name /*, dtype, shape */);
-    if (/* t is weight */) {
-      auto bytes = read_file(modelDir + "/" + /*t.weight_file*/);
-      uploadWeights(t.name, bytes.data(), bytes.size());
-    }
-  }
-
-  // Create operations and connect
-  for (const auto& n : g.nodes) {
-    auto id = addOperation(n.op /* + attributes */);
-    for (const auto& in : /*n.inputs*/)  connectInput(id, in);
-    for (const auto& out: /*n.outputs*/) connectOutput(id, out);
-  }
+    // Handle common shims: NCHW↔NHWC layout, dtype normalization, default strides/padding.
+    return true;
 }
 ----
 
-Once imported, execution is identical to ONNX/TFLite: plan buffers, bind descriptors, dispatch Vulkan compute. For a deeper treatment—including layouts, quantization metadata, and a Conv→ReLU→Pool walk‑through—see xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[NNEF Deep Dive].
+A few habits make this path smooth. Keep parsing and execution separated so a thin NNEF→IR adapter can feed the same Vulkan code you already use for ONNX and TFLite. When an operator is not supported, fail loudly with a useful message that includes the op name, expected ranks and data types, and what to implement next. And print a compact import summary—inputs and outputs, total parameters, and a quick operator histogram—so students can validate that they loaded the model they think they did.
+
+Once imported, execution is identical to ONNX/TFLite: plan buffers, bind descriptors, and dispatch Vulkan compute. For a concise overview of NNEF’s goals and links to the official spec/tools, see xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[NNEF Introduction].
 
 == ONNX vs TFLite vs NNEF: When to Use Which?
 
-**ONNX**:
-
-- Comprehensive operator support
-- Better for desktop/server deployment
-- Good tooling and ecosystem
-- Protobuf serialization (parse everything upfront)
-- Typical use: Loading models for desktop applications
-
-**TFLite**:
-
-- Optimized for mobile/embedded
-- Zero-copy access with FlatBuffers
-- Smaller file sizes with quantization support
-- Built-in hardware delegate system
-- Typical use: Android/iOS apps, embedded devices
-
-**NNEF**:
-
-- Interchange format standardized by Khronos
-- Human‑readable graph + external binary tensors
-- Good for engine authors and compiler flows; easy to diff/inspect
-- Typical use: as an import/export hub; parse to your own IR or hand to a compiler
-
-For this tutorial, we focus on ONNX for “drop‑in” desktop scenarios and provide a xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[deep dive on NNEF] for engine authors. All three give you a graph, operations, and weights; the parsing details differ, but the result is the same: a ComputationGraph you can execute.
+If you are building a desktop or server application and want broad interoperability, ONNX is a pragmatic choice with a mature ecosystem, even if it means parsing a full protobuf upfront. When you target phones or small embedded systems, TFLite’s FlatBuffers and ecosystem around delegates and quantization make it a natural fit. When you want a textual, inspectable exchange format with precise operator intent and a simple bridge into your own IR, use NNEF and load it natively. In this tutorial we keep ONNX as the convenient drop‑in for desktop scenarios and we treat NNEF as a first‑class path through the official parser. All three end up in the same place: a `ComputationGraph` ready to execute.
 
 == From Format to Graph
 
-Regardless of format, the parsing flow is:
-
-1. **Read the file**: Deserialize protobuf (ONNX) or memory-map (TFLite)
-2. **Create tensors**: For each tensor in the model, create a Tensor object
-3. **Create operations**: For each operation, create an Operation object with the right type
-4. **Connect them**: Link operations to input/output tensors
-5. **Set weights**: For constant tensors, store the learned weights
-6. **Mark I/O**: Identify which tensors are graph inputs and outputs
-
-After this, you have a ComputationGraph identical in structure to what we built manually, but loaded from a trained model file.
+No matter which format you read, the translation into our IR follows the same arc. First, open the container—deserialize protobuf for ONNX or map the FlatBuffer for TFLite—and start walking the graph. As you encounter tensors, create their counterparts in the engine. As you visit nodes, create operations with their attributes and wire them to the right inputs and outputs. When you see constants, capture their data so it can be uploaded to GPU memory. Finally, record which tensors are the official inputs and outputs of the model. When you are done, you hold a `ComputationGraph` equivalent to the one we built by hand, except it came from a trained file rather than from our own calls to `addTensor` and `addOperation`.
 
 == The Complete Picture
 
-Let's see the full flow from training to inference:
-
-**Training** (PyTorch/TensorFlow):
-
-1. Define model architecture
-2. Train on dataset
-3. Export to ONNX or TFLite
-
-**Loading** (Our engine):
-
-1. Parse ONNX/TFLite file
-2. Build ComputationGraph
-3. Allocate GPU buffers
-4. Upload weights to GPU
-
-**Inference** (Our engine):
-
-1. Upload input to GPU
-2. Execute graph (dispatch operations in order)
-3. Download output from GPU
-
-The model format bridges training and inference. It's the handoff point between frameworks.
+From training to results, the path is straightforward. A framework such as PyTorch or TensorFlow defines and trains a model, then exports it to a standard format. Our engine loads that file, builds a `ComputationGraph`, allocates the necessary GPU buffers, and uploads the learned parameters. At inference time we copy inputs to the device, dispatch operations in dependency order, and read the predictions back. The file format is simply the bridge between the world that trained the network and the runtime that executes it.
 
 == Implementation Note
 
-The full ONNX and TFLite parsers are complex—handling all operator types, all data types, all edge cases. That's hundreds of lines of code.
+A production‑quality parser handles many operators, data types, and awkward corner cases, which quickly grows beyond what belongs in an introductory tutorial. The working code that powers this chapter lives in xref:attachments/ml_inference[ml_inference]. It covers the core operators used here—Dense, Conv2D, ReLU, MaxPool—and the same pattern scales to the rest: read the node, fetch its parameters, wire the tensors. We encourage you to learn the concepts behind this tutorial independently of the code, an example implementation showing all of these concepts is attached to this chapter for when you're ready to see an example implementation.
 
-For this tutorial, the complete parser is in xref:attachments/ml_inference[ml_inference]. It handles the core operators we support (Dense, Conv2D, ReLU, MaxPool). The pattern shown above extends to all operators—extract type, extract parameters, connect tensors.
+Next chapter: NNEF Introduction.
 
-We're not going to paste 500 lines of parsing code in the tutorial. The concepts matter more than the syntax. You know what's in the files, you know what you need to extract, you know how to build the graph. The full implementation is in the attachments when you need it.
-
-Next chapter: putting everything together.
-
-xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Previous: Model Representation] | xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[Next: NNEF Deep Dive]
+xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Previous: Model Representation] | xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[Next: NNEF Introduction]

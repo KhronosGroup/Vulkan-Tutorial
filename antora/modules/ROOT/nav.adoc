@@ -190,7 +190,7 @@
 *** xref:ML_Inference/Building_the_Inference_Engine/03_from_hardcoded_to_flexible.adoc[From Hardcoded to Flexible]
 *** xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Model Representation]
 *** xref:ML_Inference/Building_the_Inference_Engine/05_model_formats_as_input.adoc[Model Formats as Input]
-*** xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[NNEF Deep Dive]
+*** xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[NNEF Introduction]
 *** xref:ML_Inference/Building_the_Inference_Engine/07_putting_it_together.adoc[Putting it Together]
 ** Debugging and Performance
 *** xref:ML_Inference/Debugging_and_Performance/01_introduction.adoc[Introduction]

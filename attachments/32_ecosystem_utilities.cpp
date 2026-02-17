@@ -296,7 +296,7 @@ class HelloTriangleApplication
 		    .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
 		    .apiVersion         = vk::ApiVersion14};
 
-		auto extensions = getRequiredExtensions();
+		auto extensions = getRequiredInstanceExtensions();
 
 		vk::InstanceCreateInfo createInfo{
 		    .pApplicationInfo        = &appInfo,
@@ -1734,7 +1734,7 @@ class HelloTriangleApplication
 		    std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
 	}
 
-	[[nodiscard]] std::vector<const char *> getRequiredExtensions() const
+	[[nodiscard]] std::vector<const char *> getRequiredInstanceExtensions() const
 	{
 		// Get the required extensions from GLFW
 		uint32_t    glfwExtensionCount = 0;

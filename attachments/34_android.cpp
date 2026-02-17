@@ -432,7 +432,7 @@ class HelloTriangleApplication
 		    .apiVersion         = VK_API_VERSION_1_3};
 
 		// Get required extensions
-		std::vector<const char *> extensions = getRequiredExtensions();
+		std::vector<const char *> extensions = getRequiredInstanceExtensions();
 
 		// Create instance
 		vk::InstanceCreateInfo createInfo{
@@ -1414,7 +1414,7 @@ class HelloTriangleApplication
 	}
 
 	// Get required extensions
-	std::vector<const char *> getRequiredExtensions()
+	std::vector<const char *> getRequiredInstanceExtensions()
 	{
 #if PLATFORM_ANDROID
 		// Android requires these extensions

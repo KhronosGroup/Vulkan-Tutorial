@@ -356,46 +356,48 @@ class HelloTriangleApplication
 		surface = vk::raii::SurfaceKHR(instance, _surface);
 	}
 
-	void pickPhysicalDevice()
-	{
-		std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-		const auto                            devIter = std::ranges::find_if(
-            devices,
-            [&](auto const &device) {
-                // Check if any of the queue families support graphics operations
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool supportsGraphics =
-                    std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+  bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
+  {
+    // Check if the physicalDevice supports the Vulkan 1.3 API version
+    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-                // Check if all required device extensions are available
-                auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
-                bool supportsAllRequiredExtensions =
-                    std::ranges::all_of(requiredDeviceExtension,
-			                                                       [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
-                                            return std::ranges::any_of(availableDeviceExtensions,
-				                                                                                  [requiredDeviceExtension](auto const &availableDeviceExtension) { return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0; });
-                                        });
+    // Check if any of the queue families support graphics operations
+    auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+    bool supportsGraphics = std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
 
-                return supportsGraphics && supportsAllRequiredExtensions;
-            });
+    // Check if all required physicalDevice extensions are available
+    auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+    bool supportsAllRequiredExtensions =
+      std::ranges::all_of( requiredDeviceExtension,
+                           [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
+                           {
+                             return std::ranges::any_of( availableDeviceExtensions,
+                                                         [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                         { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
+                           } );
 
-		if (devIter != devices.end())
-		{
-			physicalDevice = *devIter;
-			msaaSamples    = getMaxUsableSampleCount();
+    // Return true if the physicalDevice meets all the criteria
+    return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions;
+  }
 
-			// Print device information
-			vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-			std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
-			std::cout << "API Version: " << VK_VERSION_MAJOR(deviceProperties.apiVersion) << "."
-			          << VK_VERSION_MINOR(deviceProperties.apiVersion) << "."
-			          << VK_VERSION_PATCH(deviceProperties.apiVersion) << std::endl;
-		}
-		else
-		{
-			throw std::runtime_error("failed to find a suitable GPU!");
-		}
-	}
+  void pickPhysicalDevice()
+  {
+    std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+    auto const devIter = std::ranges::find_if( physicalDevices, [&]( auto const & physicalDevice ) { return isDeviceSuitable( physicalDevice ); } );
+    if ( devIter == physicalDevices.end() )
+    {
+      throw std::runtime_error( "failed to find a suitable GPU!" );
+    }
+    physicalDevice = *devIter;
+    msaaSamples    = getMaxUsableSampleCount();
+
+    // Print device information
+    vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
+    std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
+    std::cout << "API Version: " << VK_VERSION_MAJOR(deviceProperties.apiVersion) << "."
+              << VK_VERSION_MINOR(deviceProperties.apiVersion) << "."
+              << VK_VERSION_PATCH(deviceProperties.apiVersion) << std::endl;
+  }
 
 	void checkFeatureSupport()
 	{

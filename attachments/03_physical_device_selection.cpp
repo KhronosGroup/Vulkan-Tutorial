@@ -152,7 +152,7 @@ class HelloTriangleApplication
   bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
   {
     // Check if the physicalDevice supports the Vulkan 1.3 API version
-    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
+    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= vk::ApiVersion13;
 
     // Check if any of the queue families support graphics operations
     auto queueFamilies    = physicalDevice.getQueueFamilyProperties();

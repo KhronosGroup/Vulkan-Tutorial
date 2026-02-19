@@ -144,8 +144,8 @@ The choices are `VK_FILTER_NEAREST` and `VK_FILTER_LINEAR`, corresponding to the
 
 [,c++]
 ----
-vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat };
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat};
 ----
 
 The addressing mode can be specified per axis using the `addressMode` fields.
@@ -166,8 +166,8 @@ However, the repeat mode is probably the most common mode, because it can be use
 [,c++]
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
-vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear, 
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat,
     .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy};
 ----
 
@@ -189,10 +189,9 @@ If we want to go for maximum quality, we can simply use that value directly:
 [,c++]
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
-vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
-    .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
-    .compareEnable = vk::False, .compareOp = vk::CompareOp::eAlways};
+vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear, 
+    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat,
+    .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy};
 ----
 
 You can either query the properties at the beginning of your program and pass them around to the functions that need them, or query them in the `createTextureSampler` function itself.

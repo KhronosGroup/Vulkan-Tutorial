@@ -95,7 +95,9 @@ The C++ Vulkan API provides a helper template called `vk::StructureChain` that m
 // Create a chain of feature structures
 vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
     {},                               // vk::PhysicalDeviceFeatures2 (empty for now)
-    {.dynamicRendering = true },      // Enable dynamic rendering from Vulkan 1.3
+    {
+      .synchronization2 = true,
+      .dynamicRendering = true },      // Enable dynamic rendering from Vulkan 1.3
     {.extendedDynamicState = true }   // Enable extended dynamic state from the extension
 };
 ----

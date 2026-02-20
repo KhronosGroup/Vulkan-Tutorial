@@ -544,98 +544,91 @@ class VulkanApplication
 #endif
 	}
 
-	void pickPhysicalDevice()
-	{
-		std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-		const auto                            devIter = std::ranges::find_if(
-            devices,
-            [&](auto const &device) {
-                // Check if the device supports the Vulkan 1.3 API version
-                bool supportsVulkan1_3 = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+  bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
+  {
+    // Check if the physicalDevice supports the Vulkan 1.3 API version
+    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-                // Check if any of the queue families support graphics operations
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool supportsGraphics =
-                    std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+    // Check if any of the queue families support graphics operations
+    auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+    bool supportsGraphics = std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
 
-                // Check if all required device extensions are available
-                auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
-                bool supportsAllRequiredExtensions =
-                    std::ranges::all_of(requiredDeviceExtension,
-			                                                       [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
-                                            return std::ranges::any_of(availableDeviceExtensions,
-				                                                                                  [requiredDeviceExtension](auto const &availableDeviceExtension) {
-                                                                           return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0;
-                                                                       });
-                                        });
+    // Check if all required physicalDevice extensions are available
+    auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+    bool supportsAllRequiredExtensions =
+      std::ranges::all_of( requiredDeviceExtension,
+                           [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
+                           {
+                             return std::ranges::any_of( availableDeviceExtensions,
+                                                         [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                         { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
+                           } );
 
-                auto features                 = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-                bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+    // Check if the physicalDevice supports the required features
+    auto features =
+      physicalDevice
+        .template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+    bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                    features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
-                return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
-            });
+    // Return true if the physicalDevice meets all the criteria
+    return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+  }
 
-		if (devIter != devices.end())
-		{
-			physicalDevice = *devIter;
+  void pickPhysicalDevice()
+  {
+    std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+    auto const devIter = std::ranges::find_if( physicalDevices, [&]( auto const & physicalDevice ) { return isDeviceSuitable( physicalDevice ); } );
+    if ( devIter == physicalDevices.end() )
+    {
+      throw std::runtime_error( "failed to find a suitable GPU!" );
+    }
+    physicalDevice = *devIter;
 
-			// Check for Vulkan profile support
-			VpProfileProperties profileProperties;
+    // Check for Vulkan profile support
+    VpProfileProperties profileProperties;
 #if PLATFORM_ANDROID
-			strcpy(profileProperties.name, VP_KHR_ROADMAP_2022_NAME);
+    strcpy( profileProperties.name, VP_KHR_ROADMAP_2022_NAME );
 #else
-			strcpy(profileProperties.profileName, VP_KHR_ROADMAP_2022_NAME);
+    strcpy( profileProperties.profileName, VP_KHR_ROADMAP_2022_NAME );
 #endif
-			profileProperties.specVersion = VP_KHR_ROADMAP_2022_SPEC_VERSION;
+    profileProperties.specVersion = VP_KHR_ROADMAP_2022_SPEC_VERSION;
 
-			VkBool32 supported = VK_FALSE;
-			bool     result    = false;
+    VkBool32 supported = VK_FALSE;
+    bool     result    = false;
 
 #if PLATFORM_ANDROID
-			// Create a vp::ProfileDesc from our VpProfileProperties
-			vp::ProfileDesc profileDesc = {
-			    profileProperties.name,
-			    profileProperties.specVersion};
+    // Create a vp::ProfileDesc from our VpProfileProperties
+    vp::ProfileDesc profileDesc = { profileProperties.name, profileProperties.specVersion };
 
-			// Use vp::GetProfileSupport for Android
-			result = vp::GetProfileSupport(
-			    *physicalDevice,        // Pass the physical device directly
-			    &profileDesc,           // Pass the profile description
-			    &supported              // Output parameter for support status
-			);
+    // Use vp::GetProfileSupport for Android
+    result = vp::GetProfileSupport( *physicalDevice,  // Pass the physical device directly
+                                    &profileDesc,     // Pass the profile description
+                                    &supported        // Output parameter for support status
+    );
 #else
-			// Use vpGetPhysicalDeviceProfileSupport for Desktop
-			VkResult vk_result = vpGetPhysicalDeviceProfileSupport(
-			    *instance,
-			    *physicalDevice,
-			    &profileProperties,
-			    &supported);
-			result = vk_result == static_cast<int>(vk::Result::eSuccess);
+    // Use vpGetPhysicalDeviceProfileSupport for Desktop
+    VkResult vk_result = vpGetPhysicalDeviceProfileSupport( *instance, *physicalDevice, &profileProperties, &supported );
+    result             = vk_result == static_cast<int>( vk::Result::eSuccess );
 #endif
-			const char *name = nullptr;
+    const char * name = nullptr;
 #ifdef PLATFORM_ANDROID
-			name = profileProperties.name;
+    name = profileProperties.name;
 #else
-			name = profileProperties.profileName;
+    name = profileProperties.profileName;
 #endif
 
-			if (result && supported == VK_TRUE)
-			{
-				appInfo.profileSupported = true;
-				appInfo.profile          = profileProperties;
-				LOGI("Device supports Vulkan profile: %s", name);
-			}
-			else
-			{
-				LOGI("Device does not support Vulkan profile: %s", name);
-			}
-		}
-		else
-		{
-			throw std::runtime_error("failed to find a suitable GPU!");
-		}
-	}
+    if ( result && supported == VK_TRUE )
+    {
+      appInfo.profileSupported = true;
+      appInfo.profile          = profileProperties;
+      LOGI( "Device supports Vulkan profile: %s", name );
+    }
+    else
+    {
+      LOGI( "Device does not support Vulkan profile: %s", name );
+    }
+  }
 
 	void createLogicalDevice()
 	{

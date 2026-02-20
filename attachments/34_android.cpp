@@ -386,7 +386,7 @@ class HelloTriangleApplication
 	};
 
 	// Required device extensions
-	const std::vector<const char *> deviceExtensions = {
+	const std::vector<const char *> requiredDeviceExtensions = {
 	    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
 	// Initialize Vulkan
@@ -482,45 +482,44 @@ class HelloTriangleApplication
 		surface = vk::raii::SurfaceKHR(instance, _surface);
 	}
 
-	// Pick physical device
-	void pickPhysicalDevice()
-	{
-		std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-		const auto                            devIter = std::ranges::find_if(
-            devices,
-            [&](auto const &device) {
-                // Check if any of the queue families support graphics operations
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool supportsGraphics =
-                    std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+  bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
+  {
+    // Check if the physicalDevice supports the Vulkan 1.3 API version
+    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-                // Check if all required device extensions are available
-                auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
-                bool supportsAllRequiredExtensions =
-                    std::ranges::all_of(deviceExtensions,
-			                                                       [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
-                                            return std::ranges::any_of(availableDeviceExtensions,
-				                                                                                  [requiredDeviceExtension](auto const &availableDeviceExtension) {
-                                                                           return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0;
-                                                                       });
-                                        });
+    // Check if any of the queue families support graphics operations
+    auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+    bool supportsGraphics = std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
 
-                return supportsGraphics && supportsAllRequiredExtensions;
-            });
+    // Check if all required physicalDevice extensions are available
+    auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+    bool supportsAllRequiredExtensions =
+      std::ranges::all_of( requiredDeviceExtensions,
+                           [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
+                           {
+                             return std::ranges::any_of( availableDeviceExtensions,
+                                                         [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                         { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
+                           } );
 
-		if (devIter != devices.end())
-		{
-			physicalDevice = *devIter;
+    // Return true if the physicalDevice meets all the criteria
+    return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions;
+  }
 
-			// Print device information
-			vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-			LOGI("Selected GPU: %s", deviceProperties.deviceName.data());
-		}
-		else
-		{
-			throw std::runtime_error("Failed to find a suitable GPU");
-		}
-	}
+  void pickPhysicalDevice()
+  {
+    std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+    auto const devIter = std::ranges::find_if( physicalDevices, [&]( auto const & physicalDevice ) { return isDeviceSuitable( physicalDevice ); } );
+    if ( devIter == physicalDevices.end() )
+    {
+      throw std::runtime_error( "failed to find a suitable GPU!" );
+    }
+    physicalDevice = *devIter;
+
+    // Print device information
+    vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
+    LOGI("Selected GPU: %s", deviceProperties.deviceName.data());
+  }
 
 	// Check feature support
 	void checkFeatureSupport()
@@ -609,8 +608,8 @@ class HelloTriangleApplication
 			    .pNext                   = &features2,
 			    .queueCreateInfoCount    = 1,
 			    .pQueueCreateInfos       = &deviceQueueCreateInfo,
-			    .enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size()),
-			    .ppEnabledExtensionNames = deviceExtensions.data()};
+			    .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+			    .ppEnabledExtensionNames = requiredDeviceExtensions.data()};
 
 			// Create the device with the vk::DeviceCreateInfo
 			device = vk::raii::Device(physicalDevice, vkDeviceCreateInfo);
@@ -625,8 +624,8 @@ class HelloTriangleApplication
 			vk::DeviceCreateInfo createInfo{
 			    .queueCreateInfoCount    = 1,
 			    .pQueueCreateInfos       = &deviceQueueCreateInfo,
-			    .enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size()),
-			    .ppEnabledExtensionNames = deviceExtensions.data(),
+			    .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+			    .ppEnabledExtensionNames = requiredDeviceExtensions.data(),
 			    .pEnabledFeatures        = &deviceFeatures};
 
 			device = vk::raii::Device(physicalDevice, createInfo);

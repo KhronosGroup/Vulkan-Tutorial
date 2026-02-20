@@ -396,58 +396,59 @@ class VulkanRaytracingApplication
 		surface = vk::raii::SurfaceKHR(instance, _surface);
 	}
 
-	void pickPhysicalDevice()
-	{
-		std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-		const auto                            devIter = std::ranges::find_if(
-            devices,
-            [&](auto const &device) {
-                // Check if the device supports the Vulkan 1.3 API version
-                bool supportsVulkan1_3 = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
+  bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
+  {
+    // Check if the physicalDevice supports the Vulkan 1.3 API version
+    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-                // Check if any of the queue families support graphics operations
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool supportsGraphics =
-                    std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+    // Check if any of the queue families support graphics operations
+    auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+    bool supportsGraphics = std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
 
-                // Check if all required device extensions are available
-                auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
-                bool supportsAllRequiredExtensions =
-                    std::ranges::all_of(requiredDeviceExtension,
-			                                                       [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
-                                            return std::ranges::any_of(availableDeviceExtensions,
-				                                                                                  [requiredDeviceExtension](auto const &availableDeviceExtension) { return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0; });
-                                        });
+    // Check if all required physicalDevice extensions are available
+    auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+    bool supportsAllRequiredExtensions =
+      std::ranges::all_of( requiredDeviceExtension,
+                           [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
+                           {
+                             return std::ranges::any_of( availableDeviceExtensions,
+                                                         [requiredDeviceExtension]( auto const & availableDeviceExtension )
+                                                         { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
+                           } );
 
-                auto features                 = device.template getFeatures2<vk::PhysicalDeviceFeatures2,
-			                                                                                            vk::PhysicalDeviceVulkan12Features,
-			                                                                                            vk::PhysicalDeviceVulkan13Features,
-			                                                                                            vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-			                                                                                            vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-			                                                                                            vk::PhysicalDeviceRayQueryFeaturesKHR>();
-                bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
-                                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
-                                                features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&
-                                                features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&
-                                                features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
-                                                features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
-                                                features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
-                                                features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
-                                                features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure &&
-                                                features.template get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
+    // Check if the physicalDevice supports the required features
+    auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
+                                                                          vk::PhysicalDeviceVulkan12Features,
+                                                                          vk::PhysicalDeviceVulkan13Features,
+                                                                          vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+                                                                          vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+                                                                          vk::PhysicalDeviceRayQueryFeaturesKHR>();
+    bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
+                                    features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                    features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
+                                    features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&
+                                    features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&
+                                    features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
+                                    features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
+                                    features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
+                                    features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
+                                    features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure &&
+                                    features.template get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
 
-                return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
-            });
-		if (devIter != devices.end())
-		{
-			physicalDevice = *devIter;
-		}
-		else
-		{
-			throw std::runtime_error("failed to find a suitable GPU!");
-		}
-	}
+    // Return true if the physicalDevice meets all the criteria
+    return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+  }
+
+  void pickPhysicalDevice()
+  {
+    std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+    auto const devIter = std::ranges::find_if( physicalDevices, [&]( auto const & physicalDevice ) { return isDeviceSuitable( physicalDevice ); } );
+    if ( devIter == physicalDevices.end() )
+    {
+      throw std::runtime_error( "failed to find a suitable GPU!" );
+    }
+    physicalDevice = *devIter;
+  }
 
 	void createLogicalDevice()
 	{

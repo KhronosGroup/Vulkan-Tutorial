@@ -1635,19 +1635,19 @@ class HelloTriangleApplication
 			std::array<vk::Semaphore, 2> signalSemaphores = {*renderFinishedSemaphores[imageIndex], *timelineSemaphore};
 			std::array<uint64_t, 2>      signalValues     = {0, signalValue};        // Binary semaphore value is ignored
 
-			timelineInfo.waitSemaphoreValueCount   = 1;        // Only for the timeline semaphore
-			timelineInfo.pWaitSemaphoreValues      = &waitValues[1];
-			timelineInfo.signalSemaphoreValueCount = 1;        // Only for the timeline semaphore
-			timelineInfo.pSignalSemaphoreValues    = &signalValues[1];
+			timelineInfo.waitSemaphoreValueCount   = 2;
+			timelineInfo.pWaitSemaphoreValues      = waitValues.data();
+			timelineInfo.signalSemaphoreValueCount = 2;
+			timelineInfo.pSignalSemaphoreValues    = signalValues.data();
 
 			vk::SubmitInfo submitInfo{
 			    .pNext                = &timelineInfo,
-			    .waitSemaphoreCount   = 1,        // Only wait on the binary semaphore
-			    .pWaitSemaphores      = &waitSemaphores[0],
-			    .pWaitDstStageMask    = &waitStages[0],
+			    .waitSemaphoreCount   = 2,
+			    .pWaitSemaphores      = waitSemaphores.data(),
+			    .pWaitDstStageMask    = waitStages.data(),
 			    .commandBufferCount   = 1,
 			    .pCommandBuffers      = &*commandBuffers[frameIndex],
-			    .signalSemaphoreCount = 2,        // Signal both semaphores
+			    .signalSemaphoreCount = 2,
 			    .pSignalSemaphores    = signalSemaphores.data()};
 
 			queue.submit(submitInfo, *inFlightFences[frameIndex]);

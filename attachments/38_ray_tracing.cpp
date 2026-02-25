@@ -139,7 +139,7 @@ class VulkanRaytracingApplication
 
 	vk::raii::SwapchainKHR           swapChain = nullptr;
 	std::vector<vk::Image>           swapChainImages;
-	vk::Format                       swapChainImageFormat = vk::Format::eUndefined;
+	vk::SurfaceFormatKHR             swapChainSurfaceFormat;
 	vk::Extent2D                     swapChainExtent;
 	std::vector<vk::raii::ImageView> swapChainImageViews;
 
@@ -396,59 +396,57 @@ class VulkanRaytracingApplication
 		surface = vk::raii::SurfaceKHR(instance, _surface);
 	}
 
-  bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
-  {
-    // Check if the physicalDevice supports the Vulkan 1.3 API version
-    bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
+	bool isDeviceSuitable(vk::raii::PhysicalDevice const &physicalDevice)
+	{
+		// Check if the physicalDevice supports the Vulkan 1.3 API version
+		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-    // Check if any of the queue families support graphics operations
-    auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
-    bool supportsGraphics = std::ranges::any_of( queueFamilies, []( auto const & qfp ) { return !!( qfp.queueFlags & vk::QueueFlagBits::eGraphics ); } );
+		// Check if any of the queue families support graphics operations
+		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+		bool supportsGraphics = std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
 
-    // Check if all required physicalDevice extensions are available
-    auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
-    bool supportsAllRequiredExtensions =
-      std::ranges::all_of( requiredDeviceExtension,
-                           [&availableDeviceExtensions]( auto const & requiredDeviceExtension )
-                           {
-                             return std::ranges::any_of( availableDeviceExtensions,
-                                                         [requiredDeviceExtension]( auto const & availableDeviceExtension )
-                                                         { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
-                           } );
+		// Check if all required physicalDevice extensions are available
+		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+		bool supportsAllRequiredExtensions =
+		    std::ranges::all_of(requiredDeviceExtension,
+		                        [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
+			                        return std::ranges::any_of(availableDeviceExtensions,
+			                                                   [requiredDeviceExtension](auto const &availableDeviceExtension) { return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0; });
+		                        });
 
-    // Check if the physicalDevice supports the required features
-    auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
-                                                                          vk::PhysicalDeviceVulkan12Features,
-                                                                          vk::PhysicalDeviceVulkan13Features,
-                                                                          vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-                                                                          vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-                                                                          vk::PhysicalDeviceRayQueryFeaturesKHR>();
-    bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
-                                    features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                    features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
-                                    features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&
-                                    features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&
-                                    features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
-                                    features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
-                                    features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
-                                    features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
-                                    features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure &&
-                                    features.template get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
+		// Check if the physicalDevice supports the required features
+		auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
+		                                                                     vk::PhysicalDeviceVulkan12Features,
+		                                                                     vk::PhysicalDeviceVulkan13Features,
+		                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+		                                                                     vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+		                                                                     vk::PhysicalDeviceRayQueryFeaturesKHR>();
+		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState &&
+		                                features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&
+		                                features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&
+		                                features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
+		                                features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
+		                                features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
+		                                features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
+		                                features.template get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure &&
+		                                features.template get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
 
-    // Return true if the physicalDevice meets all the criteria
-    return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
-  }
+		// Return true if the physicalDevice meets all the criteria
+		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+	}
 
-  void pickPhysicalDevice()
-  {
-    std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
-    auto const devIter = std::ranges::find_if( physicalDevices, [&]( auto const & physicalDevice ) { return isDeviceSuitable( physicalDevice ); } );
-    if ( devIter == physicalDevices.end() )
-    {
-      throw std::runtime_error( "failed to find a suitable GPU!" );
-    }
-    physicalDevice = *devIter;
-  }
+	void pickPhysicalDevice()
+	{
+		std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+		auto const                            devIter         = std::ranges::find_if(physicalDevices, [&](auto const &physicalDevice) { return isDeviceSuitable(physicalDevice); });
+		if (devIter == physicalDevices.end())
+		{
+			throw std::runtime_error("failed to find a suitable GPU!");
+		}
+		physicalDevice = *devIter;
+	}
 
 	void createLogicalDevice()
 	{
@@ -525,13 +523,28 @@ class VulkanRaytracingApplication
 
 	void createSwapChain()
 	{
-		auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
-		swapChainImageFormat     = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR(surface));
-		swapChainExtent          = chooseSwapExtent(surfaceCapabilities);
-		auto minImageCount       = std::max(3u, surfaceCapabilities.minImageCount);
-		minImageCount            = (surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount) ? surfaceCapabilities.maxImageCount : minImageCount;
-		vk::SwapchainCreateInfoKHR swapChainCreateInfo{
-		    .surface = surface, .minImageCount = minImageCount, .imageFormat = swapChainImageFormat, .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear, .imageExtent = swapChainExtent, .imageArrayLayers = 1, .imageUsage = vk::ImageUsageFlagBits::eColorAttachment, .imageSharingMode = vk::SharingMode::eExclusive, .preTransform = surfaceCapabilities.currentTransform, .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque, .presentMode = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR(surface)), .clipped = true};
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
+		swapChainExtent                                = chooseSwapExtent(surfaceCapabilities);
+		uint32_t minImageCount                         = chooseSwapMinImageCount(surfaceCapabilities);
+
+		std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
+		swapChainSurfaceFormat                             = chooseSwapSurfaceFormat(availableFormats);
+
+		std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR(*surface);
+		vk::PresentModeKHR              presentMode           = chooseSwapPresentMode(availablePresentModes);
+
+		vk::SwapchainCreateInfoKHR swapChainCreateInfo{.surface          = *surface,
+		                                               .minImageCount    = minImageCount,
+		                                               .imageFormat      = swapChainSurfaceFormat.format,
+		                                               .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
+		                                               .imageExtent      = swapChainExtent,
+		                                               .imageArrayLayers = 1,
+		                                               .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
+		                                               .imageSharingMode = vk::SharingMode::eExclusive,
+		                                               .preTransform     = surfaceCapabilities.currentTransform,
+		                                               .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+		                                               .presentMode      = presentMode,
+		                                               .clipped          = true};
 
 		swapChain       = vk::raii::SwapchainKHR(device, swapChainCreateInfo);
 		swapChainImages = swapChain.getImages();
@@ -541,9 +554,9 @@ class VulkanRaytracingApplication
 	{
 		vk::ImageViewCreateInfo imageViewCreateInfo{
 		    .viewType         = vk::ImageViewType::e2D,
-		    .format           = swapChainImageFormat,
+		    .format           = swapChainSurfaceFormat.format,
 		    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
-		for (auto& image : swapChainImages)
+		for (auto &image : swapChainImages)
 		{
 			imageViewCreateInfo.image = image;
 			swapChainImageViews.emplace_back(device, imageViewCreateInfo);
@@ -629,8 +642,8 @@ class VulkanRaytracingApplication
 		    .depthBoundsTestEnable = vk::False,
 		    .stencilTestEnable     = vk::False};
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-			.blendEnable    = vk::False,	    
-			.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+		    .blendEnable    = vk::False,
+		    .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 		vk::PipelineColorBlendStateCreateInfo colorBlending{
 		    .logicOpEnable   = vk::False,
 		    .logicOp         = vk::LogicOp::eCopy,
@@ -672,7 +685,7 @@ class VulkanRaytracingApplication
 		     .pDynamicState       = &dynamicState,
 		     .layout              = *pipelineLayout,
 		     .renderPass          = nullptr},
-		    {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat, .depthAttachmentFormat = depthFormat}};
+		    {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format, .depthAttachmentFormat = depthFormat}};
 
 		graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 	}
@@ -1901,17 +1914,26 @@ class VulkanRaytracingApplication
 		return shaderModule;
 	}
 
-	static vk::Format chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &availableFormats)
+	static uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &surfaceCapabilities)
 	{
-		const auto formatIt = std::ranges::find_if(availableFormats,
-		                                           [](const auto &format) {
-			                                           return format.format == vk::Format::eB8G8R8A8Srgb &&
-			                                                  format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
-		                                           });
-		return formatIt != availableFormats.end() ? formatIt->format : availableFormats[0].format;
+		auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
+		if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount))
+		{
+			minImageCount = surfaceCapabilities.maxImageCount;
+		}
+		return minImageCount;
 	}
 
-	static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR> &availablePresentModes)
+	static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &availableFormats)
+	{
+		assert(!availableFormats.empty());
+		const auto formatIt = std::ranges::find_if(
+		    availableFormats,
+		    [](const auto &format) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; });
+		return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
+	}
+
+	static vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes)
 	{
 		return std::ranges::any_of(availablePresentModes,
 		                           [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
@@ -1919,7 +1941,7 @@ class VulkanRaytracingApplication
 		           vk::PresentModeKHR::eFifo;
 	}
 
-	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities)
+	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
 	{
 		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 		{

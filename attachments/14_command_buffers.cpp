@@ -181,7 +181,7 @@ class HelloTriangleApplication
 		surface = vk::raii::SurfaceKHR(instance, _surface);
 	}
 
-  bool isDeviceSuitable(vk::raii::PhysicalDevice const &physicalDevice)
+	bool isDeviceSuitable(vk::raii::PhysicalDevice const &physicalDevice)
 	{
 		// Check if the physicalDevice supports the Vulkan 1.3 API version
 		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
@@ -270,11 +270,18 @@ class HelloTriangleApplication
 
 	void createSwapChain()
 	{
-		auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
-		swapChainExtent          = chooseSwapExtent(surfaceCapabilities);
-		swapChainSurfaceFormat   = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR(*surface));
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
+		swapChainExtent                                = chooseSwapExtent(surfaceCapabilities);
+		uint32_t minImageCount                         = chooseSwapMinImageCount(surfaceCapabilities);
+
+		std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
+		swapChainSurfaceFormat                             = chooseSwapSurfaceFormat(availableFormats);
+
+		std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR(*surface);
+		vk::PresentModeKHR              presentMode           = chooseSwapPresentMode(availablePresentModes);
+
 		vk::SwapchainCreateInfoKHR swapChainCreateInfo{.surface          = *surface,
-		                                               .minImageCount    = chooseSwapMinImageCount(surfaceCapabilities),
+		                                               .minImageCount    = minImageCount,
 		                                               .imageFormat      = swapChainSurfaceFormat.format,
 		                                               .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
 		                                               .imageExtent      = swapChainExtent,
@@ -283,7 +290,7 @@ class HelloTriangleApplication
 		                                               .imageSharingMode = vk::SharingMode::eExclusive,
 		                                               .preTransform     = surfaceCapabilities.currentTransform,
 		                                               .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-		                                               .presentMode      = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR(*surface)),
+		                                               .presentMode      = presentMode,
 		                                               .clipped          = true};
 
 		swapChain       = vk::raii::SwapchainKHR(device, swapChainCreateInfo);
@@ -295,7 +302,7 @@ class HelloTriangleApplication
 		assert(swapChainImageViews.empty());
 
 		vk::ImageViewCreateInfo imageViewCreateInfo{.viewType = vk::ImageViewType::e2D, .format = swapChainSurfaceFormat.format, .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
-		for (auto& image : swapChainImages)
+		for (auto &image : swapChainImages)
 		{
 			imageViewCreateInfo.image = image;
 			swapChainImageViews.emplace_back(device, imageViewCreateInfo);
@@ -389,7 +396,7 @@ class HelloTriangleApplication
 		return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
 	}
 
-	static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR> &availablePresentModes)
+	static vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes)
 	{
 		assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
 		return std::ranges::any_of(availablePresentModes,
@@ -398,9 +405,9 @@ class HelloTriangleApplication
 		           vk::PresentModeKHR::eFifo;
 	}
 
-	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities)
+	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
 	{
-		if (capabilities.currentExtent.width != 0xFFFFFFFF)
+		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 		{
 			return capabilities.currentExtent;
 		}

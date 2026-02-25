@@ -68,38 +68,33 @@ To access native platform functions, you need to update the includes at the top:
 ----
 
 Because a window surface is a Vulkan object, it comes with a
-`VkWin32SurfaceCreateInfoKHR` struct that needs to be filled in. It has two
+`vk::Win32SurfaceCreateInfoKHR` struct that needs to be filled in. It has two
 important parameters: `hwnd` and `hinstance`. These are the handles to the
 window and the process.
 
 [,c++]
 ----
-VkWin32SurfaceCreateInfoKHR createInfo{};
-createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-createInfo.hwnd = glfwGetWin32Window(window);
-createInfo.hinstance = GetModuleHandle(nullptr);
+vk::Win32SurfaceCreateInfoKHR createInfo{.hinstance = GetModuleHandle(nullptr),
+                                         .hwnd      = glfwGetWin32Window(window)};
 ----
 
 The `glfwGetWin32Window` function is used to get the raw `HWND` from the GLFW
 window object. The `GetModuleHandle` call returns the `HINSTANCE` handle of the
 current process.
 
-After that the surface can be created with `vkCreateWin32SurfaceKHR`, which
-includes a parameter for the instance, surface creation details, custom
-allocators and the variable for the surface handle to be stored in.
+After that the surface can be created with `vk::raii::Instance::createWin32SurfaceKHR`,
+which includes a parameter for surface creation details and custom allocators.
 Technically, this is a WSI extension function, but it is so commonly used
 that the standard Vulkan loader includes it, so unlike other extensions, you
 don't need to explicitly load it.
 
 [,c++]
 ----
-if (vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &surface) != VK_SUCCESS) {
-    throw std::runtime_error("failed to create window surface!");
-}
+surface = instance.createWin32SurfaceKHR(createInfo);
 ----
 
 The process is similar for other platforms like Linux, where
-`vkCreateXcbSurfaceKHR` takes an XCB connection and window as creation details
+`vk::raii::Instance::createXcbSurfaceKHR` takes an XCB connection and window as creation details
 with X11.
 
 The `glfwCreateWindowSurface` function performs exactly this operation with a
@@ -141,7 +136,7 @@ The VkSurfaceKHR object is a C API object.  Thankfully, it can natively be
 promoted to the C++ wrapper, and that's what we do here.
 
 The parameters are the `VkInstance`, GLFW window pointer, custom allocators and
-pointer to `VkSurfaceKHR` variable. It simply passes through the `VkResult` from
+pointer to a `VkSurfaceKHR` variable. It simply passes through the `VkResult` from
 the relevant platform call. GLFW doesn't offer a special function for destroying
 a surface, but wrapping it in our raii SurfaceKHR object will let Vulkan
 RAII take care of that for us.
@@ -155,54 +150,40 @@ surface we created. Since the presentation is a queue-specific feature, the
 problem is actually about finding a queue family that supports presenting to the
 surface we created.
 
-It's actually possible that the queue families supporting drawing commands and
-the queue families supporting presentation do not overlap. Therefore, we
-have to take into account that there could be a distinct presentation queue.
+It's actually possible but very unlikely that the queue families supporting graphics
+commands and the queue families supporting presentation do not overlap. But for simplicity
+we assume, there is such a queue family, and bail out in case there isn't.
 
-Next, we'll look for a queue family that has the capability of presenting
-to our window surface. The function to check for that is
-`vkGetPhysicalDeviceSurfaceSupportKHR`, which takes the  physical device,
-queue family index and surface as parameters. Add a call to it
-in the same loop as the `VK_QUEUE_GRAPHICS_BIT`:
-
-[,c++]
-----
-VkBool32 presentSupport = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface );
-----
-
-Then check the value of the boolean and store the presentation family
-queue index:
+That is, next, we'll look for a queue family that has the capability of both, supporting
+graphics operations, and presenting to our window surface. The function to check for present
+support is `vk::raii::PhysicalDevice::getSurfaceSupportKHR`, which takes the queue family
+index and the surface as parameters:
 
 [,c++]
 ----
-if (presentSupport) {
-    indices.presentFamily = i;
+uint32_t queueIndex = ~0;
+for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
+{
+  if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+      physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
+  {
+    // found a queue family that supports both graphics and present
+    queueIndex = qfpIndex;
+    break;
+  }
+}
+if (queueIndex == ~0)
+{
+  throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
 }
 ----
-
-Note that it's very likely that these end up being the same queue family after
-all, but throughout the program we will treat them as if they were separate
-queues for a uniform approach. Nevertheless, you could add logic to explicitly
-prefer a physical device that supports drawing and presentation in the same
-queue for improved performance.
 
 == Creating the presentation queue
 
 The one thing that remains is modifying the logical device creation procedure to
-create the presentation queue and retrieve the `VkQueue` handle. Add a member
-variable for the handle:
-
-[,c++]
-----
-vk::raii::Queue presentQueue;
-
-std::vector<const char*> deviceExtensions = {
-    vk::KHRSwapchainExtensionName};
-----
-
-Next, we need to modify the filtering logic to find the best queue families
-to use as we detect them.  Here's how we do it in one function at the device
-creation functions:
+create the queue and retrieve the `vk::raii::Queue` handle. We need to modify the
+filtering logic to find the best queue families to use as we detect them.  Here's
+how we do it in one function at the device creation functions:
 
 [,c++]
 ----
@@ -210,73 +191,45 @@ void createLogicalDevice() {
     // find the index of the first queue family that supports graphics
     std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-    // get the first index into queueFamilyProperties which supports graphics
-    auto graphicsQueueFamilyProperty = std::ranges::find_if( queueFamilyProperties, []( auto const & qfp )
-                    { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); } );
-
-    auto graphicsIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsQueueFamilyProperty ) );
-
-    // determine a queueFamilyIndex that supports present
-    // first check if the graphicsIndex is good enough
-    auto presentIndex = physicalDevice.getSurfaceSupportKHR( graphicsIndex, *surface )
-                                       ? graphicsIndex
-                                       : static_cast<uint32_t>( queueFamilyProperties.size() );
-    if ( presentIndex == queueFamilyProperties.size() )
+    // get the first index into queueFamilyProperties which supports both graphics and present
+    uint32_t queueIndex = ~0;
+    for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
     {
-        // the graphicsIndex doesn't support present -> look for another family index that supports both
-        // graphics and present
-        for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
-        {
-            if ( ( queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics ) &&
-                 physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
-            {
-                graphicsIndex = static_cast<uint32_t>( i );
-                presentIndex  = graphicsIndex;
-                break;
-            }
-        }
-        if ( presentIndex == queueFamilyProperties.size() )
-        {
-            // there's nothing like a single family index that supports both graphics and present -> look for another
-            // family index that supports present
-            for ( size_t i = 0; i < queueFamilyProperties.size(); i++ )
-            {
-                if ( physicalDevice.getSurfaceSupportKHR( static_cast<uint32_t>( i ), *surface ) )
-                {
-                    presentIndex = static_cast<uint32_t>( i );
-                    break;
-                }
-            }
-        }
+      if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+          physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
+      {
+        // found a queue family that supports both graphics and present
+        queueIndex = qfpIndex;
+        break;
+      }
     }
-    if ( ( graphicsIndex == queueFamilyProperties.size() ) || ( presentIndex == queueFamilyProperties.size() ) )
+    if (queueIndex == ~0)
     {
-        throw std::runtime_error( "Could not find a queue for graphics or present -> terminating" );
+      throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
     }
 
     // query for Vulkan 1.3 features
-    auto features = physicalDevice.getFeatures2();
-    vk::PhysicalDeviceVulkan13Features vulkan13Features;
-    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures;
-    vulkan13Features.dynamicRendering = vk::True;
-    extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-    vulkan13Features.pNext = &extendedDynamicStateFeatures;
-    features.pNext = &vulkan13Features;
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+        {},                                   // vk::PhysicalDeviceFeatures2
+        {.dynamicRendering = true},           // vk::PhysicalDeviceVulkan13Features
+        {.extendedDynamicState = true}        // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+    };
+
     // create a Device
     float                     queuePriority = 0.5f;
-    vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
-    vk::DeviceCreateInfo      deviceCreateInfo{ .pNext =  &features, .queueCreateInfoCount = 1, .pQueueCreateInfos = &deviceQueueCreateInfo };
-    deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
-    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
+    vk::DeviceCreateInfo      deviceCreateInfo{.pNext                   = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+                                               .queueCreateInfoCount    = 1,
+                                               .pQueueCreateInfos       = &deviceQueueCreateInfo,
+                                               .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtension.size()),
+                                               .ppEnabledExtensionNames = requiredDeviceExtension.data()};
 
     device = vk::raii::Device( physicalDevice, deviceCreateInfo );
-    graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
-    presentQueue = vk::raii::Queue( device, presentIndex, 0 );
+    queue  = vk::raii::Queue(device, queueIndex, 0);
 }
 ----
 
-In case the queue families are the same, the two handles will most likely have
-the same value now. In the xref:./01_Swap_chain.adoc[next chapter], we're going to look at swap chains and
+In the xref:./01_Swap_chain.adoc[next chapter], we're going to look at swap chains and
 how they allow us to present images to the surface.
 
 link:/attachments/05_window_surface.cpp[C{pp} code]

@@ -24,9 +24,11 @@ set VCPKG_BINARY_SOURCES=clear;files,%TEMP%\vcpkg-cache,readwrite
 :: Create cache directory if it doesn't exist
 if not exist %TEMP%\vcpkg-cache mkdir %TEMP%\vcpkg-cache
 
-:: Install all dependencies at once using vcpkg in classic mode
+:: Install all dependencies at once using vcpkg in classic mode by pointing to an empty manifest root
 echo Installing all dependencies...
-vcpkg install glfw3 glm tinyobjloader stb tinygltf nlohmann-json ktx[vulkan] openal-soft --triplet=x64-windows
+if not exist %TEMP%\vcpkg-classic-mode mkdir %TEMP%\vcpkg-classic-mode
+vcpkg install glfw3 glm tinyobjloader stb tinygltf nlohmann-json ktx[vulkan] openal-soft --triplet=x64-windows --x-manifest-root=%TEMP%\vcpkg-classic-mode
+rmdir %TEMP%\vcpkg-classic-mode
 
 :: Remind about Vulkan SDK
 echo.

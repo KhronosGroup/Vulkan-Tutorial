@@ -1,18 +1,16 @@
 {
-  "name": "vulkan-game-engine-tutorial",
+  "name": "simple-engine",
   "version": "1.0.0",
   "dependencies": [
-    {
-      "name": "glfw3",
-      "platform": "!android"
-    },
-    "glm",
-    "openal-soft",
+    { "name": "glfw3", "platform": "windows" },
+    { "name": "glm", "platform": "windows" },
+    { "name": "openal-soft", "platform": "windows" },
+    { "name": "tinygltf", "platform": "windows" },
+    { "name": "nlohmann-json", "platform": "windows" },
     {
       "name": "ktx",
+      "platform": "windows",
       "features": [ "vulkan" ]
-    },
-    "tinygltf",
-    "nlohmann-json"
+    }
   ]
 }

@@ -24,7 +24,7 @@ else()
     pkg_check_modules(PC_KTX QUIET ktx libktx ktx2 libktx2)
   endif()
 
-  # Try to find KTX using standard find_package
+  # Try to find KTX using standard find_path/find_library
   find_path(KTX_INCLUDE_DIR
     NAMES ktx.h
     PATH_SUFFIXES include ktx KTX ktx2 KTX2
@@ -51,35 +51,18 @@ else()
       ${CMAKE_SOURCE_DIR}/external/ktx/lib
   )
 
-  include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(KTX
-    REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
-    FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
-  )
-
-  # Debug output if KTX is not found (only on non-Linux platforms)
-  if(NOT KTX_FOUND)
-    message(STATUS "KTX include directory search paths: ${PC_KTX_INCLUDEDIR}, /usr/include, /usr/local/include, $ENV{KTX_DIR}/include, $ENV{VULKAN_SDK}/include, ${CMAKE_SOURCE_DIR}/external/ktx/include")
-    message(STATUS "KTX library search paths: ${PC_KTX_LIBDIR}, /usr/lib, /usr/lib64, /usr/local/lib, /usr/local/lib64, $ENV{KTX_DIR}/lib, $ENV{VULKAN_SDK}/lib, ${CMAKE_SOURCE_DIR}/external/ktx/lib")
+  if(KTX_INCLUDE_DIR AND KTX_LIBRARY)
+    set(KTX_FOUND TRUE)
+  else()
+    set(KTX_FOUND FALSE)
   endif()
 endif()
 
-if(KTX_FOUND)
-  set(KTX_INCLUDE_DIRS ${KTX_INCLUDE_DIR})
-  set(KTX_LIBRARIES ${KTX_LIBRARY})
-
-  if(NOT TARGET KTX::ktx)
-    add_library(KTX::ktx UNKNOWN IMPORTED)
-    set_target_properties(KTX::ktx PROPERTIES
-      IMPORTED_LOCATION "${KTX_LIBRARIES}"
-      INTERFACE_INCLUDE_DIRECTORIES "${KTX_INCLUDE_DIRS}"
-    )
-  endif()
-else()
-  # If not found, use FetchContent to download and build
+# If not found, use FetchContent to download and build
+if(NOT KTX_FOUND)
   include(FetchContent)
 
-  # Only show the message on non-Linux platforms
+  # Only show the message on non-Linux platforms (on Linux we expect to fetch)
   if(NOT (UNIX AND NOT APPLE))
     message(STATUS "KTX not found, fetching from GitHub...")
   endif()
@@ -103,4 +86,25 @@ else()
   endif()
 
   set(KTX_FOUND TRUE)
+endif()
+
+# Finalize the variables and targets
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(KTX
+  REQUIRED_VARS KTX_FOUND
+)
+
+if(KTX_FOUND)
+  if(KTX_INCLUDE_DIR AND KTX_LIBRARY)
+    set(KTX_INCLUDE_DIRS ${KTX_INCLUDE_DIR})
+    set(KTX_LIBRARIES ${KTX_LIBRARY})
+
+    if(NOT TARGET KTX::ktx)
+      add_library(KTX::ktx UNKNOWN IMPORTED)
+      set_target_properties(KTX::ktx PROPERTIES
+        IMPORTED_LOCATION "${KTX_LIBRARIES}"
+        INTERFACE_INCLUDE_DIRECTORIES "${KTX_INCLUDE_DIRS}"
+      )
+    endif()
+  endif()
 endif()

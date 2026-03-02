@@ -10,7 +10,11 @@
 #   tinyobjloader::tinyobjloader
 
 # Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(tinyobjloader CONFIG QUIET)
+if(COMMAND _find_package)
+  _find_package(tinyobjloader CONFIG QUIET)
+else()
+  find_package(tinyobjloader CONFIG QUIET)
+endif()
 
 if(tinyobjloader_FOUND)
   if(NOT TARGET tinyobjloader::tinyobjloader AND TARGET tinyobjloader)

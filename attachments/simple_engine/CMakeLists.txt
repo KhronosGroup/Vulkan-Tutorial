@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.29)
 
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake")
+
 # vcpkg integration
 if(WIN32)
     # By default, we disable manifest mode to ensure compatibility with all vcpkg installations,
@@ -18,9 +20,6 @@ option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan in SimpleEng
 if(ENABLE_CPP20_MODULE)
     set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 endif()
-
-# Add CMake module path for custom find modules
-list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 # Find required packages
 find_package (glm REQUIRED)

@@ -14,7 +14,11 @@
 #
 
 # Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(ktx CONFIG QUIET)
+if(COMMAND _find_package)
+  _find_package(ktx CONFIG QUIET)
+else()
+  find_package(ktx CONFIG QUIET)
+endif()
 
 if(ktx_FOUND)
   if(NOT TARGET KTX::ktx AND TARGET ktx::ktx)

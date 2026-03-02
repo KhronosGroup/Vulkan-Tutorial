@@ -8,6 +8,7 @@
     "stb",
     "tinygltf",
     "nlohmann-json",
+    "openal-soft",
     "ktx"
   ]
 }

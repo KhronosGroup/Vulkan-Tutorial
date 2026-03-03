@@ -2,17 +2,13 @@
   "name": "vulkan-tutorial",
   "version": "1.0.0",
   "dependencies": [
-    { "name": "glfw3", "platform": "windows" },
-    { "name": "glm", "platform": "windows" },
-    { "name": "tinyobjloader", "platform": "windows" },
-    { "name": "stb", "platform": "windows" },
-    { "name": "tinygltf", "platform": "windows" },
-    { "name": "nlohmann-json", "platform": "windows" },
-    { "name": "openal-soft", "platform": "windows" },
-    {
-      "name": "ktx",
-      "platform": "windows",
-      "features": [ "vulkan" ]
-    }
+    "glfw3",
+    "glm",
+    "tinyobjloader",
+    "stb",
+    "tinygltf",
+    "nlohmann-json",
+    "openal-soft",
+    "ktx"
   ]
 }

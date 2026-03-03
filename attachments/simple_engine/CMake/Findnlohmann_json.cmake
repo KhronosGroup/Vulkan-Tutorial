@@ -13,11 +13,7 @@
 #
 
 # Try to find the package using CONFIG mode first (e.g., from vcpkg)
-if(COMMAND _find_package)
-  _find_package(nlohmann_json CONFIG QUIET)
-else()
-  find_package(nlohmann_json CONFIG QUIET)
-endif()
+find_package(nlohmann_json CONFIG QUIET)
 
 if(nlohmann_json_FOUND)
   if(NOT TARGET nlohmann_json::nlohmann_json AND TARGET nlohmann_json)

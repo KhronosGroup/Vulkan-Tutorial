@@ -1,7 +1,5 @@
 cmake_minimum_required (VERSION 3.29)
 
-list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake")
-
 # vcpkg integration
 if(WIN32)
     # By default, we disable manifest mode to ensure compatibility with all vcpkg installations,
@@ -12,6 +10,8 @@ if(WIN32)
 endif()
 
 project (VulkanTutorial)
+
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 # Add option to enable/disable C++ 20 module
 option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan" OFF)

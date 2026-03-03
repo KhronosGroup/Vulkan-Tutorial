@@ -13,11 +13,7 @@
 #
 
 # Try to find the package using CONFIG mode first (e.g., from vcpkg)
-if(COMMAND _find_package)
-  _find_package(tinygltf CONFIG QUIET)
-else()
-  find_package(tinygltf CONFIG QUIET)
-endif()
+find_package(tinygltf CONFIG QUIET)
 
 if(tinygltf_FOUND)
   if(NOT TARGET tinygltf::tinygltf AND TARGET tinygltf)
@@ -27,11 +23,7 @@ if(tinygltf_FOUND)
 endif()
 
 # First, try to find nlohmann_json
-if(COMMAND _find_package)
-  _find_package(nlohmann_json QUIET)
-else()
-  find_package(nlohmann_json QUIET)
-endif()
+find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
   include(FetchContent)
   message(STATUS "nlohmann_json not found, fetching v3.12.0 from GitHub...")

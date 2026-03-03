@@ -13,11 +13,7 @@
 #
 
 # Try to find the package using CONFIG mode first (e.g., from vcpkg)
-if(COMMAND _find_package)
-  _find_package(glm CONFIG QUIET)
-else()
-  find_package(glm CONFIG QUIET)
-endif()
+find_package(glm CONFIG QUIET)
 
 if(glm_FOUND)
   if(NOT TARGET glm::glm AND TARGET glm)

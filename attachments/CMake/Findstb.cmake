@@ -12,20 +12,6 @@
 #    stb::stb
 #
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-if(COMMAND _find_package)
-  _find_package(stb CONFIG QUIET)
-else()
-  find_package(stb CONFIG QUIET)
-endif()
-
-if(stb_FOUND)
-  if(NOT TARGET stb::stb AND TARGET stb)
-    add_library(stb::stb ALIAS stb)
-  endif()
-  return()
-endif()
-
 # Try to find the package using pkg-config first
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
@@ -81,7 +67,7 @@ endif()
 
 # Set the variables
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(stb
+find_package_handle_standard_args(stb 
   REQUIRED_VARS stb_INCLUDE_DIR
 )
 

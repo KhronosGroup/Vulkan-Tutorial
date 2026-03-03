@@ -9,16 +9,6 @@
 # It also defines the following targets:
 #   tinyobjloader::tinyobjloader
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(tinyobjloader CONFIG QUIET)
-
-if(tinyobjloader_FOUND)
-  if(NOT TARGET tinyobjloader::tinyobjloader AND TARGET tinyobjloader)
-    add_library(tinyobjloader::tinyobjloader ALIAS tinyobjloader)
-  endif()
-  return()
-endif()
-
 # Try to find the package using pkg-config first
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
@@ -119,7 +109,7 @@ endif()
 
 # Set the variables
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(tinyobjloader
+find_package_handle_standard_args(tinyobjloader 
   REQUIRED_VARS tinyobjloader_INCLUDE_DIR
 )
 

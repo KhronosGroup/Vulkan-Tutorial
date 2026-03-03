@@ -12,16 +12,6 @@
 #    nlohmann_json::nlohmann_json
 #
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(nlohmann_json CONFIG QUIET)
-
-if(nlohmann_json_FOUND)
-  if(NOT TARGET nlohmann_json::nlohmann_json AND TARGET nlohmann_json)
-    add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
-  endif()
-  return()
-endif()
-
 # Try to find the package using pkg-config first
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)

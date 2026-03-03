@@ -13,17 +13,6 @@
 #    KTX::ktx
 #
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(ktx CONFIG QUIET)
-
-if(ktx_FOUND)
-  if(NOT TARGET KTX::ktx AND TARGET ktx::ktx)
-    add_library(KTX::ktx ALIAS ktx::ktx)
-  endif()
-  set(KTX_FOUND TRUE)
-  return()
-endif()
-
 # Check if we're on Linux - if so, we'll skip the search and directly use FetchContent
 if(UNIX AND NOT APPLE)
   # On Linux, we assume KTX is not installed and proceed directly to fetching it

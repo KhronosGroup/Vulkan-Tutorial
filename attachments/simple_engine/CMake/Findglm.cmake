@@ -12,16 +12,6 @@
 #    glm::glm
 #
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(glm CONFIG QUIET)
-
-if(glm_FOUND)
-  if(NOT TARGET glm::glm AND TARGET glm)
-    add_library(glm::glm ALIAS glm)
-  endif()
-  return()
-endif()
-
 # Try to find the package using pkg-config first
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
@@ -104,7 +94,7 @@ endif()
 
 # Set the variables
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(glm
+find_package_handle_standard_args(glm 
   REQUIRED_VARS glm_INCLUDE_DIR
 )
 

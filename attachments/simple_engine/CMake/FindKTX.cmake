@@ -13,17 +13,6 @@
 #    KTX::ktx
 #
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(ktx CONFIG QUIET)
-
-if(ktx_FOUND)
-  if(NOT TARGET KTX::ktx AND TARGET ktx::ktx)
-    add_library(KTX::ktx ALIAS ktx::ktx)
-  endif()
-  set(KTX_FOUND TRUE)
-  return()
-endif()
-
 # Check if we're on Linux - if so, we'll skip the search and directly use FetchContent
 if(UNIX AND NOT APPLE)
   # On Linux, we assume KTX is not installed and proceed directly to fetching it
@@ -81,7 +70,7 @@ if(NOT KTX_FOUND)
   FetchContent_Declare(
     ktx
     GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software.git
-    GIT_TAG v4.3.1  # Use a specific tag for stability
+    GIT_TAG v4.4.2  # Use a specific tag for stability
   )
 
   # Set options to minimize build time and dependencies

@@ -20,7 +20,7 @@ if(ENABLE_CPP20_MODULE)
 endif()
 
 # Add CMake module path for custom find modules
-list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 # Find required packages
 find_package (glm REQUIRED)

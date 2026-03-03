@@ -12,16 +12,6 @@
 #    tinygltf::tinygltf
 #
 
-# Try to find the package using CONFIG mode first (e.g., from vcpkg)
-find_package(tinygltf CONFIG QUIET)
-
-if(tinygltf_FOUND)
-  if(NOT TARGET tinygltf::tinygltf AND TARGET tinygltf)
-    add_library(tinygltf::tinygltf ALIAS tinygltf)
-  endif()
-  return()
-endif()
-
 # First, try to find nlohmann_json
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)

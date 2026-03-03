@@ -2,8 +2,8 @@
 
 = Image views
 
-To use any `VkImage`, including those in the swap chain, in the render pipeline
-we have to create a `VkImageView` object. An image view is quite literally a
+To use any `vk::Image`, including those in the swap chain, in the render pipeline
+we have to create a `vk::raii::ImageView` object. An image view is quite literally a
 view into an image. It describes how to access the image and which part of the
 image to access, for example, if it should be treated as a 2D texture depth
 texture without any mipmapping levels.
@@ -24,7 +24,8 @@ creation.
 
 [,c++]
 ----
-void initVulkan() {
+void initVulkan()
+{
     createInstance();
     setupDebugMessenger();
     createSurface();
@@ -34,67 +35,63 @@ void initVulkan() {
     createImageViews();
 }
 
-void createImageViews() {
-
+void createImageViews()
+{
 }
 ----
 
 The parameters for image view creation are specified in a
-`VkImageViewCreateInfo` structure. The first few parameters are the flags,
-this isn't needed in our case, we'll add the images in the upcoming for loop.
-Next, we specify that we're rendering to a 2d screen.  If we were wanting
-to render to a 3d screen or cube map, those are also options as is a 1d
-screen.  As you can probably guess, we'd want a 2d render target in most
-cases when we're rendering to a screen.
+`vk::ImageViewCreateInfo` structure. The `viewType`, the `format` and the
+`subresourceRange` are identical for each of the image views.
+
+With the `viewType` we specify that we're rendering to a 2d screen. If we
+were wanting to render to a 3d screen or cube map, those are also options
+as is a 1d screen. As you can probably guess, we'd want a 2d render target
+in most cases when we're rendering to a screen.
 
 Next, we specify the image format; this is how the colorspace
 components are configured so you get the right color format in your
-renders. Next, components aren't needed for our swap chain; we'll talk
-about them in a bit though. The last variable is the SubResource range,
-which is necessary, and we'll talk about shortly.
+renders.
+
+Next, components aren't needed for our swap chain; we'll talk about them in
+a bit though.
+
+The last member is the SubResource range, which is necessary, and we'll talk about shortly.
 
 [,c++]
 ----
-void createImageViews() {
-    swapChainImageViews.clear();
+void createImageViews()
+{
+    assert(swapChainImageViews.empty());
 
-    vk::ImageViewCreateInfo imageViewCreateInfo{ .viewType = vk::ImageViewType::e2D, .format = swapChainImageFormat,
-      .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
+    vk::ImageViewCreateInfo imageViewCreateInfo{ .viewType         = vk::ImageViewType::e2D,
+                                                 .format           = swapChainSurfaceFormat.format,
+                                                 .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
 }
 ----
 
 The `components` field allows you to swizzle the color channels around. For
 example, you can map all the channels to the red channel for a monochrome
 texture. You can also map constant values of `0` and `1` to a channel. In our
- case, we'll stick to the default mapping by accepting the constructed
+case, we'll stick to the default mapping by accepting the constructed
 defaults, but here's how to explicitly do it:
 
 [,c++]
 ----
-createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+imageViewCreateInfo.components = {
+    vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity};
 ----
 
 The `subresourceRange` field describes what the image's purpose is and which
 part of the image should be accessed. Our images will be used as color targets
 without any mipmapping levels or multiple layers.
+Note: you can either list all elements of the `subresourceRange`, as it's done
+in the code snippet above, or use designated initializers to just initialize
+those members that differ from the default values, like this:
 
 [,c++]
 ----
-createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-createInfo.subresourceRange.baseMipLevel = 0;
-createInfo.subresourceRange.levelCount = 1;
-createInfo.subresourceRange.baseArrayLayer = 0;
-createInfo.subresourceRange.layerCount = 1;
-----
-
-An easy way to specify all of that is this single line:
-
-[,c++]
-----
-vk::ImageViewCreateInfo imageViewCreateInfo( {}, {}, vk::ImageViewType::e2D, swapChainImageFormat, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } );
+imageViewCreateInfo.subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1};
 ----
 
 If you were working on a stereographic 3D application, then you would create a
@@ -116,16 +113,19 @@ them to our structure.
 
 [,c++]
 ----
-for (auto image : swapChainImages) {
+for (auto &image : swapChainImages)
+{
     imageViewCreateInfo.image = image;
 }
 ----
 
-Creating the image view is now a matter of calling `vkCreateImageView`:
+Creating the image view is now a matter of using the constructor of `vk::raii::CreateImageView`,
+here via `std::vector::emplace_back`:
 
 [,c++]
 ----
-for (auto image : swapChainImages) {
+for (auto &image : swapChainImages)
+{
     imageViewCreateInfo.image = image;
     swapChainImageViews.emplace_back( device, imageViewCreateInfo );
 }

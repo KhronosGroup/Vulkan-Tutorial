@@ -1,14 +1,5 @@
 cmake_minimum_required(VERSION 3.29)
 
-# vcpkg integration
-if(WIN32)
-    # By default, we disable manifest mode to ensure compatibility with all vcpkg installations,
-    # including those from standalone packages and Visual Studio which may not have git or a baseline.
-    if(NOT DEFINED VCPKG_MANIFEST_MODE)
-        set(VCPKG_MANIFEST_MODE OFF CACHE BOOL "Use vcpkg manifest mode")
-    endif()
-endif()
-
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
 # Option to enable/disable Vulkan C++20 module support for this standalone project

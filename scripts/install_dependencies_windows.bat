@@ -21,9 +21,9 @@ set VCPKG_BINARY_SOURCES=clear;files,%TEMP%\vcpkg-cache,readwrite
 :: Create cache directory if it doesn't exist
 if not exist %TEMP%\vcpkg-cache mkdir %TEMP%\vcpkg-cache
 
-:: Install all dependencies at once using vcpkg in classic mode
+:: Install all dependencies at once using vcpkg with parallel installation
 echo Installing all dependencies...
-vcpkg install glfw3 glm tinyobjloader stb tinygltf nlohmann-json ktx[vulkan] openal-soft --triplet=x64-windows
+vcpkg install --triplet=x64-windows --x-manifest-root=%~dp0\.. --feature-flags=binarycaching,manifests --x-install-root=%VCPKG_INSTALLATION_ROOT%/installed
 
 :: Remind about Vulkan SDK
 echo.
@@ -34,7 +34,7 @@ echo All dependencies have been installed successfully!
 echo You can now use CMake to build your Vulkan project.
 echo.
 echo Example CMake command:
-echo cmake -B build -S attachments -DCMAKE_TOOLCHAIN_FILE=[path\to\vcpkg]\scripts\buildsystems\vcpkg.cmake
+echo cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[path\to\vcpkg]\scripts\buildsystems\vcpkg.cmake
 echo cmake --build build
 
 exit /b 0

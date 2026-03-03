@@ -22,13 +22,13 @@ if(ENABLE_CPP20_MODULE)
 endif()
 
 # Find required packages
-find_package (glm REQUIRED)
-find_package (Vulkan REQUIRED)
-find_package (tinygltf REQUIRED)
-find_package (KTX REQUIRED)
+find_package (glm REQUIRED MODULE)
+find_package (Vulkan REQUIRED MODULE)
+find_package (tinygltf REQUIRED MODULE)
+find_package (KTX REQUIRED MODULE)
 
 # Find or download Vulkan-Hpp headers matching the Vulkan SDK/NDK version
-find_package(VulkanHpp REQUIRED)
+find_package(VulkanHpp REQUIRED MODULE)
 
 if(ENABLE_CPP20_MODULE)
     # Set up Vulkan C++ module for this standalone project
@@ -89,8 +89,8 @@ if(ANDROID)
 else()
     # Desktop-specific settings
     add_definitions(-DPLATFORM_DESKTOP)
-    find_package(glfw3 REQUIRED)
-    find_package(OpenAL REQUIRED)
+    find_package(glfw3 REQUIRED MODULE)
+    find_package(OpenAL REQUIRED MODULE)
 endif()
 
 # Shader compilation

@@ -21,12 +21,12 @@ if(ENABLE_CPP20_MODULE)
   set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 endif()
 
-find_package (glfw3 REQUIRED)
-find_package (glm REQUIRED)
-find_package (Vulkan 1.4.335 REQUIRED)      # Require Vulkan SDK version 1.4.335 or higher
-find_package (tinyobjloader REQUIRED)
-find_package (tinygltf REQUIRED)
-find_package (KTX REQUIRED)
+find_package (glfw3 REQUIRED MODULE)
+find_package (glm REQUIRED MODULE)
+find_package (Vulkan 1.4.335 REQUIRED MODULE)      # Require Vulkan SDK version 1.4.335 or higher
+find_package (tinyobjloader REQUIRED MODULE)
+find_package (tinygltf REQUIRED MODULE)
+find_package (KTX REQUIRED MODULE)
 
 # set up Vulkan C++ module only if enabled
 if(ENABLE_CPP20_MODULE)
@@ -84,7 +84,7 @@ else()
   )
 endif()
 
-find_package(stb REQUIRED)
+find_package(stb REQUIRED MODULE)
 set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 add_executable (glslang::validator IMPORTED)

@@ -124,13 +124,12 @@ This will allow other projects that distribute via Find*.cmake to be placed
 in that same folder. See the accompanying link:/attachments/CMakeLists.txt[CMakeLists.txt]
 for an example of a working project.
 
-Vulkan has support for C{pp} modules which became available with c{pp}20. A
-large advantage of C{pp} modules is they give all the benefits of C{pp} without
-the overhead of long compile times. To do this, the .cppm file must be compiled
-for your target device. This tutorial demonstrates how to take advantage of C{pp}
-modules. However, to maximize compatibility across compilers and IDEs, the
-attachments template has C{pp}20 module support disabled by default, but it is
-recommended to enable it if your toolchain supports it.
+The Vulkan C{pp} headers also offer a C{pp} module. A large advantage of C{pp} modules is they give all the benefits of C{pp} without the overhead of long compile times. To use them, the .cppm file must be compiled for your target device.
+
+[NOTE]
+====
+Module support in the Vulkan C{pp} headers is still experimental and might not work with all compilers. Unless you want to experiment, it's recommended to **not** use them.
+==== 
 
 To enable the Vulkan C{pp}20 module in the attachments template, configure CMake with:
 

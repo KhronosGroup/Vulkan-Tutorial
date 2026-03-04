@@ -130,7 +130,7 @@ Some platforms allow you to render directly to a display without interacting
 These allow you to create a surface that represents the entire screen and
 could be used to implement your own window manager, for example.
 
-=== Step 4 - Image views and Dynamic Rendering
+=== Step 4 - Image views and framebuffers
 
 To draw to an image acquired from the swap chain, we would typically wrap
 it into a vk::ImageView and vk::Framebuffer. An image view references a specific

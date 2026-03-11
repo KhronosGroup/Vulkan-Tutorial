@@ -339,7 +339,7 @@ See the xref:00_Introduction.adoc[introduction chapter] for links to drivers fro
 
 === Ninja
 Ninja is a rapid build system that CMake has support for in all
-platforms.  We recommend installing it with `sudo apt install ninja`
+platforms.  We recommend installing it with `sudo apt install ninja-build`
 
 === X Window System and XFree86-VidModeExtension
 It is possible that these libraries are not on the system, if not, you can

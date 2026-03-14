@@ -1,0 +1,42 @@
+:pp: {plus}{plus}
+
+= Model Selection & Specialization: Introduction
+
+== The Core Decision: Choosing Your AI Model Strategy
+
+In the previous section, we built the "Context Bridge"—the infrastructure that allows an AI to see your code, your build system, and the Vulkan specification. Now, we must address the most critical decision in your AI-assisted journey: **Selecting the right model for the right task.**
+
+Not all Large Language Models (LLMs) are created equal. Some are reasoning-heavy with deep architectural capabilities but high latency; others are syntax-specialized that excel at C{pp}23 code generation but may struggle with high-level system design. In this section, we move beyond just "having an AI" to **specializing** one for the unique, high-performance world of Vulkan.
+
+== The Concept: Base Model Weights vs. Live Context
+
+To master model selection, you must understand the difference between what a model "knows" (its training data) and what it can "see" (its live context).
+
+1.  **The Base Model (Pre-trained Weights):** This is the model as it comes "out of the box." It has already read millions of lines of C{pp} and the entire Vulkan Spec as it existed when the model was trained.
+2.  **Specialization (The Live Context):** This is how we provide the model with your specific engine's "flavor." We achieve this through:
+    *   **MCP (Model Context Protocol):** Real-time access to the exact version of the Vulkan Spec and your local project files.
+    *   **RAG (Retrieval-Augmented Generation):** A searchable "memory" of your engine's internal wiki, coding standards, and past architectural decisions.
+    *   **Fine-Tuning (LoRA):** Training a small "patch" for the model that teaches it your specific naming conventions (e.g., *"In this engine, we always use `vk::raii` and never raw pointers"*).
+
+== Why Specialization Matters for Vulkan
+
+Vulkan is a "living" API. New extensions are added monthly, and best practices evolve (e.g., the shift from Render Passes to Dynamic Rendering, or from Descriptor Sets to Descriptor Buffers).
+
+*   **The Hallucination Risk:** A general-purpose AI might suggest a Vulkan 1.0 pattern because it is more common in its training data.
+*   **The Precision Requirement:** Graphics programming requires extreme precision in memory offsets, alignment, and synchronization. A model that is 95% accurate is dangerous; a specialized model that understands your engine's specific alignment wrappers is an asset.
+
+== The Model Selection Roadmap: From Generic to Specialized
+
+In the following chapters, we will guide you through the technical and strategic process of choosing and specializing your AI assistant.
+
+We begin by **Selecting the Base Model**. We will compare the leading models for Vulkan development, including **Qwen 3.5 Coder**, **Gemma 4**, and **Llama 4**. You will learn which models excel at the complex, high-level reasoning required for architectural planning, versus the smaller, faster models best suited for the "inner loop" of real-time autocomplete and shader implementation.
+
+Next, we address the critical issue of **Hardware & VRAM Budgeting**. Running these models locally requires a precise strategy. We will provide detailed formulas for calculating your VRAM needs, accounting for the "KV Cache Tax" and the role of **Quantization** in ensuring your AI doesn't starve your Vulkan application of its most precious resource.
+
+We then dive deep into **Ground Truth: MCP & RAG Specialization**. You will learn how to use **MCP (Model Context Protocol)** to bridge the "Global Context Gap" by pointing your AI at the live Vulkan Registry (`vk.xml`), and how to use **RAG (Retrieval-Augmented Generation)** to index your own engine's "Local Context." Together, these ensure your assistant suggests valid API calls that match your project's unique architectural style.
+
+Finally, for those who want a highly specialized assistant, we explore **Fine-Tuning for Your Engine**. You will learn the **Teacher-Student** paradigm, using high-reasoning Cloud models to "teach" and retrain a local assistant into a **Specialized SLM**. Using **LoRA (Low-Rank Adaptation)**, you will "bake" your engine's specific abstractions and coding standards into the model's weights, ensuring it defaults to your senior engineering patterns without constant prompting.
+
+By the end of this section, you will no longer be using a "generic" AI. You will have a specialized, Vulkan-aware assistant that understands both the global standards of graphics programming and the local "laws" of your specific codebase.
+
+Next: xref:02_base_models.adoc[Selecting the Base Model]

@@ -1,0 +1,34 @@
+:pp: {plus}{plus}
+
+= Desktop, Mobile, and Embedded Deployment
+
+== Introduction: The Multi-Platform Chain
+
+Vulkan's greatest strength is its portability. A well-written application can run on a high-end Windows desktop, a Samsung smartphone, and a Raspberry Pi. However, each of these platforms has its own "Laws" when it comes to memory management, asset loading, and performance optimization.
+
+In **Collaborative Engineering**, we use our assistant as a **Platform-Aware Specialist**. We use AI to bridge the "Context Gap" between platforms, automating the tedious JNI boilerplate for mobile, suggesting optimizations for tiled GPUs, and managing the strict resource constraints of embedded systems.
+
+== The Core Concept: Platform Context
+
+A "Platform-Aware" assistant is an AI that has been provided with the specific hardware constraints of your target. By using the **Context Bridge**, we inform the AI of the "Target Reality":
+
+1.  **Mobile Context:** The AI understands **Tile-Based Deferred Rendering (TBDR)**. It prioritizes subpass dependencies and memory-less attachments to maximize on-chip tile memory performance.
+2.  **Desktop Context:** The AI understands the performance trade-offs of different vendor extensions. It knows when to use `VK_NV_ray_tracing` versus the cross-vendor `VK_KHR_ray_tracing_pipeline`.
+3.  **Embedded Context:** The AI understands strict VRAM and CPU budgets. It suggests quantization strategies for shaders and textures to fit within architectures that lack traditional paging.
+
+== Why Use AI for Deployment?
+
+Deployment is where "Syntactic Noise" becomes a blocker to portability.
+*   **Android/iOS:** You must write hundreds of lines of "Glue Code" (JNI or Objective-C{pp}) just to get a window surface and an asset loader running.
+*   **The AI Solution:** You describe the asset structure of your engine, and the AI generates the complete multi-language bridge, ensuring that your C{pp} Vulkan core remains clean and platform-agnostic.
+
+== The Deployment Roadmap
+
+In this final section, we move from the "Lab" to the "World":
+
+1.  **xref:02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]:** Automating JNI boilerplate and optimizing for Tiled GPU architectures.
+2.  **xref:03_embedded_safety_critical.adoc[Embedded & Safety Critical Systems]:** Managing strict hardware limits and memory-constrained environments.
+
+By the end of this journey, you will be able to take your Vulkan application from a single-platform prototype to a globally portable, high-performance engine that runs optimally on every device it touches.
+
+Next: xref:02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]

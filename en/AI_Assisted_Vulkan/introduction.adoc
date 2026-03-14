@@ -1,0 +1,50 @@
+:pp: {plus}{plus}
+
+= AI-Assisted Vulkan Development: The Collaborative Engineering Paradigm
+
+== Introduction
+
+Imagine you are deep in the weeds of a complex Vulkan project. You’ve just finished a custom frame graph, but your validation layers are screaming with a `VUID-VkImageMemoryBarrier-oldLayout-01197` error. In the "Traditional Engineering" era, you’d spend the next 45 minutes digging through the Vulkan Specification, cross-referencing your image layout transitions, and manually tracing the lifecycle of your textures.
+
+Now, imagine a different scenario. You highlight the error in your IDE. An AI assistant, which has been quietly indexing your entire engine and the latest Vulkan 1.4 registry, doesn't just "fix" the code. It explains the *why* behind the mismatch, identifies a missing barrier in a completely different file, and suggests a more efficient synchronization pattern you hadn't even considered.
+
+This is **Collaborative Engineering**, and it is the future of high-performance graphics development.
+
+== The Paradigm Shift: Beyond "Copilot"
+
+Vulkan is a powerful but notoriously verbose API. Historically, the "barrier to entry" was not just mathematical or architectural—it was the sheer volume of boilerplate and the cognitive load of managing explicit GPU state.
+
+With the rise of Large Language Models (LLMs) like **Qwen 3.5 Coder** and autonomous agents like **Goose**, the role of the graphics programmer is evolving. We are shifting from "Code Writers" to "System Designers." The AI doesn't replace your expertise; it amplifies it by managing the "Syntactic Noise" so you can focus on "Semantic Innovation."
+
+== Who is the Audience?
+
+This series is designed for **Intermediate Vulkan developers** who have completed the core xref:../00_Introduction.adoc[Vulkan Tutorial] and are ready to supercharge their workflow. You should already understand the fundamentals, such as pipelines, descriptor sets, and the common pitfalls of queue presentation. If you're looking for more efficiency and are curious about how to safely and effectively integrate AI into a high-performance C{pp} codebase without getting bogged down in boilerplate, this series is for you.
+
+== Why AI for Vulkan?
+
+Vulkan's unique properties make it the perfect candidate for AI assistance:
+
+1.  **Strictness as a Feature:** Unlike loosely typed languages, Vulkan's strict structures and bitmasks provide a "Syntactic Guardrail" for AI. A well-configured AI is much less likely to hallucinate in Vulkan than in Python because the "valid" state space is so well-defined.
+2.  **The Context Bridge:** Using the **Model Context Protocol (MCP)**, we can connect our AI directly to the `vk.xml` registry. This means your assistant is never "out of date"—it can query the exact spec for a new extension the day it’s released.
+3.  **Multimodal Debugging:** Modern AI has "eyes." We can now use vision-language models to diagnose "Shadow Acne," "Z-Fighting," or "Texture Bleeding" from simple screenshots, bridging the gap between what the user sees and what the code does.
+
+== The 2026 AI Strategy
+
+In this series, we move beyond generic chat-bots. We will build a specialized **AI Toolbelt** that leverages high-reasoning **Cloud Models** (like **Claude 4.6** or **GPT-5.3**) for structural planning and complex math, alongside privacy-first, ultra-fast **Local Models** (like **Qwen 3.5 Coder** or **Llama 4**) running on your local GPU via **Ollama**. This strategy is anchored by the **Context Bridge** (MCP & RAG), which connects your IDE to the live Vulkan ecosystem, ensuring your assistant knows your engine's specific coding standards and the latest API specifications.
+
+== The Roadmap: What We Will Build
+
+Throughout this tutorial, we will systematically build an AI-enhanced graphics lab:
+
+1.  **xref:02_environment_setup/01_introduction.adoc[The Modern AI Toolbelt]:** Transforming your IDE (CLion, Android Studio, Visual Studio, or Xcode) into an AI-enhanced hub and setting up your first autonomous agent.
+2.  **xref:03_model_selection_specialization/01_introduction.adoc[Model Selection & Specialization]:** Deep dives into VRAM budgeting, quantization, and the "Intelligence-to-Performance" ratio.
+3.  **xref:04_multimodal_ai/01_introduction.adoc[Multimodal AI]:** Diagnosing visual bugs and analyzing your frames directly with AI.
+4.  **xref:05_workflow/01_introduction.adoc[Workflow: System Design to Implementation]:** Mastering the "Collaborative Loop" from high-level planning to shader implementation.
+5.  **xref:06_debugging/01_introduction.adoc[Pro-Level Debugging]:** Using AI to solve Validation Layer errors and analyze RenderDoc captures.
+6.  **xref:07_advanced_mcp/01_introduction.adoc[Advanced MCP Tooling]:** Building custom tools that let your AI query hardware limits and the Vulkan Registry.
+7.  **xref:08_deployment/01_introduction.adoc[Deployment Automation]:** Streamlining the path to Android, iOS, and Desktop.
+8.  **xref:10_final_project.adoc[The AI-Driven Graphics Lab]:** A comprehensive capstone project implementing a Dual-Filtering Blur system using every tool in the AI toolbelt.
+
+By the end of this journey, you will be capable of leveraging current AI models for building complex graphics systems with a level of speed and precision that would have been significantly more difficult to achieve just a few years ago.
+
+Let's begin: xref:02_environment_setup/01_introduction.adoc[Next: The Modern AI Toolbelt]

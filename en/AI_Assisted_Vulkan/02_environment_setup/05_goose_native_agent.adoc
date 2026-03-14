@@ -1,0 +1,114 @@
+:pp: {plus}{plus}
+
+= Goose: The Autonomous Agent & Local Intelligence
+
+== Introduction: Autonomous Agents
+
+While IDE-integrated assistants like JetBrains AI and Visual Studio Copilot focus on deep, real-time code suggestions, **Goose** represents a fundamental shift in the development lifecycle: the **Autonomous AI Agent**.
+
+In this chapter, we establish the **Common Point** for all platforms. Regardless of whether you are a CLion user on Linux, a Visual Studio developer on Windows, or an Xcode expert on macOS, the agentic workflow is the universal bridge that transforms you from a "Code Writer" into an "Engineering Director."
+
+== The Core Concept: The Task-Oriented Agent
+
+The primary difference between a "Traditional Assistant" and an "AI Agent" is **Agency**. A passive assistant might give you a code snippet for creating a `VkDescriptorPool` that you must then copy, paste, and manually fix. In contrast, an active agent can be tasked with creating that same descriptor pool in `VulkanContext.cpp` and running the build to ensure it works.
+
+The Agent doesn't just provide code; it **acts**. It reads your headers, writes the C{pp}, opens a terminal, runs `cmake`, analyzes any errors, and iterates until the build passes.
+
+While in the preceeding chapters, we identified howto use the integrated AI agents in the workflow, this covers the inner workflow that typically excludes other tools or system integration steps.  Having a system wide agent provides deep integration with things like an external RenderDoc instance or help with tunning system configurations.
+
+== Setting Up the Native Agent: Goose
+
+Goose is an open-source autonomous agent designed to work directly with your local tools. Setting it up "natively" means giving it the permissions to act as a real developer on your machine.
+
+=== 1. Installation
+
+Goose can be installed as a standalone CLI tool or integrated into your workspace. For the most robust "Common Point" experience, we recommend the native CLI installation:
+
+[source,bash]
+----
+# For macOS and Linux
+curl -fsSL https://block.github.io/goose/install.sh | bash
+
+# For Windows (PowerShell)
+powershell -c "irm https://block.github.io/goose/install.ps1 | iex"
+----
+
+=== 2. Giving Goose "Hands"
+
+Once installed, Goose needs access to your environment. You initiate a session within your project's root directory:
+
+[source,bash]
+----
+cd /path/to/your/vulkan_project
+goose session
+----
+
+From here, you can provide Goose with **Tools** (via the Model Context Protocol) that allow it to read your filesystem, run shell commands, and even search the Vulkan specification.
+
+== Model Strategy: Hybrid Cloud and Local Roles
+
+To power your agent effectively, we recommend a **Hybrid Model Strategy**. This approach balances high-level architectural "Reasoning" with low-level, zero-latency "Implementation."
+
+=== 1. The Cloud Planner (High-Reasoning)
+
+For the initial session setup and complex planning, you should use a high-reasoning cloud model like **Claude 4.6** or **GPT-5.3**. These models excel at understanding the abstract requirements of a graphics pipeline and creating a "Contract" for the work to be done.
+
+To configure a cloud provider in Goose:
+[source,bash]
+----
+# Configure Claude as your "Planner"
+goose configure
+# Select 'Anthropic' and provide your API key.
+----
+
+=== 2. The Local Runner (Implementation Specialist)
+
+Once the high-level plan is established, you can switch the "active hands" to a local model running via **Ollama**. This is your "Implementation" specialist—fast, free, and secure.
+
+Download the native installer from link:https://ollama.com[ollama.com]. Once running, you can download a specialized coding model:
+
+[source,bash]
+----
+# Download and run the 8B model (e.g., Llama 4)
+ollama run llama4:8b
+
+# Or the 27B Gemma model for high-precision instruction following
+ollama run gemma4:27b
+
+# Or the 32B Qwen model for complex architectural planning
+ollama run qwen3.5-coder:32b
+----
+
+=== 3. Implementing the Hybrid Workflow
+
+In a real-world session, you leverage these models by switching profiles or starting the session with a specific target. For the **Planning Phase**, start a session with your Cloud model and ask it to analyze your current `VulkanContext` to draft a multi-step plan for a feature like shadow mapping. Once the plan is ready, you move to the **Implementation Phase** by switching to your local Ollama profile and tasking Goose with following that plan to implement the necessary boilerplate code.
+
+This workflow ensures your VRAM is preserved for the Vulkan application during the bulk implementation phase, while still using the high-reasoning capabilities of cloud models for the critical design phase.
+
+== Hardware Requirements: The VRAM Budget
+
+The biggest challenge in AI-assisted Vulkan development is **VRAM Contention**. Both your Vulkan application and your local AI model require GPU memory.
+
+=== The VRAM Budgeting Formula
+
+Before starting a local agent, you must perform a "VRAM Audit." For a typical developer machine with 16GB of VRAM, you might find that your Vulkan application uses ~4.5GB (for a modern deferred renderer at 1440p) and your OS and IDE overhead consumes ~1.5GB. This leaves you with approximately 10GB available for your AI models (`16 - (4.5 + 1.5) = 10GB`).
+
+=== Quantization Strategies
+
+To fit a 32B model into 10GB, we use **Quantization** (compression). Ollama handles this automatically, but you should be aware of the trade-offs. Using **4-bit (Q4_K_M)** quantization is often the "sweet spot," as it is 75% smaller with only about a 5% loss in reasoning. Stepping up to **8-bit (Q8_0)** provides higher precision reasoning but requires significantly more VRAM.
+
+If your GPU runs out of VRAM, your system may trigger a **TDR (Timeout Detection and Recovery)**, crashing both your AI and your Vulkan renderer. Always leave a 1–2GB "safety margin."
+
+== Decision Framework: IDE-AI vs. Goose
+
+When deciding between your tools, use your **IDE Assistant** (like JetBrains AI or Copilot) for "Inner Loop" tasks such as autocomplete, explaining code, or fixing syntax errors in your current file. Switch to **Goose** for "Outer Loop" tasks that involve broader changes, like adding a new `PostProcess` class or performing engine-wide refactors from raw pointers to smart pointers.
+
+== Summary: Reaching the Common Point
+
+You have now reached the **Common Point**. Whether you arrived here from CLion, Visual Studio, or Xcode, you now have a native agent (Goose) capable of acting on your codebase, a local model (Ollama) running a specialized coding assistant, and a VRAM budget that respects your Vulkan application's needs.
+
+This unified environment is where the real work of **Collaborative Engineering** begins. In the following chapters, we will treat this setup as the baseline for all our Vulkan development exercises.
+
+Next, we will look at the final piece of the environment puzzle: **The Context Bridge (MCP)**.
+
+xref:01_introduction.adoc[Previous: Environment Introduction] |  xref:06_mcp_context_bridge.adoc[Next: The Context Bridge (MCP)]

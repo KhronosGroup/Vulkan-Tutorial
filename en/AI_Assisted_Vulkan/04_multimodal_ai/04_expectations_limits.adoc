@@ -1,0 +1,33 @@
+:pp: {plus}{plus}
+
+= Setting Realistic Expectations: The Limits of Vision
+
+== Introduction: Visual Analysis Limits
+
+By now, you have built an assistant that can "see." It can identify shadow acne, Z-fighting, and banding with a high level of speed. However, it is easy to fall into the trap of over-reliance—expecting the AI to automatically "fix" every pixel anomaly.
+
+In **Collaborative Engineering**, we must remember that the AI is a **Diagnostic Assistant, not a Compiler.** It sees the outcome of your code, but it doesn't see the underlying GPU state. Understanding these limits is what separates a novice user from an expert engineer.
+
+== The Core Concept: Pixels are not State
+
+The most fundamental limit of Multimodal AI is that it only sees a 2D array of pixels from your screenshot. It does not have access to your actual Vulkan objects unless you provide that context through the **Context Bridge**.
+
+For example, imagine you show the AI a flickering screen. The AI sees the pattern and suggests **Z-fighting**. You might spend an hour adjusting your near plane only to find the flickering remains. In reality, the cause was a **Synchronization Hazard**—a race condition where you were reading from an image before the previous write had finished. To an AI that only sees pixels, a depth-fighting artifact and a synchronization flicker can look nearly identical. This is why you should always treat an AI's visual diagnosis as a **Hypothesis** to be verified against the **Validation Layers** and **RenderDoc**.
+
+== The "Resolution Gap"
+
+Most Multimodal models downscale images during processing, which can lead to a "Resolution Gap." A 4K screenshot of your scene might be compressed to a much smaller size before the Vision Encoder scans it. This compression can cause subtle, high-frequency artifacts like **Sub-pixel Aliasing**, **Micro-flickering**, or **Texture Seams** to be completely lost. If you send a full-screen screenshot to an AI and it claims the image is clear despite a visible shimmering issue, you should use a **Crop and Zoom** mitigation. By cropping the image specifically to the area of the artifact, you ensure the relevant pixels occupy the majority of the AI's limited vision buffer, preserving the detail needed for a correct diagnosis.
+
+== The "Hardware Gap"
+
+Vulkan is an explicit API that behaves differently on different hardware. A visual bug that appears on an NVIDIA card might look completely different on an AMD card or a mobile Adreno GPU.
+
+Unless you explicitly provide the **Hardware Context**, the AI will assume a "Generic Desktop GPU." If you are developing for mobile, you must include this in your prompt: *"I am debugging on a Tile-Based Deferred Renderer (TBDR) architecture."* This small piece of context changes the AI's reasoning from "Check your barriers" to "Check your subpass dependencies and load/store ops."
+
+== Summary: The Informed Graphics Engineer
+
+Multimodal AI is a powerful tool for the rapid identification of graphics artifacts, but it is not a replacement for your engineering judgment. Use it for **Rapid Pattern Recognition** and identifying "the usual suspects," but avoid relying on it for the final confirmation of synchronization, memory safety, or hardware-specific driver anomalies.
+
+With the completion of Section 4, you have integrated visual reasoning into your AI toolbelt. In the next section, we will bring everything together into a **Complete Workflow**, moving from high-level architectural planning to the line-by-line implementation of your Vulkan features.
+
+Next: xref:../05_workflow/01_introduction.adoc[Workflow: Architecture to Implementation]

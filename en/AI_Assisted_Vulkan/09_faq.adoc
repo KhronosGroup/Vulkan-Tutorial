@@ -1,0 +1,43 @@
+:pp: {plus}{plus}
+
+= Common Questions & Troubleshooting (FAQ)
+
+== Introduction: The Collaborative Obstacle Course
+
+As you begin your journey into AI-assisted Vulkan development, you will inevitably encounter obstacles. These aren't just technical bugs; they are the "Cultural" and "Privacy" hurdles of the **Collaborative Engineering** paradigm. This chapter addresses the most common concerns and provides troubleshooting tips for building a stable, secure, and highly effective AI-enhanced graphics lab.
+
+== Privacy & IP Security
+
+**Q: "I am working on a proprietary rendering engine. How do I ensure my source code doesn't leak or get used to train other models?"**
+
+**A: The 'Local Gating' Strategy.**
+The only way to maximize privacy is to use **Local Inference Engines** (Ollama, LM Studio) as your primary daily drivers. By running models like **Qwen 3.5 Coder** on your own hardware, your shaders and C{pp} files never leave your machine. A common "Hybrid Rule" is to use local models for **Implementation** while reserving cloud models like Claude or GPT for high-level **System Design**, ensuring you use **API-based access** to prevent your data from being used for future training.
+
+== Accuracy & Hallucinations
+
+**Q: "The AI keeps suggesting 'invented' extensions or legacy Vulkan 1.0 patterns. I'm spending more time fixing the AI's code than writing my own."**
+
+**A: Context is King.**
+Hallucinations are almost always a symptom of a **Context Gap**. To resolve this, ensure you are using the **Model Context Protocol (MCP)** to link your assistant directly to the `vk.xml` registry; without this ground truth, the AI is effectively guessing. You should also explicitly start your session with a **Baseline Prompt** such as: *"We are using Vulkan 1.3 with Dynamic Rendering. Do not suggest `VkRenderPass` or `VkFramebuffer` unless I explicitly ask for legacy support."* For consistent results in complex projects, consider a tiny **LoRA adapter** to "default" the AI to your specific engine style and memory allocation patterns.
+
+== Multimodal & Vision Limits
+
+**Q: "I sent a screenshot of a subtle banding issue in my skybox, but the AI says the image is clear. Why can't it see the bug?"**
+
+**A: The Resolution Compression.**
+Most Multimodal models downscale images to a small "Vision Buffer" (often 1024x1024 or less). A subtle artifact that spans only a few pixels in a 4K frame can be completely smoothed out by this compression. The solution is to **Crop and Zoom**—before sending an image to your AI, crop the screenshot to focus entirely on the artifact. If the issue takes up 80% of the AI's vision buffer instead of 2%, the model will identify it much more reliably.
+
+== Hardware & VRAM Management
+
+**Q: "My Vulkan app keeps crashing with a 'Device Lost' (TDR) error when the AI starts generating code. Do I need a new GPU?"**
+
+**A: The Resource Contention Trap.**
+You are likely hitting a **Timeout Detection and Recovery (TDR)** event because both the AI and the renderer are competing for 100% of the GPU at once. To mitigate this, use a 4-bit (Q4_K_M) quantization to reduce the AI's VRAM footprint, and set a limit in your inference engine (like Ollama or LM Studio) on the number of GPU layers used by the AI to leave some compute headroom for your desktop and renderer. For professional use, the ultimate solution is a **Dedicated AI GPU**; even an older card in a secondary slot can host an 8B model like **Llama 4**, leaving your primary high-end card entirely free for Vulkan.
+
+== Summary: Informed Graphics Engineering
+
+The transition to **Collaborative Engineering** requires a shift in mindset. You are no longer just a "Coder"; you are an **Infrastructure Manager** and an **Audit Lead**. By mastering these troubleshooting techniques, you ensure that your AI assistant remains a significant asset rather than a source of frustration.
+
+In our final chapter, we will put every tool and concept into practice with the **AI-Driven Graphics Lab**.
+
+Next: xref:10_final_project.adoc[Final Project: The AI-Driven Graphics Lab]

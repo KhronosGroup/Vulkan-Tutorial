@@ -47,6 +47,12 @@ You'll learn engine architecture and design patterns, scene management with hier
 The series also covers essential math and rendering concepts needed for advanced techniques like Forward+ rendering with tiled lighting, shadow mapping techniques, HRTF spatial audio integration, GPU-accelerated physics simulation using compute shaders, and Ray Query for hybrid rendering effects.
 This series builds upon the fundamentals you've learned here to help you create more structured and reusable rendering solutions, and assumes you've completed all the chapters in this Core Vulkan series.
 
+2. link:AI_Assisted_Vulkan/introduction.adoc[*AI-Assisted Vulkan Development*] - Want to accelerate your development with AI?
+This tutorial series explores how to leverage Cloud and Local LLMs, specialized AI agents (MCP), and multimodal vision models to navigate the complexities of Vulkan.
+You'll learn to set up an AI-enhanced environment with tools like Ollama and MCP servers, select and specialize models for graphics programming, automate the generation of verbose Vulkan boilerplate, and use AI as a multimodal consultant to diagnose visual bugs from screenshots.
+The series culminates in an AI-driven graphics lab where you'll use your new toolbelt to architect, implement, and debug a custom post-process effect.
+This series focuses on "Collaborative Engineering" and is ideal for developers looking to optimize their workflow and master the tools of the modern graphics architect.
+
 Future, planned tutorials will guide you through implementing more sophisticated rendering techniques and architectures.
 
 Remember that Vulkan development is a continuous learning process. The graphics programming landscape is constantly evolving, and there's always more to learn and explore.
@@ -71,4 +77,4 @@ Don't hesitate to reach out to these communities - they're filled with developer
 Thank you for following along with this tutorial series. You've taken a big
 first step in a long journey.
 
-link:17_Multithreading.adoc[Previous: Multithreading] | link:Building_a_Simple_Engine/introduction.adoc[Next: Building a Simple Engine]
+link:17_Multithreading.adoc[Previous: Multithreading] | link:Building_a_Simple_Engine/introduction.adoc[Next: Building a Simple Engine] | link:AI_Assisted_Vulkan/introduction.adoc[Next: AI-Assisted Vulkan]

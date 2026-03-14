@@ -400,8 +400,14 @@ source ~/vulkanSDK/default/setup-env.sh
 ----
 To do that, open Settings, then select "Build, Execution, Deployment" and
 then select CMake. At the bottom of that window will be the environment
-variable, Just, add VULKAN_SDK=<fullPathToVulkanSDK> there and Vulkan will be
-found during compile time.  As a convenience, for runtime at least, we
+variable. Add VULKAN_SDK=<fullPathToVulkanSDK> there and Vulkan will be
+found during compile time. Note that the full path is not just the top-level VulkanSDK folder. Run the following in your terminal to find the exact path
+[,shell]
+----
+echo $VULKAN_SDK
+----
+
+As a convenience, for runtime at least, we
 recommend placing the layers system wide.  To do that, from the terminal do
 this:
 [,bash]

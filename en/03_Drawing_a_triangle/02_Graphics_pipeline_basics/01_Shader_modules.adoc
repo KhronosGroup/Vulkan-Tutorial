@@ -115,20 +115,18 @@ VertexOutput vertMain(uint vid : SV_VertexID) {
 }
 ----
 
-The `vertMain` function is invoked for every vertex. The built-in
-`SV_VertexID`
+The `vertMain` function is invoked for every vertex. The built-in `SV_VertexID`
 annotated variable in the parameters contains the index of the current vertex.
 This is usually an index into the vertex buffer, but in our case, it will be
 an index into a hardcoded array of vertex data. The position of each vertex
 is accessed from the constant array in the shader and combined with dummy
 `z` and `w` components to produce a position in clip coordinates. The
-built-in annotation `SV_Position` functions as
-the output. Within the VertexOutput struct.
+built-in annotation `SV_Position` marks the output in the VertexOutput struct.
 Something worth mentioning if you're familiar with other shading languages
 like GLSL or HLSL, there are no instructions for bindings.  This is a feature
- of Slang.  Slang is designed to automatically infer the bindings by the
- order of declaration.  The struct for positions is a static to inform the
- compiler that we don't need any bindings in our shader.
+of Slang.  Slang is designed to automatically infer the bindings by the
+order of declaration.  The struct for positions is a static to inform the
+compiler that we don't need any bindings in our shader.
 Studious observers will notice that we're calling our main function
 vertMain instead of main, this is because Slang and SPIR-V both support
 having multiple entry points in one file.  This is important when you're
@@ -425,22 +423,22 @@ will later be explicit about its size.
 == Creating shader modules
 
 Before we can pass the code to the pipeline, we have to wrap it in a
-`VkShaderModule` object. Let's create a helper function `createShaderModule` to
+`vk::raii::ShaderModule` object. Let's create a helper function `createShaderModule` to
 do that.
 
 [,c++]
 ----
-[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const {
-
+[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const
+{
 }
 ----
 
 The function will take a buffer with the bytecode as parameter and create a
-`VkShaderModule` from it.
+`vk::raii::ShaderModule` from it.
 
 Creating a shader module is straightforward, we only need to specify a pointer to the
 buffer with the bytecode and the length of it. This information is specified in
-a `VkShaderModuleCreateInfo` structure. The one catch is that the size of the
+a `vk::ShaderModuleCreateInfo` structure. The one catch is that the size of the
 bytecode is specified in bytes, but the bytecode pointer is a `uint32_t` pointer
 rather than a `char` pointer. Therefore, we will need to cast the pointer with
 `reinterpret_cast` as shown below. When you perform a cast like this, you also
@@ -453,7 +451,7 @@ already ensures that the data satisfies the worst case alignment requirements.
 vk::ShaderModuleCreateInfo createInfo{ .codeSize = code.size() * sizeof(char), .pCode = reinterpret_cast<const uint32_t*>(code.data()) };
 ----
 
-The `VkShaderModule` can then be created with a call to `vkCreateShaderModule`:
+The `vk::raii::ShaderModule` can then be created by its constructor:
 
 [,c++]
 ----
@@ -461,10 +459,9 @@ vk::raii::ShaderModule shaderModule{ device, createInfo };
 ----
 
 The parameters are the same as those in previous object creation functions: the
-logical device, pointer to create info structure, optional pointer to custom
-allocators and handle output variable. The buffer with the code can be freed
-immediately after creating the shader module. Remember to return the created
-shader module:
+logical device and a reference to the create info structure. The buffer with the
+code can be freed immediately after creating the shader module. Remember to return
+the created shader module:
 
 [,c++]
 ----
@@ -484,7 +481,7 @@ void createGraphicsPipeline() {
 == Shader stage creation
 
 To actually use the shaders, we'll need to assign them to a specific
-pipeline stage through `VkPipelineShaderStageCreateInfo` structures as part
+pipeline stage through `vk::PipelineShaderStageCreateInfo` structures as part
 of the actual pipeline creation process.
 
 We'll start by filling in the structure for the vertex shader, again in the
@@ -495,21 +492,21 @@ We'll start by filling in the structure for the vertex shader, again in the
 vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule,  .pName = "vertMain" };
 ----
 
-The first two parameters are the flags and the stage that we're operating
-in. The next two parameters specify the shader module containing the code, and
-the function to invoke, known as the _entrypoint_.
+The first parameter is the stage that we're operating in. The next two parameters
+specify the shader module containing the code, and the function to invoke, known
+as the _entrypoint_.
 That means that it's possible to combine multiple fragment shaders into a
-single shader module and use different entry points to differentiate between
- their behaviors.
+single shader module and use different entry points to differentiate between their
+behaviors.
 
 There is one more (optional) member, `pSpecializationInfo`, which we won't
- be using here, but is worth discussing. It allows you to specify values for
- shader constants. You can use a single shader module where its behavior can
- be configured in pipeline creation by specifying different values for the
- constants used in it.
+be using here, but is worth discussing. It allows you to specify values for
+shader constants. You can use a single shader module where its behavior can
+be configured in pipeline creation by specifying different values for the
+constants used in it.
 This is more efficient than configuring the shader using variables at render
- time, because the compiler can do optimizations like eliminating `if`
- statements that depend on these values.
+time, because the compiler can do optimizations like eliminating `if`
+statements that depend on these values.
 If you don't have any constants like that, then you can set the member to
 `nullptr`, which our struct initialization does automatically.
 

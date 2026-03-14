@@ -706,10 +706,9 @@ class VulkanApplication
 	{
 		assert(swapChainImageViews.empty());
 
-		vk::ImageViewCreateInfo imageViewCreateInfo{
-		    .viewType         = vk::ImageViewType::e2D,
-		    .format           = swapChainSurfaceFormat.format,
-		    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
+		vk::ImageViewCreateInfo imageViewCreateInfo{.viewType         = vk::ImageViewType::e2D,
+		                                            .format           = swapChainSurfaceFormat.format,
+		                                            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
 		for (auto &image : swapChainImages)
 		{
 			imageViewCreateInfo.image = image;

@@ -13,16 +13,13 @@ While *most* of the pipeline state needs to be baked into the pipeline state,
 a limited amount of the state *can* actually be changed without recreating the
 pipeline at draw time. Examples are the size of the viewport, line width
 and blend constants. If you want to use dynamic state and keep these properties out,
-then you'll have to fill in a `VkPipelineDynamicStateCreateInfo` structure like this:
+then you'll have to fill in a `vk::PipelineDynamicStateCreateInfo` structure like this:
 
 [,c++]
 ----
-std::vector dynamicStates = {
-    vk::DynamicState::eViewport,
-    vk::DynamicState::eScissor
-};
+std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 
-vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data() };
+vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
 ----
 
 This will cause the configuration of these values to be ignored, and you will be able (and required) to specify the data at drawing time.
@@ -30,7 +27,7 @@ This results in a more flexible setup and is widespread for things like viewport
 
 == Vertex input
 
-The `VkPipelineVertexInputStateCreateInfo` structure describes the format of the vertex data that will be passed to the vertex shader.
+The `vk::PipelineVertexInputStateCreateInfo` structure describes the format of the vertex data that will be passed to the vertex shader.
 It describes this in roughly two ways:
 
 * Bindings: spacing between data and whether the data is per-vertex or per-instance (see https://en.wikipedia.org/wiki/Geometry_instancing[instancing])
@@ -49,24 +46,24 @@ Add this structure to the `createGraphicsPipeline` function right after the `sha
 
 == Input assembly
 
-The `VkPipelineInputAssemblyStateCreateInfo` struct describes two things: what kind of geometry will be drawn from the vertices and if primitive restart should be enabled.
+The `vk::PipelineInputAssemblyStateCreateInfo` struct describes two things: what kind of geometry will be drawn from the vertices and if primitive restart should be enabled.
 The former is specified in the `topology` member and can have values like:
 
-* `VK_PRIMITIVE_TOPOLOGY_POINT_LIST`: points from vertices
-* `VK_PRIMITIVE_TOPOLOGY_LINE_LIST`: line from every two vertices without reuse
-* `VK_PRIMITIVE_TOPOLOGY_LINE_STRIP`: the end vertex of every line is used as start vertex for the next line
-* `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST`: triangle from every three vertices without reuse
-* `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP`: the second and third vertex of every triangle is used as first two vertices of the next triangle
+* `vk::PrimitiveTopology::ePointList`: points from vertices
+* `vk::PrimitiveTopology::eLineList`: line from every two vertices without reuse
+* `vk::PrimitiveTopology::eLineStrip`: the end vertex of every line is used as start vertex for the next line
+* `vk::PrimitiveTopology::eTriangleList`: triangle from every three vertices without reuse
+* `vk::PrimitiveTopology::eTriangleStrip`: the second and third vertex of every triangle is used as first two vertices of the next triangle
 
 Normally, the vertices are loaded from the vertex buffer by index in sequential order, but with an _element buffer_ you can specify the indices to use yourself.
 This allows you to perform optimizations like reusing vertices.
-If you set the `primitiveRestartEnable`  member to `VK_TRUE`, then it's possible to break up lines and triangles in the `_STRIP` topology modes by using a special index of `0xFFFF` or `0xFFFFFFFF`.
+If you set the `primitiveRestartEnable`  member to `vk::True`, then it's possible to break up lines and triangles in the `Strip` topology modes by using a special index of `0xFFFF` or `0xFFFFFFFF`.
 
 We intend to draw triangles throughout this tutorial, so we'll stick to the following data for the structure:
 
 [,c++]
 ----
-vk::PipelineInputAssemblyStateCreateInfo inputAssembly{  .topology = vk::PrimitiveTopology::eTriangleList };
+vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
 ----
 
 == Viewports and scissors
@@ -76,7 +73,7 @@ This will almost always be `(0, 0)` to `(width, height)` and in this tutorial th
 
 [,c++]
 ----
-vk::Viewport{ 0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f };
+vk::Viewport viewport{0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f};
 ----
 
 Remember that the size of the swap chain and its images may differ from the `WIDTH` and `HEIGHT` of the window.
@@ -98,7 +95,7 @@ So if we wanted to draw to the entire framebuffer, we would specify a scissor re
 
 [,c++]
 ----
-vk::Rect2D{ vk::Offset2D{ 0, 0 }, swapChainExtent }
+vk::Rect2D scissor{vk::Offset2D{ 0, 0 }, swapChainExtent};
 ----
 
 Viewport(s) and scissor rectangle(s) can either be specified as a static part of the pipeline or as a dynamic state set in the command buffer.
@@ -110,31 +107,29 @@ enable the respective dynamic states for the pipeline:
 
 [,c++]
 ----
-std::vector dynamicStates = {
-    vk::DynamicState::eViewport,
-    vk::DynamicState::eScissor
-};
-vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates.size(), dynamicStates.data());
+std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+
+vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
 ----
 
 And then you only need to specify their count at pipeline creation time:
 
 [,c++]
 ----
-vk::PipelineViewportStateCreateInfo viewportState({}, 1, {}, 1);
+vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
 ----
 
 The actual viewport(s) and scissor rectangle(s) will then later be set up at drawing time.
 
 With dynamic state, it's even possible to specify different viewports and or scissor rectangles within a single command buffer.
 
-Without dynamic state, the viewport and scissor rectangle need to be set in the pipeline using the `VkPipelineViewportStateCreateInfo` struct.
+Without dynamic state, the viewport and scissor rectangle need to be set in the pipeline using the `vk::PipelineViewportStateCreateInfo` struct.
 This makes the viewport and scissor rectangle for this pipeline immutable.
 Any changes required to these values would require a new pipeline to be created with the new values.
 
 [,c++]
 ----
-vk::PipelineViewportStateCreateInfo viewportState{ .viewportCount = 1, .scissorCount = 1 };
+vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .pViewports = &viewport, .scissorCount = 1, .pScissors = &scissor};
 ----
 
 Independent of how you set them, it's possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
@@ -144,47 +139,51 @@ Using multiple requires enabling a GPU feature (see logical device creation).
 
 The rasterizer takes the geometry shaped by the vertices from the vertex shader and turns it into fragments to be colored by the fragment shader.
 It also performs https://en.wikipedia.org/wiki/Z-buffering[depth testing], https://en.wikipedia.org/wiki/Back-face_culling[face culling] and the scissor test, and it can be configured to output fragments that fill entire polygons or just the edges (wireframe rendering).
-All this is configured using the `VkPipelineRasterizationStateCreateInfo` structure.
+All this is configured using the `vk::PipelineRasterizationStateCreateInfo` structure.
 
 [,c++]
 ----
-vk::PipelineRasterizationStateCreateInfo rasterizer{  .depthClampEnable = vk::False, .rasterizerDiscardEnable = vk::False,
- .polygonMode = vk::PolygonMode::eFill, .cullMode = vk::CullModeFlagBits::eBack,
- .frontFace = vk::FrontFace::eClockwise, .depthBiasEnable = vk::False,
- .depthBiasSlopeFactor = 1.0f, .lineWidth = 1.0f };
+vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable        = vk::False,
+                                                    .rasterizerDiscardEnable = vk::False,
+                                                    .polygonMode             = vk::PolygonMode::eFill,
+                                                    .cullMode                = vk::CullModeFlagBits::eBack,
+                                                    .frontFace               = vk::FrontFace::eClockwise,
+                                                    .depthBiasEnable         = vk::False,
+                                                    .lineWidth               = 1.0f};
 ----
 
-If `depthClampEnable` is set to `VK_TRUE`, then fragments that are beyond
+If `depthClampEnable` is set to `vk::True`, then fragments that are beyond
 the near and far planes are clamped to them as opposed to discarding them.
 This is useful in some special cases like shadow maps.
 Using this requires enabling a GPU feature. 
 
-If `rasterizerDiscardEnable` is set to `VK_TRUE`, then geometry never passes through the rasterizer stage.
+If `rasterizerDiscardEnable` is set to `vk::True`, then geometry never passes through the rasterizer stage.
 This basically disables any output to the framebuffer.
 
 The `polygonMode` determines how fragments are generated for geometry.
 The following modes are available:
 
-* `VK_POLYGON_MODE_FILL`: fill the area of the polygon with fragments
-* `VK_POLYGON_MODE_LINE`: polygon edges are drawn as lines
-* `VK_POLYGON_MODE_POINT`: polygon vertices are drawn as points
+* `vk::PolygonMode::eFill`: fill the area of the polygon with fragments
+* `vk::PolygonMode::eLine`: polygon edges are drawn as lines
+* `vk::PolygonMode::ePoint`: polygon vertices are drawn as points
 
 Using any mode other than fill requires enabling a GPU feature.
 
-The `lineWidth` member is straightforward, it describes the thickness of lines in terms of number of fragments.
-The maximum line width that is supported depends on the hardware and any line thicker than `1.0f` requires you to enable the `wideLines` GPU feature.
-
 The `cullMode` variable determines the type of face culling to use.
 You can disable culling, cull the front faces, cull the back faces or both.
+
 The `frontFace` variable specifies the vertex order for the faces to be considered front-facing and can be clockwise or counterclockwise.
 
 The rasterizer can alter the depth values by adding a constant value or biasing them based on a fragment's slope.
 This is sometimes used for shadow mapping, but we won't be using it.
-Just set `depthBiasEnable` to `VK_FALSE`.
+Just set `depthBiasEnable` to `vk::False`.
+
+The `lineWidth` member is straightforward, it describes the thickness of lines in terms of number of fragments.
+The maximum line width that is supported depends on the hardware and any line thicker than `1.0f` requires you to enable the `wideLines` GPU feature.
 
 == Multisampling
 
-The `VkPipelineMultisampleStateCreateInfo` struct configures multisampling, which is one of the ways to perform https://en.wikipedia.org/wiki/Multisample_anti-aliasing[antialiasing].
+The `vk::PipelineMultisampleStateCreateInfo` struct configures multisampling, which is one of the ways to perform https://en.wikipedia.org/wiki/Multisample_anti-aliasing[antialiasing].
 It works by combining the fragment shader results of multiple polygons that rasterize to the same pixel.
 This mainly occurs along edges, which is also where the most noticeable aliasing artifacts occur.
 Because it doesn't need to run the fragment shader multiple times if only one polygon maps to a pixel, it is significantly less expensive than simply rendering to a higher resolution and then downscaling.
@@ -199,7 +198,7 @@ We'll revisit multisampling in later chapter, for now let's keep it disabled.
 
 == Depth and stencil testing
 
-If you are using a depth and/or stencil buffer, then you also need to configure the depth and stencil tests using `VkPipelineDepthStencilStateCreateInfo`.
+If you are using a depth and/or stencil buffer, then you also need to configure the depth and stencil tests using `vk::PipelineDepthStencilStateCreateInfo`.
 We don't have one right now, so we can simply pass a `nullptr` instead of a pointer to such a struct.
 We'll get back to it in the depth buffering chapter.
 
@@ -212,7 +211,7 @@ This transformation is known as color blending, and there are two ways to do it:
 * Combine the old and new value using a bitwise operation
 
 There are two types of structs to configure color blending.
-The first struct, `VkPipelineColorBlendAttachmentState` contains the configuration per attached framebuffer and the second struct, `VkPipelineColorBlendStateCreateInfo` contains the _global_ color blending settings.
+The first struct, `vk::PipelineColorBlendAttachmentState` contains the configuration per attached framebuffer and the second struct, `vk::PipelineColorBlendStateCreateInfo` contains the _global_ color blending settings.
 In our case, we only have one framebuffer:
 
 [,c++]
@@ -237,7 +236,7 @@ if (blendEnable) {
 finalColor = finalColor & colorWriteMask;
 ----
 
-If `blendEnable` is set to `VK_FALSE`, then the new color from the fragment shader is passed through unmodified.
+If `blendEnable` is set to `vk::False`, then the new color from the fragment shader is passed through unmodified.
 Otherwise, the two mixing operations are performed to compute a new color.
 The resulting color is AND'd with the `colorWriteMask` to determine which channels are actually passed through.
 
@@ -254,29 +253,30 @@ This can be achieved with the following parameters:
 
 [,c++]
 ----
-colorBlendAttachment.blendEnable = vk::True;
-colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+    .blendEnable         = vk::True,
+    .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
+    .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+    .colorBlendOp        = vk::BlendOp::eAdd,
+    .srcAlphaBlendFactor = vk::BlendFactor::eOne,
+    .dstAlphaBlendFactor = vk::BlendFactor::eZero,
+    .alphaBlendOp        = vk::BlendOp::eAdd,
+    .colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 ----
 
-You can find all the possible operations in the `VkBlendFactor` and `VkBlendOp` enumerations in the specification.
+You can find all the possible operations in the `vk::BlendFactor` and `vk::BlendOp` enumerations in the specification.
 
-The second structure references the array of structures for all the
-framebuffers and allows you to set blend constants that you can use as blend
- factors in the aforementioned calculations.
+The second structure references the array of structures for all the framebuffers and allows you to set blend constants that you can use as blend factors in the aforementioned calculations.
 
 [,c++]
 ----
-vk::PipelineColorBlendStateCreateInfo colorBlending{.logicOpEnable = vk::False, .logicOp =  vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments =  &colorBlendAttachment };
+vk::PipelineColorBlendStateCreateInfo colorBlending{
+    .logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments = &colorBlendAttachment};
 ----
 
-If you want to use the second method of blending (a bitwise combination), then you should set `logicOpEnable` to `VK_TRUE`.
+If you want to use the second method of blending (a bitwise combination), then you should set `logicOpEnable` to `vk::True`.
 The bitwise operation can then be specified in the `logicOp` field.
-Note that this will automatically disable the first method, as if you had set `blendEnable` to `VK_FALSE` for every attached framebuffer!
+Note that this will automatically disable the first method, as if you had set `blendEnable` to `vk::False` for every attached framebuffer!
 The `colorWriteMask` will also be used in this mode to determine which channels in the framebuffer will actually be affected.
 It is also possible to disable both modes, as we've done here, in which case the fragment colors will be written to the framebuffer unmodified.
 
@@ -285,7 +285,7 @@ It is also possible to disable both modes, as we've done here, in which case the
 You can use `uniform` values in shaders, which are globals similar to dynamic state variables that can be changed at drawing time to alter the behavior of your shaders without having to recreate them.
 They are commonly used to pass the transformation matrix to the vertex shader, or to create texture samplers in the fragment shader.
 
-These uniform values need to be specified during pipeline creation by creating a `VkPipelineLayout` object.
+These uniform values need to be specified during pipeline creation by creating a `vk::PipelineLayout` object.
 Even though we won't be using them until a future chapter, we are still required to create an empty pipeline layout.
 
 Create a class member to hold this object because we'll refer to it from other functions at a later point in time:
@@ -299,9 +299,9 @@ And then create the object in the `createGraphicsPipeline` function:
 
 [,c++]
 ----
-vk::PipelineLayoutCreateInfo pipelineLayoutInfo{  .setLayoutCount = 0, .pushConstantRangeCount = 0 };
+vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 0, .pushConstantRangeCount = 0};
 
-pipelineLayout = vk::raii::PipelineLayout( device, pipelineLayoutInfo );
+pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 ----
 
 The structure also specifies _push constants_, which are another way of passing dynamic values to shaders that we may get into in a future chapter.

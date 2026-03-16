@@ -23,6 +23,7 @@ Throughout this series, we have explored the depths of modern GPU compute, movin
 If there is one takeaway from this series, it is this: **The GPU is not just a math coprocessor; it is a parallel throughput machine with its own complex hierarchy.**
 
 Developing for advanced compute requires a shift in mindset:
+
 - **Think in Waves**: Always look for opportunities to use subgroup (Wave) operations instead of workgroup-level barriers.
 - **Explicit Synchronization**: Don't rely on luck. Use the Vulkan Memory Model and Synchronization 2 to define exactly how and when data becomes visible.
 - **Data-First Design**: Design your data structures for the GPU's memory architecture (scalar layouts, LDS bank alignment) before you write a single line of logic.
@@ -39,6 +40,7 @@ The world of high-performance computing is vast. Now that you have a solid found
 == Community and Resources
 
 As always, you are not alone in this journey. The Vulkan community is filled with experts and enthusiasts:
+
 - **Khronos Slack/Discord**: Great for technical deep dives into specific extensions.
 - **Vulkan Specification**: Your ultimate source of truth for memory models and hardware constraints.
 - **Vendor-Specific Documentation**: Explore NVIDIA's Nsight, AMD's RGP, and Intel's GPA documentation for hardware-specific optimization tricks.

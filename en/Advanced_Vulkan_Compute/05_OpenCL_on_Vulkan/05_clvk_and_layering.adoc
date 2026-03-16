@@ -1,0 +1,40 @@
+:pp: {plus}{plus}
+
+= clvk and Layering: OpenCL 3.0 on Vulkan
+
+== What is clvk?
+
+While `clspv` (discussed in previous sections) focuses on compiling kernels ahead of time, **clvk** is an implementation of the OpenCL 3.0 API on top of Vulkan.
+
+This means you don't even have to change your **host code** (C{pp} application code). You can use the standard `clCreateContext`, `clEnqueueNDRangeKernel`, and other OpenCL functions, and `clvk` will translate those commands into Vulkan dispatches at runtime.
+
+== How It Works
+
+`clvk` acts as an "OpenCL Driver" for the operating system. When your application calls an OpenCL function:
+
+1.  **API Translation**: `clvk` translates the call (e.g., `clEnqueueNDRangeKernel`) into a Vulkan command (e.g., `vkCmdDispatch`).
+2.  **Kernel Compilation**: It uses `clspv` internally to compile your OpenCL C source code into Vulkan-compatible SPIR-V.
+3.  **Memory Management**: It maps OpenCL buffers and images to Vulkan `VkBuffer` and `VkImage` objects.
+4.  **Queue Management**: OpenCL's command queue is mapped to a Vulkan queue, with appropriate synchronization (using fences and semaphores).
+
+== Why Use clvk?
+
+The biggest advantage of `clvk` is **Portability without Rewrite**.
+
+If you have a large desktop application written in C{pp} that uses OpenCL, you can run it on an Android device or a Vulkan-only Linux system simply by linking it against the `clvk` library. You don't have to touch a single line of your host code or your kernels.
+
+This is great for cross-platform developers who want to target as many devices as possible with a single codebase.
+
+== Performance Considerations
+
+Because `clvk` is a translation layer, there is some overhead compared to a native OpenCL driver or a direct Vulkan implementation. However, this overhead is surprisingly low for many workloads.
+
+Since the actual computation happens in the native Vulkan driver, the primary cost is in the command translation on the CPU. For heavy, long-running kernels, this overhead is often negligible.
+
+== Compatibility and Extensions
+
+`clvk` supports most of the OpenCL 3.0 specification. However, its compatibility depends on the features supported by your Vulkan driver. If your driver supports Vulkan 1.4 with **Descriptor Indexing**, **Variable Pointers**, and **Buffer Device Address**, `clvk` will be able to support almost all OpenCL features.
+
+In the next chapter, we'll move from the OpenCL ecosystem to the modern C{pp} world of **SYCL**, which takes this abstraction even further.
+
+xref:04_kernel_portability.adoc[Previous: Kernel Portability] | xref:../06_SYCL_and_Single_Source_CPP/01_introduction.adoc[Next: SYCL and Single-Source C{pp}]

@@ -1,0 +1,70 @@
+:pp: {plus}{plus}
+
+= Occupancy and Latency Hiding: Keeping the GPU Busy
+
+== Introduction
+
+In the previous section, we learned how workgroups are mapped to the GPU's factory floor (the Compute Units or SMs). But simply getting a workgroup onto a CU is only half the battle. If that workgroup is poorly designed, it might only use a fraction of the hardware's potential, leaving expensive silicon sitting idle.
+
+To understand why this happens, we must talk about **Latency** and **Occupancy**.
+
+== The Latency Gap
+
+GPUs are memory-bound. While a modern GPU can perform trillions of floating-point operations per second (**TFLOPS**), fetching a single piece of data from **VRAM** (Video Random Access Memory) can take hundreds or even thousands of clock cycles.
+
+If a bundle of invocations (a warp or wavefront) needs to read from memory, it has to wait. If that CU only has one bundle to run, the entire CU goes silent until the data arrives. This is a disaster for performance, and is known as **memory latency**.
+
+The GPU's solution is **Concurrency**. Instead of waiting for one bundle, the CU switches to another bundle that is ready to execute. The more bundles you have "in flight" on a single CU, the better you can hide the latency of memory fetches.
+
+== Defining Occupancy
+
+**Occupancy** is a measure of how many bundles are active on a CU compared to the theoretical maximum. It's often expressed as a percentage.
+
+*   **100% Occupancy**: The CU is completely packed with bundles. Whenever one waits for memory, there's almost certainly another one ready to go.
+*   **Low Occupancy**: Only a few bundles are active. If they all hit a memory fetch at the same time, the CU will stall.
+
+=== The Resource Tug-of-War
+
+You might wonder: "Why not just always dispatch thousands of threads?" The problem is that each Compute Unit has a fixed pool of physical resources. Every thread you add consumes a portion of that pool.
+
+The three primary limiters of occupancy are:
+
+1.  **Registers**: Each thread needs a set of registers to store its variables. If your shader uses 128 registers, you can fit fewer threads than if it used 32.
+2.  **Shared Memory (LDS)**: This memory is shared by the whole workgroup. If your workgroup uses 32KB of LDS and the CU only has 64KB, you can only fit two workgroups on that CU, regardless of how many threads they have.
+3.  **Thread/Warp Slots**: There is a hard limit on how many threads the hardware scheduler can track at once (e.g., 2048 threads per CU).
+
+|===
+| Resource Usage | Impact on Occupancy | Result
+
+| High Register Count
+| **Negative**
+| Fewer bundles per CU; harder to hide latency.
+
+| High LDS Usage
+| **Negative**
+| Fewer workgroups per CU; limited concurrency.
+
+| Small Workgroup Size
+| **Neutral/Negative**
+| May not fill all warp slots; scheduling overhead.
+|===
+
+== Calculating Theoretical Occupancy
+
+Most GPU vendors provide tools (like NVIDIA's Nsight or AMD's RGP) that calculate occupancy for you. However, you can estimate it yourself by looking at your shader's resource usage.
+
+If a CU has 64KB of shared memory and your workgroup uses 32KB, your CU can only ever host two workgroups at a time. If your workgroup size is small (say, 64 threads), you'll have 128 threads per CU. If that hardware is capable of tracking 2048 threads, your occupancy is only around 6%.
+
+This is why "fat" shaders (those that use lots of registers or shared memory) often perform poorly unless they are carefully tuned.
+
+== Monitoring Utilization
+
+In a real engine, you don't just want to guess. Modern Vulkan engines use performance counters (via the `VK_KHR_performance_query` extension) to monitor hardware utilization in real-time.
+
+By tracking metrics like **ValuUtilization** (AMD) or **SM Active** (NVIDIA), you can see if your kernels are actually keeping the hardware busy. If you see high memory latency but low occupancy, you know you need to optimize your register usage or shared memory footprint.
+
+== What's Next?
+
+Now that we know how to keep the GPU busy, we need to make sure that when it *is* busy, it's being efficient. In the final section of this chapter, we'll look at **Scalar Layouts**—a Vulkan 1.4 feature that allows us to pack our data tightly and maximize the bandwidth we've worked so hard to hide.
+
+xref:02_workgroups_and_invocations.adoc[Previous: Workgroups and Invocations] | xref:04_vulkan_1_4_scalar_layouts.adoc[Next: Vulkan 1.4 Scalar Layouts]

@@ -1,0 +1,53 @@
+:pp: {plus}{plus}
+
+= USM (Unified Shared Memory): Pointer-Based Memory in SYCL
+
+== Moving Beyond Accessors
+
+In the earlier sections of this chapter, we saw how SYCL's `buffer` and `accessor` system handles data. This approach is powerful because it automatically tracks dependencies and manages memory transfers. However, for many C{pp} developers, it can feel a bit "un-C{pp}-like" because it replaces raw pointers with higher-level abstractions.
+
+**Unified Shared Memory (USM)** is the solution to this problem. USM provides a pointer-based memory model that is much more familiar to C{pp} programmers and maps directly to modern Vulkan features like **Buffer Device Address**.
+
+== What is USM?
+
+USM allows you to allocate memory that can be accessed by both the CPU and the GPU through the same pointer. There are three main types of USM allocation:
+
+1.  **Host Allocation**: Resides on the CPU but can be accessed by the GPU (similar to Vulkan's "Host Visible" memory).
+2.  **Device Allocation**: Resides purely on the GPU and cannot be accessed directly by the CPU (similar to Vulkan's "Device Local" memory).
+3.  **Shared Allocation**: Managed by the SYCL runtime. It can migrate between the CPU and GPU automatically, allowing the same pointer to be used everywhere (similar to **Managed Memory**—memory that automatically moves between host and device—in CUDA).
+
+== USM and Vulkan's Buffer Device Address
+
+The secret behind USM's efficiency is its direct mapping to **Vulkan 1.4's Buffer Device Address** feature.
+
+When you allocate USM memory on the device, the SYCL runtime (through a backend like AdaptiveCpp) creates a Vulkan buffer and obtains its raw **64-bit device address** (a pointer-like address that the GPU can use directly). This address is then passed to the GPU kernels, which can treat it as a standard C{pp} pointer.
+
+[source,cpp]
+----
+// Simple USM example in SYCL
+sycl::queue q;
+
+// Allocate device memory (returns a raw pointer)
+float* data = sycl::malloc_device<float>(1024, q);
+
+q.submit([&](sycl::handler& h) {
+    h.parallel_for(sycl::range<1>(1024), [=](sycl::id<1> idx) {
+        // We can use the raw pointer directly in the kernel!
+        data[idx] *= 2.0f;
+    });
+});
+----
+
+== Why Use USM?
+
+USM is the "gold standard" for complex data structures like linked lists, trees, and graphs on the GPU. These structures rely on pointers, which are difficult to implement using the traditional accessor-based model.
+
+By using USM, you can build **GPU-Resident Trees** (tree structures stored entirely in GPU memory) or **BVHs** (**Bounding Volume Hierarchies**—a tree structure used for fast spatial searches) that look and feel like standard C{pp} data structures. You can share pointers between the CPU and GPU without any manual "mapping" or "unmapping" of memory.
+
+== Conclusion: The Power of C{pp} and Vulkan
+
+Throughout this chapter, we've seen how SYCL and Single-Source C{pp} take the complex world of Vulkan and make it accessible to modern developers. By combining the low-level power of the Vulkan 1.4 API with the high-level abstractions of SYCL, you can build massive, high-performance compute applications with a fraction of the code.
+
+In the next chapter, we'll dive deeper into how to implement those complex data structures we just mentioned: **Advanced Data Structures on the GPU**.
+
+xref:04_vulkan_interoperability.adoc[Previous: Vulkan Interoperability] | xref:../07_Advanced_Data_Structures/01_introduction.adoc[Next: Advanced Data Structures]

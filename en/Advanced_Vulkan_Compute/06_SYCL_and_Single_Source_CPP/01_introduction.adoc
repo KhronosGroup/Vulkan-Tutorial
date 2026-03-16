@@ -1,0 +1,39 @@
+:pp: {plus}{plus}
+
+= High-Level Abstraction: SYCL and Single-Source C{pp}
+
+== Introduction
+
+In the previous chapters, we've focused on the "explicit" way of doing compute: writing kernels in Slang or OpenCL and manually managing buffers, descriptor sets, and dispatches in Vulkan. While this gives you the ultimate control, it also requires a lot of boilerplate code.
+
+What if you could write your C{pp} code and your GPU kernels in the same file, using the same C{pp} types, and have a compiler automatically handle the Vulkan boilerplate for you? This is the promise of **SYCL**.
+
+== What is SYCL?
+
+**SYCL** (pronounced "sickle") is an open-standard, **single-source** (host and device code in one file) C{pp} programming model for heterogeneous computing. It is built on top of standard C{pp}17 (and newer) and allows you to target CPUs, GPUs, **FPGAs** (Field-Programmable Gate Arrays, reconfigurable hardware), and other accelerators from a single codebase.
+
+Unlike Vulkan, where the host code (C{pp}) and device code (SPIR-V) are strictly separated, SYCL allows you to use C{pp} lambdas or function objects to define your kernels directly within your host code.
+
+== The Vulkan Backend
+
+One of the most exciting developments in the SYCL ecosystem is the ability to target **Vulkan** as a backend. Tools like **AdaptiveCpp** (formerly hipSYCL) can take your SYCL code and generate Vulkan-compatible SPIR-V and host code that uses the Vulkan API.
+
+This means you get the best of both worlds:
+
+1.  **High-Level Abstraction**: Write modern C{pp} without worrying about descriptor sets or command buffers.
+2.  **Native Performance**: Your code runs on the same high-performance Vulkan drivers we've been using throughout this tutorial.
+3.  **Vulkan Interoperability**: Because it's "just Vulkan" under the hood, you can easily share data between a high-level SYCL simulation and a native Vulkan renderer.
+
+== Why SYCL for Advanced Compute?
+
+For many advanced compute tasks—like complex physics engines, machine learning frameworks, or large-scale simulations—the complexity of managing thousands of Vulkan objects can become a bottleneck for developer productivity.
+
+SYCL allows you to:
+
+*   **Reduce Boilerplate**: Automate memory transfers and dependency tracking.
+*   **Improve Maintainability**: Keep your simulation logic and your host orchestration in one place.
+*   **Target Multiple Backends**: The same SYCL code can target Vulkan, **CUDA** (NVIDIA's proprietary platform), **ROCm** (AMD's open-source platform), or even **oneAPI** (Intel's cross-architecture programming model), providing true hardware portability.
+
+In this chapter, we'll explore the SYCL programming model, how it maps to Vulkan, and how to use modern extensions to bridge the gap between high-level C{pp} and low-level Vulkan resources.
+
+xref:../05_OpenCL_on_Vulkan/05_clvk_and_layering.adoc[Previous: clvk and Layering] | xref:02_setup_and_installation.adoc[Next: Setup and Installation]

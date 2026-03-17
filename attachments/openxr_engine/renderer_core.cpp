@@ -718,9 +718,10 @@ bool Renderer::pickPhysicalDevice() {
         vk::PhysicalDeviceIDProperties idProps;
         vk::PhysicalDeviceProperties2 props2;
         props2.pNext = &idProps;
-        _device.getProperties2(&props2);
+        props2 = _device.getProperties2();
 
-        if (std::memcmp(idProps.deviceLUID, xrContext.getRequiredLUID(), VK_LUID_SIZE) != 0) {
+        const uint8_t* requiredLuid = xrContext.getRequiredLUID();
+        if (requiredLuid && std::memcmp(idProps.deviceLUID, requiredLuid, VK_LUID_SIZE) != 0) {
           std::cout << "  - LUID mismatch for OpenXR" << std::endl;
           continue; // Not the right GPU for XR!
         }

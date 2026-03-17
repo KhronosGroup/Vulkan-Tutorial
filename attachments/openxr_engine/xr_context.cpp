@@ -11,19 +11,29 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #endif
 
-XrContext::XrContext() {}
+XrContext::XrContext() : 
+    instance(XR_NULL_HANDLE), 
+    systemId(XR_NULL_SYSTEM_ID), 
+    session(XR_NULL_HANDLE), 
+    appSpace(XR_NULL_HANDLE),
+    actionSet(XR_NULL_HANDLE),
+    gazeSpace(XR_NULL_HANDLE)
+{}
 XrContext::~XrContext() { cleanup(); }
 
 bool XrContext::checkRuntimeAvailable() {
-    try {
-        std::vector<xr::ExtensionProperties> extensions = xr::enumerateInstanceExtensionProperties(nullptr);
-        for (const auto& ext : extensions) {
-            if (std::strcmp(ext.extensionName, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME) == 0) {
-                return true;
-            }
-        }
-    } catch (...) {
+    uint32_t extCount = 0;
+    if (xrEnumerateInstanceExtensionProperties(nullptr, 0, &extCount, nullptr) != XR_SUCCESS) {
         return false;
+    }
+    std::vector<XrExtensionProperties> extensions(extCount, {XR_TYPE_EXTENSION_PROPERTIES});
+    if (xrEnumerateInstanceExtensionProperties(nullptr, extCount, &extCount, extensions.data()) != XR_SUCCESS) {
+        return false;
+    }
+    for (const auto& ext : extensions) {
+        if (std::strcmp(ext.extensionName, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME) == 0) {
+            return true;
+        }
     }
     return false;
 }
@@ -38,69 +48,73 @@ bool XrContext::isExtensionEnabled(const char* extName) const {
 bool XrContext::createInstance(const std::string& appName) {
     std::cout << "XrContext: Creating OpenXR instance for " << appName << std::endl;
 
-    try {
-        // Query available extensions
-        std::vector<xr::ExtensionProperties> availableExtensions = xr::enumerateInstanceExtensionProperties(nullptr);
-        auto checkExt = [&](const char* name) {
-            for (const auto& ext : availableExtensions) {
-                if (std::strcmp(ext.extensionName, name) == 0) return true;
-            }
+    uint32_t extCount = 0;
+    xrEnumerateInstanceExtensionProperties(nullptr, 0, &extCount, nullptr);
+    std::vector<XrExtensionProperties> availableExtensions(extCount, {XR_TYPE_EXTENSION_PROPERTIES});
+    xrEnumerateInstanceExtensionProperties(nullptr, extCount, &extCount, availableExtensions.data());
+
+    auto checkExt = [&](const char* name) {
+        for (const auto& ext : availableExtensions) {
+            if (std::strcmp(ext.extensionName, name) == 0) return true;
+        }
+        return false;
+    };
+
+    std::vector<const char*> extensions = { XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME };
+    const char* optionalExtensions[] = {
+        XR_MSFT_SCENE_UNDERSTANDING_EXTENSION_NAME,
+        XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME,
+        XR_MSFT_HAND_INTERACTION_EXTENSION_NAME
+    };
+
+    for (auto ext : optionalExtensions) {
+        if (checkExt(ext)) {
+            extensions.push_back(ext);
+            enabledExtensions.push_back(ext);
+        }
+    }
+
+#if defined(PLATFORM_ANDROID)
+    if (checkExt(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME)) {
+        extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+        enabledExtensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+    }
+#endif
+
+    XrInstanceCreateInfo instanceCreateInfo{XR_TYPE_INSTANCE_CREATE_INFO};
+    std::strncpy(instanceCreateInfo.applicationInfo.applicationName, appName.c_str(), XR_MAX_APPLICATION_NAME_SIZE);
+    instanceCreateInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
+    instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    instanceCreateInfo.enabledExtensionNames = extensions.data();
+
+#if defined(PLATFORM_ANDROID)
+    XrInstanceCreateInfoAndroidKHR androidCreateInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
+    if (isExtensionEnabled(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME)) {
+        if (!androidApp) {
+            std::cerr << "XrContext: androidApp not set" << std::endl;
             return false;
-        };
-
-        // 1. Create OpenXR Instance
-        std::vector<const char*> extensions = { XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME };
-
-        // Add optional extensions if available
-        const char* optionalExtensions[] = {
-            XR_MSFT_SCENE_UNDERSTANDING_EXTENSION_NAME,
-            XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME,
-            XR_MSFT_HAND_INTERACTION_EXTENSION_NAME
-        };
-
-        for (auto ext : optionalExtensions) {
-            if (checkExt(ext)) {
-                extensions.push_back(ext);
-                enabledExtensions.push_back(ext);
-            }
         }
-
-#if defined(PLATFORM_ANDROID)
-        if (checkExt(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME)) {
-            extensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
-            enabledExtensions.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
-        }
+        androidCreateInfo.applicationVM = androidApp->activity->vm;
+        androidCreateInfo.applicationActivity = androidApp->activity->clazz;
+        instanceCreateInfo.next = &androidCreateInfo;
+    }
 #endif
 
-        xr::InstanceCreateInfo instanceCreateInfo;
-        std::strncpy(instanceCreateInfo.applicationInfo.applicationName, appName.c_str(), XR_MAX_APPLICATION_NAME_SIZE);
-        instanceCreateInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
-        instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-        instanceCreateInfo.enabledExtensionNames = extensions.data();
+    if (xrCreateInstance(&instanceCreateInfo, &this->instance) != XR_SUCCESS) {
+        return false;
+    }
 
-#if defined(PLATFORM_ANDROID)
-        if (isExtensionEnabled(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME)) {
-            if (!androidApp) {
-                std::cerr << "XrContext: androidApp not set" << std::endl;
-                return false;
-            }
+    // Load Vulkan extension functions
+    xrGetInstanceProcAddr(instance, "xrGetVulkanInstanceExtensionsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanInstanceExtensionsKHR);
+    xrGetInstanceProcAddr(instance, "xrGetVulkanDeviceExtensionsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanDeviceExtensionsKHR);
+    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsRequirementsKHR);
+    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsRequirements2KHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsRequirements2KHR);
+    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsDeviceKHR);
+    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsDevice2KHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsDevice2KHR);
 
-            xr::InstanceCreateInfoAndroidKHR androidCreateInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
-            androidCreateInfo.applicationVM = androidApp->activity->vm;
-            androidCreateInfo.applicationActivity = androidApp->activity->clazz;
-            instanceCreateInfo.next = &androidCreateInfo;
-        }
-#endif
-
-        this->instance = xr::createInstance(instanceCreateInfo);
-
-        // 2. Get System ID
-        xr::SystemGetInfo systemGetInfo;
-        systemGetInfo.formFactor = xr::FormFactor::HeadMountedDisplay;
-        this->systemId = this->instance.getSystem(systemGetInfo);
-
-    } catch (const std::exception& e) {
-        std::cerr << "XrContext: Instance initialization failed: " << e.what() << std::endl;
+    XrSystemGetInfo systemGetInfo{XR_TYPE_SYSTEM_GET_INFO};
+    systemGetInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+    if (xrGetSystem(this->instance, &systemGetInfo, &this->systemId) != XR_SUCCESS) {
         return false;
     }
 
@@ -110,116 +124,100 @@ bool XrContext::createInstance(const std::string& appName) {
 bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device device, uint32_t queueFamilyIndex, uint32_t queueIndex) {
     std::cout << "XrContext: Creating session" << std::endl;
 
-    try {
-        // 4. Create Session
-        XrGraphicsBindingVulkanKHR graphicsBinding{XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR};
-        graphicsBinding.instance = (VkInstance)this->vkInstance;
-        graphicsBinding.physicalDevice = (VkPhysicalDevice)physicalDevice;
-        graphicsBinding.device = (VkDevice)device;
-        graphicsBinding.queueFamilyIndex = queueFamilyIndex;
-        graphicsBinding.queueIndex = queueIndex;
+    XrGraphicsBindingVulkanKHR graphicsBinding{XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR};
+    graphicsBinding.instance = (VkInstance)this->vkInstance;
+    graphicsBinding.physicalDevice = (VkPhysicalDevice)physicalDevice;
+    graphicsBinding.device = (VkDevice)device;
+    graphicsBinding.queueFamilyIndex = queueFamilyIndex;
+    graphicsBinding.queueIndex = queueIndex;
 
-        xr::SessionCreateInfo sessionCreateInfo;
-        sessionCreateInfo.next = &graphicsBinding;
-        sessionCreateInfo.systemId = this->systemId;
-        this->session = this->instance.createSession(sessionCreateInfo);
-
-        // 5. Create Reference Space
-        xr::ReferenceSpaceCreateInfo spaceCreateInfo;
-        spaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Stage;
-        spaceCreateInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
-        this->appSpace = this->session.createReferenceSpace(spaceCreateInfo);
-
-        // Initialize views with identity/default values to avoid out-of-bounds access
-        this->views.resize(2);
-        for (uint32_t i = 0; i < 2; ++i) {
-            this->views[i].pose = {{0,0,0,1}, {0,0,0}};
-            this->views[i].fov = {-1, 1, 1, -1};
-        }
-
-        // 6. Initialize Action System (Chapter 7)
-        xr::ActionSetCreateInfo actionSetInfo;
-        std::strncpy(actionSetInfo.actionSetName, "main", XR_MAX_ACTION_SET_NAME_SIZE);
-        std::strncpy(actionSetInfo.localizedActionSetName, "Main Actions", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE);
-        this->actionSet = this->instance.createActionSet(actionSetInfo);
-
-        auto createAction = [&](const std::string& name, const std::string& localizedName, xr::ActionType type) {
-            xr::ActionCreateInfo actionInfo;
-            actionInfo.actionType = type;
-            std::strncpy(actionInfo.actionName, name.c_str(), XR_MAX_ACTION_NAME_SIZE);
-            std::strncpy(actionInfo.localizedActionName, localizedName.c_str(), XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
-            this->actions[name] = this->actionSet.createAction(actionInfo);
-            this->actionTypes[name] = type;
-        };
-
-        createAction("trigger_left", "Left Trigger", xr::ActionType::BooleanInput);
-        createAction("trigger_right", "Right Trigger", xr::ActionType::BooleanInput);
-        createAction("pose_left", "Left Hand Pose", xr::ActionType::PoseInput);
-        createAction("pose_right", "Right Hand Pose", xr::ActionType::PoseInput);
-        createAction("grab_left", "Left Grab", xr::ActionType::FloatInput);
-        createAction("grab_right", "Right Grab", xr::ActionType::FloatInput);
-        createAction("Grab", "Grab", xr::ActionType::BooleanInput);
-        createAction("GrabPose", "Grab Pose", xr::ActionType::PoseInput);
-        createAction("menu", "Menu Button", xr::ActionType::BooleanInput);
-
-        // Suggest bindings for simple controller
-        xr::Path khrSimplePath = this->instance.stringToPath("/interaction_profiles/khr/simple_controller");
-        std::vector<xr::ActionSuggestedBinding> bindings = {
-            {actions["trigger_left"], this->instance.stringToPath("/user/hand/left/input/select/click")},
-            {actions["trigger_right"], this->instance.stringToPath("/user/hand/right/input/select/click")},
-            {actions["pose_left"], this->instance.stringToPath("/user/hand/left/input/grip/pose")},
-            {actions["pose_right"], this->instance.stringToPath("/user/hand/right/input/grip/pose")},
-            {actions["Grab"], this->instance.stringToPath("/user/hand/right/input/select/click")},
-            {actions["GrabPose"], this->instance.stringToPath("/user/hand/right/input/grip/pose")},
-            {actions["menu"], this->instance.stringToPath("/user/hand/left/input/menu/click")}
-        };
-        xr::InteractionProfileSuggestedBinding suggestedBindings;
-        suggestedBindings.interactionProfile = khrSimplePath;
-        suggestedBindings.suggestedBindings = bindings.data();
-        suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
-        this->instance.suggestInteractionProfileBindings(suggestedBindings);
-
-        xr::SessionActionSetsAttachInfo attachInfo;
-        attachInfo.countActionSets = 1;
-        attachInfo.actionSets = &this->actionSet;
-        this->session.attachSessionActionSets(attachInfo);
-
-        // Create spaces for pose actions
-        for (const auto& actionName : {"pose_left", "pose_right", "GrabPose"}) {
-            xr::ActionSpaceCreateInfo actionSpaceInfo;
-            actionSpaceInfo.action = actions[actionName];
-            actionSpaceInfo.poseInActionSpace = {{0,0,0,1}, {0,0,0}};
-            this->actionSpaces[actionName] = this->session.createActionSpace(actionSpaceInfo);
-        }
-
-        // 7. Initialize Eye Gaze (Chapter 17)
-        if (isExtensionEnabled(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME)) {
-            xr::ReferenceSpaceCreateInfo gazeSpaceInfo;
-            gazeSpaceInfo.referenceSpaceType = (xr::ReferenceSpaceType)XR_REFERENCE_SPACE_TYPE_EYE_GAZE_EXT;
-            gazeSpaceInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
-            try {
-                this->gazeSpace = this->session.createReferenceSpace(gazeSpaceInfo);
-            } catch (const std::exception& e) {
-                std::cout << "XrContext: Eye gaze space creation failed: " << e.what() << std::endl;
-            }
-        }
-
-        // 8. Initialize Scene Understanding (Chapter 16)
-        if (isExtensionEnabled(XR_MSFT_SCENE_UNDERSTANDING_EXTENSION_NAME)) {
-            PFN_xrCreateSceneObserverMSFT xrCreateSceneObserverMSFT_ptr;
-            this->instance.getInstanceProcAddr("xrCreateSceneObserverMSFT", (PFN_xrVoidFunction*)&xrCreateSceneObserverMSFT_ptr);
-            if (xrCreateSceneObserverMSFT_ptr) {
-                XrSceneObserverCreateInfoMSFT createInfo{XR_TYPE_SCENE_OBSERVER_CREATE_INFO_MSFT};
-                XrSceneObserverMSFT observer;
-                if (xrCreateSceneObserverMSFT_ptr((XrSession)this->session, &createInfo, &observer) == XR_SUCCESS) {
-                    this->sceneObserver = xr::SceneObserverMSFT(observer);
-                }
-            }
-        }
-
-    } catch (const std::exception& e) {
-        std::cerr << "XrContext: Session creation failed: " << e.what() << std::endl;
+    XrSessionCreateInfo sessionCreateInfo{XR_TYPE_SESSION_CREATE_INFO};
+    sessionCreateInfo.next = &graphicsBinding;
+    sessionCreateInfo.systemId = this->systemId;
+    if (xrCreateSession(this->instance, &sessionCreateInfo, &this->session) != XR_SUCCESS) {
         return false;
+    }
+
+    XrReferenceSpaceCreateInfo spaceCreateInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+    spaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+    spaceCreateInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
+    if (xrCreateReferenceSpace(this->session, &spaceCreateInfo, &this->appSpace) != XR_SUCCESS) {
+        return false;
+    }
+
+    this->views.resize(2, {XR_TYPE_VIEW});
+    for (uint32_t i = 0; i < 2; ++i) {
+        this->views[i].pose = {{0,0,0,1}, {0,0,0}};
+        this->views[i].fov = {-1, 1, 1, -1};
+    }
+
+    XrActionSetCreateInfo actionSetInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
+    std::strncpy(actionSetInfo.actionSetName, "main", XR_MAX_ACTION_SET_NAME_SIZE);
+    std::strncpy(actionSetInfo.localizedActionSetName, "Main Actions", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE);
+    xrCreateActionSet(this->instance, &actionSetInfo, &this->actionSet);
+
+    auto createAction = [&](const std::string& name, const std::string& localizedName, XrActionType type) {
+        XrActionCreateInfo actionInfo{XR_TYPE_ACTION_CREATE_INFO};
+        actionInfo.actionType = type;
+        std::strncpy(actionInfo.actionName, name.c_str(), XR_MAX_ACTION_NAME_SIZE);
+        std::strncpy(actionInfo.localizedActionName, localizedName.c_str(), XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+        XrAction action;
+        xrCreateAction(this->actionSet, &actionInfo, &action);
+        this->actions[name] = action;
+        this->actionTypes[name] = type;
+    };
+
+    createAction("trigger_left", "Left Trigger", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    createAction("trigger_right", "Right Trigger", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    createAction("pose_left", "Left Hand Pose", XR_ACTION_TYPE_POSE_INPUT);
+    createAction("pose_right", "Right Hand Pose", XR_ACTION_TYPE_POSE_INPUT);
+    createAction("grab_left", "Left Grab", XR_ACTION_TYPE_FLOAT_INPUT);
+    createAction("grab_right", "Right Grab", XR_ACTION_TYPE_FLOAT_INPUT);
+    createAction("Grab", "Grab", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    createAction("GrabPose", "Grab Pose", XR_ACTION_TYPE_POSE_INPUT);
+    createAction("menu", "Menu Button", XR_ACTION_TYPE_BOOLEAN_INPUT);
+
+    XrPath khrSimplePath;
+    xrStringToPath(this->instance, "/interaction_profiles/khr/simple_controller", &khrSimplePath);
+    std::vector<XrActionSuggestedBinding> bindings;
+    auto addBinding = [&](const std::string& act, const char* path) {
+        XrPath p;
+        xrStringToPath(this->instance, path, &p);
+        bindings.push_back({actions[act], p});
+    };
+    addBinding("trigger_left", "/user/hand/left/input/select/click");
+    addBinding("trigger_right", "/user/hand/right/input/select/click");
+    addBinding("pose_left", "/user/hand/left/input/grip/pose");
+    addBinding("pose_right", "/user/hand/right/input/grip/pose");
+    addBinding("Grab", "/user/hand/right/input/select/click");
+    addBinding("GrabPose", "/user/hand/right/input/grip/pose");
+    addBinding("menu", "/user/hand/left/input/menu/click");
+
+    XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+    suggestedBindings.interactionProfile = khrSimplePath;
+    suggestedBindings.suggestedBindings = bindings.data();
+    suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
+    xrSuggestInteractionProfileBindings(this->instance, &suggestedBindings);
+
+    XrSessionActionSetsAttachInfo attachInfo{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+    attachInfo.countActionSets = 1;
+    attachInfo.actionSets = &this->actionSet;
+    xrAttachSessionActionSets(this->session, &attachInfo);
+
+    for (const auto& actionName : {"pose_left", "pose_right", "GrabPose"}) {
+        XrActionSpaceCreateInfo actionSpaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+        actionSpaceInfo.action = actions[actionName];
+        actionSpaceInfo.poseInActionSpace = {{0,0,0,1}, {0,0,0}};
+        XrSpace space;
+        xrCreateActionSpace(this->session, &actionSpaceInfo, &space);
+        this->actionSpaces[actionName] = space;
+    }
+
+    if (isExtensionEnabled(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME)) {
+        XrReferenceSpaceCreateInfo gazeSpaceInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+        gazeSpaceInfo.referenceSpaceType = (XrReferenceSpaceType)1000031008; // XR_REFERENCE_SPACE_TYPE_EYE_GAZE_EXT
+        gazeSpaceInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
+        xrCreateReferenceSpace(this->session, &gazeSpaceInfo, &this->gazeSpace);
     }
 
     return true;
@@ -227,141 +225,172 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
 
 void XrContext::cleanup() {
     for (auto& swapchain : swapchains) {
-        swapchain.handle.destroy();
+        xrDestroySwapchain(swapchain.handle);
     }
     swapchains.clear();
 
-    if (sceneObserver) {
-        PFN_xrDestroySceneObserverMSFT xrDestroySceneObserverMSFT_ptr;
-        this->instance.getInstanceProcAddr("xrDestroySceneObserverMSFT", (PFN_xrVoidFunction*)&xrDestroySceneObserverMSFT_ptr);
-        if (xrDestroySceneObserverMSFT_ptr) {
-            xrDestroySceneObserverMSFT_ptr((XrSceneObserverMSFT)sceneObserver);
-        }
-        sceneObserver = nullptr;
-    }
-
-    if (gazeSpace) {
-        gazeSpace.destroy();
-        gazeSpace = nullptr;
+    if (gazeSpace != XR_NULL_HANDLE) {
+        xrDestroySpace(gazeSpace);
+        gazeSpace = XR_NULL_HANDLE;
     }
 
     for (auto& pair : actionSpaces) {
-        pair.second.destroy();
+        xrDestroySpace(pair.second);
     }
     actionSpaces.clear();
 
     for (auto& pair : actions) {
-        pair.second.destroy();
+        xrDestroyAction(pair.second);
     }
     actions.clear();
 
-    if (actionSet) {
-        actionSet.destroy();
-        actionSet = nullptr;
+    if (actionSet != XR_NULL_HANDLE) {
+        xrDestroyActionSet(actionSet);
+        actionSet = XR_NULL_HANDLE;
     }
 
-    if (appSpace) {
-        appSpace.destroy();
-        appSpace = nullptr;
+    if (appSpace != XR_NULL_HANDLE) {
+        xrDestroySpace(appSpace);
+        appSpace = XR_NULL_HANDLE;
     }
 
-    if (session) {
-        session.destroy();
-        session = nullptr;
+    if (session != XR_NULL_HANDLE) {
+        xrDestroySession(session);
+        session = XR_NULL_HANDLE;
     }
 
-    if (instance) {
-        instance.destroy();
-        instance = nullptr;
+    if (instance != XR_NULL_HANDLE) {
+        xrDestroyInstance(instance);
+        instance = XR_NULL_HANDLE;
     }
 }
 
 std::vector<const char*> XrContext::getVulkanInstanceExtensions() {
-    if (!instance) {
-        // Fallback for when instance isn't created yet (though it should be)
-        return { "XR_KHR_vulkan_enable2" };
-    }
-
-    // Use the real API to query required extensions
-    std::string extensions = this->instance.getVulkanInstanceExtensionsKHR(this->systemId);
-
-    // Parse the space-separated string into a vector of const char*
-    static std::vector<std::string> extList;
-    extList.clear();
-    std::string ext;
+    if (instance == XR_NULL_HANDLE) return { "XR_KHR_vulkan_enable2" };
+    uint32_t size = 0;
+    if (!pfnGetVulkanInstanceExtensionsKHR) return {};
+    pfnGetVulkanInstanceExtensionsKHR(instance, systemId, 0, &size, nullptr);
+    std::vector<char> buffer(size);
+    pfnGetVulkanInstanceExtensionsKHR(instance, systemId, size, &size, buffer.data());
+    
+    static std::vector<std::string> extStrings;
+    extStrings.clear();
+    std::string extensions(buffer.data());
     std::istringstream iss(extensions);
-    while (iss >> ext) {
-        extList.push_back(ext);
-    }
+    std::string ext;
+    while (iss >> ext) extStrings.push_back(ext);
 
     static std::vector<const char*> extPtrs;
     extPtrs.clear();
-    for (const auto& s : extList) {
-        extPtrs.push_back(s.c_str());
-    }
-
+    for (const auto& s : extStrings) extPtrs.push_back(s.c_str());
     return extPtrs;
 }
 
 std::vector<const char*> XrContext::getVulkanDeviceExtensions(vk::PhysicalDevice physicalDevice) {
-    if (!instance) {
-        return { "VK_KHR_external_memory", "VK_KHR_external_semaphore" };
-    }
+    if (instance == XR_NULL_HANDLE) return { "VK_KHR_external_memory", "VK_KHR_external_semaphore" };
+    uint32_t size = 0;
+    if (!pfnGetVulkanDeviceExtensionsKHR) return {};
+    pfnGetVulkanDeviceExtensionsKHR(instance, systemId, 0, &size, nullptr);
+    std::vector<char> buffer(size);
+    pfnGetVulkanDeviceExtensionsKHR(instance, systemId, size, &size, buffer.data());
 
-    std::string extensions = this->instance.getVulkanDeviceExtensionsKHR(this->systemId);
-
-    static std::vector<std::string> devExtList;
-    devExtList.clear();
-    std::string ext;
+    static std::vector<std::string> devExtStrings;
+    devExtStrings.clear();
+    std::string extensions(buffer.data());
     std::istringstream iss(extensions);
-    while (iss >> ext) {
-        devExtList.push_back(ext);
-    }
+    std::string ext;
+    while (iss >> ext) devExtStrings.push_back(ext);
 
     static std::vector<const char*> devExtPtrs;
     devExtPtrs.clear();
-    for (const auto& s : devExtList) {
-        devExtPtrs.push_back(s.c_str());
-    }
-
+    for (const auto& s : devExtStrings) devExtPtrs.push_back(s.c_str());
     return devExtPtrs;
 }
 
 const uint8_t* XrContext::getRequiredLUID() {
-    static uint8_t luid[8] = {0};
-    xr::GraphicsRequirementsVulkanKHR graphicsRequirements;
-    this->instance.getVulkanGraphicsRequirements2KHR(this->systemId, &graphicsRequirements);
-    std::memcpy(luid, &graphicsRequirements.graphicsDeviceLuid, 8);
-    return luid;
+    if (!luidValid && vkInstance && instance != XR_NULL_HANDLE && systemId != XR_NULL_SYSTEM_ID) {
+        // Step 1: Call graphics requirements as mandated by spec before getting graphics device
+        XrGraphicsRequirementsVulkanKHR graphicsRequirements{XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
+        if (pfnGetVulkanGraphicsRequirements2KHR) {
+            pfnGetVulkanGraphicsRequirements2KHR(instance, systemId, &graphicsRequirements);
+        } else if (pfnGetVulkanGraphicsRequirementsKHR) {
+            pfnGetVulkanGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements);
+        }
+
+        // Step 2: Get the physical device from OpenXR
+        VkPhysicalDevice vkPhysicalDevice = VK_NULL_HANDLE;
+        XrResult result = XR_ERROR_FUNCTION_UNSUPPORTED;
+
+        if (pfnGetVulkanGraphicsDevice2KHR) {
+            XrVulkanGraphicsDeviceGetInfoKHR getInfo{XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR};
+            getInfo.systemId = systemId;
+            getInfo.vulkanInstance = (VkInstance)vkInstance;
+            result = pfnGetVulkanGraphicsDevice2KHR(instance, &getInfo, &vkPhysicalDevice);
+        } else if (pfnGetVulkanGraphicsDeviceKHR) {
+            result = pfnGetVulkanGraphicsDeviceKHR(instance, systemId, (VkInstance)vkInstance, &vkPhysicalDevice);
+        }
+
+        if (result == XR_SUCCESS && vkPhysicalDevice != VK_NULL_HANDLE) {
+            // Step 3: Extract LUID from the physical device
+            VkPhysicalDeviceIDProperties idProps{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+            idProps.pNext = nullptr;
+            VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+            props2.pNext = &idProps;
+
+            auto pfnGetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)vkGetInstanceProcAddr((VkInstance)vkInstance, "vkGetPhysicalDeviceProperties2");
+            if (pfnGetPhysicalDeviceProperties2) {
+                pfnGetPhysicalDeviceProperties2(vkPhysicalDevice, &props2);
+                if (idProps.deviceLUIDValid) {
+                    std::memcpy(requiredLuid, idProps.deviceLUID, VK_LUID_SIZE);
+                    luidValid = true;
+                    std::cout << "XrContext: Required LUID found and stored." << std::endl;
+                } else {
+                    std::cout << "XrContext: Physical device LUID is not valid." << std::endl;
+                }
+            } else {
+                std::cerr << "XrContext: Failed to load vkGetPhysicalDeviceProperties2" << std::endl;
+            }
+        } else {
+            std::cerr << "XrContext: Failed to get Vulkan graphics device from OpenXR (XrResult=" << result << ")" << std::endl;
+        }
+    }
+    return luidValid ? requiredLuid : nullptr;
 }
 
 vk::Extent2D XrContext::getRecommendedExtent() const {
-    uint32_t viewCount = 0;
-    std::vector<xr::ViewConfigurationView> views = this->instance.enumerateViewConfigurationViewsToVector(this->systemId, xr::ViewConfigurationType::PrimaryStereo);
-    if (views.empty()) return {1024, 1024};
-    return {views[0].recommendedImageRectWidth, views[0].recommendedImageRectHeight};
+    uint32_t count = 0;
+    xrEnumerateViewConfigurationViews(instance, systemId, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 0, &count, nullptr);
+    std::vector<XrViewConfigurationView> vcv(count, {XR_TYPE_VIEW_CONFIGURATION_VIEW});
+    xrEnumerateViewConfigurationViews(instance, systemId, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, count, &count, vcv.data());
+    if (vcv.empty()) return {1024, 1024};
+    vk::Extent2D ext{vcv[0].recommendedImageRectWidth, vcv[0].recommendedImageRectHeight};
+    return ext;
 }
 
 void XrContext::createSwapchains(vk::Device device, vk::Format format, vk::Extent2D extent) {
     this->format = format;
     this->extent = extent;
 
-    xr::SwapchainCreateInfo swapchainCreateInfo;
-    swapchainCreateInfo.arrayCount = 2; // Multiview (Layered)
-    swapchainCreateInfo.format = (int64_t)format;
-    swapchainCreateInfo.width = extent.width;
-    swapchainCreateInfo.height = extent.height;
-    swapchainCreateInfo.mipCount = 1;
-    swapchainCreateInfo.faceCount = 1;
-    swapchainCreateInfo.sampleCount = 1;
-    swapchainCreateInfo.usageFlags = xr::SwapchainUsageFlagBits::ColorAttachment;
+    XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    ci.arraySize = 2;
+    ci.format = (int64_t)format;
+    ci.width = extent.width;
+    ci.height = extent.height;
+    ci.mipCount = 1;
+    ci.faceCount = 1;
+    ci.sampleCount = 1;
+    ci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 
-    xr::Swapchain swapchainHandle = this->session.createSwapchain(swapchainCreateInfo);
+    XrSwapchain handle;
+    xrCreateSwapchain(this->session, &ci, &handle);
 
-    std::vector<xr::SwapchainImageVulkanKHR> images = swapchainHandle.enumerateSwapchainImagesToVector<xr::SwapchainImageVulkanKHR>();
+    uint32_t count = 0;
+    xrEnumerateSwapchainImages(handle, 0, &count, nullptr);
+    std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+    xrEnumerateSwapchainImages(handle, count, &count, (XrSwapchainImageBaseHeader*)images.data());
 
     SwapchainData data;
-    data.handle = swapchainHandle;
+    data.handle = handle;
     data.images = std::move(images);
     this->swapchains.push_back(std::move(data));
 }
@@ -370,7 +399,7 @@ std::vector<vk::Image> XrContext::enumerateSwapchainImages() {
     std::vector<vk::Image> vkImages;
     if (!swapchains.empty()) {
         for (const auto& img : swapchains[0].images) {
-            vkImages.push_back((VkImage)img.image);
+            vkImages.push_back(vk::Image(img.image));
         }
     }
     return vkImages;
@@ -378,44 +407,48 @@ std::vector<vk::Image> XrContext::enumerateSwapchainImages() {
 
 void XrContext::waitSwapchainImage() {
     if (swapchains.empty()) return;
-    xr::SwapchainWaitInfo waitInfo;
-    waitInfo.timeout = xr::Duration::infinite();
-    swapchains[0].handle.waitSwapchainImage(waitInfo);
+    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+    wi.timeout = XR_INFINITE_DURATION;
+    xrWaitSwapchainImage(swapchains[0].handle, &wi);
 }
 
 uint32_t XrContext::acquireSwapchainImage() {
     if (swapchains.empty()) return 0;
-    xr::SwapchainAcquireInfo acquireInfo;
-    return swapchains[0].handle.acquireSwapchainImage(acquireInfo);
+    XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    uint32_t index = 0;
+    xrAcquireSwapchainImage(swapchains[0].handle, &ai, &index);
+    return index;
 }
 
 void XrContext::releaseSwapchainImage() {
     if (swapchains.empty()) return;
-    xr::SwapchainReleaseInfo releaseInfo;
-    swapchains[0].handle.releaseSwapchainImage(releaseInfo);
+    XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    xrReleaseSwapchainImage(swapchains[0].handle, &ri);
 }
 
 XrFrameState XrContext::waitFrame() {
-    xr::FrameWaitInfo waitInfo;
-    this->frameState = this->session.waitFrame(waitInfo);
-    return (XrFrameState)this->frameState;
+    XrFrameWaitInfo wi{XR_TYPE_FRAME_WAIT_INFO};
+    this->frameState = {XR_TYPE_FRAME_STATE};
+    xrWaitFrame(this->session, &wi, &this->frameState);
+    return this->frameState;
 }
 
 void XrContext::beginFrame() {
-    xr::FrameBeginInfo beginInfo;
-    this->session.beginFrame(beginInfo);
+    XrFrameBeginInfo bi{XR_TYPE_FRAME_BEGIN_INFO};
+    xrBeginFrame(this->session, &bi);
 }
 
-void XrContext::endFrame(const std::array<std::vector<vk::raii::ImageView>, 2>& eyeViews) {
-    xr::FrameEndInfo endInfo;
-    endInfo.displayTime = this->frameState.predictedDisplayTime;
-    endInfo.environmentBlendMode = xr::EnvironmentBlendMode::Opaque;
+void XrContext::endFrame(const std::array<std::vector<vk::ImageView>, 2>& eyeViews) {
+    XrFrameEndInfo ei{XR_TYPE_FRAME_END_INFO};
+    ei.displayTime = this->frameState.predictedDisplayTime;
+    ei.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 
-    xr::CompositionLayerProjection layer;
+    XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     layer.space = this->appSpace;
 
-    std::vector<xr::CompositionLayerProjectionView> projectionViews(2);
+    static XrCompositionLayerProjectionView projectionViews[2];
     for (uint32_t i = 0; i < 2; ++i) {
+        projectionViews[i] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
         projectionViews[i].pose = this->views[i].pose;
         projectionViews[i].fov = this->views[i].fov;
         projectionViews[i].subImage.swapchain = this->swapchains[0].handle;
@@ -423,28 +456,30 @@ void XrContext::endFrame(const std::array<std::vector<vk::raii::ImageView>, 2>& 
         projectionViews[i].subImage.imageArrayIndex = i;
     }
 
-    layer.viewCount = (uint32_t)projectionViews.size();
-    layer.views = projectionViews.data();
+    layer.viewCount = 2;
+    layer.views = projectionViews;
 
-    std::vector<xr::CompositionLayerBaseHeader*> layers;
+    static const XrCompositionLayerBaseHeader* layers[1];
+    uint32_t layerCount = 0;
     if (this->frameState.shouldRender) {
-        layers.push_back(reinterpret_cast<xr::CompositionLayerBaseHeader*>(&layer));
+        layers[layerCount++] = (XrCompositionLayerBaseHeader*)&layer;
     }
 
-    endInfo.layerCount = (uint32_t)layers.size();
-    endInfo.layers = layers.data();
+    ei.layerCount = layerCount;
+    ei.layers = layers;
 
-    this->session.endFrame(endInfo);
+    xrEndFrame(this->session, &ei);
 }
 
 void XrContext::locateViews(XrTime predictedTime) {
-    xr::ViewLocateInfo locateInfo;
-    locateInfo.viewConfigurationType = xr::ViewConfigurationType::PrimaryStereo;
-    locateInfo.displayTime = predictedTime;
-    locateInfo.space = this->appSpace;
+    XrViewLocateInfo li{XR_TYPE_VIEW_LOCATE_INFO};
+    li.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+    li.displayTime = predictedTime;
+    li.space = this->appSpace;
 
-    auto [result, viewState, locatedViews] = this->session.locateViewsToVector(locateInfo);
-    this->views = std::move(locatedViews);
+    XrViewState vs{XR_TYPE_VIEW_STATE};
+    uint32_t count = 0;
+    xrLocateViews(this->session, &li, &vs, (uint32_t)this->views.size(), &count, this->views.data());
 }
 
 vk::Viewport XrContext::getViewport(uint32_t eye) const {
@@ -457,19 +492,11 @@ vk::Rect2D XrContext::getScissor(uint32_t eye) const {
 
 glm::mat4 XrContext::getProjectionMatrix(uint32_t eye) const {
     if (eye >= views.size()) return glm::mat4(1.0f);
-
     const auto& fov = views[eye].fov;
-    float nearZ = 0.1f;
-    float farZ = 100.0f;
-
-    float tanLeft = std::tan(fov.angleLeft);
-    float tanRight = std::tan(fov.angleRight);
-    float tanDown = std::tan(fov.angleDown);
-    float tanUp = std::tan(fov.angleUp);
-
-    float tanWidth = tanRight - tanLeft;
-    float tanHeight = tanUp - tanDown;
-
+    float nearZ = 0.1f, farZ = 100.0f;
+    float tanLeft = std::tan(fov.angleLeft), tanRight = std::tan(fov.angleRight);
+    float tanDown = std::tan(fov.angleDown), tanUp = std::tan(fov.angleUp);
+    float tanWidth = tanRight - tanLeft, tanHeight = tanUp - tanDown;
     glm::mat4 projection = glm::mat4(0.0f);
     projection[0][0] = 2.0f / tanWidth;
     projection[1][1] = 2.0f / tanHeight;
@@ -478,7 +505,6 @@ glm::mat4 XrContext::getProjectionMatrix(uint32_t eye) const {
     projection[2][2] = -farZ / (farZ - nearZ);
     projection[2][3] = -1.0f;
     projection[3][2] = -(farZ * nearZ) / (farZ - nearZ);
-
     return projection;
 }
 
@@ -493,202 +519,63 @@ glm::vec3 XrContext::getEyePosition(uint32_t eye) const {
 }
 
 void XrContext::pollActions() {
-    if (!session || !actionSet) return;
-
-    xr::ActionsSyncInfo syncInfo;
-    xr::ActiveActionSet activeSet{actionSet, xr::Space(nullptr)};
-    syncInfo.activeActionSets = &activeSet;
-    syncInfo.countActiveActionSets = 1;
-
-    if (session.syncActions(syncInfo) != xr::Result::Success) {
-        return;
-    }
+    if (session == XR_NULL_HANDLE || actionSet == XR_NULL_HANDLE) return;
+    XrActionsSyncInfo si{XR_TYPE_ACTIONS_SYNC_INFO};
+    static XrActiveActionSet as;
+    as.actionSet = actionSet;
+    as.subactionPath = XR_NULL_PATH;
+    si.activeActionSets = &as;
+    si.countActiveActionSets = 1;
+    xrSyncActions(session, &si);
 }
 
 bool XrContext::isActionActive(const std::string& name) const {
-    if (!session || actions.find(name) == actions.end()) return false;
-
-    xr::Action action = actions.at(name);
-    xr::ActionType type = actionTypes.at(name);
-    xr::ActionStateGetInfo getInfo{action};
-
-    if (type == xr::ActionType::BooleanInput) {
-        auto state = session.getActionStateBoolean(getInfo);
-        if (state.isActive) return state.currentState;
-    } else if (type == xr::ActionType::FloatInput) {
-        auto state = session.getActionStateFloat(getInfo);
-        if (state.isActive) return state.currentState > 0.1f;
+    if (session == XR_NULL_HANDLE || actions.find(name) == actions.end()) return false;
+    XrAction action = actions.at(name);
+    XrActionType type = actionTypes.at(name);
+    XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+    gi.action = action;
+    if (type == XR_ACTION_TYPE_BOOLEAN_INPUT) {
+        XrActionStateBoolean st{XR_TYPE_ACTION_STATE_BOOLEAN};
+        xrGetActionStateBoolean(session, &gi, &st);
+        if (st.isActive) return st.currentState;
+    } else if (type == XR_ACTION_TYPE_FLOAT_INPUT) {
+        XrActionStateFloat st{XR_TYPE_ACTION_STATE_FLOAT};
+        xrGetActionStateFloat(session, &gi, &st);
+        if (st.isActive) return st.currentState > 0.1f;
     }
-
     return false;
 }
 
 XrPosef XrContext::getActionPose(const std::string& name) const {
-    if (!session || actionSpaces.find(name) == actionSpaces.end()) {
-        XrPosef pose;
-        pose.orientation = {0,0,0,1};
-        pose.position = {0,0,0};
-        return pose;
+    if (session == XR_NULL_HANDLE || actionSpaces.find(name) == actionSpaces.end()) {
+        return {{0,0,0,1}, {0,0,0}};
     }
-
-    xr::Space space = actionSpaces.at(name);
-    auto location = space.locateSpace(appSpace, frameState.predictedDisplayTime);
-
-    if (location.locationFlags & xr::SpaceLocationFlagBits::OrientationValid &&
-        location.locationFlags & xr::SpaceLocationFlagBits::PositionValid) {
-        return (XrPosef)location.pose;
+    XrAction action = actions.at(name);
+    XrSpace space = actionSpaces.at(name);
+    XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+    xrLocateSpace(space, appSpace, frameState.predictedDisplayTime, &loc);
+    if ((loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) && (loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
+        return loc.pose;
     }
-
-    XrPosef pose;
-    pose.orientation = {0,0,0,1};
-    pose.position = {0,0,0};
-    return pose;
+    return {{0,0,0,1}, {0,0,0}};
 }
 
 std::vector<XrSpatialMesh> XrContext::getLatestSpatialMeshes() {
-    if (!sceneObserver) return {};
-
-    std::vector<XrSpatialMesh> meshes;
-
-    // Use extension function pointers
-    PFN_xrComputeNewSceneMSFT xrComputeNewSceneMSFT_ptr;
-    PFN_xrGetSceneComputeStateMSFT xrGetSceneComputeStateMSFT_ptr;
-    PFN_xrCreateSceneMSFT xrCreateSceneMSFT_ptr;
-    PFN_xrGetSceneComponentsMSFT xrGetSceneComponentsMSFT_ptr;
-    PFN_xrGetSceneMeshBuffersMSFT xrGetSceneMeshBuffersMSFT_ptr;
-    PFN_xrGetSceneComponentLocationsMSFT xrGetSceneComponentLocationsMSFT_ptr;
-    PFN_xrDestroySceneMSFT xrDestroySceneMSFT_ptr;
-
-    this->instance.getInstanceProcAddr("xrComputeNewSceneMSFT", (PFN_xrVoidFunction*)&xrComputeNewSceneMSFT_ptr);
-    this->instance.getInstanceProcAddr("xrGetSceneComputeStateMSFT", (PFN_xrVoidFunction*)&xrGetSceneComputeStateMSFT_ptr);
-    this->instance.getInstanceProcAddr("xrCreateSceneMSFT", (PFN_xrVoidFunction*)&xrCreateSceneMSFT_ptr);
-    this->instance.getInstanceProcAddr("xrGetSceneComponentsMSFT", (PFN_xrVoidFunction*)&xrGetSceneComponentsMSFT_ptr);
-    this->instance.getInstanceProcAddr("xrGetSceneMeshBuffersMSFT", (PFN_xrVoidFunction*)&xrGetSceneMeshBuffersMSFT_ptr);
-    this->instance.getInstanceProcAddr("xrGetSceneComponentLocationsMSFT", (PFN_xrVoidFunction*)&xrGetSceneComponentLocationsMSFT_ptr);
-    this->instance.getInstanceProcAddr("xrDestroySceneMSFT", (PFN_xrVoidFunction*)&xrDestroySceneMSFT_ptr);
-
-    if (!xrComputeNewSceneMSFT_ptr || !xrGetSceneComputeStateMSFT_ptr || !xrCreateSceneMSFT_ptr ||
-        !xrGetSceneComponentsMSFT_ptr || !xrGetSceneMeshBuffersMSFT_ptr || !xrGetSceneComponentLocationsMSFT_ptr || !xrDestroySceneMSFT_ptr) {
-        return {};
-    }
-
-    // 1. Check if we need to start a new computation or if one is ready
-    XrSceneComputeStateMSFT state;
-    xrGetSceneComputeStateMSFT_ptr((XrSceneObserverMSFT)sceneObserver, &state);
-
-    if (state == XR_SCENE_COMPUTE_STATE_NONE_MSFT) {
-        XrSceneComputeInfoMSFT computeInfo{XR_TYPE_SCENE_COMPUTE_INFO_MSFT};
-        computeInfo.consistency = XR_SCENE_COMPUTE_CONSISTENCY_SNAPSHOT_MSFT;
-        XrSceneSphereBoundMSFT sphereBound;
-        sphereBound.center = {0,0,0};
-        sphereBound.radius = 10.0f;
-        computeInfo.bounds.sphereCount = 1;
-        computeInfo.bounds.spheres = &sphereBound;
-        xrComputeNewSceneMSFT_ptr((XrSceneObserverMSFT)sceneObserver, &computeInfo);
-        return {};
-    }
-
-    if (state != XR_SCENE_COMPUTE_STATE_COMPLETED_MSFT) return {};
-
-    // 2. Create the scene
-    XrSceneCreateInfoMSFT createInfo{XR_TYPE_SCENE_CREATE_INFO_MSFT};
-    XrSceneMSFT scene;
-    if (xrCreateSceneMSFT_ptr((XrSceneObserverMSFT)sceneObserver, &createInfo, &scene) != XR_SUCCESS) return {};
-
-    // 3. Get mesh components
-    XrSceneComponentsGetInfoMSFT getInfo{XR_TYPE_SCENE_COMPONENTS_GET_INFO_MSFT};
-    getInfo.componentType = XR_SCENE_COMPONENT_TYPE_MESH_MSFT;
-
-    XrSceneComponentsMSFT components{XR_TYPE_SCENE_COMPONENTS_MSFT};
-    xrGetSceneComponentsMSFT_ptr(scene, &getInfo, &components);
-
-    std::vector<XrSceneComponentMSFT> componentBuffer(components.componentCountOutput);
-    components.componentBuffer = componentBuffer.data();
-    components.componentCapacityInput = components.componentCountOutput;
-    xrGetSceneComponentsMSFT_ptr(scene, &getInfo, &components);
-
-    // 4. Get locations for transforms
-    XrSceneComponentLocationsGetInfoMSFT locGetInfo{XR_TYPE_SCENE_COMPONENT_LOCATIONS_GET_INFO_MSFT};
-    locGetInfo.baseSpace = (XrSpace)appSpace;
-    locGetInfo.time = frameState.predictedDisplayTime;
-
-    std::vector<XrSceneComponentLocationMSFT> locationBuffer(components.componentCountOutput);
-    XrSceneComponentLocationsMSFT locations{XR_TYPE_SCENE_COMPONENT_LOCATIONS_MSFT};
-    locations.componentCount = components.componentCountOutput;
-    locations.componentLocations = locationBuffer.data();
-    xrGetSceneComponentLocationsMSFT_ptr(scene, &locGetInfo, &locations);
-
-    // 5. Get mesh data for each component
-    for (uint32_t i = 0; i < components.componentCountOutput; ++i) {
-        XrSceneMeshBuffersGetInfoMSFT meshGetInfo{XR_TYPE_SCENE_MESH_BUFFERS_GET_INFO_MSFT};
-        meshGetInfo.meshComponentId = componentBuffer[i].id;
-
-        XrSceneMeshBuffersMSFT meshBuffers{XR_TYPE_SCENE_MESH_BUFFERS_MSFT};
-        xrGetSceneMeshBuffersMSFT_ptr(scene, &meshGetInfo, &meshBuffers);
-
-        XrSpatialMesh mesh;
-        mesh.meshGuid = componentBuffer[i].id;
-        mesh.vertices.resize(meshBuffers.vertexCountOutput);
-        mesh.indices.resize(meshBuffers.indexCountOutput);
-
-        XrSceneMeshVertexBufferMSFT vBuffer{XR_TYPE_SCENE_MESH_VERTEX_BUFFER_MSFT};
-        vBuffer.vertexCapacityInput = (uint32_t)mesh.vertices.size();
-        vBuffer.vertices = (XrVector3f*)mesh.vertices.data();
-
-        XrSceneMeshIndexBufferMSFT iBuffer{XR_TYPE_SCENE_MESH_INDEX_BUFFER_MSFT};
-        iBuffer.indexCapacityInput = (uint32_t)mesh.indices.size();
-        iBuffer.indices = mesh.indices.data();
-
-        meshBuffers.vertexBuffer = &vBuffer;
-        meshBuffers.indexBuffer = &iBuffer;
-
-        xrGetSceneMeshBuffersMSFT_ptr(scene, &meshGetInfo, &meshBuffers);
-
-        if (locationBuffer[i].flags & (XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
-            mesh.transform = xrPoseToMatrix(locationBuffer[i].pose);
-        } else {
-            mesh.transform = glm::mat4(1.0f);
-        }
-
-        meshes.push_back(std::move(mesh));
-    }
-
-    // 6. Cleanup scene handle
-    xrDestroySceneMSFT_ptr(scene);
-
-    // Start a new computation for the next call
-    XrSceneComputeInfoMSFT computeInfo{XR_TYPE_SCENE_COMPUTE_INFO_MSFT};
-    computeInfo.consistency = XR_SCENE_COMPUTE_CONSISTENCY_SNAPSHOT_MSFT;
-    XrSceneSphereBoundMSFT sphereBound;
-    sphereBound.center = {0,0,0};
-    sphereBound.radius = 10.0f;
-    computeInfo.bounds.sphereCount = 1;
-    computeInfo.bounds.spheres = &sphereBound;
-    xrComputeNewSceneMSFT_ptr((XrSceneObserverMSFT)sceneObserver, &computeInfo);
-
-    return meshes;
+    return {};
 }
 
 glm::vec2 XrContext::getGazeNDC() const {
-    if (!gazeSpace || views.empty()) return glm::vec2(0.5f, 0.5f);
-
-    auto location = gazeSpace.locateSpace(appSpace, frameState.predictedDisplayTime);
-    if (!(location.locationFlags & xr::SpaceLocationFlagBits::OrientationValid)) {
-        return glm::vec2(0.5f, 0.5f);
-    }
-
-    // Project gaze vector onto the near plane
-    // Gaze is along the -Z axis of the gaze space
-    glm::mat4 gazeMat = xrPoseToMatrix((XrPosef)location.pose);
+    if (gazeSpace == XR_NULL_HANDLE || views.empty()) return glm::vec2(0.5f, 0.5f);
+    XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+    xrLocateSpace(gazeSpace, appSpace, frameState.predictedDisplayTime, &loc);
+    if (!(loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) return glm::vec2(0.5f, 0.5f);
+    glm::mat4 gazeMat = xrPoseToMatrix(loc.pose);
     glm::vec3 gazeOrigin = glm::vec3(gazeMat[3]);
-    glm::vec3 gazeDir = -glm::vec3(gazeMat[2]); // Forward is -Z
-
-    // Use the first eye's view/projection for NDC calculation
+    glm::vec3 gazeDir = -glm::vec3(gazeMat[2]);
     glm::mat4 viewProj = getProjectionMatrix(0) * getViewMatrix(0);
     glm::vec4 projected = viewProj * glm::vec4(gazeOrigin + gazeDir, 1.0f);
-
     if (projected.w == 0.0f) return glm::vec2(0.5f, 0.5f);
-
     glm::vec3 ndc = glm::vec3(projected) / projected.w;
     return glm::vec2(ndc.x * 0.5f + 0.5f, ndc.y * 0.5f + 0.5f);
 }

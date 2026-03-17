@@ -2,7 +2,9 @@
 
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
-#include <openxr/openxr.hpp>
+#define XR_USE_PLATFORM_XLIB
+#define XR_USE_GRAPHICS_API_VULKAN
+#include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -13,7 +15,7 @@
 
 // Helper structure for spatial meshes (Chapter 16)
 struct XrSpatialMesh {
-    XrGuidMSFT meshGuid;
+    XrUuidMSFT meshGuid;
     std::vector<glm::vec3> vertices;
     std::vector<uint32_t> indices;
     glm::mat4 transform;
@@ -52,7 +54,7 @@ public:
     // Frame Lifecycle (Chapter 5)
     XrFrameState waitFrame();
     void beginFrame();
-    void endFrame(const std::array<std::vector<vk::raii::ImageView>, 2>& eyeViews);
+    void endFrame(const std::array<std::vector<vk::ImageView>, 2>& eyeViews);
 
     // View & Projection (Chapter 4 & 11)
     void locateViews(XrTime predictedTime);
@@ -80,12 +82,22 @@ public:
     static bool checkRuntimeAvailable();
 
 private:
-    xr::Instance instance;
+    PFN_xrGetVulkanInstanceExtensionsKHR pfnGetVulkanInstanceExtensionsKHR = nullptr;
+    PFN_xrGetVulkanDeviceExtensionsKHR pfnGetVulkanDeviceExtensionsKHR = nullptr;
+    PFN_xrGetVulkanGraphicsRequirementsKHR pfnGetVulkanGraphicsRequirementsKHR = nullptr;
+    PFN_xrGetVulkanGraphicsRequirements2KHR pfnGetVulkanGraphicsRequirements2KHR = nullptr;
+    PFN_xrGetVulkanGraphicsDeviceKHR pfnGetVulkanGraphicsDeviceKHR = nullptr;
+    PFN_xrGetVulkanGraphicsDevice2KHR pfnGetVulkanGraphicsDevice2KHR = nullptr;
+
+    XrInstance instance;
     vk::Instance vkInstance;
-    xr::SystemId systemId;
-    xr::Session session;
-    xr::Space appSpace;
+    XrSystemId systemId;
+    XrSession session;
+    XrSpace appSpace;
     XrReferenceSpaceType referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+
+    uint8_t requiredLuid[VK_LUID_SIZE] = {0};
+    bool luidValid = false;
 
 #if defined(PLATFORM_ANDROID)
     struct android_app* androidApp = nullptr;
@@ -95,7 +107,7 @@ private:
     vk::Extent2D extent;
 
     struct SwapchainData {
-        xr::Swapchain handle;
+        XrSwapchain handle;
         std::vector<XrSwapchainImageVulkanKHR> images;
     };
     std::vector<SwapchainData> swapchains;
@@ -104,16 +116,16 @@ private:
     std::vector<XrView> views;
 
     // Action system members
-    xr::ActionSet actionSet;
-    std::map<std::string, xr::Action> actions;
-    std::map<std::string, xr::ActionType> actionTypes;
-    std::map<std::string, xr::Space> actionSpaces;
+    XrActionSet actionSet;
+    std::map<std::string, XrAction> actions;
+    std::map<std::string, XrActionType> actionTypes;
+    std::map<std::string, XrSpace> actionSpaces;
 
     // Gaze interaction member
-    xr::Space gazeSpace;
+    XrSpace gazeSpace;
 
     // Scene understanding member
-    xr::SceneObserverMSFT sceneObserver;
+    // XrSceneObserverMSFT sceneObserver;
 
     std::vector<std::string> enabledExtensions;
 };

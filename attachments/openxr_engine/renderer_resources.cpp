@@ -434,8 +434,8 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
         vk::ImageTiling::eOptimal,
         usageFlags,
         vk::MemoryPropertyFlagBits::eDeviceLocal,
-        /*mipLevels*/
         mipLevels,
+        1,
         differentFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         families);
       resources.textureImage = std::move(textureImg);
@@ -452,8 +452,8 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
         vk::ImageTiling::eOptimal,
         usageFlags,
         vk::MemoryPropertyFlagBits::eDeviceLocal,
-        /*mipLevels*/
         mipLevels,
+        1,
         differentFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         families);
       resources.textureImage = std::move(textureImg2);
@@ -589,7 +589,9 @@ bool Renderer::createDefaultTextureResources() {
       vk::Format::eR8G8B8A8Srgb,
       vk::ImageTiling::eOptimal,
       vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-      vk::MemoryPropertyFlagBits::eDeviceLocal);
+      vk::MemoryPropertyFlagBits::eDeviceLocal,
+      1,
+      1);
 
     defaultTextureResources.textureImage = std::move(textureImg);
     defaultTextureResources.textureImageAllocation = std::move(textureImgAllocation);
@@ -894,6 +896,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
         usageFlags,
         vk::MemoryPropertyFlagBits::eDeviceLocal,
         mipLevels,
+        1,
         differentFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         families);
 
@@ -911,6 +914,7 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
         usageFlags,
         vk::MemoryPropertyFlagBits::eDeviceLocal,
         mipLevels,
+        1,
         differentFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         families);
       resources.textureImage = std::move(textureImg);
@@ -2180,7 +2184,9 @@ bool Renderer::createOpaqueSceneColorResources() {
         // Use the same format as the swapchain
         vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc,
-        vk::MemoryPropertyFlagBits::eDeviceLocal);
+        vk::MemoryPropertyFlagBits::eDeviceLocal,
+        1,
+        1);
 
       opaqueSceneColorImages.push_back(std::move(image));
       opaqueSceneColorImageAllocations.push_back(std::move(allocation));
@@ -2314,6 +2320,7 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
   vk::ImageUsageFlags usage,
   vk::MemoryPropertyFlags properties,
   uint32_t mipLevels,
+  uint32_t arrayLayers,
   vk::SharingMode sharingMode,
   const std::vector<uint32_t>& queueFamilies) {
   try {
@@ -2330,7 +2337,8 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
                                                        properties,
                                                        mipLevels,
                                                        sharingMode,
-                                                       queueFamilies);
+                                                       queueFamilies,
+                                                       arrayLayers);
 
     return {std::move(image), std::move(allocation)};
   } catch (const std::exception& e) {
@@ -2340,12 +2348,12 @@ std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> Renderer::cr
 }
 
 // Create an image view
-vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels, uint32_t layerCount) {
+vk::raii::ImageView Renderer::createImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels, uint32_t layerCount) {
   try {
     ensureThreadLocalVulkanInit();
     // Create image view
     vk::ImageViewCreateInfo viewInfo{
-      .image = *image,
+      .image = image,
       .viewType = (layerCount > 1) ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D,
       .format = format,
       .subresourceRange = {
@@ -2365,6 +2373,10 @@ vk::raii::ImageView Renderer::createImageView(vk::raii::Image& image, vk::Format
 }
 
 // Transition image layout
+void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels) {
+  transitionImageLayout(image, format, oldLayout, newLayout, mipLevels, 1);
+}
+
 void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels, uint32_t layerCount) {
   ensureThreadLocalVulkanInit();
   try {
@@ -2390,69 +2402,7 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 
     commandBuffer.begin(beginInfo);
 
-    // Create an image barrier (Sync2)
-    vk::ImageMemoryBarrier2 barrier2{
-      .oldLayout = oldLayout,
-      .newLayout = newLayout,
-      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .image = image,
-      .subresourceRange = {
-        .aspectMask = format == vk::Format::eD32Sfloat || format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor,
-        .baseMipLevel = 0,
-        .levelCount = mipLevels,
-        .baseArrayLayer = 0,
-        .layerCount = layerCount
-      }
-    };
-
-    // Set stage and access masks based on layouts
-    if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal) {
-      barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-      barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
-      barrier2.dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-      barrier2.dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
-    } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
-      barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
-      barrier2.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
-      barrier2.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
-      barrier2.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
-    } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
-      barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-      barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
-      barrier2.dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests;
-      barrier2.dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
-    } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eDepthStencilReadOnlyOptimal) {
-      // Support for shadow map creation: transition from undefined to read-only depth layout
-      barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-      barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
-      barrier2.dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests;
-      barrier2.dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentRead;
-    } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eGeneral) {
-      // Support for compute shader storage images: transition from undefined to general layout
-      barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-      barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
-      barrier2.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader;
-      barrier2.dstAccessMask = vk::AccessFlagBits2::eShaderWrite | vk::AccessFlagBits2::eShaderRead;
-    } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
-      // Support for textures that skip staging buffer (e.g., preloaded, generated, or default textures)
-      // Transition directly from undefined to shader read-only for sampling
-      barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-      barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
-      barrier2.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
-      barrier2.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
-    } else {
-      throw std::invalid_argument("Unsupported layout transition!");
-    }
-
-    // Add a barrier to command buffer (Sync2)
-    vk::DependencyInfo depInfo{
-      .dependencyFlags = vk::DependencyFlagBits::eByRegion,
-      .imageMemoryBarrierCount = 1,
-      .pImageMemoryBarriers = &barrier2
-    };
-    commandBuffer.pipelineBarrier2(depInfo);
-    std::cout << "[transitionImageLayout] recorded barrier image=" << (void *) image << " old=" << static_cast<int>(oldLayout) << " new=" << static_cast<int>(newLayout) << std::endl;
+    transitionImageLayout(*commandBuffer, image, format, oldLayout, newLayout, mipLevels, layerCount);
 
     // End command buffer
     commandBuffer.end();
@@ -2483,6 +2433,76 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
 }
 
 // Copy buffer to image
+void Renderer::transitionImageLayout(vk::CommandBuffer cmd, vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels, uint32_t layerCount) {
+  // Create an image barrier (Sync2)
+  vk::ImageMemoryBarrier2 barrier2{
+    .oldLayout = oldLayout,
+    .newLayout = newLayout,
+    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    .image = image,
+    .subresourceRange = {
+      .aspectMask = format == vk::Format::eD32Sfloat || format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor,
+      .baseMipLevel = 0,
+      .levelCount = mipLevels,
+      .baseArrayLayer = 0,
+      .layerCount = layerCount
+    }
+  };
+
+  // Set stage and access masks based on layouts
+  if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
+  } else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
+  } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
+  } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eDepthStencilReadOnlyOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentRead;
+  } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eGeneral) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eShaderWrite | vk::AccessFlagBits2::eShaderRead;
+  } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
+  } else if (oldLayout == vk::ImageLayout::eColorAttachmentOptimal && newLayout == vk::ImageLayout::eTransferSrcOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eTransferRead;
+  } else if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eColorAttachmentOptimal) {
+    barrier2.srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+    barrier2.srcAccessMask = vk::AccessFlagBits2::eNone;
+    barrier2.dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+    barrier2.dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite;
+  } else {
+    throw std::invalid_argument("Unsupported layout transition!");
+  }
+
+  vk::DependencyInfo depInfo{
+    .dependencyFlags = vk::DependencyFlagBits::eByRegion,
+    .imageMemoryBarrierCount = 1,
+    .pImageMemoryBarriers = &barrier2
+  };
+  cmd.pipelineBarrier2(depInfo);
+}
+
 void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, vk::ArrayProxy<const vk::BufferImageCopy> regions) {
   ensureThreadLocalVulkanInit();
   try {
@@ -3199,7 +3219,7 @@ void Renderer::StartUploadsWorker(size_t workerCount) {
                 if (differentFamilies)
                   families = {queueFamilyIndices.graphicsFamily.value(), queueFamilyIndices.transferFamily.value()};
                 vk::Format texFormat = determineTextureFormat(job.idOrPath);
-                auto [image, imageAlloc] = createImagePooled(job.width, job.height, texFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, 1, differentFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive, families);
+                auto [image, imageAlloc] = createImagePooled(job.width, job.height, texFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, 1, 1, differentFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive, families);
 
                 // Prepare one region
                 std::vector<vk::BufferImageCopy> regions{

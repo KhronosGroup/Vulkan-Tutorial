@@ -27,6 +27,9 @@ find_package(VulkanHpp REQUIRED)
 
 # OpenXR is REQUIRED for this engine variant
 find_package(OpenXR REQUIRED)
+if (NOT TARGET OpenXR::OpenXR AND TARGET OpenXR::openxr_loader)
+    add_library(OpenXR::OpenXR ALIAS OpenXR::openxr_loader)
+endif()
 
 if(ENABLE_CPP20_MODULE)
     # Set up Vulkan C++ module
@@ -135,7 +138,7 @@ set(SOURCES_COMMON
     ${SIMPLE_ENGINE_DIR}/renderer_compute.cpp
     ${SIMPLE_ENGINE_DIR}/renderer_utils.cpp
     ${SIMPLE_ENGINE_DIR}/renderer_ray_query.cpp
-    ${SIMPLE_ENGINE_DIR}/memory_pool.cpp
+    memory_pool.cpp
     ${SIMPLE_ENGINE_DIR}/resource_manager.cpp
     ${SIMPLE_ENGINE_DIR}/entity.cpp
     ${SIMPLE_ENGINE_DIR}/component.cpp
@@ -227,7 +230,7 @@ endif()
 if(EXISTS ${SIMPLE_ENGINE_DIR}/Assets)
     if (NOT ANDROID)
     add_custom_command(TARGET OpenXREngine POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${SIMPLE_ENGINE_DIR}/Assets ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${SIMPLE_ENGINE_DIR}/Assets ${CMAKE_CURRENT_BINARY_DIR}/Assets
         COMMENT "Copying Assets from Simple Engine to output directory"
     )
 endif()

@@ -111,9 +111,19 @@ struct ShadowPushConstants {
  */
 struct UniformBufferObject {
   alignas(16) glm::mat4 model;
-  alignas(16) glm::mat4 views[4]; // Supporting up to 4 views (stereo + quad views)
-  alignas(16) glm::mat4 projs[4];
-  alignas(16) glm::vec4 camPoses[4];
+  union {
+      alignas(16) glm::mat4 views[4]; // Supporting up to 4 views (stereo + quad views)
+      alignas(16) glm::mat4 view;     // Single-view alias
+  };
+  union {
+      alignas(16) glm::mat4 projs[4];
+      alignas(16) glm::mat4 proj;     // Single-view alias
+  };
+  union {
+      alignas(16) glm::vec4 camPoses[4];
+      alignas(16) glm::vec4 camPos;   // Single-view alias
+  };
+  alignas(16) glm::mat4 viewProjections[4];
   alignas(4) float exposure;
   alignas(4) float gamma;
   alignas(4) float prefilteredCubeMipLevels;
@@ -661,7 +671,7 @@ class Renderer {
 	 * @param newLayout The new layout.
 	 */
     void TransitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
-      transitionImageLayout(image, format, oldLayout, newLayout);
+      transitionImageLayout(image, format, oldLayout, newLayout, 1, 1);
     }
 
     /**
@@ -703,12 +713,21 @@ class Renderer {
 	 * @brief Get the swap chain image format.
 	 * @return The swap chain image format.
 	 */
-    vk::Format GetSwapChainImageFormat() const {
-      return swapChainImageFormat;
+    /**
+     * @brief Get the OpenXR image views.
+     * @return Array of two vectors of references to image views (one per eye).
+     */
+    std::array<std::vector<vk::ImageView>, 2> GetXrImageViews() {
+      // In this implementaiton, we use a single swapchain with 2 layers for multiview.
+      // We return raw vk::ImageView to avoid copy/ownership issues with vk::raii::ImageView.
+      std::vector<vk::ImageView> views;
+      for (const auto& raiiView : swapChainImageViews) {
+          views.push_back(*raiiView);
+      }
+      return { views, views };
     }
 
     /**
-	 * @brief Set the framebuffer resized flag.
 	 * This should be called when the window is resized to trigger swap chain recreation.
 	 */
     void SetFramebufferResized() {
@@ -1100,6 +1119,7 @@ class Renderer {
     // Depth buffer
     vk::raii::Image depthImage = nullptr;
     std::unique_ptr<MemoryPool::Allocation> depthImageAllocation = nullptr;
+    vk::raii::DeviceMemory depthImageMemory = nullptr;
     vk::raii::ImageView depthImageView = nullptr;
 
     // Forward+ configuration
@@ -1880,7 +1900,9 @@ class Renderer {
 
     std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, uint32_t arrayLayers = 1);
     std::pair<vk::raii::Image, std::unique_ptr<MemoryPool::Allocation>> createImagePooled(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, uint32_t mipLevels = 1, uint32_t arrayLayers = 1, vk::SharingMode sharingMode = vk::SharingMode::eExclusive, const std::vector<uint32_t>& queueFamilies = {});
-    void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels = 1, uint32_t layerCount = 1);
+    void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels = 1);
+    void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels, uint32_t layerCount);
+    void transitionImageLayout(vk::CommandBuffer cmd, vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels = 1, uint32_t layerCount = 1);
     void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, vk::ArrayProxy<const vk::BufferImageCopy> regions);
     // Extended: track stagedBytes for perf stats
     void uploadImageFromStaging(vk::Buffer staging,
@@ -1890,7 +1912,7 @@ class Renderer {
                                 uint32_t mipLevels,
                                 vk::DeviceSize stagedBytes);
 
-    vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels = 1, uint32_t layerCount = 1);
+    vk::raii::ImageView createImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels = 1, uint32_t layerCount = 1);
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
     bool hasStencilComponent(vk::Format format);
 

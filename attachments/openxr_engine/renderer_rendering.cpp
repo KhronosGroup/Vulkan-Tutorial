@@ -218,7 +218,7 @@ bool Renderer::createReflectionResources(uint32_t width, uint32_t height) {
         // Allow sampling in glass and blitting to swapchain for diagnostics
         vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc,
         vk::MemoryPropertyFlagBits::eDeviceLocal,
-        /*mipLevels*/
+        1,
         1,
         vk::SharingMode::eExclusive,
         {});
@@ -238,7 +238,7 @@ bool Renderer::createReflectionResources(uint32_t width, uint32_t height) {
         vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eDepthStencilAttachment,
         vk::MemoryPropertyFlagBits::eDeviceLocal,
-        /*mipLevels*/
+        1,
         1,
         vk::SharingMode::eExclusive,
         {});
@@ -503,8 +503,9 @@ bool Renderer::createImageViews() {
     if (xrMode) {
       eyeSwapchainImageViews[0].clear();
       eyeSwapchainImageViews[1].clear();
-      for (auto& image : eyeSwapchainImages[0]) {
-        eyeSwapchainImageViews[0].emplace_back(createImageView(image, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1, 2)); // 2 layers for multiview
+      for (size_t i = 0; i < eyeSwapchainImages[0].size(); ++i) {
+        vk::Image img = eyeSwapchainImages[0][i];
+        eyeSwapchainImageViews[0].emplace_back(createImageView(img, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1, 2)); // 2 layers for multiview
       }
       return true;
     }
@@ -568,9 +569,9 @@ bool Renderer::setupDynamicRendering() {
 
     // Create rendering info
     renderingInfo = vk::RenderingInfo{
-      .viewMask = xrMode ? 0x3u : 0x0u, // 0x3 enables views 0 and 1 for multiview
       .renderArea = vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent),
       .layerCount = 1,
+      .viewMask = xrMode ? 0x3u : 0x0u, // 0x3 enables views 0 and 1 for multiview
       .colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size()),
       .pColorAttachments = colorAttachments.data(),
       .pDepthAttachment = &depthAttachment
@@ -1151,7 +1152,14 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     EntityResources& entityRes = entityIt->second;
     ensureEntityMaterialCache(entity, entityRes);
 
-    RenderJob job{entity, &entityRes, &meshResources[meshComponent], 0.0f};
+    RenderJob job{
+        .entity = entity,
+        .entityRes = &entityRes,
+        .meshRes = &meshResources[meshComponent],
+        .meshComp = meshComponent,
+        .transformComp = entity->GetComponent<TransformComponent>(),
+        .isAlphaMasked = entityRes.cachedIsBlended
+    };
     if (entityRes.cachedIsBlended) {
       transparentJobs.push_back(job);
     } else {
@@ -1172,8 +1180,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   vk::ImageView swapchainView = *eyeSwapchainImageViews[0][imageIndex];
 
   // 2. Transition image to COLOR_ATTACHMENT_OPTIMAL
-  transitionImageLayout(cmd, swapchainImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
-                        {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 2}); // 2 layers
+  transitionImageLayout(*cmd, swapchainImage, swapChainImageFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
+                        1, 2); // 2 layers
 
   // 3. Prepare Multiview UBO Template
   for (uint32_t eye = 0; eye < 2; ++eye) {
@@ -1205,9 +1213,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   };
 
   vk::RenderingInfo rinfo{
-    .viewMask = 0x3u, // Enable view 0 and 1
     .renderArea = vk::Rect2D({0, 0}, xrContext.getSwapchainExtent()),
     .layerCount = 1,
+    .viewMask = 0x3u, // Enable view 0 and 1
     .colorAttachmentCount = 1,
     .pColorAttachments = &colorAtt,
     .pDepthAttachment = &depthAtt
@@ -1232,8 +1240,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   cmd.endRendering();
 
   // 5. Transition back (OpenXR often expects this or TransferSrcOptimal for blitting)
-  transitionImageLayout(cmd, swapchainImage, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal,
-                        {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 2});
+  transitionImageLayout(*cmd, swapchainImage, swapChainImageFormat, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                        1, 2);
 
   // 6. Release OpenXR swapchain image
   xrContext.releaseSwapchainImage();

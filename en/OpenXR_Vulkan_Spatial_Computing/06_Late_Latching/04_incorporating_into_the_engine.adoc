@@ -1,0 +1,60 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+Late Latching is a powerful optimization that minimizes "swim" by updating view and projection matrices at the last possible moment before GPU submission. To implement this in our `simple_game_engine`, we modify the `Render` loop in `renderer_rendering.cpp`. An example of this implementation can be found in link:../../../attachments/openxr_engine/renderer_rendering.cpp[renderer_rendering.cpp].
+
+== Implementing the Late Update
+
+In `renderer_rendering.cpp`, we need to delay the final UBO update until just before the `vkCmdDraw` calls. This involves using **Timeline Semaphores** to gate our command buffer submission until the last-second matrices are ready.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ...
+    if (xrMode) {
+        // Retrieve the ABSOLUTE LATEST view poses from OpenXR
+        // Note: This happens AFTER we've already waited on the frame fence
+        auto latestPoses = xrContext.getLatestViewPoses();
+
+        // Directly update the mapped UBO memory for each eye
+        // Since we use persistent mapping (vk::MemoryPropertyFlagBits::eHostVisible),
+        // we can write directly to the GPU-resident buffers.
+        for (uint32_t eye = 0; eye < 2; ++eye) {
+            updateUniformBuffer(currentFrame, eye, &latestPoses[eye]);
+        }
+
+        // Use Timeline Semaphores to signal that the late update is finished
+        vk::TimelineSemaphoreSubmitInfo timelineInfo{
+            .signalSemaphoreValueCount = 1,
+            .pSignalSemaphoreValues = &currentFrameValue
+        };
+
+        // Gate the graphics queue submission
+        // The GPU will wait for 'currentFrameValue' before executing
+        graphicsQueue.submit(submitInfo);
+    }
+}
+----
+
+== Persistent Mapping for Low Latency
+
+In `Renderer::createUniformBuffers`, we ensure our buffers are mapped once and held open for the lifetime of the renderer, avoiding the overhead of per-frame mapping.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+bool Renderer::createUniformBuffers(Entity* entity) {
+    // ... create vk::raii::Buffer ...
+
+    // NEW: Persistently map the buffer for last-second updates
+    // entityRes.uniformBuffersMapped is a void* array for each frame-in-flight
+    entityRes.uniformBuffersMapped[i] = entityRes.uniformBuffersAllocation[i]->map(0, VK_WHOLE_SIZE);
+}
+----
+
+== Why These Changes?
+
+By moving the `updateUniformBuffer` call to the very end of the `Render` function (just before submission), we ensure that the GPU receives the most accurate head-tracking data possible. This reduces the "perceived latency" (Motion-to-Photon) from the time we recorded the frame to the time it's actually scanned out to the headset's display.
+
+xref:03_implementation.adoc[Previous] | xref:../07_Action_Spaces_Input/01_introduction.adoc[Next]

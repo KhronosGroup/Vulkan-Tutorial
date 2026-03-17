@@ -1,0 +1,47 @@
+:pp: {plus}{plus}
+= Architecting for Projector-Based Spatial Environments
+
+When we transition from a headset to a **CAVE** (Cave Automatic Virtual Environment), the way we define our "cameras" changes fundamentally. In a headset, the cameras are relative to the user's head. In a CAVE, the "cameras" are fixed physical surfaces—the walls—and the user moves *within* them.
+
+== The Observer Paradox: One Perspective, Many Screens
+
+To understand CAVE rendering, you must accept a paradox: **The 3D scene is only correct for one person.**
+
+Because the walls are fixed, if the user moves to the left, the image on the front wall must be skewed to maintain the illusion of depth from their new perspective. This is known as **Off-Axis Projection**.
+
+1.  **Fixed Display**: The projection surface (the wall) never moves.
+2.  **Moving Eye**: The user's eye (the viewpoint) moves constantly.
+3.  **Result**: The "Pyramid of Vision" (the frustum) is highly asymmetric and changes its skew every frame based on the user's physical location in the room.
+
+== Calculating the Off-Axis Frustum
+
+To calculate this, we treat the physical wall as the "Near Plane" of our camera. We calculate the frustum that passes from the tracked eye through the four corners of the wall.
+
+[source,cpp]
+----
+// A simple representation of a physical projection wall in our engine
+struct ProjectionWall {
+    glm::vec3 bottomLeft;
+    glm::vec3 bottomRight;
+    glm::vec3 topLeft;
+    // We calculate the normal and plane equation from these points
+};
+
+// The resulting Projection Matrix is built by measuring the distance
+// from the eye to the wall's corners in the wall's local coordinate system.
+----
+
+== The Distributed Rendering Model: Leader and Follower
+
+Driving a 5-sided CAVE at 4K resolution requires immense GPU power. Most systems use a **Cluster** of computers.
+
+*   **Leader Node**: Runs the main simulation, physics, and input processing. It then broadcasts the "State of the World" (object positions, user pose, system time) to the followers.
+*   **Follower Nodes**: These nodes perform **Deterministic Simulation**. They receive the packet, update their internal world state to match the leader exactly, and then render only the specific wall or projector they are responsible for.
+
+== Determinism is Mandatory
+
+In a cluster, every computer must agree on the state of the world. If a particle system uses a random seed that differs between nodes, one wall will show a particle in a different place than the adjacent wall, breaking the immersion. Every "Random" or "Time-based" element must be synchronized across the network.
+
+To the user, this cluster behaves as a single, massive GPU. However, this only works if every node renders and displays the exact same frame at the exact same time.
+
+xref:01_introduction.adoc[Previous] | xref:03_hardware_sync.adoc[Next]

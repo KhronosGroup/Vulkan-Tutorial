@@ -1,0 +1,80 @@
+:pp: {plus}{plus}
+= The OpenXR Action System
+
+The OpenXR input system is built around three core concepts: **Action Sets**, **Actions**, and **Interaction Profiles**. By separating our engine's logic from the physical hardware, we ensure that our application remains robust and adaptable across a vast ecosystem of controllers.
+
+== The Hardware Abstraction Layer: Thinking in Actions
+
+In a legacy input system, you might write code like `if (buttonA.isPressed()) { jump(); }`. This is a fragile approach in XR, where one user might have an Oculus Touch controller (with an 'A' button) and another might have Valve Index controllers (with a pressure-sensitive trackpad).
+
+OpenXR uses an **Action-Based** model. Instead of looking for buttons, your engine defines what the user can *do*:
+
+1.  **Define the Action**: "I need an action called 'Jump'."
+2.  **Assign the Type**: Is it a boolean (on/off), a float (analog trigger), or a pose (hand position)?
+3.  **Suggest the Binding**: "On an Oculus controller, map 'Jump' to the 'A' button. On a Vive controller, map it to the 'Trackpad Click'."
+
+The XR runtime handles the "Translation" at the last possible second, giving your engine a clean, unified stream of "Jump" events regardless of the physical hardware.
+
+== 1. Action Sets: Contextual Input
+
+An **Action Set** is a container for related actions. This allows you to enable or disable groups of inputs based on what the user is doing.
+
+*   **Gameplay Set**: Contains "Teleport", "Grab", and "Shoot".
+*   **Menu Set**: Contains "Select" and "Back".
+
+[source,cpp]
+----
+// 1. Create an Action Set
+XrActionSetCreateInfo actionSetInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
+std::strcpy(actionSetInfo.actionSetName, "gameplay");
+std::strcpy(actionSetInfo.localizedActionSetName, "Main Gameplay");
+actionSetInfo.priority = 0;
+
+XrActionSet gameplayActionSet;
+xrCreateActionSet(instance, &actionSetInfo, &gameplayActionSet);
+----
+
+[TIP]
+====
+**Localized Names**: The `localizedActionSetName` is important! The XR runtime may show this to the user in a "Controller Binding" menu, allowing them to remap your actions to their own preferences.
+====
+
+== 2. Actions: Defining Intent
+
+Within an action set, we define our individual **Actions**.
+
+[source,cpp]
+----
+// 2. Create a Pose Action for hand tracking
+XrActionCreateInfo actionInfo{XR_TYPE_ACTION_CREATE_INFO};
+actionInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
+std::strcpy(actionInfo.actionName, "hand_pose");
+std::strcpy(actionInfo.localizedActionName, "Hand Pose");
+actionInfo.countSubactionPaths = 0;
+
+XrAction handPoseAction;
+xrCreateAction(gameplayActionSet, &actionInfo, &handPoseAction);
+----
+
+== 3. Interaction Profiles: Suggesting the Map
+
+Finally, we suggest how these actions should map to real hardware. We don't "force" a mapping; we provide a "Suggested Binding" for each known controller type.
+
+[source,cpp]
+----
+// 3. Map the action to a specific controller path
+std::vector<XrActionSuggestedBinding> bindings;
+// We use standardized OpenXR paths like /user/hand/right/input/grip/pose
+bindings.push_back({handPoseAction, xrPathToString(instance, "/user/hand/right/input/grip/pose")});
+
+XrInteractionProfileSuggestedBinding profileBinding{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+profileBinding.interactionProfile = xrPathToString(instance, "/interaction_profiles/oculus/touch_controller");
+profileBinding.suggestedBindings = bindings.data();
+profileBinding.countSuggestedBindings = bindings.size();
+
+xrSuggestInteractionProfileBindings(instance, &profileBinding);
+----
+
+This abstraction is especially critical for **Space Manifolds**, where a user's physical movement is converted into a 3D coordinate system for our renderer—the topic of our next section.
+
+xref:01_introduction.adoc[Previous] | xref:03_space_manifolds.adoc[Next]

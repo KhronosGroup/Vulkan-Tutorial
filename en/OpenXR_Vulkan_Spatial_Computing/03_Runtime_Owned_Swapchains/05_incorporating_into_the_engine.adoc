@@ -1,0 +1,73 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+Transitioning from a desktop-controlled swapchain to one owned by the OpenXR runtime requires us to intercept the engine's resource creation and frame acquisition logic in `renderer_rendering.cpp`. An example of this implementation can be found in link:../../../attachments/openxr_engine/xr_context.cpp[xr_context.cpp] and link:../../../attachments/openxr_engine/renderer_resources.cpp[renderer_resources.cpp].
+
+== Adjusting Swapchain Creation
+
+In `renderer_rendering.cpp`, we need to modify `Renderer::createSwapChain` to bypass the standard Vulkan surface-based swapchain when in XR mode.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+bool Renderer::createSwapChain() {
+    if (xrMode) {
+        // NEW: Enumerate images provided by the OpenXR runtime for each eye
+        for (uint32_t eye = 0; eye < 2; eye++) {
+            eyeSwapchainImages[eye] = xrContext.enumerateSwapchainImages(eye);
+        }
+
+        // Store extent provided by OpenXR (usually fixed per-headset)
+        swapChainExtent = xrContext.getSwapchainExtent();
+        swapChainImageFormat = xrContext.getSwapchainFormat();
+
+        return createImageViews(); // Re-use existing view creation logic
+    }
+
+    // ... original desktop vk::raii::SwapchainKHR logic ...
+}
+----
+
+== Handling the Frame Lifecycle
+
+The "Wait-Acquire-Release" rhythm happens every frame. We must update `Renderer::Render` to synchronize with the XR compositor instead of the desktop window.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ...
+    uint32_t imageIndex;
+
+    if (xrMode) {
+        // 1. WAIT: Ensure the runtime is ready for us to start working
+        xrContext.waitSwapchainImage();
+
+        // 2. ACQUIRE: Get the index of the next available XR image for the current eye
+        // Note: For simplicity, we'll expand this to a per-eye loop in Chapter 4
+        uint32_t eye = 0;
+        imageIndex = xrContext.acquireSwapchainImage(eye);
+    } else {
+        // Standard desktop acquisition
+        auto result = swapChain.acquireNextImage(UINT64_MAX, *imageAvailableSemaphores[currentFrame]);
+        imageIndex = result.second;
+    }
+
+    // ... record and submit command buffers ...
+
+    if (xrMode) {
+        // 3. RELEASE: Hand the image back to the compositor for display
+        uint32_t eye = 0;
+        xrContext.releaseSwapchainImage(eye);
+    } else {
+        // Standard desktop present
+        presentQueue.presentKHR(presentInfo);
+    }
+}
+----
+
+== Why These Changes?
+
+By injecting these calls into `createSwapChain` and `Render`, we maintain the engine's high-level abstractions (like `vk::raii::Image`) while relinquishing control of the **lifecycle** to the XR runtime. The `xrContext` serves as a bridge, ensuring that the engine never tries to draw into an image that the compositor is currently reading to project onto the headset's lenses.
+
+xref:04_memory_ownership_lifecycle.adoc[Previous] | xref:../04_Dynamic_Rendering/01_introduction.adoc[Next]

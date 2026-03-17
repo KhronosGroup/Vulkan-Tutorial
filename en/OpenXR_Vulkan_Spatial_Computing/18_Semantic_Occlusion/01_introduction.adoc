@@ -1,0 +1,10 @@
+:pp: {plus}{plus}
+= Semantic Occlusion: Depth-Aware Real/Virtual Compositing
+
+In previous chapters, we learned how to ingest the physical world's geometry. But simply having that geometry isn't enough for a convincing experience. If you place a virtual robot on your floor, it should be hidden when your real-world coffee table is between you and the robot. This is the challenge of **Semantic Occlusion**.
+
+In this chapter, we will explore how to bridge the gap between real and virtual worlds through depth-aware occlusion and **Semantic Segmentation**. We'll learn how to use ML models to label reality at a pixel level—distinguishing "Human Hand" from "Table"—and how to use the Vulkan **Stencil Buffer** and **Depth-Aware Compositing** to ensure virtual objects "tuck behind" real-world ones with sub-pixel precision.
+
+By the end of this chapter, you'll be able to implement stable, flicker-free masking that makes virtual assets feel like they truly occupy the same physical space as the user's hands and furniture.
+
+xref:../17_ML_Inference_Spatial/04_incorporating_into_the_engine.adoc[Previous] | xref:02_ml_driven_segmentation.adoc[Next]

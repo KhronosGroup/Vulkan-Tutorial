@@ -1,0 +1,10 @@
+:pp: {plus}{plus}
+= Conclusion
+
+Congratulations on completing the **OpenXR and Vulkan 1.4 Spatial Computing** tutorial series! We've covered a vast amount of ground, from the initial handshake between the two APIs to advanced topics like LightField Theory and Plenoptic Synthesis.
+
+Through the "Incorporating into the Engine" sections at the end of each chapter, you've seen how to take these theoretical concepts and apply them to a real-world renderer like our `simple_game_engine`.
+
+Spatial computing is an ever-evolving field, and we encourage you to continue exploring, experimenting, and pushing the boundaries of what's possible with Vulkan 1.4 and OpenXR.
+
+xref:20_Spatial_Diagnostics_CI_CD/04_incorporating_into_the_engine.adoc[Previous]

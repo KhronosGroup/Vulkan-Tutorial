@@ -1,0 +1,12 @@
+:pp: {plus}{plus}
+= Generating Views from Sparse Data
+
+In the previous chapter, we looked at how to represent and store a 4D lightfield in Vulkan. But a static buffer of rays is only useful if we can reconstruct a perspective from it for the viewer's current eye position. This process—generating a new image from a discrete set of samples—is what we call **Plenoptic Synthesis**.
+
+The challenge of synthesis is that we will rarely have a direct ray that exactly matches the one we need for a given pixel. Instead, we have to perform high-speed interpolation between our sparse samples. This is essentially a specialized form of **Image-Based Rendering (IBR)**, where we are warping and blending existing data rather than rasterizing 3D geometry from scratch.
+
+In this chapter, we will explore the two primary paths for plenoptic synthesis: the **Raster path** and the **Ray Traced path**. The raster path uses specialized fragment shaders to quickly blend samples together, making it ideal for low-power mobile headsets. The ray traced path, on the other hand, utilizes Vulkan's hardware acceleration to trace primary rays directly through virtual microlens arrays, providing much higher fidelity and more complex optical effects.
+
+We'll look at how the engine coordinates these two paths using compute and fragment shaders and how to use Slang's productivity features to author complex synthesis logic without getting lost in the 4D math.
+
+xref:../14_LightField_Theory/04_incorporating_into_the_engine.adoc[Previous] | xref:02_synthesis_shaders.adoc[Next]

@@ -1,0 +1,17 @@
+:pp: {plus}{plus}
+= Action Spaces and Input-to-Pipeline Flow
+
+In a traditional PC or mobile game, we often think about input in terms of raw physical devices: "Was the A button pressed?" or "What is the mouse delta?" However, in spatial computing, this model breaks down. The diversity of VR and AR controllers—ranging from standard gamepads and 6DoF hand controllers to hand-tracking and eye-tracking—means that our engine should never care about the *specific* button a user is pressing.
+
+Instead, OpenXR uses an **Action-Based Input System**. This abstraction layer allows us to define what we want the user to *do* (like "Grab", "Teleport", or "Menu") and then map those actions to various hardware profiles later. This ensures that our engine is future-proof and compatible with all current and future devices.
+
+But in spatial computing, input isn't just about buttons; it's about **Pose Actions**. When a user moves their hand, we don't just get a button event; we get an entire spatial transformation—a position and an orientation in 3D space. These actions are tracked within **Spaces**, which we've briefly touched on before.
+
+In this chapter, we will explore:
+1. How to define and map OpenXR Actions to physical controller profiles.
+2. The concept of **Action Spaces**, which bridge the gap between input and the rendering pipeline.
+3. How to convert raw XrSpace poses into 4x4 transform matrices that our Vulkan shaders can use for interaction.
+
+By the end of this section, we will have a robust system for handling both digital input (button clicks) and spatial input (hand positions) in a way that is clean, modular, and performant.
+
+xref:../06_Late_Latching/04_incorporating_into_the_engine.adoc[Previous] | xref:02_openxr_action_system.adoc[Next]

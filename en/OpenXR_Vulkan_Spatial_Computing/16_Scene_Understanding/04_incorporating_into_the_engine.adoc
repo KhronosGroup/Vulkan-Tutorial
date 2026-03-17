@@ -1,0 +1,82 @@
+:pp: {plus}{plus}
+= Incorporating Scene Understanding into the Engine
+
+Integrating **Scene Understanding** allows our `simple_game_engine` to treat the physical room as dynamic geometry. We achieve this by bridging OpenXR spatial data with our engine's `Entity` and `MeshComponent` systems. An example of this implementation can be found in link:../../../attachments/openxr_engine/xr_context.cpp[xr_context.cpp].
+
+== Tracking Spatial Mesh Lifecycle
+
+In `engine.cpp`, within the `Engine::update()` loop, we add a synchronization step that queries OpenXR for updated spatial meshes. This process ensures that virtual objects interact with the room as it is scanned.
+
+We create a dedicated method, `Engine::updateSpatialMeshes()`, which iterates through the runtime's mesh stream.
+
+[source,cpp]
+----
+// engine.cpp
+// Supporting Struct: Spatial Mesh Bridge
+struct XrSpatialMesh {
+    XrGuidMSFT meshGuid;
+    std::vector<glm::vec3> vertices;
+    std::vector<uint32_t> indices;
+    glm::mat4 transform;
+};
+
+void Engine::updateSpatialMeshes() {
+    if (!xrMode) return;
+
+    // 1. Retrieve current spatial meshes from the OpenXR context
+    auto xrMeshes = xrContext.getLatestSpatialMeshes();
+
+    for (const auto& xrMesh : xrMeshes) {
+        // 2. Map the XR mesh ID to an Engine Entity
+        // We use a internal map: std::unordered_map<XrGuidMSFT, Entity*>
+        Entity* spatialEntity = getOrCreateSpatialEntity(xrMesh.meshGuid);
+
+        auto* meshComp = spatialEntity->getComponent<MeshComponent>();
+        auto* transform = spatialEntity->getComponent<TransformComponent>();
+
+        // 3. Update the GPU resources via our Renderer
+        // This transfers raw XrVector3f data into our vk::raii::Buffer
+        renderer->updateDynamicMesh(
+            meshComp->getBuffer(),
+            xrMesh.vertices,
+            xrMesh.indices
+        );
+
+        // 4. Update the transform to match the physical room coordinates
+        // OpenXR spatial data is already provided as a 4x4 matrix
+        transform->setLocalMatrix(xrMesh.transform);
+    }
+}
+----
+
+== Applying Semantic Intelligence
+
+In `mesh_component.h`, we extend the component to store a **Semantic Label**. This allows our physics and AI systems to query whether a specific piece of geometry represents a "Floor," "Table," or "Wall."
+
+When the engine detects a new mesh, we assign its properties in `engine.cpp`:
+
+[source,cpp]
+----
+// engine.cpp
+void Engine::configureSpatialEntity(Entity* entity, XrSceneComponentTypeMSFT type) {
+    auto* meshComp = entity->getComponent<MeshComponent>();
+
+    if (type == XR_SCENE_COMPONENT_TYPE_PLANE_MSFT) {
+        // High-level plane: Perfect for floor-based AI navigation
+        meshComp->setSemanticTag("Floor");
+        entity->addComponent<RigidBodyComponent>(Physics::Static);
+    } else if (type == XR_SCENE_COMPONENT_TYPE_OBJECT_MSFT) {
+        // Physical object: Enable shadows and complex physics
+        meshComp->setSemanticTag("Prop");
+        entity->addComponent<RigidBodyComponent>(Physics::Kinematic);
+    }
+}
+----
+
+== Architectural Win: Unified Pipelines
+
+By mapping spatial data into our existing `Entity` system, we don't need a "special" renderer for the real world. Our **PBR** (Physically Based Rendering) pipeline in `renderer_rendering.cpp` simply sees these spatial entities as standard geometry. They receive virtual light, cast virtual shadows, and provide depth information for our transparency passes automatically.
+
+This "Unified Geometry" approach is the foundation of believable Mixed Reality, allowing us to treat the physical room and our virtual assets as a single, coherent scene.
+
+xref:03_zero_copy_hand_off.adoc[Previous] | xref:../17_ML_Inference_Spatial/01_introduction.adoc[Next]

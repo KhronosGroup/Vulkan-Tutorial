@@ -1,0 +1,112 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+In this chapter, we've transitioned from a reactive desktop loop to a predictive, runtime-driven spatial heartbeat. To implement this in our `simple_game_engine`, we must modify the main loop in `engine.cpp`. An example of this implementation can be found in link:../../../attachments/openxr_engine/engine.cpp[engine.cpp] and link:../../../attachments/openxr_engine/xr_context.cpp[xr_context.cpp].
+
+== Pacing the Engine Heartbeat
+
+In `engine.cpp`, we need to update `Engine::Run` to use the OpenXR frame lifecycle. This ensures our simulation and rendering are perfectly aligned with the headset's display.
+
+[source,cpp]
+----
+// engine.cpp
+void Engine::Run() {
+    // ...
+    while (running) {
+        if (renderer->IsXrMode()) {
+            auto& xrContext = renderer->GetXrContext();
+
+            // 1. WAIT: OpenXR blocks here until it's time to work on the next frame
+            XrFrameState frameState = xrContext.waitFrame();
+
+            // 2. BEGIN: Signal that we are starting CPU work for this frame
+            xrContext.beginFrame();
+
+            // Update simulation using predicted display time
+            Update(frameState.predictedDisplayTime);
+
+            // 3. RENDER: Record and submit drawing commands
+            Render(frameState.predictedDisplayTime);
+
+            // 4. END: Submit the finished frame to the compositor
+            // We pass our swapchain image views to the compositor for display
+            xrContext.endFrame(renderer->GetXrImageViews());
+        } else {
+            // Standard desktop loop
+            deltaTimeMs = CalculateDeltaTimeMs();
+            Update(deltaTimeMs);
+            Render();
+        }
+    }
+}
+----
+
+== Aligning the Camera
+
+In our `Update` logic, we must ensure the `activeCamera` is updated with the predicted poses from the XR runtime.
+
+[source,cpp]
+----
+// camera_component.cpp
+// Helper: Build asymmetric projection from FOV tangents
+inline glm::mat4 getAsymmetricProjection(const XrFovf& fov, float nearZ, float farZ) {
+    float tanLeft = std::tan(fov.angleLeft);
+    float tanRight = std::tan(fov.angleRight);
+    float tanUp = std::tan(fov.angleUp);
+    float tanDown = std::tan(fov.angleDown);
+
+    float tanWidth = tanRight - tanLeft;
+    float tanHeight = tanUp - tanDown;
+
+    glm::mat4 projection(0.0f);
+    projection[0][0] = 2.0f / tanWidth;
+    projection[1][1] = 2.0f / tanHeight;
+    projection[2][0] = (tanRight + tanLeft) / tanWidth;
+    projection[2][1] = (tanUp + tanDown) / tanHeight;
+    projection[2][2] = -farZ / (farZ - nearZ);
+    projection[2][3] = -1.0f;
+    projection[3][2] = -(farZ * nearZ) / (farZ - nearZ);
+
+    return projection;
+}
+
+void CameraComponent::SetStereoViews(const XrView& left, const XrView& right) {
+    // 1. Convert OpenXR poses to 4x4 matrices
+    // xrPoseToMatrix is a common helper that builds a GLM matrix from a quaternion/vector
+    eyeViewMatrices[0] = xrPoseToMatrix(left.pose);
+    eyeViewMatrices[1] = xrPoseToMatrix(right.pose);
+
+    // 2. Build asymmetric projection matrices from FOV tangents
+    // These are provided per-eye by the XR runtime
+    eyeProjectionMatrices[0] = getAsymmetricProjection(left.fov, nearZ, farZ);
+    eyeProjectionMatrices[1] = getAsymmetricProjection(right.fov, nearZ, farZ);
+}
+----
+
+In `engine.cpp`, we call this within our `Update` loop:
+
+[source,cpp]
+----
+// engine.cpp
+void Engine::Update(XrTime predictedTime) {
+    if (renderer->IsXrMode()) {
+        auto& xrContext = renderer->GetXrContext();
+
+        // Retrieve the predicted views (poses and FOVs) from OpenXR
+        xrContext.locateViews(predictedTime);
+        auto views = xrContext.getLatestViews();
+
+        // Update the camera with the spatial data
+        if (activeCamera && views.size() >= 2) {
+            activeCamera->SetStereoViews(views[0], views[1]);
+        }
+    }
+    // ... rest of physics and entity updates ...
+}
+----
+
+== Why These Changes?
+
+By moving `xrWaitFrame` into our main loop, we transform the engine from an "as-fast-as-possible" renderer into a "just-in-time" spatial engine. This eliminates the judder caused by simulation/display mismatch and ensures that when the user moves their head, the virtual world moves in perfect, predicted synchrony.
+
+xref:03_display_time_prediction.adoc[Previous] | xref:../06_Late_Latching/01_introduction.adoc[Next]

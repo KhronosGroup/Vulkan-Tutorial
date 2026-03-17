@@ -1,0 +1,50 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+Scaling our `simple_game_engine` to support **CAVE Architecture** and **Multi-GPU Synchronization** requires a shift to hardware-level barriers in `renderer_rendering.cpp`. *This is currently left as an exercise for the reader to implement.*
+
+== Joining the Swap Barrier
+
+In `renderer_rendering.cpp`, we must update our `createSwapChain` logic to support the `VK_NV_present_barrier` extension for synchronized cluster rendering.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+bool Renderer::createSwapChain() {
+    // ...
+    vk::SwapchainPresentBarrierCreateInfoNV barrierInfo{
+        .presentBarrierEnable = vk::True,
+        .presentBarrierName = 1 // All nodes in the CAVE must use the same ID
+    };
+
+    if (hasPresentBarrierSupport) {
+        createInfo.pNext = &barrierInfo;
+    }
+
+    // Create the synchronized swapchain
+    swapChain = vk::raii::SwapchainKHR(device, createInfo);
+    // ...
+}
+----
+
+== Synchronized Present Call
+
+In our `Render` function, the `presentKHR` call now becomes a synchronized event. The GPU will automatically block until all other nodes in the swap group are ready to flip their buffers.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ... record and submit ...
+
+    // This call now blocks at the hardware level if a Swap Barrier is active
+    // ensuring no tearing or "seams" between CAVE walls
+    presentQueue.presentKHR(presentInfo);
+}
+----
+
+== Why These Changes?
+
+Hardware synchronization is the only way to ensure that the corners of a CAVE room look seamless. Without the `VK_NV_present_barrier`, the "seam" between projectors will always be visible as a line of tearing or stutter. By integrating this into our `createSwapChain` and `Render` logic, we transform the engine into a professional-grade simulation platform capable of driving multi-projector environments.
+
+xref:03_hardware_sync.adoc[Previous] | xref:../13_Warp_and_Blend/01_introduction.adoc[Next]

@@ -1,0 +1,161 @@
+name: OpenXR Engine CI
+
+on:
+  push:
+    paths:
+      - 'attachments/openxr_engine/**'
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/openxr_engine_ci.yml'
+  pull_request:
+    paths:
+      - 'attachments/openxr_engine/**'
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/openxr_engine_ci.yml'
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: attachments/openxr_engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Clang + Ninja + ccache (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build ccache libopenxr-dev
+
+      - name: Select Clang toolchain (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC dev environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Ninja + sccache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y ninja sccache
+          $chocoBin = "C:\ProgramData\chocolatey\bin"
+          if (Test-Path $chocoBin) {
+            $chocoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          "SCCACHE_DIR=$env:LOCALAPPDATA\Mozilla\sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: ccache (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-openxr-ccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-openxr-ccache-
+
+      - name: sccache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: ${{ runner.os }}-openxr-sccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-openxr-sccache-
+
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        id: cache-vulkan-windows
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
+
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ("${{ steps.cache-vulkan-windows.outputs.cache-hit }}" -ne "true") {
+            choco install -y aria2
+            $installer = Join-Path $env:TEMP "vulkan-sdk.exe"
+            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+            Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+          }
+          $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+          "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils
+          VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
+          SDK_TGZ="${RUNNER_TEMP}/vulkansdk-linux.tar.xz"
+          curl -L -o "$SDK_TGZ" "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
+          mkdir -p "${RUNNER_TEMP}/VulkanSDK"
+          tar -xJf "$SDK_TGZ" -C "${RUNNER_TEMP}/VulkanSDK"
+          VULKAN_SDK_PATH=$(find "${RUNNER_TEMP}/VulkanSDK" -maxdepth 1 -type d -name '1.*' | head -n 1)
+          SDK_SYSROOT="$VULKAN_SDK_PATH/x86_64"
+          echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> "$GITHUB_ENV"
+          echo "VULKAN_SDK_SYSROOT=$SDK_SYSROOT" >> "$GITHUB_ENV"
+          echo "$SDK_SYSROOT/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$SDK_SYSROOT" >> "$GITHUB_ENV"
+          echo "Vulkan_INCLUDE_DIR=$SDK_SYSROOT/include" >> "$GITHUB_ENV"
+
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          if (-not (Test-Path $vcpkgRoot)) {
+            git clone https://github.com/microsoft/vcpkg $vcpkgRoot
+          }
+          Push-Location $vcpkgRoot
+          .\bootstrap-vcpkg.bat
+          Pop-Location
+          "VCPKG_INSTALLATION_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call install_dependencies_windows.bat
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bash install_dependencies_linux.sh
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_C_COMPILER_LAUNCHER=sccache
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_PREFIX_PATH="/home/runner/.local;${{ env.VULKAN_SDK_SYSROOT }}"
+
+      - name: Build
+        run: cmake --build build --target OpenXREngine --parallel 4

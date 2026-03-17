@@ -1,0 +1,64 @@
+:pp: {plus}{plus}
+= Incorporating Platform Divergence into the Engine
+
+Integrating **Platform Divergence** allows our `simple_game_engine` to automatically optimize its spatial pipeline for both high-end desktop and low-power mobile hardware. We achieve this by adding a configuration layer to our `Renderer` in `renderer_core.cpp`. *This is currently left as an exercise for the reader to implement.*
+
+== Defining Hardware Profiles
+
+In `renderer_core.cpp`, we introduce a method to apply rendering presets based on the detected hardware. This logic ensures that our engine scales its fidelity to match the platform's constraints.
+
+[source,cpp]
+----
+// renderer_core.cpp
+void Renderer::applySpatialPlatformPresets() {
+    // Note: platform is our Engine's platform abstraction
+    if (platform->isMobile()) {
+        // 1. Mobile Mastery: Optimize for Tile-Based GPUs
+        renderScale = 0.75f; // Lower initial resolution for stability
+
+        // 2. Explicitly set Load/Store ops for tile memory efficiency
+        // Discarding depth/multisample data saves massive bandwidth
+        mainColorAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+        mainDepthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+
+        // 3. Enable Application SpaceWarp for synthetic frame generation
+        xrConfig.enableASW = true;
+    } else {
+        // 4. Desktop High-End: Maximum Fidelity
+        renderScale = 1.0f;
+        useHDR10 = true; // Use 10-bit color formats
+
+        // Enable high-bandwidth features like Ray Query
+        vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{};
+        // ... request features from the LUID-matched physical device ...
+    }
+}
+----
+
+== Handling Direct Mode on Desktop
+
+For desktop headsets, we must ensure our engine's windowing system (GLFW) doesn't interfere with the headset's **Direct Mode** display. In `main.cpp`, we configure our window creation logic.
+
+[source,cpp]
+----
+// main.cpp
+void setupEngineWindow() {
+    if (engine.isXRMode()) {
+        // On Desktop, the headset is a "hidden" display.
+        // We create a small "Mirror Window" for the monitor
+        // while the main spatial rendering bypasses the OS compositor.
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        engine.createMirrorWindow("XR Mirror", 1280, 720);
+    } else {
+        engine.createStandardWindow("Simple Engine", 1920, 1080);
+    }
+}
+----
+
+== Why These Changes?
+
+By implementing platform-specific presets and Direct Mode handling, we ensure that our engine remains performant regardless of whether it's running on a high-end desktop GPU or a mobile SOC. The `simple_game_engine` already utilizes a modular `Platform` abstraction, which we now leverage to swap between desktop-specific logic (like 10-bit HDR) and mobile-specific optimizations (like **Tile-Based** discarding).
+
+This architectural flexibility is what allows our spatial applications to scale from the highest possible fidelity to the most efficient mobile standalone performance without rewriting our core rendering logic.
+
+xref:03_mobile_mastery.adoc[Previous] | xref:../20_Spatial_Diagnostics_CI_CD/01_introduction.adoc[Next]

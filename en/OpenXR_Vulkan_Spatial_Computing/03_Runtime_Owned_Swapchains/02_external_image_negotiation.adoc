@@ -1,0 +1,74 @@
+:pp: {plus}{plus}
+= External Image Negotiation
+
+In a standard Vulkan application, we use `vkCreateSwapchainKHR` to create a surface-bound swapchain. In OpenXR, we replace this entire mechanism with the `XrSwapchain`. Instead of the operating system's windowing system (like Win32 or X11) managing the buffers, the **XR Runtime** acts as our swapchain provider.
+
+This negotiation starts by asking the runtime what image formats it supports and choosing the one that best fits our engine's internal pipeline.
+
+== The Inversion of Control: The Swapchain Provider
+
+To understand this negotiation, you must shift your mindset. In a desktop app, *you* create the swapchain and the OS *consumes* it. In OpenXR, the **Runtime creates the images** and *lends* them to you.
+
+1.  **Ownership**: The runtime allocates the VRAM and manages the memory layout.
+2.  **Compatibility**: The runtime knows exactly which bit-depths and color spaces its internal compositor can handle without performing expensive conversions.
+3.  **Efficiency**: By providing the images directly, the runtime can ensure they are allocated in a memory region that is visible to both your engine and the compositor process.
+
+== Enumerating Swapchain Formats
+
+The first step is to query the runtime for its supported `VkFormat` list using `xrEnumerateSwapchainFormats`.
+
+[source,cpp]
+----
+uint32_t formatCount = 0;
+xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);
+std::vector<int64_t> formats(formatCount);
+xrEnumerateSwapchainFormats(xrSession, formatCount, &formatCount, formats.data());
+----
+
+It is important to note that OpenXR returns these as `int64_t` values, which we must cast to `VkFormat` (or `vk::Format` in our RAII engine). Usually, we want a high-dynamic-range (**HDR**) format like `VK_FORMAT_R16G16B16A16_SFLOAT` or a standard **SRGB** format like `VK_FORMAT_R8G8B8A8_SRGB`.
+
+[TIP]
+====
+**Linear vs SRGB**: If your engine performs its own gamma correction in a post-process pass, you should prefer a linear format. However, if you are outputting directly to the headset, using an `_SRGB` format allows the hardware to perform the conversion for free during the final write.
+====
+
+== Creating the XrSwapchain
+
+Once we have chosen a format, we fill out an `XrSwapchainCreateInfo` structure. This structure is similar to `VkSwapchainCreateInfoKHR`, but it also includes XR-specific fields like **sampleCount** (for multisampling) and **faceCount** (for cubemap views).
+
+[source,cpp]
+----
+XrSwapchainCreateInfo createInfo{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+createInfo.format = chosenVulkanFormat;
+createInfo.sampleCount = 1;
+createInfo.width = viewWidth;
+createInfo.height = viewHeight;
+createInfo.faceCount = 1;
+createInfo.arraySize = 1; // 1 for standard mono/stereo, more for multiview
+createInfo.mipCount = 1;
+
+XrSwapchain xrSwapchain;
+xrCreateSwapchain(xrSession, &createInfo, &xrSwapchain);
+----
+
+== Retrieving the Raw Images
+
+After creating the `XrSwapchain`, we need to get the actual `VkImage` handles so we can wrap them in our engine's abstractions. We use `xrEnumerateSwapchainImages` to retrieve an array of `XrSwapchainImageVulkanKHR` structures.
+
+[source,cpp]
+----
+uint32_t imageCount = 0;
+xrEnumerateSwapchainImages(xrSwapchain, 0, &imageCount, nullptr);
+std::vector<XrSwapchainImageVulkanKHR> xrImages(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+xrEnumerateSwapchainImages(xrSwapchain, imageCount, &imageCount, (XrSwapchainImageBaseHeader*)xrImages.data());
+----
+
+Each `XrSwapchainImageVulkanKHR` contains a `VkImage` handle. It is these handles that we will feed into our engine's RAII system.
+
+== Why "Zero-Copy" Matters: The Compositor Pipeline
+
+By negotiating the images this way, we ensure a **Zero-Copy** hand-off. When we finish rendering, we don't copy our frame to a separate buffer. Instead, we simply signal to the runtime that we are done with its image. The runtime then takes that exact same memory and uses it for the final compositor pass.
+
+This efficiency is the difference between a high-performance 90Hz experience and a laggy, uncomfortable one. In the next section, we'll see how to wrap these raw Vulkan handles into the engine's `vk::raii` abstractions.
+
+xref:01_introduction.adoc[Previous] | xref:03_raii_resource_integration.adoc[Next]

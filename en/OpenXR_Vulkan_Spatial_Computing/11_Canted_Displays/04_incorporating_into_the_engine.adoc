@@ -1,0 +1,62 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+The introduction of **Canted Displays** and **Asymmetric Frustums** requires us to move away from the "parallel eyes" assumption in our `simple_game_engine`'s camera system. An example of this implementation can be found in link:../../../attachments/openxr_engine/camera_component.cpp[camera_component.cpp].
+
+== Evolving the Camera System
+
+In `camera.cpp`, we must update how we calculate the projection matrix to handle the asymmetric FOVs provided by OpenXR.
+
+[source,cpp]
+----
+// camera.cpp
+glm::mat4 Camera::getAsymmetricProjection(const XrFovf& fov, float nearZ, float farZ) {
+    float tanLeft = std::tan(fov.angleLeft);
+    float tanRight = std::tan(fov.angleRight);
+    float tanUp = std::tan(fov.angleUp);
+    float tanDown = std::tan(fov.angleDown);
+
+    float tanWidth = tanRight - tanLeft;
+    float tanHeight = tanUp - tanDown;
+
+    // Build the asymmetric projection matrix
+    glm::mat4 projection(0.0f);
+    projection[0][0] = 2.0f / tanWidth;
+    projection[1][1] = 2.0f / tanHeight;
+    projection[2][0] = (tanRight + tanLeft) / tanWidth;
+    projection[2][1] = (tanUp + tanDown) / tanHeight;
+    projection[2][2] = -farZ / (farZ - nearZ);
+    projection[2][3] = -1.0f;
+    projection[3][2] = -(farZ * nearZ) / (farZ - nearZ);
+
+    return projection;
+}
+----
+
+== Handling Canted View Matrices
+
+In `engine.cpp`, when we update the camera, we must ensure we use the full 6-DOF pose for each eye, not just a simple X-offset.
+
+[source,cpp]
+----
+// engine.cpp
+void Engine::Update(XrTime predictedTime) {
+    // ...
+    auto [leftView, rightView] = xrContext.locateViews(predictedTime);
+
+    // Instead of a single offset, we pass the full view matrices
+    // which may include rotation (canting)
+    activeCamera->setEyeViewMatrix(0, xrPoseToMatrix(leftView.pose));
+    activeCamera->setEyeViewMatrix(1, xrPoseToMatrix(rightView.pose));
+
+    // Set the asymmetric projections we calculated above
+    activeCamera->setEyeProjectionMatrix(0, getAsymmetricProjection(leftView.fov, ...));
+    activeCamera->setEyeProjectionMatrix(1, getAsymmetricProjection(rightView.fov, ...));
+}
+----
+
+== Why These Changes?
+
+By supporting canted views and asymmetric frustums, our engine becomes compatible with high-end "enthusiast" headsets. Proper projection matrix calculation is the difference between a world that looks "right" and one that feels slightly distorted or "warped" as you move your head. Because we've already integrated the OpenXR handshake, our `xrContext` can provide the exact FOV tangents and poses required for these calculations.
+
+xref:03_viewport_swizzling.adoc[Previous] | xref:../12_CAVE_Architecture/01_introduction.adoc[Next]

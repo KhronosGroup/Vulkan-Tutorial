@@ -1,0 +1,76 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+Adopting Multiview in our `simple_game_engine` allows us to render both eyes in a single pass, significantly reducing CPU draw call overhead. An example of this implementation can be found in link:../../../attachments/openxr_engine/shaders/pbr.slang[pbr.slang] and link:../../../attachments/openxr_engine/renderer_pipelines.cpp[renderer_pipelines.cpp].
+
+== Updating Shader Loading
+
+In `renderer_resources.cpp`, we need to update our pipeline creation to enable multiview. We do this by adding `vk::PipelineRenderingCreateInfo` with the `viewMask` set.
+
+[source,cpp]
+----
+// renderer_resources.cpp
+bool Renderer::createGraphicsPipeline() {
+    // ...
+    vk::PipelineRenderingCreateInfo renderingInfo{
+        .viewMask = xrMode ? 0x3 : 0x0, // 0x3 enables views 0 and 1
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapChainImageFormat
+    };
+
+    pipelineInfo.pNext = &renderingInfo;
+    // ...
+}
+----
+
+== Adapting Slang Shaders
+
+Our Slang shaders (like `pbr.slang`) must be updated to handle the `SV_ViewID` semantic. This allows the shader to distinguish between the left and right eye.
+
+First, we update our `common_types.slang` to include an array of matrices in our `UniformBufferObject`:
+
+[source,slang]
+----
+// common_types.slang
+struct UniformBufferObject {
+    // NEW: Replace the single viewProjection matrix with an array
+    // This supports Stereo (N=2), Quad-Views (N=4), and beyond
+    float4x4 viewProjections[4];
+    float4x4 model;
+};
+----
+
+Next, in `pbr.slang`:
+
+[source,slang]
+----
+// pbr.slang
+struct VS_Input {
+    float3 position : POSITION;
+    // ...
+};
+
+struct VS_Output {
+    float4 position : SV_Position;
+    uint viewID : SV_ViewID; // NEW: The hardware-provided view index
+    // ...
+};
+
+[shader("vertex")]
+VS_Output vertexMain(VS_Input input, uint viewID : SV_ViewID) {
+    VS_Output output;
+
+    // Select the correct ViewProjection matrix based on the eye index (0 to 3)
+    float4x4 vp = ubo.viewProjections[viewID];
+    output.position = mul(vp, mul(pushConstants.model, float4(input.position, 1.0)));
+    output.viewID = viewID;
+
+    return output;
+}
+----
+
+== Why These Changes?
+
+By enabling the `viewMask` and using `SV_ViewID`, we shift the burden of stereo rendering from the CPU to the GPU. Instead of the engine looping twice and submitting two sets of commands, it submits one set, and the hardware's **Instance Data Step** or **Geometry Replication** handles the expansion to two views. This is the most efficient way to achieve high-performance spatial rendering in Vulkan 1.4.
+
+xref:03_slang_architecture.adoc[Previous] | xref:../09_Quad_Views_Foveated/01_introduction.adoc[Next]

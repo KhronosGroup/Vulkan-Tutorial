@@ -1,0 +1,51 @@
+:pp: {plus}{plus}
+= Refining Spatial Data: From Messy to Clean
+
+The environmental meshes we ingested in Chapter 16 are often "noisy." They contain holes where the LiDAR sensor couldn't reach, jagged edges on curved surfaces, and floating artifacts caused by reflections or moving objects. To turn these into clean, interactive geometry, we use ML-driven refinement.
+
+== The Concept: Topology Inference
+
+Standard mesh smoothing algorithms (like Laplacian or Gaussian smoothing) can remove noise, but they are "dumb"—they can't fill large holes or "guess" missing geometry. **Topology Inference** uses a neural network trained on millions of real-world scans to predict the missing parts of a scene.
+
+1.  **Denoising**: The model identifies small floating vertices or "geometry dust" that doesn't belong to any major surface and marks them for removal.
+2.  **Infilling**: The model predicts the curvature of a surface (like a wall behind a plant) and generates new triangles to bridge gaps in the scan.
+3.  **Primitive Approximation**: For optimal performance, the model can suggest replacing a complex, high-poly "Table" mesh with a clean, low-poly box primitive that has the same physical bounds.
+
+== Implementation: ML-Aided Surface Reconstruction
+
+In our engine, we use a compute shader to feed the raw spatial vertices into our ML model (processed via cooperative matrices). The model outputs a **Saliency Map**—a probability grid that tells us which regions are likely solid, high-confidence surfaces and which are noise.
+
+We author this reconstruction logic in **Slang**, using structured buffers to manage our dynamic mesh data.
+
+[source,slang]
+----
+// Using ML results to guide mesh reconstruction in Slang
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void reconstructSurfaces(uint3 dtid : SV_DispatchThreadID) {
+    // 1. Query the ML saliency map for this vertex's region
+    float surfaceProbability = mlSaliencyMap.Load(dtid.xy);
+
+    if (surfaceProbability > 0.95) {
+        // 2. High confidence: Snap the vertex to the predicted "clean" plane
+        float3 refinedPos = predictCleanSurface(dtid.xyz);
+        updateMeshVertex(dtid.x, refinedPos);
+    } else if (surfaceProbability < 0.1) {
+        // 3. Low confidence: This is likely a sensor artifact (e.g., a mirror reflection)
+        // Mark the vertex as "degenerate" to prevent it from rendering
+        degenerateMeshVertex(dtid.x);
+    }
+}
+----
+
+== Interactive Geometry: The Final Goal
+
+By refining the spatial data, we move from simple "Visual Passthrough" to true **Physical Interaction**.
+
+*   **Pixel-Perfect Occlusion**: A clean, refined wall mesh allows for perfect depth-aware occlusion of virtual objects, preventing them from "leaking" through the edges of physical furniture.
+*   **Realistic Shadows**: We can cast virtual shadows onto a refined "Table" mesh. Because the mesh is clean, the shadows look crisp and "grounded," making virtual objects feel like they truly exist in the room.
+*   **Robust Physics**: A refined floor mesh prevents virtual objects from falling through small "cracks" in the raw spatial scan, ensuring a stable simulation.
+
+By using on-GPU ML to polish our spatial data, we bridge the final gap between the messy physical world and the digital precision required for high-end XR. In the next chapter, we will see how to combine these refined meshes with our rendering to achieve **Semantic Occlusion**.
+
+xref:02_on_gpu_inference.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

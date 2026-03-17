@@ -1,0 +1,66 @@
+:pp: {plus}{plus}
+= Native Multiview
+
+The core technology behind **Single-Pass Stereo** is **Native Multiview** (`VK_KHR_multiview`). This feature allows a single draw call to be broadcast to multiple layers of an image array. For spatial computing, where we almost always have at least two views (left and right eye), this is a massive performance win.
+
+== The CPU Overhead Win: Why We Hate Loops
+
+To understand the value of multiview, look at the alternative: **The Multi-Pass Loop**.
+
+1.  **Loop**: For each eye (0 to 1):
+2.  **Bind**: Update the view/projection UBO for that eye.
+3.  **Draw**: Re-issue all 2,000 draw calls for the scene.
+
+In a complex scene, this means the CPU is doing twice the work (4,000 draw calls total). This often makes the application **CPU-Bound**, meaning the GPU is sitting idle while waiting for the CPU to finish its second loop.
+
+**Multiview kills the loop.** You issue the 2,000 draw calls *once*, and the GPU's fixed-function hardware handles the duplication for the second eye. The CPU overhead is cut in half, and the GPU can stay saturated.
+
+== View Masks and the Broadcast Mechanism
+
+In a standard Vulkan pipeline, a draw call targets a specific attachment. With multiview enabled (part of the Vulkan 1.4 core), you specify a **View Mask** in your `vk::RenderingInfo`.
+
+A view mask is a bitmask where each set bit represents a layer in the output attachment array.
+
+*   **Mask 0b01 (1)**: Renders only to Layer 0.
+*   **Mask 0b11 (3)**: Renders to both Layer 0 (Left Eye) and Layer 1 (Right Eye).
+*   **Mask 0b1111 (15)**: Renders to four layers (used for Quad-Views).
+
+[source,cpp]
+----
+// 1. Enabling Multiview in Vulkan 1.4 Dynamic Rendering
+vk::RenderingInfo renderingInfo;
+renderingInfo.viewMask = 0b11; // Broadcast to bit 0 and bit 1
+----
+
+== The Hardware Implementation: SV_ViewID
+
+When multiview is active, the GPU executes the vertex shader for each bit set in the mask. Within the shader, you access the current view index using the `SV_ViewID` semantic.
+
+[source,slang]
+----
+// 2. Using the View ID in a Slang Shader
+struct VertexInput {
+    float3 position : POSITION;
+};
+
+struct VertexOutput {
+    float4 position : SV_Position;
+    uint viewID : SV_ViewID;
+};
+
+VertexOutput main(VertexInput input, uint viewID : SV_ViewID) {
+    VertexOutput output;
+    // Load the correct eye matrix using the viewID
+    // The GPU automatically runs this shader once per viewID (0 and 1)
+    float4x4 mvp = eyeMatrices[viewID];
+    output.position = mul(mvp, float4(input.position, 1.0));
+    output.viewID = viewID;
+    return output;
+}
+----
+
+It's important to understand that while the vertex work is duplicated, the **Primitive Assembly** and **Rasterization** stages can often be optimized by the hardware. Because the two eyes are looking at the same geometry from slightly different angles, the GPU can reuse vertex cache data, making single-pass stereo much more efficient than two separate passes.
+
+In the next section, we'll see how to architect our **Slang** shaders to manage this "N-View" logic efficiently.
+
+xref:01_introduction.adoc[Previous] | xref:03_slang_architecture.adoc[Next]

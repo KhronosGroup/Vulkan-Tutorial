@@ -1,0 +1,61 @@
+:pp: {plus}{plus}
+= Slang Architecture for N-View Shaders
+
+Authoring multiview-aware shaders is a unique challenge. While the GPU's hardware handles the duplication of draw commands, it's our job as shader developers to ensure that we're accessing our eye-specific data—like view and projection matrices—in a way that is both efficient and organized. This is where the **Slang** language really shines.
+
+== The N-View Mindset: Agnostic Shaders
+
+In a traditional shader, you might pass a single `viewMatrix`. In an XR-aware engine, we must adopt an **N-View Mindset**. We write our shaders once, assuming they might be used for mono, stereo, or even "Quad-Views" (4 eyes).
+
+Slang's powerful type system and **StructuredBuffers** allow us to pass an array of view data that the shader can index into dynamically based on which eye is currently being processed.
+
+[source,slang]
+----
+// 1. Defining a View Structure in Slang
+struct SpatialView {
+    float4x4 viewProjection;
+    float4x4 inverseView;
+    float4 eyePosition;
+};
+
+// 2. Accessing N-Views in a Structured Buffer
+// This buffer contains data for all active views (e.g., Left, Right, Inset Left, Inset Right)
+StructuredBuffer<SpatialView> eyeViews;
+
+struct VertexInput {
+    float3 position : POSITION;
+};
+
+struct VertexOutput {
+    float4 position : SV_Position;
+    uint viewID : SV_ViewID;
+};
+
+VertexOutput main(VertexInput input, uint viewID : SV_ViewID) {
+    VertexOutput output;
+
+    // Slang makes it easy to access the current eye view data
+    // The compiler and hardware ensure that 'viewID' matches the current broadcast layer
+    SpatialView currentView = eyeViews[viewID];
+
+    output.position = mul(currentView.viewProjection, float4(input.position, 1.0));
+    output.viewID = viewID;
+    return output;
+}
+----
+
+== Propagation to the Fragment Shader
+
+The `SV_ViewID` isn't just for the vertex shader. You can propagate it down to the **Fragment Shader** to perform eye-specific logic.
+
+Why would you do this? Consider **Specular Highlights**. Since each eye is at a slightly different physical location, the reflections on a shiny surface should be slightly different for each eye. By using the `eyePosition` from our `SpatialView` structure (indexed by `viewID`), we can calculate the correct view-dependent lighting for each eye in a single pass.
+
+== Modular Spatial Shaders
+
+Slang's support for **Generics** and **Interfaces** means we can write shaders that are completely agnostic of the number of views. We can define our spatial logic once and then let the compiler handle the underlying details of the multiview integration.
+
+This significantly reduces the chances of errors. For example, if you add a third view for a "Spectator Camera" or a "Rear View Mirror," you don't need to change your shader code—you just update your view mask and the size of your `eyeViews` buffer.
+
+In the next chapter, we'll see how to push this "N-View" mindset even further by looking at **Quad-Views** and **Foveated Rendering**.
+
+xref:02_native_multiview.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

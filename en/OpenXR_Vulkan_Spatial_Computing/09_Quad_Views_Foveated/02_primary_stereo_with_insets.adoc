@@ -1,0 +1,60 @@
+:pp: {plus}{plus}
+= Primary Stereo with Insets
+
+In a **Quad-View** architecture, each eye is actually seeing two overlapping images. The **Primary View** is a wide, lower-resolution image that covers the user's entire field-of-view (FOV). The **Inset View** is a smaller, high-resolution image that is centered around the user's gaze.
+
+== The Pixel Density Problem
+
+To understand why we use quad-views, we must consider the hardware limits of modern displays. A typical VR headset might have a 4K resolution per eye spread over a 110-degree FOV.
+
+*   **Result**: This gives a density of roughly 20-25 **PPD** (Pixels Per Degree).
+*   **The Goal**: Human "Retina" resolution is closer to 60 PPD.
+
+We cannot simply double the resolution of the entire display—the GPU couldn't handle it. Instead, we use **Foveated Rendering**. We render a high-density "Inset" (60 PPD) only where the eye is looking, and a lower-density "Primary" (20 PPD) for the periphery.
+
+== Fixed vs. Dynamic Foveation
+
+1.  **Fixed Foveation (FFR)**: The high-detail inset is locked to the center of the lens. This is effective because XR lenses are naturally blurrier at the edges anyway.
+2.  **Dynamic Foveation (DFR)**: The high-detail inset moves in real-time based on **Eye Tracking** data. This is the "Holy Grail" of XR performance, as the user always sees perfect detail regardless of where they look.
+
+[source,cpp]
+----
+// 1. Defining the View Config for Quad-Views (N=4)
+// Indices 0,1 are the wide base views.
+// Indices 2,3 are the high-detail foveal insets.
+XrViewConfigurationView configViews[4];
+----
+
+== Rendering the Quad-View in Slang
+
+From a rendering perspective, our engine manages four distinct view matrices. The inset views (2 and 3) have a much smaller FOV, which effectively "zooms in" on the scene without changing the camera position.
+
+[source,slang]
+----
+// 2. Slang Shader Handling N=4 Views
+struct QuadViewData {
+    float4x4 viewProjection;
+    float4 viewportScale; // Scale factor for foveal inset
+};
+
+StructuredBuffer<QuadViewData> allViews; // 4 Views total
+
+struct VertexOutput {
+    float4 position : SV_Position;
+    uint viewID : SV_ViewID;
+};
+
+VertexOutput main(uint viewID : SV_ViewID, float3 pos : POSITION) {
+    VertexOutput output;
+    QuadViewData current = allViews[viewID];
+
+    // The GPU broadcasts the same geometry to 4 different viewports/layers
+    output.position = mul(current.viewProjection, float4(pos, 1.0));
+    output.viewID = viewID;
+    return output;
+}
+----
+
+Crucially, the **Inset View** isn't just a zoomed-in version of the base view. It's a high-density image that captures more detail from the 3D scene. We are effectively focusing the GPU's rasterization power on a smaller subset of the world.
+
+xref:01_introduction.adoc[Previous] | xref:03_multi_layer_composition.adoc[Next]

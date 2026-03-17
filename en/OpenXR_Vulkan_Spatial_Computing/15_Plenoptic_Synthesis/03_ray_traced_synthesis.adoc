@@ -1,0 +1,49 @@
+:pp: {plus}{plus}
+= Ray Traced Synthesis and Microlens Arrays
+
+While the raster path for plenoptic synthesis is fast, it's often an approximation. For high-fidelity holographic displays, we want to simulate the exact physical optics of a display—particularly how rays travel through a **Microlens Array** (MLA). This is where **Vulkan Ray Tracing** (VRT) becomes the engine's primary tool for synthesis.
+
+== Physical Optics: The Microlens Array (MLA)
+
+To understand ray-traced synthesis, you must understand how lightfield cameras work. They use a **Microlens Array**—a grid of thousands of tiny lenses placed in front of the sensor. Each microlens captures a small "patch" of the scene from multiple angles.
+
+In our ray tracing pipeline, we reverse this process:
+
+1.  **Primary Ray**: We trace a ray from the virtual eye to the screen.
+2.  **Microlens Intersection**: We simulate the ray passing through a virtual microlens.
+3.  **Refraction**: We calculate how the lens bends the ray based on its physical properties (focal length, curvature).
+4.  **LightField Lookup**: The refracted ray now points to a specific 4D coordinate in our plenoptic buffer.
+
+== Implementing the Virtual Lens in Slang
+
+Using the `RaytracingAccelerationStructure` in Vulkan, we can simulate complex lenses that a raster shader cannot.
+
+[source,slang]
+----
+// RayGen shader in Slang for plenoptic synthesis
+[shader("raygeneration")]
+void rayGenMain() {
+    uint2 pixelID = DispatchRaysIndex().xy;
+    float2 uv = float2(pixelID) / float2(DispatchRaysDimensions().xy);
+
+    // 1. Trace a ray through the virtual microlens optics
+    // This function calculates the refraction based on the MLA geometry
+    RayDesc ray = generateRayThroughLens(uv);
+
+    // 2. Intersect the ray with our 4D LightField "box" (the ST/UV planes)
+    float4 color = intersectLightField(ray, lightFieldData);
+
+    // 3. Write the final result to the OpenXR swapchain image
+    outputImage[pixelID] = color;
+}
+----
+
+== Why Ray Trace? Physical Fidelity
+
+Ray tracing allows us to simulate **Vergence-Accommodation Conflict (VAC)** solutions. By adjusting the virtual focal length of our microlens array in real-time, we can change the "Plane of Focus" of the holographic image. This allows the user's eyes to naturally focus on near or far virtual objects, eliminating the eye strain common in standard fixed-focus headsets.
+
+Furthermore, ray tracing allows us to handle **Non-Uniform LightFields**. If our 4D data is stored in a sparse tree (like the Octrees we covered in the Compute tutorial), ray tracing can traverse those structures much more efficiently than a series of nested loops in a fragment shader.
+
+By combining the 4D theory of LightFields with the physical accuracy of Vulkan Ray Tracing, we create a spatial rendering pipeline that can handle the most advanced holographic displays on the market.
+
+xref:02_synthesis_shaders.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

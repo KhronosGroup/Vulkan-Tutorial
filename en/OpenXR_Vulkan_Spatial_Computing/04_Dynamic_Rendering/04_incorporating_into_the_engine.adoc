@@ -1,0 +1,110 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+In this chapter, we've transitioned to direct spatial rendering by leveraging the engine's existing dynamic rendering path in `renderer_rendering.cpp`. This bypasses legacy state and allows for eye-specific viewport management. An example of this implementation can be found in link:../../../attachments/openxr_engine/renderer_rendering.cpp[renderer_rendering.cpp] and link:../../../attachments/openxr_engine/renderer_pipelines.cpp[renderer_pipelines.cpp].
+
+== Direct Rendering into Spatial Swapchains
+
+In `renderer_rendering.cpp`, our `Render` function already uses `vk::RenderingInfo`. To support OpenXR, we must ensure we point it at the correct runtime image:
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ... Wait for runtime to be ready ...
+    xrContext.waitSwapchainImage();
+
+    for (uint32_t eye = 0; eye < 2; ++eye) {
+        // 1. Acquire the next image for this eye
+        uint32_t imageIndex = xrContext.acquireSwapchainImage(eye);
+
+        // 2. Point rendering at the acquired XR image view
+        // xrImageViews is our per-eye vector of swapchain image views
+        vk::RenderingAttachmentInfo colorAttachment{
+            .imageView = *eyeSwapchainImageViews[eye][imageIndex],
+            .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+            .clearValue = vk::ClearValue{vk::ClearColorValue{std::array<float, 4>{0.1f, 0.1f, 0.1f, 1.0f}}}
+        };
+
+        vk::RenderingInfo passInfo{
+            .renderArea = vk::Rect2D({0, 0}, swapChainExtent),
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &colorAttachment
+        };
+
+        commandBuffer.beginRendering(passInfo);
+
+        // Issue draws for this eye
+        RenderEye(commandBuffer, eye);
+
+        commandBuffer.endRendering();
+
+        // 3. Hand the image back to OpenXR
+        xrContext.releaseSwapchainImage(eye);
+    }
+}
+----
+
+== Managing Stereo Viewports
+
+For headsets, we must render from two different viewpoints. In our engine's `Render` loop, we apply view-specific viewports and scissors:
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ... inside the render loop ...
+
+    for (uint32_t eye = 0; eye < 2; ++eye) {
+        // Retrieve asymmetric projection and eye-specific viewport from OpenXR
+        // xrContext provides these based on xrLocateViews
+        auto viewport = xrContext.getViewport(eye);
+        auto scissor = xrContext.getScissor(eye);
+
+        commandBuffer.setViewport(0, viewport);
+        commandBuffer.setScissor(0, scissor);
+
+        // Update the eye-specific View and Projection matrices in our UBO
+        // Note: Shaders don't need to change yet! We are rendering each eye sequentially.
+        updateUniformBuffer(currentFrame, eye);
+
+        // Draw the scene for this eye
+        // ...
+    }
+}
+----
+
+== The updateUniformBuffer Helper
+
+Since our engine is currently rendering eyes **sequentially** (one after another), we can reuse our existing shaders. We simply need to update the view and projection matrices in our `UniformBufferObject` for each eye pass.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::updateUniformBuffer(uint32_t currentFrame, uint32_t eye, const XrPosef* overridePose) {
+    // 1. Retrieve the predicted View and Projection from OpenXR
+    // If overridePose is null, we query the latest from the context
+    glm::mat4 viewMatrix = overridePose ? xrPoseToMatrix(*overridePose) : xrContext.getViewMatrix(eye);
+    glm::mat4 projMatrix = xrContext.getProjectionMatrix(eye);
+
+    // 2. Update the UBO for the current frame and eye
+    UniformBufferObject ubo{};
+    ubo.view = viewMatrix;
+    ubo.proj = projMatrix;
+    ubo.camPos = overridePose ? glm::vec3(overridePose->position.x, overridePose->position.y, overridePose->position.z)
+                              : xrContext.getEyePosition(eye);
+
+    // 3. Directly update the mapped memory
+    // uniformBuffersMapped is indexed by frame and eye
+    memcpy(uniformBuffersMapped[currentFrame][eye], &ubo, sizeof(UniformBufferObject));
+}
+----
+
+== Why These Changes?
+
+By binding the XR image directly into `vk::RenderingInfo` and updating viewports/scissors per-eye, we eliminate the need for an intermediate "Blit" pass. This ensures that every GPU cycle is spent on spatial content, not memory copies. At this stage, our shaders remain unchanged because we are essentially just "drawing the world twice" from different perspectives. In later chapters, we'll see how **Multiview** can collapse these two passes into one.
+
+xref:03_stereo_viewport_scissor.adoc[Previous] | xref:../05_Predictive_Frame_Loop/01_introduction.adoc[Next]

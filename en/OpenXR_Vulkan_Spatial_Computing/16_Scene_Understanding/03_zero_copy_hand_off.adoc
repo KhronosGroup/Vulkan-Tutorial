@@ -1,0 +1,45 @@
+:pp: {plus}{plus}
+= Zero-Copy Hand-off for Sensor Data
+
+To achieve real-time scene understanding, we cannot afford to process high-resolution sensor data on the CPU. Moving depth maps or raw camera feeds from the headset's hardware into system RAM, processing them with the CPU, and then sending them back to the GPU is simply too slow for Mixed Reality (**MR**). We need a **Zero-Copy Hand-off**.
+
+== The Concept: Direct Memory Access (DMA)
+
+In a zero-copy hand-off, the OpenXR runtime captures sensor data directly into a GPU buffer that our Vulkan engine can see. This uses **DMA** (Direct Memory Access) to bypass the host processor entirely.
+
+1.  **VRAM Allocation**: The XR runtime or the OS driver allocates a region of **VRAM** (Video RAM) for the sensor data.
+2.  **External Memory Handle**: OpenXR provides a handle to this memory using extensions like `VK_KHR_external_memory`.
+3.  **Engine Import**: Our engine imports this handle, wrapping it in a `vk::raii::Image` or `vk::raii::Buffer`.
+4.  **Compute Access**: Our compute shaders (authored in **Slang**) process this raw data directly in-place.
+
+== Implementation: Piping Data to Compute
+
+By bypassing the CPU, we reduce latency and free up cycles for the main game simulation. In our engine, we use this for **Sensor Fusion**—the process of combining depth data with color camera feeds to create high-fidelity, textured spatial meshes.
+
+When importing these buffers, we must ensure our Vulkan memory types match the requirements of the external handle. This typically requires matching the **LUID** (Locally Unique Identifier) of the device that created the memory.
+
+[source,cpp]
+----
+// Importing external sensor memory into Vulkan RAII
+vk::ImportMemoryBufferInfoKHR importInfo{
+    .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd, // Linux/Android (or Win32 on Windows)
+    .handle = sensorMemoryHandle
+};
+
+vk::MemoryAllocateInfo allocInfo{
+    .pNext = &importInfo,
+    .allocationSize = sensorDataSize,
+    .memoryTypeIndex = findSensorCompatibleMemoryType()
+};
+
+// RAII handle automatically manages the lifetime of the imported memory
+vk::raii::DeviceMemory importedMemory(device, allocInfo);
+----
+
+== Why Zero-Copy is Critical for MR
+
+In Mixed Reality (MR), users are often viewing the real world through **Passthrough**—a digital video feed of their surroundings. If there is even a 20ms delay between the camera capturing the room and the GPU displaying it, the user will feel a nauseating disconnect between their physical movement and the visual feed. This is known as **Motion-to-Photon Latency**.
+
+Zero-copy hand-offs ensure that sensor data moves at the speed of the GPU's internal bus, keeping the latency below the threshold of human perception and maintaining the illusion that the virtual and physical worlds occupy the same space.
+
+xref:02_environmental_ingestion.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

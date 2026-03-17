@@ -1,0 +1,61 @@
+:pp: {plus}{plus}
+= High-Density View Arrays
+
+Managing a 4D lightfield poses a significant memory challenge. Even at modest resolutions, the total number of color samples can quickly reach gigabytes.
+
+== The Gigabyte Problem
+
+Consider a modest lightfield:
+*   **Spatial**: latexmath:[1024 \times 1024] entry points.
+*   **Directional**: latexmath:[32 \times 32] angles.
+*   **Data**: latexmath:[1024 \times 1024 \times 32 \times 32 \approx 1 \text{ billion rays}].
+
+At 16 bytes per ray (RGBA FP32), that is **16 GB of VRAM**. This exceeds the capacity of many consumer GPUs. To make this work, we must optimize both storage and access.
+
+== FP16 and Quantization: Bandwidth Savings
+
+The first step is reducing the precision of each ray. Because lightfields often exhibit high directional redundancy (adjacent rays are very similar), we can compress the color data.
+
+In Slang, we can use `half4` instead of `float4`. This immediately halves the VRAM footprint to **8 GB**.
+
+== Buffer Device Address (BDA): Pointer-Based Access
+
+With such large datasets, the overhead of standard Vulkan Descriptor Sets can become a bottleneck. By using **Buffer Device Address**, we can pass a raw 64-bit pointer to our lightfield data directly into our shaders.
+
+[source,cpp]
+----
+// Using BDA to get a raw pointer to a high-density buffer
+vk::BufferDeviceAddressInfo addressInfo{
+    .buffer = *lightFieldBuffer
+};
+
+uint64_t bufferPointer = device.getBufferAddress(addressInfo);
+----
+
+This is particularly useful for **N-View** systems where we might be accessing dozens of different view layers in a single pass. We can simply pass the pointer once and calculate offsets mathematically.
+
+== Cache Locality: Spatial-Directional Tiling
+
+A standard 4D array layout is terrible for GPU caches. If the shader samples a ray and then its neighbor, the neighbor might be megabytes away in linear memory, causing a "Cache Miss."
+
+To fix this, we implement **4D Tiling**. We reorganize the data so that a latexmath:[4 \times 4 \times 4 \times 4] block of spatial and directional rays are stored contiguously. This ensures that when a Compute Unit (CU) fetches one sample, the neighboring rays are already in the L1/L2 cache.
+
+[source,slang]
+----
+// Tiled 4D indexing example in Slang
+uint getTiledIndex(uint2 st, uint2 uv) {
+    uint2 tileSize = uint2(8, 8);
+    uint2 tileCoord = st / tileSize;
+    uint2 localCoord = st % tileSize;
+
+    // Reorganizing memory to keep spatial neighbors together
+    return (tileCoord.x + tileCoord.y * stResTiles) * (tileSize.x * tileSize.y) +
+           (localCoord.x + localCoord.y * tileSize.x);
+}
+----
+
+By combining data compression, raw pointer flexibility via BDA, and tiled memory layouts, we can manage massive lightfield datasets that would otherwise be impossible to store.
+
+In the next chapter, we will see how to turn these rays back into images using **Plenoptic Synthesis**.
+
+xref:02_4d_lightfield_representation.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

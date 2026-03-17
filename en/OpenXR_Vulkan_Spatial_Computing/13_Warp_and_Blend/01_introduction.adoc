@@ -1,0 +1,28 @@
+:pp: {plus}{plus}
+= Warp and Blend using Vulkan Compute: Introduction
+
+In an ideal world, every projection surface in a **CAVE** would be perfectly flat, every projector would be perfectly aligned, and the walls would have zero thickness. In the real world, walls have slight curves, projectors are mounted at awkward angles, and corners are never truly 90 degrees.
+
+To solve these physical imperfections, we use **Warp and Blend** techniques. **Warping** is the process of geometrically distorting the rendered image so that it looks correct when projected onto a non-flat surface. **Blending** (or Edge Blending) is the process of smoothing the brightness in areas where multiple projectors overlap, preventing "hot spots" of double-brightness.
+
+In this chapter, we will explore how to use the power of **Vulkan Compute** to handle these post-processing tasks with maximum efficiency:
+
+1.  **Geometric Correction**: Using compute shaders to map our 3D rendered scenes onto curved or irregular physical surfaces via a lookup table (**LUT**).
+2.  **Edge Blending**: Implementing alpha-blending logic in compute to seamlessly join multiple projector outputs.
+3.  **Lens Distortion Correction**: Utilizing Slang to author high-performance warping shaders that can be shared across both CAVE systems and HMDs.
+
+== Why Use Compute?
+
+While warping could be done in a traditional fragment shader by rendering a screen-aligned quad, **Vulkan Compute** offers several advantages for this specific task:
+
+*   **Atomic Precision**: Compute shaders allow us to use atomic operations if we need to build complex histograms for auto-calibration.
+*   **Shared Memory (LDS)**: We can use **groupshared** memory to perform high-quality filtering (like bicubic interpolation) during the warp, which is significantly higher quality than standard hardware bilinear filtering.
+*   **Asynchronous Execution**: As we learned in the *Advanced Vulkan Compute* tutorial, we can run these warping kernels on an **Async Compute Queue** while the next frame is already being rendered on the graphics queue.
+
+== The Calibration Pipeline
+
+Warping is only as good as the data driving it. Most professional installations use a camera-based calibration system that generates a **Warp Map**—a high-precision texture where each pixel contains the (u, v) coordinates of where that pixel should actually "land" on the physical wall.
+
+By the end of this chapter, you will be able to take a standard rectilinear render and "warp" it into any physical shape required by the installation, ensuring that the virtual world remains perfectly undistorted to the user's eyes.
+
+xref:../12_CAVE_Architecture/04_incorporating_into_the_engine.adoc[Previous] | xref:02_geometric_correction.adoc[Next]

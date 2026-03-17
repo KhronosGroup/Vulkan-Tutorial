@@ -1,0 +1,54 @@
+:pp: {plus}{plus}
+= On-GPU Inference with Cooperative Matrices
+
+To process the flood of real-world data coming from our zero-copy sensor hand-offs, our engine needs a way to "understand" geometry and motion instantly. Standard compute shaders are excellent for general-purpose parallel tasks, but neural networks rely on heavy matrix multiplication—a task that standard **ALU** (Arithmetic Logic Unit) pipelines can find inefficient.
+
+To solve this, we use **Cooperative Matrices** (as detailed in our Advanced Compute series), which tap into the GPU's dedicated hardware for high-speed matrix math.
+
+== The Concept: Specialized ML Hardware
+
+In a spatial engine, we use ML (Machine Learning) for tasks like **Hand Tracking** and **Object Recognition**. These tasks involve multiplying massive matrices of weights against input sensor data to produce probabilities or coordinates.
+
+*   **Standard Compute**: Each thread works independently on a single scalar or vector operation. To multiply a large matrix, threads must coordinate manually via shared memory, often hitting bandwidth bottlenecks.
+*   **Cooperative Matrices**: A whole **Subgroup** (32 or 64 threads) works as a single unit to multiply a large matrix tile in one operation. This "cooperation" allows the hardware to bypass traditional cache levels and use high-speed internal paths (like **Tensor Cores** on NVIDIA or **Matrix Accelerators** on AMD).
+
+== Implementing Hand-Pose Refinement
+
+Consider raw hand-tracking data from a headset. It is often noisy—your virtual fingers might "jitter" as the sensor loses sight of them. We can use a small neural network to **Refine** these poses, using the previous 5 frames of movement to predict the most likely "smooth" position of each joint.
+
+By performing this inference on the GPU, we can use **GEMM** (General Matrix Multiply) operations to process all joint refinements in parallel.
+
+[source,slang]
+----
+// Using Slang's Matrix fragments for cooperative ML inference
+// Note: Requires Vulkan 1.4 with VK_KHR_cooperative_matrix
+[shader("compute")]
+[numthreads(32, 1, 1)] // Subgroup-sized for optimal matrix math
+void performHandRefinement() {
+    // 1. Load raw joint data and neural network weights into fragments
+    // These matrices represent a 16x16 tile of the larger network
+    cooperative_matrix<float16_t, id_Subgroup, 16, 16> input;
+    cooperative_matrix<float16_t, id_Subgroup, 16, 16> weights;
+
+    input.load(rawJointBuffer, jointOffset);
+    weights.load(weightBuffer, weightOffset);
+
+    // 2. Perform high-speed Matrix-Multiply-Accumulate (MMA)
+    // The hardware handles the subgroup-wide synchronization automatically
+    auto result = mul(input, weights);
+
+    // 3. Store the "Refined" joint positions directly back to the Action Space buffer
+    result.store(refinedPoseBuffer, poseOffset);
+}
+----
+
+== Why On-GPU? Latency and Power
+
+Performing ML inference on the GPU is critical for spatial computing for two primary reasons:
+
+1.  **Latency**: If we sent sensor data to the CPU for ML processing, the finger movement would visibly lag behind the user's physical hand. This breaks the feeling of **Presence**.
+2.  **Power Efficiency**: Matrix accelerators are significantly more energy-efficient than general-purpose ALUs for these specific tasks. For mobile headsets, this translates directly to longer sessions and reduced thermal throttling.
+
+By integrating ML directly into our spatial compute pipeline, we turn raw, noisy sensor data into clean, interactive inputs with the same low-latency performance as our main rendering path.
+
+xref:01_introduction.adoc[Previous] | xref:03_refining_spatial_data.adoc[Next]

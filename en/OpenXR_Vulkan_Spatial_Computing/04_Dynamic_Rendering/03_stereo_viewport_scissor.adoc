@@ -1,0 +1,57 @@
+:pp: {plus}{plus}
+= Stereo Viewport & Scissor Management
+
+When rendering for XR, we aren't just drawing to a single screen. We are drawing to multiple **Views**, each with its own perspective and projection. The most common case is **Stereo** (two views), but headsets with extreme fields of view or foveal insets can require many more. To manage this in a dynamic rendering context, we must master **Viewports** and **Scissors**.
+
+== The Architecture of the Eye: Asymmetric Projections
+
+To understand why viewport and scissor management is so critical in XR, we must look at the human eye. Unlike standard 2D displays, where the viewer is typically centered and looking straight at the screen, XR lenses are often offset.
+
+1.  **Optical Center Offset**: The center of the lens (where the image is clearest) might not be the center of the display panel.
+2.  **Field of View (FOV)**: Headsets often have larger outer FOVs than inner FOVs to provide a wider sense of immersion.
+3.  **Result**: This leads to **Asymmetric Projections**. The "frustum" is skewed. In our engine, this means we cannot simply render one eye and "flip" it for the other. Each eye must be treated as a unique camera with its own viewport and scissor constraints.
+
+[source,cpp]
+----
+// Configure the viewport for a specific eye view
+vk::Viewport eyeViewport{};
+eyeViewport.x = 0.0f;
+eyeViewport.y = 0.0f;
+eyeViewport.width = static_cast<float>(viewWidth);
+eyeViewport.height = static_cast<float>(viewHeight);
+eyeViewport.minDepth = 0.0f;
+eyeViewport.maxDepth = 1.0f;
+
+// Configure the scissor to match the viewport
+vk::Rect2D eyeScissor{};
+eyeScissor.offset = vk::Offset2D{0, 0};
+eyeScissor.extent = vk::Extent2D{viewWidth, viewHeight};
+
+// Dynamic state update in our command buffer
+commandBuffer.setViewport(0, eyeViewport);
+commandBuffer.setScissor(0, eyeScissor);
+----
+
+== Single-Texture vs. Array-Texture Swapchains
+
+Depending on the XR runtime, we might receive one large "atlas" texture containing both eyes, or an **Array Texture** where each eye has its own layer.
+
+*   **Atlasing**: We use the `x` and `y` offsets of the `vk::Viewport` and `vk::Rect2D` to draw the eyes side-by-side.
+*   **Array Textures**: We keep the viewport at `(0,0)` but we change the `imageView` layer in our `vk::RenderingAttachmentInfo`.
+
+Dynamic rendering makes it easy to handle both cases by simply adjusting the attachment info. This flexibility allows our engine to support different headset architectures (like the Pimax wide-FOV headsets vs. the Meta Quest) without rewriting the render loop.
+
+== Optimal View Management: The Pacing Pattern
+
+To minimize state transitions and optimize performance, our engine follows a specific pattern for each eye view:
+
+1.  **Acquire the Index**: Get the swapchain index from OpenXR for the current frame.
+2.  **Bind the View**: Point the `vk::RenderingAttachmentInfo` to the correct eye layer or atlas region.
+3.  **Apply Viewport/Scissor**: Tell the GPU the exact bounds of the current eye's frustum.
+4.  **Issue Draw Calls**: Render the scene using the predicted view and projection matrices.
+
+By treating viewports and scissors as dynamic state, we avoid the heavy "Pipeline Stall" that would occur if we had to switch entire pipeline objects between eyes. This keeps our GPU utilization high and our latency low.
+
+With our rendering pipeline now fully adapted to the unique requirements of spatial views, we are ready to tackle the timing and pacing logic that makes XR truly immersive. In the next chapter, we will build our **Predictive Frame Loop**.
+
+xref:02_rendering_to_spatial_swapchains.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

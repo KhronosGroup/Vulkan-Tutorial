@@ -1,0 +1,65 @@
+:pp: {plus}{plus}
+= 4D LightField Representation
+
+When we talk about representing a lightfield in the engine, we need a mathematical structure that maps a 4D light ray into a linear memory address.
+
+== The 7D Plenoptic Function: The Starting Point
+
+To understand lightfields, we must first look at the **Plenoptic Function** (from the Latin *plenus* meaning full and *opticus* meaning vision). This is a 7D function latexmath:[P(x, y, z, \theta, \phi, \lambda, t)] that describes every photon in the universe:
+
+*   latexmath:[(x, y, z)]: Position in space.
+*   latexmath:[(\theta, \phi)]: Direction of travel.
+*   latexmath:[\lambda]: Wavelength (color).
+*   latexmath:[t]: Time.
+
+== Reduction to 4D: The Light Box
+
+Storing 7 dimensions is impossible. To make this practical for a GPU, we make three assumptions:
+
+1.  **Static Scene**: We ignore time (latexmath:[t]).
+2.  **RGB Color**: We reduce wavelength (latexmath:[\lambda]) to three channels.
+3.  **Empty Space**: We assume light doesn't change color as it travels through air. This means we only need to know where a ray enters and leaves a "Light Box."
+
+This leaves us with **4 Dimensions**: two for the entry point (**ST plane**) and two for the entry direction (**UV plane**). This is the **Two-Plane Parametrization**.
+
+== Mapping to Vulkan Memory
+
+In Vulkan, we represent this 4D structure as a massive `vk::raii::Buffer`. Because the dataset is so large, we use `RWStructuredBuffer` in Slang to handle the indexing.
+
+[source,cpp]
+----
+// Initializing a 4D LightField buffer using RAII
+vk::BufferCreateInfo bufferInfo{
+    .size = spatialRes * directionalRes * sizeof(glm::vec4),
+    .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+    .sharingMode = vk::SharingMode::eExclusive
+};
+
+vk::raii::Buffer lightFieldBuffer(device, bufferInfo);
+----
+
+== Indexing the 4th Dimension
+
+In our Slang shaders, we treat this linear memory as a 4D structure. Slang's ability to handle custom indexing makes it easy to calculate the 1D index from our 4D coordinates.
+
+[source,slang]
+----
+struct LightFieldRay {
+    float4 color;
+};
+
+RWStructuredBuffer<LightFieldRay> lightFieldData;
+
+// Mapping 4D coordinates to a linear index
+// st: entry point on the spatial plane
+// uv: entry point on the directional plane
+uint getLinearIndex(uint2 st, uint2 uv, uint2 stRes, uint2 uvRes) {
+    return st.x + st.y * stRes.x +
+           uv.x * (stRes.x * stRes.y) +
+           uv.y * (stRes.x * stRes.y * uvRes.x);
+}
+----
+
+By using this representation, the engine can treat a lightfield as a simple array of "light fragments," making it compatible with existing spatial pipelines while providing the foundation for complex plenoptic synthesis.
+
+xref:01_introduction.adoc[Previous] | xref:03_high_density_view_arrays.adoc[Next]

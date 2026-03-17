@@ -1,0 +1,10 @@
+:pp: {plus}{plus}
+= Platform Divergence: Desktop DirectMode vs. Mobile Tiled/ASW
+
+Spatial computing is unique because it spans two radically different hardware universes. On one end, we have the high-end **Desktop VR** PC, powered by a 400-watt GPU and a high-speed PCIe bus. On the other end, we have the **Mobile Standalone** headset, running on a mobile processor with a strict power budget of under 10 watts.
+
+As an engine developer, you cannot treat these platforms the same. A "standard" rendering loop that runs at 200 FPS on a desktop will likely drain a mobile battery in minutes or fail to maintain the stable 72Hz required for spatial comfort.
+
+In this chapter, we will explore the techniques required to master both platforms. We'll learn how to utilize **Direct Mode** and **HDR10** to saturate high-end GPUs, and how to use **Tile-Based Rendering (TBR)** and **Application SpaceWarp (ASW)** to extract every last drop of performance from mobile silicon. By the end of this chapter, you'll know how to architect your engine's backend to automatically scale its fidelity and efficiency based on the detected spatial hardware.
+
+xref:../18_Semantic_Occlusion/04_incorporating_into_the_engine.adoc[Previous] | xref:02_desktop_high_end.adoc[Next]

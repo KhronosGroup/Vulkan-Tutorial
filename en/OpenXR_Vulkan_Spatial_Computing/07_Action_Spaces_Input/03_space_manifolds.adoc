@@ -1,0 +1,55 @@
+:pp: {plus}{plus}
+= Space Manifolds
+
+While most input actions result in discrete events (like a button press), pose actions are special: they are inherently spatial. To bridge the gap between the user's hand movement and the objects in our 3D engine, we need to create an **Action Space**.
+
+== Virtual Coordinate Systems: The Action Space
+
+Think of an action space as a virtual coordinate system that "follows" the user's hand. In OpenXR, all spatial tracking is relative. To find where a hand is, we must ask: "Where is this Hand Space relative to my World Space?"
+
+1.  **Grip Pose**: The location of the user's palm. This is used for holding objects like a sword or a steering wheel.
+2.  **Aim Pose**: The location and orientation of a ray extending from the controller's front. This is used for pointing, laser-pointers, and UI interaction.
+
+[source,cpp]
+----
+// 1. Create a Space for our Hand Pose Action
+XrActionSpaceCreateInfo actionSpaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+actionSpaceInfo.action = handPoseAction;
+// This allows us to apply an offset (e.g., to align the virtual hand with the physical controller)
+actionSpaceInfo.poseInActionSpace = identityPose;
+
+XrSpace handSpace;
+xrCreateActionSpace(session, &actionSpaceInfo, &handSpace);
+----
+
+== Space Manifolds: From Quaternions to Matrices
+
+Every frame, we use `xrLocateSpace` to find where this hand space is located. The runtime provides this as an `XrSpaceLocation`, which contains a position (vector) and an orientation (quaternion).
+
+However, our Vulkan shaders typically expect a **4x4 Matrix** for spatial transformations. This conversion is the "Space Manifold"—mapping the 7D tracking data (3 position + 4 quaternion) into the 16D matrix format used by the GPU's fixed-function vertex hardware.
+
+[source,cpp]
+----
+// 2. Locate the hand space relative to the world
+XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+xrLocateSpace(handSpace, worldSpace, predictedDisplayTime, &location);
+
+if (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) {
+    // 3. Convert XrPosef to a 4x4 transformation matrix
+    // This matrix represents the manifold of the controller's path through the virtual world
+    vk::mat4 handTransform = xrPoseToMatrix(location.pose);
+
+    // Pass this matrix to our engine's scene graph or directly to a shader
+    pushConstants.modelMatrix = handTransform;
+}
+----
+
+== Why We Use "App Space"
+
+In spatial computing, the **App Space** (or Stage Space) is the origin of our virtual world. By locating the `handSpace` relative to the `worldSpace`, we ensure that if the user walks around their room, the virtual hand stays perfectly aligned with their physical hand relative to the virtual environment.
+
+This transformation process effectively turns a physical controller into a **Space Manifold**—a virtual object that moves through our world's coordinate system. Whether the user is pointing a laser, picking up a sword, or simply waving their hand, the engine sees it all as a single, consistent matrix.
+
+In the next chapter, we will look at how to optimize the rendering of these multiple views using **Slang for Spatial Shaders**.
+
+xref:02_openxr_action_system.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]

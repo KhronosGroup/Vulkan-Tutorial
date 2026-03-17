@@ -148,8 +148,6 @@ set(SOURCES_COMMON
     ${SIMPLE_ENGINE_DIR}/imgui_system.cpp
     ${SIMPLE_ENGINE_DIR}/imgui/imgui.cpp
     ${SIMPLE_ENGINE_DIR}/imgui/imgui_draw.cpp
-    ${SIMPLE_ENGINE_DIR}/imgui/imgui_tables.cpp
-    ${SIMPLE_ENGINE_DIR}/imgui/imgui_widgets.cpp
     ${SIMPLE_ENGINE_DIR}/vulkan_device.cpp
     ${SIMPLE_ENGINE_DIR}/pipeline.cpp
     ${SIMPLE_ENGINE_DIR}/descriptor_manager.cpp

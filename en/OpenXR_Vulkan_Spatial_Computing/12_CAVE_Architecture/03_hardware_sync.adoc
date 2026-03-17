@@ -25,9 +25,8 @@ We use the **VK_NV_present_barrier** extension to join these hardware groups.
 [source,cpp]
 ----
 // Checking for Present Barrier support and joining a group
-vk::PhysicalDevicePresentBarrierFeaturesNV barrierFeatures{};
-vk::PhysicalDeviceFeatures2 features2{ &barrierFeatures };
-physicalDevice.getFeatures2(&features2);
+auto features2 = physicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDevicePresentBarrierFeaturesNV>();
+const auto& barrierFeatures = features2.get<vk::PhysicalDevicePresentBarrierFeaturesNV>();
 
 if (barrierFeatures.presentBarrier) {
     // When creating the swapchain, we join Barrier 1

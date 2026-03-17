@@ -40,10 +40,8 @@ To find the LUID of a Vulkan physical device, we query the `VkPhysicalDeviceIDPr
 ----
 // Iterating through physical devices to find a match
 for (const auto& physicalDevice : instance.enumeratePhysicalDevices()) {
-    vk::PhysicalDeviceIDProperties idProps;
-    vk::PhysicalDeviceProperties2 props2;
-    props2.pNext = &idProps;
-    physicalDevice.getProperties2(&props2);
+    auto props2 = physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
+    const auto& idProps = props2.get<vk::PhysicalDeviceIDProperties>();
 
     if (idProps.deviceLUIDValid) {
         // Compare the 8-byte LUID against the target from OpenXR

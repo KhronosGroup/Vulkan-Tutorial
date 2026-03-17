@@ -134,10 +134,8 @@ bool Renderer::pickPhysicalDevice() {
     for (auto& _device : devices) {
         if (xrMode) {
             // Match the LUID provided by OpenXR
-            vk::PhysicalDeviceIDProperties idProps;
-            vk::PhysicalDeviceProperties2 props2;
-            props2.pNext = &idProps;
-            _device.getProperties2(&props2);
+            auto props2 = _device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
+            const auto& idProps = props2.get<vk::PhysicalDeviceIDProperties>();
 
             const uint8_t* requiredLuid = xrContext.getRequiredLUID();
             if (requiredLuid && std::memcmp(idProps.deviceLUID, requiredLuid, VK_LUID_SIZE) != 0) {

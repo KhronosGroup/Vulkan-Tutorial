@@ -23,4 +23,4 @@ In this chapter, we will transition our engine's main loop from its legacy `glfw
 
 By the end of this chapter, your engine will no longer be "reacting" to user movement; it will be "anticipating" it, providing the smooth, low-latency experience that defines high-quality spatial computing.
 
-xref:../04_Dynamic_Rendering/04_incorporating_into_the_engine.adoc[Previous] | xref:02_xr_lifecycle.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/02_xr_lifecycle.adoc[Next]

@@ -7,4 +7,4 @@ As an engine developer, you cannot treat these platforms the same. A "standard" 
 
 In this chapter, we will explore the techniques required to master both platforms. We'll learn how to utilize **Direct Mode** and **HDR10** to saturate high-end GPUs, and how to use **Tile-Based Rendering (TBR)** and **Application SpaceWarp (ASW)** to extract every last drop of performance from mobile silicon. By the end of this chapter, you'll know how to architect your engine's backend to automatically scale its fidelity and efficiency based on the detected spatial hardware.
 
-xref:../18_Semantic_Occlusion/04_incorporating_into_the_engine.adoc[Previous] | xref:02_desktop_high_end.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/02_desktop_high_end.adoc[Next]

@@ -15,4 +15,4 @@ In this chapter, we will look at how to:
 2. Update our shader data at the "last microsecond" before submission.
 3. Integrate these late-breaking updates into the engine's command buffer flow.
 
-xref:../05_Predictive_Frame_Loop/04_incorporating_into_the_engine.adoc[Previous] | xref:02_last_second_update.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/02_last_second_update.adoc[Next]

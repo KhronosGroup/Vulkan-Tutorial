@@ -11,4 +11,4 @@ We'll define some key terms like **PPS** (Pixel per Degree) and see how to manag
 
 In the following sections, we'll dive into the details of architecting these primary and inset view layers, and we'll see how to efficiently submit them to the OpenXR compositor for the final image.
 
-xref:../08_Slang_Spatial_Shaders/04_incorporating_into_the_engine.adoc[Previous] | xref:02_primary_stereo_with_insets.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/02_primary_stereo_with_insets.adoc[Next]

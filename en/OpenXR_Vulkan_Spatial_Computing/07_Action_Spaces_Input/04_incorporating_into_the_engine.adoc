@@ -43,4 +43,4 @@ void Engine::Update(XrTime predictedTime) {
 
 By decoupling input from physical hardware (like a specific controller's trigger), we make our engine cross-platform out of the box. Whether the user is using an Oculus Touch controller or a Valve Index "knuckle," the engine only sees the "Grab" action and the associated spatial pose, allowing us to focus on the physics of the interaction rather than the nuances of different hardware drivers.
 
-xref:03_space_manifolds.adoc[Previous] | xref:../08_Slang_Spatial_Shaders/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/03_space_manifolds.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/01_introduction.adoc[Next]

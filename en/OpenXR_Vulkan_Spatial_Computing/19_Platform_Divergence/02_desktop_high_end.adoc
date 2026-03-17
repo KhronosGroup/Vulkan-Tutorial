@@ -37,4 +37,4 @@ vk::SwapchainCreateInfoKHR createInfo{
 
 On the desktop, the spatial mindset is about utilizing every watt and every gigabyte of bandwidth to dissolve the boundary between the user and the virtual world.
 
-xref:01_introduction.adoc[Previous] | xref:03_mobile_mastery.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/03_mobile_mastery.adoc[Next]

@@ -58,4 +58,4 @@ This significantly reduces the chances of errors. For example, if you add a thir
 
 In the next chapter, we'll see how to push this "N-View" mindset even further by looking at **Quad-Views** and **Foveated Rendering**.
 
-xref:02_native_multiview.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/02_native_multiview.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/04_incorporating_into_the_engine.adoc[Next]

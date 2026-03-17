@@ -48,4 +48,4 @@ While semantic labels tell us *what* an object is, they don't always provide its
 
 By utilizing on-GPU inference, we generate these masks with minimal latency, ensuring that as the user moves their hand, the virtual world responds and "tucks behind" it instantly.
 
-xref:01_introduction.adoc[Previous] | xref:03_per_pixel_masking.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/03_per_pixel_masking.adoc[Next]

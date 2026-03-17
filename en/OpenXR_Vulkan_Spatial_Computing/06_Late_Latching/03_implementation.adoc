@@ -60,4 +60,4 @@ By focusing purely on the view and projection matrices, we keep the overhead min
 
 With late latching implemented, our virtual environment is now as anchored as possible. In the next chapter, we will shift our focus to **Action Spaces**—how we turn user input (button clicks and hand movements) into meaningful interactions within this spatially-aligned world.
 
-xref:02_last_second_update.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/02_last_second_update.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/04_incorporating_into_the_engine.adoc[Next]

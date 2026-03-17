@@ -23,4 +23,4 @@ This rhythm ensures that we never render into an image that is currently being d
 
 By the end of this chapter, your engine will be able to render its spatial views directly into the headset's compositor buffers, using our existing RAII wrappers while respecting the runtime's ownership.
 
-xref:../02_OpenXR_Vulkan_Handshake/05_incorporating_into_the_engine.adoc[Previous] | xref:02_external_image_negotiation.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/05_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/02_external_image_negotiation.adoc[Next]

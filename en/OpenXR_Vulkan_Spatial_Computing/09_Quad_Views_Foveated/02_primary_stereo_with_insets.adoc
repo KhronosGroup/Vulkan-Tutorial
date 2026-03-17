@@ -57,4 +57,4 @@ VertexOutput main(uint viewID : SV_ViewID, float3 pos : POSITION) {
 
 Crucially, the **Inset View** isn't just a zoomed-in version of the base view. It's a high-density image that captures more detail from the 3D scene. We are effectively focusing the GPU's rasterization power on a smaller subset of the world.
 
-xref:01_introduction.adoc[Previous] | xref:03_multi_layer_composition.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Next]

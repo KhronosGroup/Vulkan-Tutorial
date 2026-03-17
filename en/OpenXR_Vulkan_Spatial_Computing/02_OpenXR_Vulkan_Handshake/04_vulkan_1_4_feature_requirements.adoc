@@ -69,4 +69,4 @@ We have now successfully:
 
 With the handshake complete, we are ready to tackle the most significant architectural change in an XR engine: moving from engine-owned swapchains to **Runtime-Owned Swapchains**.
 
-xref:03_hardware_alignment_luid.adoc[Previous] | xref:05_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/03_hardware_alignment_luid.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/05_incorporating_into_the_engine.adoc[Next]

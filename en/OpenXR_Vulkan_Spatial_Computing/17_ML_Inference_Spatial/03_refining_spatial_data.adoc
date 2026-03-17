@@ -48,4 +48,4 @@ By refining the spatial data, we move from simple "Visual Passthrough" to true *
 
 By using on-GPU ML to polish our spatial data, we bridge the final gap between the messy physical world and the digital precision required for high-end XR. In the next chapter, we will see how to combine these refined meshes with our rendering to achieve **Semantic Occlusion**.
 
-xref:02_on_gpu_inference.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/02_on_gpu_inference.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/04_incorporating_into_the_engine.adoc[Next]

@@ -59,4 +59,4 @@ By using dynamic rendering, we've successfully decoupled our engine's internal r
 
 This **Separation of Concerns** is what allows our engine to scale seamlessly. Whether we are rendering to a 4K desktop monitor or a dual-eye VR headset, the core command recording logic remains the same. The only thing that changes is *where* the image view points and *how* the projection matrices are calculated.
 
-xref:01_introduction.adoc[Previous] | xref:03_stereo_viewport_scissor.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/03_stereo_viewport_scissor.adoc[Next]

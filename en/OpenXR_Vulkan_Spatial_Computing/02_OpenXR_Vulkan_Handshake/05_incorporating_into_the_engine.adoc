@@ -49,17 +49,17 @@ public:
 
     // Swapchain Management (Chapter 3)
     void createSwapchains(vk::Device device, vk::Format format, vk::Extent2D extent);
-    std::vector<vk::Image> enumerateSwapchainImages(uint32_t eye);
+    std::vector<vk::Image> enumerateSwapchainImages();
     vk::Extent2D getSwapchainExtent();
     vk::Format getSwapchainFormat();
     void waitSwapchainImage();
-    uint32_t acquireSwapchainImage(uint32_t eye);
-    void releaseSwapchainImage(uint32_t eye);
+    uint32_t acquireSwapchainImage();
+    void releaseSwapchainImage();
 
     // Frame Lifecycle (Chapter 5)
     XrFrameState waitFrame();
     void beginFrame();
-    void endFrame(const std::array<std::vector<vk::raii::ImageView>, 2>& views);
+    void endFrame(const std::array<std::vector<vk::ImageView>, 2>& eyeViews);
 
     // View & Projection (Chapter 4 & 11)
     void locateViews(XrTime predictedTime);
@@ -131,16 +131,16 @@ In `Renderer::pickPhysicalDevice`, we must ensure we select the GPU that OpenXR 
 bool Renderer::pickPhysicalDevice() {
     // ... enumerate devices ...
 
-    vk::PhysicalDeviceIDProperties idProps;
-    vk::PhysicalDeviceProperties2 props2;
-    props2.pNext = &idProps;
-
     for (auto& _device : devices) {
-        _device.getProperties2(&props2);
-
         if (xrMode) {
             // Match the LUID provided by OpenXR
-            if (std::memcmp(idProps.deviceLUID, xrContext.getRequiredLUID(), VK_LUID_SIZE) != 0) {
+            vk::PhysicalDeviceIDProperties idProps;
+            vk::PhysicalDeviceProperties2 props2;
+            props2.pNext = &idProps;
+            _device.getProperties2(&props2);
+
+            const uint8_t* requiredLuid = xrContext.getRequiredLUID();
+            if (requiredLuid && std::memcmp(idProps.deviceLUID, requiredLuid, VK_LUID_SIZE) != 0) {
                 continue; // Not the right GPU for XR!
             }
         }
@@ -149,26 +149,26 @@ bool Renderer::pickPhysicalDevice() {
 }
 ----
 
-=== 3. Enabling Vulkan 1.4 Features
+=== 3. Enabling Vulkan 1.3/1.4 Features
 
-In `Renderer::createLogicalDevice`, we must explicitly enable the 1.4 features required for spatial computing:
+In `Renderer::createLogicalDevice`, we must explicitly enable the Vulkan 1.3 features required for spatial computing, particularly **Dynamic Rendering** and **Synchronization 2**:
 
 [source,cpp]
 ----
 // renderer_core.cpp
 bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     // ...
+    // Enable Vulkan 1.3 features
     vk::PhysicalDeviceVulkan13Features vulkan13Features;
     vulkan13Features.dynamicRendering = vk::True;
     vulkan13Features.synchronization2 = vk::True;
 
-    // NEW: OpenXR requires Timeline Semaphores (often a 1.2 feature, standard in 1.4)
-    vk::PhysicalDeviceTimelineSemaphoreFeatures timelineFeatures;
-    timelineFeatures.timelineSemaphore = vk::True;
+    // Enable Multiview (if in XR mode)
+    vk::PhysicalDeviceMultiviewFeatures multiviewFeatures;
+    multiviewFeatures.multiview = xrMode ? vk::True : vk::False;
+    multiviewFeatures.pNext = &vulkan13Features;
 
-    vulkan13Features.pNext = &timelineFeatures;
-
-    // ... create vk::raii::Device ...
+    // ... create vk::raii::Device with multiviewFeatures in pNext ...
 }
 ----
 
@@ -176,4 +176,4 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
 
 By referencing the specific locations in `renderer_core.cpp`, we can see that OpenXR isn't just an "add-on"—it's a **collaborator** in the Vulkan lifecycle. Without the LUID matching in `pickPhysicalDevice`, our engine might initialize on a discrete GPU while the VR headset is tethered to an integrated one, leading to a complete failure to display. Similarly, the extension negotiation ensures that the XR compositor and our engine speak the same "dialect" of Vulkan.
 
-xref:04_vulkan_1_4_feature_requirements.adoc[Previous] | xref:../03_Runtime_Owned_Swapchains/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/04_vulkan_1_4_feature_requirements.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/01_introduction.adoc[Next]

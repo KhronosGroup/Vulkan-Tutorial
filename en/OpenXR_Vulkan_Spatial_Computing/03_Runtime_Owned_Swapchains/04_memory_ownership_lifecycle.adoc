@@ -84,4 +84,4 @@ We have now seen how to:
 
 With our resources properly managed, we can now move on to the actual rendering process. In the next chapter, we will see how to use **Dynamic Rendering** to render our spatial views directly into these images with maximum efficiency.
 
-xref:03_raii_resource_integration.adoc[Previous] | xref:05_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/03_raii_resource_integration.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/05_incorporating_into_the_engine.adoc[Next]

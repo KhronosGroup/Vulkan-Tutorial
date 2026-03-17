@@ -29,4 +29,4 @@ Mobile headsets use **Unified Memory**, where the CPU and GPU share the same phy
 
 To master mobile spatial computing, our engine must be highly surgical with its memory access. Every texture sample and every buffer write must be justified. By focusing on tile-local memory and synthetic frame generation, we can deliver high-quality spatial experiences that run for hours on a single battery charge.
 
-xref:02_desktop_high_end.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/02_desktop_high_end.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/04_incorporating_into_the_engine.adoc[Next]

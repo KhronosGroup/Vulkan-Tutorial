@@ -14,4 +14,4 @@ In this chapter, we will explore:
 
 By the end of this section, we will have a robust system for handling both digital input (button clicks) and spatial input (hand positions) in a way that is clean, modular, and performant.
 
-xref:../06_Late_Latching/04_incorporating_into_the_engine.adoc[Previous] | xref:02_openxr_action_system.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/02_openxr_action_system.adoc[Next]

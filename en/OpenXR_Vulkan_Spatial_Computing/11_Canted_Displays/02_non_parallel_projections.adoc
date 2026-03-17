@@ -49,4 +49,4 @@ On headsets like the Valve Index or Pimax, the display panels themselves are rot
 
 When you use **Multiview**, you must push an array of projection matrices and an array of view matrices to your Slang shaders. If you try to use a single "stereo" matrix with a fixed offset, the world will appear warped and uncomfortable because the GPU is drawing a rectilinear world for a non-rectilinear display.
 
-xref:01_introduction.adoc[Previous] | xref:03_viewport_swizzling.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/03_viewport_swizzling.adoc[Next]

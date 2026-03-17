@@ -51,4 +51,4 @@ Performing ML inference on the GPU is critical for spatial computing for two pri
 
 By integrating ML directly into our spatial compute pipeline, we turn raw, noisy sensor data into clean, interactive inputs with the same low-latency performance as our main rendering path.
 
-xref:01_introduction.adoc[Previous] | xref:03_refining_spatial_data.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/03_refining_spatial_data.adoc[Next]

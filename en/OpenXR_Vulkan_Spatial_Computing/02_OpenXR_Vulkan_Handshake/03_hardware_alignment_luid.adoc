@@ -40,12 +40,14 @@ To find the LUID of a Vulkan physical device, we query the `VkPhysicalDeviceIDPr
 ----
 // Iterating through physical devices to find a match
 for (const auto& physicalDevice : instance.enumeratePhysicalDevices()) {
-    auto props2 = physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
-    auto idProps = props2.get<vk::PhysicalDeviceIDProperties>();
+    vk::PhysicalDeviceIDProperties idProps;
+    vk::PhysicalDeviceProperties2 props2;
+    props2.pNext = &idProps;
+    physicalDevice.getProperties2(&props2);
 
     if (idProps.deviceLUIDValid) {
         // Compare the 8-byte LUID against the target from OpenXR
-        if (memcmp(idProps.deviceLUID.data(), targetLUID, 8) == 0) {
+        if (std::memcmp(idProps.deviceLUID, targetLUID, VK_LUID_SIZE) == 0) {
             return physicalDevice;
         }
     }
@@ -60,4 +62,4 @@ Vulkan 1.4 makes this easier by standardizing external memory handles, but these
 
 In the final part of our handshake, we will ensure that our selected device is configured with the mandatory **Vulkan 1.4 features** required for a modern spatial pipeline.
 
-xref:02_system_integration.adoc[Previous] | xref:04_vulkan_1_4_feature_requirements.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/04_vulkan_1_4_feature_requirements.adoc[Next]

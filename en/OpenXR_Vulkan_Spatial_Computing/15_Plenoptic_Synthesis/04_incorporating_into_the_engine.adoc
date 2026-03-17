@@ -72,4 +72,4 @@ void raygenMain() {
 
 By providing dual paths in our `Renderer`, we allow the engine to scale from low-power mobile AR glasses (using the raster path) to high-end holographic workstation displays (using ray traced paths). Because our engine already has a modular `Render` structure and utilizes Slang, sharing the complex 4D interpolation logic between these paths ensures mathematical consistency and visual fidelity.
 
-xref:03_ray_traced_synthesis.adoc[Previous] | xref:../16_Scene_Understanding/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/03_ray_traced_synthesis.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/01_introduction.adoc[Next]

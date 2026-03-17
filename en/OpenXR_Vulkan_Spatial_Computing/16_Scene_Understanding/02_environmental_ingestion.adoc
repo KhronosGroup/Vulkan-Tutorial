@@ -40,4 +40,4 @@ Semantic labels are the "Intelligence Layer" of scene understanding. Instead of 
 
 By ingesting these meshes directly into our Vulkan buffers, we enable real-time interaction between our shaders and the user's physical room.
 
-xref:01_introduction.adoc[Previous] | xref:03_zero_copy_hand_off.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/03_zero_copy_hand_off.adoc[Next]

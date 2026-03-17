@@ -73,4 +73,4 @@ VS_Output vertexMain(VS_Input input, uint viewID : SV_ViewID) {
 
 By enabling the `viewMask` and using `SV_ViewID`, we shift the burden of stereo rendering from the CPU to the GPU. Instead of the engine looping twice and submitting two sets of commands, it submits one set, and the hardware's **Instance Data Step** or **Geometry Replication** handles the expansion to two views. This is the most efficient way to achieve high-performance spatial rendering in Vulkan 1.4.
 
-xref:03_slang_architecture.adoc[Previous] | xref:../09_Quad_Views_Foveated/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/03_slang_architecture.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/01_introduction.adoc[Next]

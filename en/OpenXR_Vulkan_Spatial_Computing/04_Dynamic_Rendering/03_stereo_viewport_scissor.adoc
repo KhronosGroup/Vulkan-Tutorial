@@ -54,4 +54,4 @@ By treating viewports and scissors as dynamic state, we avoid the heavy "Pipelin
 
 With our rendering pipeline now fully adapted to the unique requirements of spatial views, we are ready to tackle the timing and pacing logic that makes XR truly immersive. In the next chapter, we will build our **Predictive Frame Loop**.
 
-xref:02_rendering_to_spatial_swapchains.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/02_rendering_to_spatial_swapchains.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/04_incorporating_into_the_engine.adoc[Next]

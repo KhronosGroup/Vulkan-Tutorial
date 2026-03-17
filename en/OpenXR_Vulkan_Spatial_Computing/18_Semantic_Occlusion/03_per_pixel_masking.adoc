@@ -45,4 +45,4 @@ To fix this, our engine implements **Temporal Reprojection**. We take the mask f
 
 By combining semantic understanding with stable per-pixel masking, we create an environment where virtual objects feel physically "locked" into the user's room.
 
-xref:02_ml_driven_segmentation.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/02_ml_driven_segmentation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/04_incorporating_into_the_engine.adoc[Next]

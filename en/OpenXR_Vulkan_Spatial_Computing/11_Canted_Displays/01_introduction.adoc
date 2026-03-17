@@ -12,4 +12,4 @@ In this chapter, we will explore how to handle these non-parallel architectures 
 
 By mastering these concepts, your engine will be compatible with the entire spectrum of spatial hardware, from mobile VR headsets with parallel screens to ultra-wide FOV enthusiast hardware.
 
-xref:../10_Variable_Rate_Shading/04_incorporating_into_the_engine.adoc[Previous] | xref:02_non_parallel_projections.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/02_non_parallel_projections.adoc[Next]

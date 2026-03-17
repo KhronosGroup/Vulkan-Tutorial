@@ -14,7 +14,7 @@ We create a dedicated method, `Engine::updateSpatialMeshes()`, which iterates th
 // engine.cpp
 // Supporting Struct: Spatial Mesh Bridge
 struct XrSpatialMesh {
-    XrGuidMSFT meshGuid;
+    XrUuidMSFT meshGuid;
     std::vector<glm::vec3> vertices;
     std::vector<uint32_t> indices;
     glm::mat4 transform;
@@ -28,7 +28,7 @@ void Engine::updateSpatialMeshes() {
 
     for (const auto& xrMesh : xrMeshes) {
         // 2. Map the XR mesh ID to an Engine Entity
-        // We use a internal map: std::unordered_map<XrGuidMSFT, Entity*>
+        // We use a internal map: std::unordered_map<XrUuidMSFT, Entity*>
         Entity* spatialEntity = getOrCreateSpatialEntity(xrMesh.meshGuid);
 
         auto* meshComp = spatialEntity->getComponent<MeshComponent>();
@@ -79,4 +79,4 @@ By mapping spatial data into our existing `Entity` system, we don't need a "spec
 
 This "Unified Geometry" approach is the foundation of believable Mixed Reality, allowing us to treat the physical room and our virtual assets as a single, coherent scene.
 
-xref:03_zero_copy_hand_off.adoc[Previous] | xref:../17_ML_Inference_Spatial/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/03_zero_copy_hand_off.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/01_introduction.adoc[Next]

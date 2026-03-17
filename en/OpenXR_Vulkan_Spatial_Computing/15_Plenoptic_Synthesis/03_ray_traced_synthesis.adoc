@@ -46,4 +46,4 @@ Furthermore, ray tracing allows us to handle **Non-Uniform LightFields**. If our
 
 By combining the 4D theory of LightFields with the physical accuracy of Vulkan Ray Tracing, we create a spatial rendering pipeline that can handle the most advanced holographic displays on the market.
 
-xref:02_synthesis_shaders.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/02_synthesis_shaders.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/04_incorporating_into_the_engine.adoc[Next]

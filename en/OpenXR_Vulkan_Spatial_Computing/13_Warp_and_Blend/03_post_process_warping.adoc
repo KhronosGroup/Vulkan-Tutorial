@@ -53,4 +53,4 @@ Because warping "squeezes" the image, some areas of your render will be scaled d
 
 In the next chapter, we will move from pixels to 4D functions by exploring **LightField Theory**.
 
-xref:02_geometric_correction.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/02_geometric_correction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/04_incorporating_into_the_engine.adoc[Next]

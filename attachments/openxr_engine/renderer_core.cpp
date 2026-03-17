@@ -718,7 +718,7 @@ bool Renderer::pickPhysicalDevice() {
         vk::PhysicalDeviceIDProperties idProps;
         vk::PhysicalDeviceProperties2 props2;
         props2.pNext = &idProps;
-        props2 = _device.getProperties2();
+        _device.getProperties2(&props2);
 
         const uint8_t* requiredLuid = xrContext.getRequiredLUID();
         if (requiredLuid && std::memcmp(idProps.deviceLUID, requiredLuid, VK_LUID_SIZE) != 0) {

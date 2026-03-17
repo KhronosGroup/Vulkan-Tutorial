@@ -7,8 +7,8 @@ Welcome to the frontiers of spatial computing. In this tutorial series, we are g
 
 Before beginning this tutorial, you should have a solid foundation in both the Vulkan API and engine architecture. Specifically, we assume you have completed:
 
-1.  **xref:../00_Introduction.adoc[The Core Vulkan Tutorial]**: You should be comfortable with the core concepts of Vulkan, including instance creation, physical devices, logical devices, and the basic graphics pipeline.
-2.  **xref:../Building_a_Simple_Engine/introduction.adoc[Building a Simple Engine]**: This series builds directly upon the code and architectural patterns established in the engine tutorial. We will be using the `Simple Engine` codebase as our starting point.
+1.  **xref:00_Introduction.adoc[The Core Vulkan Tutorial]**: You should be comfortable with the core concepts of Vulkan, including instance creation, physical devices, logical devices, and the basic graphics pipeline.
+2.  **xref:Building_a_Simple_Engine/introduction.adoc[Building a Simple Engine]**: This series builds directly upon the code and architectural patterns established in the engine tutorial. We will be using the `Simple Engine` codebase as our starting point.
 3.  **Modern C{pp} and RAII**: We utilize `vulkan-hpp` and RAII (Resource Acquisition Is Initialization) throughout the series. You should be familiar with these patterns to follow the C{pp} integration sections.
 
 == The OpenXR Ecosystem: Runtimes and Loaders
@@ -54,4 +54,4 @@ By the end of this tutorial, you won't just have a working XR application; you w
 
 Let's get started with the first step: the OpenXR-Vulkan 1.4 Handshake.
 
-xref:02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Next]

@@ -44,4 +44,4 @@ In a cluster, every computer must agree on the state of the world. If a particle
 
 To the user, this cluster behaves as a single, massive GPU. However, this only works if every node renders and displays the exact same frame at the exact same time.
 
-xref:01_introduction.adoc[Previous] | xref:03_hardware_sync.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/03_hardware_sync.adoc[Next]

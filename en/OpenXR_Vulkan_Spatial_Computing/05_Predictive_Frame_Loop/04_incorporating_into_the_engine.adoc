@@ -109,4 +109,4 @@ void Engine::Update(XrTime predictedTime) {
 
 By moving `xrWaitFrame` into our main loop, we transform the engine from an "as-fast-as-possible" renderer into a "just-in-time" spatial engine. This eliminates the judder caused by simulation/display mismatch and ensures that when the user moves their head, the virtual world moves in perfect, predicted synchrony.
 
-xref:03_display_time_prediction.adoc[Previous] | xref:../06_Late_Latching/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/03_display_time_prediction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/01_introduction.adoc[Next]

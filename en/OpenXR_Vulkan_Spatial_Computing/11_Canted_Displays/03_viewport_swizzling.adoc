@@ -37,4 +37,4 @@ In a modern spatial engine, you should treat swizzling as a "Hardware Driver" fe
 
 In the next chapter, we will look at how to scale these spatial techniques to even larger environments using **CAVE Architecture and Multi-GPU Synchronization**.
 
-xref:02_non_parallel_projections.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/02_non_parallel_projections.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/04_incorporating_into_the_engine.adoc[Next]

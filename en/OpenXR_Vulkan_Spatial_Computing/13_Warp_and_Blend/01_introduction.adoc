@@ -25,4 +25,4 @@ Warping is only as good as the data driving it. Most professional installations 
 
 By the end of this chapter, you will be able to take a standard rectilinear render and "warp" it into any physical shape required by the installation, ensuring that the virtual world remains perfectly undistorted to the user's eyes.
 
-xref:../12_CAVE_Architecture/04_incorporating_into_the_engine.adoc[Previous] | xref:02_geometric_correction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/02_geometric_correction.adoc[Next]

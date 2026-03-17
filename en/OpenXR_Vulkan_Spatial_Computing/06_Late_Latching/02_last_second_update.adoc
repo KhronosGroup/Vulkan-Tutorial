@@ -49,4 +49,4 @@ queue.submit2(submitInfo);
 
 By using the wait-before-submit pattern, we reduce that gap from ~10-15ms down to ~1-2ms. The virtual world feels "anchored" to the physical space because the view matrices being used by the GPU were updated only microseconds before the first vertex was processed.
 
-xref:01_introduction.adoc[Previous] | xref:03_implementation.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/03_implementation.adoc[Next]

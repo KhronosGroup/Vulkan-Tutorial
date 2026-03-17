@@ -23,4 +23,4 @@ If you don't perform this handshake correctly, you might find that you can't ini
 
 By the end of this chapter, you will have modified your engine's initialization code to be fully spatial-aware, laying the groundwork for the predictive frame loop and runtime-owned swapchains that follow.
 
-xref:../introduction.adoc[Previous] | xref:02_system_integration.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[Next]

@@ -79,4 +79,4 @@ void Renderer::updateShadingRateImage(glm::vec2 gazeNDC) {
 
 By integrating eye-tracking data directly into our Vulkan 1.4 rendering pass, we enable **Dynamic Foveated Rendering (DFR)**. This allows the engine to save up to 60% of fragment processing costs in complex PBR scenes by only rendering the tiny area the user is actually looking at in full detail. Because our engine uses dynamic rendering, adding the `vrsAttachment` to our `passInfo` is a simple `pNext` extension away.
 
-xref:03_gaze_driven_logic.adoc[Previous] | xref:../11_Canted_Displays/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/03_gaze_driven_logic.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/01_introduction.adoc[Next]

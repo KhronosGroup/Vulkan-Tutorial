@@ -64,4 +64,4 @@ bool Renderer::createGraphicsPipeline() {
 
 By moving to a multi-layer composition, we enable "Foveal Rendering" where the engine renders the center of the user's view at a much higher resolution than the periphery. Because our engine's `Render` loop is already dynamic, it can seamlessly switch between these views and layers, ensuring that the user always experiences the highest fidelity where they are actually looking.
 
-xref:03_multi_layer_composition.adoc[Previous] | xref:../10_Variable_Rate_Shading/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/01_introduction.adoc[Next]

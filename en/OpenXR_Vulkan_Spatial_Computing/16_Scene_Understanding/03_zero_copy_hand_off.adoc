@@ -42,4 +42,4 @@ In Mixed Reality (MR), users are often viewing the real world through **Passthro
 
 Zero-copy hand-offs ensure that sensor data moves at the speed of the GPU's internal bus, keeping the latency below the threshold of human perception and maintaining the illusion that the virtual and physical worlds occupy the same space.
 
-xref:02_environmental_ingestion.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/02_environmental_ingestion.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/04_incorporating_into_the_engine.adoc[Next]

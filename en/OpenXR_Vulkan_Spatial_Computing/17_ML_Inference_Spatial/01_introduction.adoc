@@ -7,4 +7,4 @@ Is that moving cluster of vertices a user's hand? Is it a cat jumping on the sof
 
 By moving inference from the CPU to the GPU's specialized matrix hardware (like **Tensor Cores** or **Matrix Accelerators**), we can achieve sub-millisecond latency for tasks like hand-pose refinement, semantic segmentation, and mesh reconstruction. We'll learn how to integrate these ML kernels into our engine's compute pipeline, turning noisy sensor data into clean, interactive inputs.
 
-xref:../16_Scene_Understanding/04_incorporating_into_the_engine.adoc[Previous] | xref:02_on_gpu_inference.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/02_on_gpu_inference.adoc[Next]

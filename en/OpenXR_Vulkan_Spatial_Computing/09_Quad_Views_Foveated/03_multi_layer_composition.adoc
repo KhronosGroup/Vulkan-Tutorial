@@ -46,4 +46,4 @@ This multi-layer approach is incredibly flexible. Each layer can even have its o
 
 In the next chapter, we'll see how to push our performance even further by looking at **Variable Rate Shading** (VRS).
 
-xref:02_primary_stereo_with_insets.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/02_primary_stereo_with_insets.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/04_incorporating_into_the_engine.adoc[Next]

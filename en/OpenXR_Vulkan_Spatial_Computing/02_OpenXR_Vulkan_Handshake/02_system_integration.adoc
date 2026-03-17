@@ -78,4 +78,4 @@ By following the `XR_KHR_vulkan_enable2` protocol, we guarantee that our frames 
 
 In the next section, we will look at **Hardware Alignment**, where we ensure that the `VkPhysicalDevice` we select is the exact same one the headset is physically connected to.
 
-xref:01_introduction.adoc[Previous] | xref:03_hardware_alignment_luid.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/03_hardware_alignment_luid.adoc[Next]

@@ -20,4 +20,4 @@ We'll define some key concepts like **SIMD** (Single Instruction, Multiple Data)
 
 In the following sections, we'll dive deep into the implementation of **Native Multiview** and then see how to architect our **Slang** shaders to take full advantage of this hardware-level optimization.
 
-xref:../07_Action_Spaces_Input/04_incorporating_into_the_engine.adoc[Previous] | xref:02_native_multiview.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/02_native_multiview.adoc[Next]

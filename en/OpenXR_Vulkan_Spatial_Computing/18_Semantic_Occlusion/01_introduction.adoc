@@ -7,4 +7,4 @@ In this chapter, we will explore how to bridge the gap between real and virtual 
 
 By the end of this chapter, you'll be able to implement stable, flicker-free masking that makes virtual assets feel like they truly occupy the same physical space as the user's hands and furniture.
 
-xref:../17_ML_Inference_Spatial/04_incorporating_into_the_engine.adoc[Previous] | xref:02_ml_driven_segmentation.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/02_ml_driven_segmentation.adoc[Next]

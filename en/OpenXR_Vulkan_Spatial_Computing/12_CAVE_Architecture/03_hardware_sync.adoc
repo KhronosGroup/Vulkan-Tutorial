@@ -49,4 +49,4 @@ if (barrierFeatures.presentBarrier) {
 
 By combining Genlock (signal timing) with Swap Barriers (frame timing), we achieve the "Gold Standard" of spatial synchronization: **Frame-Perfect Cluster Rendering**. The entire room updates as if it were a single piece of digital paper.
 
-xref:02_projector_based_spatial_tech.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/02_projector_based_spatial_tech.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/04_incorporating_into_the_engine.adoc[Next]

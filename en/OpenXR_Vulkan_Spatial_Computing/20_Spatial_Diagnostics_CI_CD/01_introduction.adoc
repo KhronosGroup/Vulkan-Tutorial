@@ -9,4 +9,4 @@ In this chapter, we will explore the tools and techniques required to peel back 
 
 By the end of this chapter, you'll have the diagnostic toolkit required to ship professional-grade spatial applications that are both visually stunning and rock-steady.
 
-xref:../19_Platform_Divergence/04_incorporating_into_the_engine.adoc[Previous] | xref:02_spatial_debugging.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/02_spatial_debugging.adoc[Next]

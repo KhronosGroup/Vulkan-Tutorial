@@ -57,4 +57,4 @@ By moving occlusion from a simple "on/off" switch to a dedicated pass in our `Re
 
 This pixel-wise awareness is what transforms a "Video Overlay" into a "Spatial Experience," where the boundary between virtual and physical becomes indistinguishable to the user's eye.
 
-xref:03_per_pixel_masking.adoc[Previous] | xref:../19_Platform_Divergence/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/03_per_pixel_masking.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/01_introduction.adoc[Next]

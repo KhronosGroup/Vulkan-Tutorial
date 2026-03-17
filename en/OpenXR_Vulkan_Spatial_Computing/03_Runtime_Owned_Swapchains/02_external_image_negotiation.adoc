@@ -71,4 +71,4 @@ By negotiating the images this way, we ensure a **Zero-Copy** hand-off. When we 
 
 This efficiency is the difference between a high-performance 90Hz experience and a laggy, uncomfortable one. In the next section, we'll see how to wrap these raw Vulkan handles into the engine's `vk::raii` abstractions.
 
-xref:01_introduction.adoc[Previous] | xref:03_raii_resource_integration.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/03_raii_resource_integration.adoc[Next]

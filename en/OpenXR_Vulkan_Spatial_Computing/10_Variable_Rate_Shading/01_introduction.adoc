@@ -13,4 +13,4 @@ We will focus on two primary strategies:
 
 By the end of this chapter, you will understand how to integrate the **VK_KHR_fragment_shading_rate** extension (now part of the Vulkan 1.4 core) into your spatial pipeline and how to manage shading rate maps that update in real-time.
 
-xref:../09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Previous] | xref:02_fragment_density_control.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/02_fragment_density_control.adoc[Next]

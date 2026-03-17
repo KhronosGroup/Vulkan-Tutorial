@@ -58,4 +58,4 @@ By combining data compression, raw pointer flexibility via BDA, and tiled memory
 
 In the next chapter, we will see how to turn these rays back into images using **Plenoptic Synthesis**.
 
-xref:02_4d_lightfield_representation.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/02_4d_lightfield_representation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/04_incorporating_into_the_engine.adoc[Next]

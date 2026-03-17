@@ -9,4 +9,4 @@ In this chapter, we will explore the two primary paths for plenoptic synthesis: 
 
 We'll look at how the engine coordinates these two paths using compute and fragment shaders and how to use Slang's productivity features to author complex synthesis logic without getting lost in the 4D math.
 
-xref:../14_LightField_Theory/04_incorporating_into_the_engine.adoc[Previous] | xref:02_synthesis_shaders.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/02_synthesis_shaders.adoc[Next]

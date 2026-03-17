@@ -12,16 +12,14 @@ In `renderer_rendering.cpp`, our `Render` function already uses `vk::RenderingIn
 // renderer_rendering.cpp
 void Renderer::Render(...) {
     // ... Wait for runtime to be ready ...
+    uint32_t imageIndex = xrContext.acquireSwapchainImage();
     xrContext.waitSwapchainImage();
 
     for (uint32_t eye = 0; eye < 2; ++eye) {
-        // 1. Acquire the next image for this eye
-        uint32_t imageIndex = xrContext.acquireSwapchainImage(eye);
-
-        // 2. Point rendering at the acquired XR image view
-        // xrImageViews is our per-eye vector of swapchain image views
+        // 1. Point rendering at the acquired XR image view
+        // Our engine uses a single multiview swapchain at index [0]
         vk::RenderingAttachmentInfo colorAttachment{
-            .imageView = *eyeSwapchainImageViews[eye][imageIndex],
+            .imageView = *eyeSwapchainImageViews[0][imageIndex],
             .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -31,6 +29,7 @@ void Renderer::Render(...) {
         vk::RenderingInfo passInfo{
             .renderArea = vk::Rect2D({0, 0}, swapChainExtent),
             .layerCount = 1,
+            .viewMask = (1u << eye), // Render specifically to this eye's layer
             .colorAttachmentCount = 1,
             .pColorAttachments = &colorAttachment
         };
@@ -41,10 +40,10 @@ void Renderer::Render(...) {
         RenderEye(commandBuffer, eye);
 
         commandBuffer.endRendering();
-
-        // 3. Hand the image back to OpenXR
-        xrContext.releaseSwapchainImage(eye);
     }
+
+    // 2. Hand the image back to OpenXR
+    xrContext.releaseSwapchainImage();
 }
 ----
 
@@ -107,4 +106,4 @@ void Renderer::updateUniformBuffer(uint32_t currentFrame, uint32_t eye, const Xr
 
 By binding the XR image directly into `vk::RenderingInfo` and updating viewports/scissors per-eye, we eliminate the need for an intermediate "Blit" pass. This ensures that every GPU cycle is spent on spatial content, not memory copies. At this stage, our shaders remain unchanged because we are essentially just "drawing the world twice" from different perspectives. In later chapters, we'll see how **Multiview** can collapse these two passes into one.
 
-xref:03_stereo_viewport_scissor.adoc[Previous] | xref:../05_Predictive_Frame_Loop/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/03_stereo_viewport_scissor.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/01_introduction.adoc[Next]

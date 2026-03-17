@@ -52,4 +52,4 @@ This transformation process effectively turns a physical controller into a **Spa
 
 In the next chapter, we will look at how to optimize the rendering of these multiple views using **Slang for Spatial Shaders**.
 
-xref:02_openxr_action_system.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/02_openxr_action_system.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/04_incorporating_into_the_engine.adoc[Next]

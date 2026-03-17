@@ -59,4 +59,4 @@ void Engine::Update(XrTime predictedTime) {
 
 By supporting canted views and asymmetric frustums, our engine becomes compatible with high-end "enthusiast" headsets. Proper projection matrix calculation is the difference between a world that looks "right" and one that feels slightly distorted or "warped" as you move your head. Because we've already integrated the OpenXR handshake, our `xrContext` can provide the exact FOV tangents and poses required for these calculations.
 
-xref:03_viewport_swizzling.adoc[Previous] | xref:../12_CAVE_Architecture/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/03_viewport_swizzling.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/01_introduction.adoc[Next]

@@ -73,4 +73,4 @@ By placing the ML inference pass directly within our `Renderer` and using **Vulk
 
 This integration turns our engine from a simple rasterizer into a context-aware spatial platform capable of understanding and reacting to the user's physical environment.
 
-xref:03_refining_spatial_data.adoc[Previous] | xref:../18_Semantic_Occlusion/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/03_refining_spatial_data.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/01_introduction.adoc[Next]

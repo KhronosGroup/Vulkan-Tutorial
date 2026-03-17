@@ -53,4 +53,4 @@ By using only the `predictedDisplayTime` provided by the XR runtime, we ensure t
 
 Now that our frame loop is correctly paced and our simulation is aligned with the future, we have established the foundation for a high-quality spatial experience. However, there is still a small window of latency between the end of our command buffer recording and the absolute final moment before submission. In the next chapter, we will explore **Late Latching** and how **Timeline Semaphores** can help us shave off those final microseconds of "swim."
 
-xref:02_xr_lifecycle.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/02_xr_lifecycle.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/04_incorporating_into_the_engine.adoc[Next]

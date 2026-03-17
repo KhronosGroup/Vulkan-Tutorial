@@ -72,4 +72,4 @@ This hybrid approach—using raw handles for external resources and RAII for int
 
 In the next section, we will look at the **Memory Ownership Lifecycle**, where we master the delicate dance of waiting, acquiring, and releasing these images during our frame loop.
 
-xref:02_external_image_negotiation.adoc[Previous] | xref:04_memory_ownership_lifecycle.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/02_external_image_negotiation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/04_memory_ownership_lifecycle.adoc[Next]

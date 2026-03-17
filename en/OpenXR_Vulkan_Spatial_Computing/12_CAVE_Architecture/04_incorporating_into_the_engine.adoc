@@ -47,4 +47,4 @@ void Renderer::Render(...) {
 
 Hardware synchronization is the only way to ensure that the corners of a CAVE room look seamless. Without the `VK_NV_present_barrier`, the "seam" between projectors will always be visible as a line of tearing or stutter. By integrating this into our `createSwapChain` and `Render` logic, we transform the engine into a professional-grade simulation platform capable of driving multi-projector environments.
 
-xref:03_hardware_sync.adoc[Previous] | xref:../13_Warp_and_Blend/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/03_hardware_sync.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/01_introduction.adoc[Next]

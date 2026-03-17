@@ -68,4 +68,4 @@ Our engine's main loop now follows this precise rhythm:
 
 By following this rhythm, we ensure our engine is perfectly synchronized with the headset's hardware, providing the smooth and stable experience required for spatial computing.
 
-xref:01_introduction.adoc[Previous] | xref:03_display_time_prediction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/03_display_time_prediction.adoc[Next]

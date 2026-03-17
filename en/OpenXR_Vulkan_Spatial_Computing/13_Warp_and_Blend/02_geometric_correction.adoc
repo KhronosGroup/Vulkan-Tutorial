@@ -58,4 +58,4 @@ In a multi-projector setup, the edges of the images overlap.
 
 Because warping involves sampling a texture at non-integer coordinates, the quality of your filtering is paramount. While `SamplerState` with linear filtering is fast, it can lead to "blurring" in areas of high warp. High-end spatial engines often implement custom **Bicubic** or **Lanczos** filters in the compute shader to preserve sharpness during the coordinate transformation.
 
-xref:01_introduction.adoc[Previous] | xref:03_post_process_warping.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/03_post_process_warping.adoc[Next]

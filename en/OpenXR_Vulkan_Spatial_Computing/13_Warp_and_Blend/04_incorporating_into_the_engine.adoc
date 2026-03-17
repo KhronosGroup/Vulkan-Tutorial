@@ -71,4 +71,4 @@ float3 calculateEdgeBlend(uint2 pos) {
 
 Proper warping and blending are what make a CAVE room feel like a unified environment. By handling distortion in the engine's compute-based post-processing chain, we can support a wide variety of hardware—from curved screens to custom headsets—without changing our core rasterization logic. Because our engine already has a modular `Renderer`, adding this compute pass is a natural extension of our existing frame loop.
 
-xref:03_post_process_warping.adoc[Previous] | xref:../14_LightField_Theory/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/03_post_process_warping.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/01_introduction.adoc[Next]

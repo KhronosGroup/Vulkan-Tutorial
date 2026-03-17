@@ -25,4 +25,4 @@ Without these hardware-level guarantees, the "immersion" of a CAVE is quickly br
 
 By the end of this chapter, you will understand how to scale your spatial engine from a single-user headset to a multi-node, room-scale immersive environment.
 
-xref:../11_Canted_Displays/04_incorporating_into_the_engine.adoc[Previous] | xref:02_projector_based_spatial_tech.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/02_projector_based_spatial_tech.adoc[Next]

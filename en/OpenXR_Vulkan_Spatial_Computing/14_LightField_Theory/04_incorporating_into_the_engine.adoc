@@ -58,4 +58,4 @@ void Renderer::createLightFieldBuffer(size_t totalBytes) {
 
 By moving from traditional descriptor sets to BDA for lightfield data, we avoid the overhead of binding thousands of individual view textures. Our engine can now manage massive plenoptic datasets (often multi-gigabyte) as a single contiguous block of memory. This ensures maximum cache locality during the synthesis pass, which is critical for maintaining spatial immersion.
 
-xref:03_high_density_view_arrays.adoc[Previous] | xref:../15_Plenoptic_Synthesis/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/03_high_density_view_arrays.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/01_introduction.adoc[Next]

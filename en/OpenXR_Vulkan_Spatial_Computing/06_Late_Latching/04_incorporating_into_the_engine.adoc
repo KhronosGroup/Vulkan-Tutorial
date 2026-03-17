@@ -57,4 +57,4 @@ bool Renderer::createUniformBuffers(Entity* entity) {
 
 By moving the `updateUniformBuffer` call to the very end of the `Render` function (just before submission), we ensure that the GPU receives the most accurate head-tracking data possible. This reduces the "perceived latency" (Motion-to-Photon) from the time we recorded the frame to the time it's actually scanned out to the headset's display.
 
-xref:03_implementation.adoc[Previous] | xref:../07_Action_Spaces_Input/01_introduction.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/03_implementation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/01_introduction.adoc[Next]

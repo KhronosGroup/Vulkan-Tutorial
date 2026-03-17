@@ -77,4 +77,4 @@ xrSuggestInteractionProfileBindings(instance, &profileBinding);
 
 This abstraction is especially critical for **Space Manifolds**, where a user's physical movement is converted into a 3D coordinate system for our renderer—the topic of our next section.
 
-xref:01_introduction.adoc[Previous] | xref:03_space_manifolds.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/03_space_manifolds.adoc[Next]

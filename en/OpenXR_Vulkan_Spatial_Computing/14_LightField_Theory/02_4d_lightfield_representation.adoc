@@ -62,4 +62,4 @@ uint getLinearIndex(uint2 st, uint2 uv, uint2 stRes, uint2 uvRes) {
 
 By using this representation, the engine can treat a lightfield as a simple array of "light fragments," making it compatible with existing spatial pipelines while providing the foundation for complex plenoptic synthesis.
 
-xref:01_introduction.adoc[Previous] | xref:03_high_density_view_arrays.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/03_high_density_view_arrays.adoc[Next]

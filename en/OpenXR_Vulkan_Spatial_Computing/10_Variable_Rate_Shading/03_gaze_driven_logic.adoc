@@ -40,4 +40,4 @@ When implemented correctly, DFR allows you to push the boundaries of visual fide
 
 In the next chapter, we will shift from software-driven optimization to hardware-driven geometry by looking at **Canted Displays and Asymmetric Frustums**.
 
-xref:02_fragment_density_control.adoc[Previous] | xref:04_incorporating_into_the_engine.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/02_fragment_density_control.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/04_incorporating_into_the_engine.adoc[Next]

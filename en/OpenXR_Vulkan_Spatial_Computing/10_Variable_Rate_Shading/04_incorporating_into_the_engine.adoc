@@ -1,0 +1,82 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+Integrating **Variable Rate Shading (VRS)** into our `simple_game_engine` allows us to unlock a massive performance boost by being smarter about how we process fragments in `renderer_resources.cpp`. *This is currently left as an exercise for the reader to implement.*
+
+== Enabling VRS in the Backend
+
+In `renderer_core.cpp`, we must enable the VRS features during device creation.
+
+[source,cpp]
+----
+// renderer_core.cpp
+bool Renderer::createLogicalDevice(bool enableValidationLayers) {
+    // ...
+    vk::PhysicalDeviceVulkan13Features vulkan13Features;
+    vulkan13Features.dynamicRendering = vk::True;
+
+    // NEW: Enable Fragment Shading Rate (VRS)
+    vk::PhysicalDeviceFragmentShadingRateFeaturesKHR vrsFeatures;
+    vrsFeatures.attachmentFragmentShadingRate = vk::True;
+    vrsFeatures.pipelineFragmentShadingRate = vk::True;
+
+    vulkan13Features.pNext = &vrsFeatures;
+    // ...
+}
+----
+
+== Dynamic Gaze-Driven VRS
+
+In `renderer_rendering.cpp`, we update our `Render` loop to bind a shading rate image that highlights the user's current gaze.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ...
+    if (xrMode) {
+        // Query current gaze from OpenXR (Eye Tracking)
+        glm::vec2 gazeNDC = xrContext.getGazeNDC();
+
+        // Update the shading rate image (a low-res 8-bit image)
+        // High density (1x1) at gazeNDC, low density (4x4) at periphery
+        updateShadingRateImage(gazeNDC);
+
+        // Bind the shading rate attachment to our dynamic rendering info
+        vk::RenderingFragmentShadingRateAttachmentInfoKHR vrsAttachment{
+            .imageView = *vrsImageView,
+            .imageLayout = vk::ImageLayout::eFragmentShadingRateAttachmentOptimalKHR,
+            .shadingRateAttachmentTexelSize = vk::Extent2D(16, 16)
+        };
+
+        passInfo.pNext = &vrsAttachment;
+    }
+
+    commandBuffer.beginRendering(passInfo);
+    // ...
+}
+
+void Renderer::updateShadingRateImage(glm::vec2 gazeNDC) {
+    // 1. Map NDC (-1 to 1) to our shading rate image texels
+    // The image is low-res (e.g., 1/16th of the main display)
+    uint32_t gazeX = static_cast<uint32_t>((gazeNDC.x * 0.5f + 0.5f) * vrsWidth);
+    uint32_t gazeY = static_cast<uint32_t>((gazeNDC.y * 0.5f + 0.5f) * vrsHeight);
+
+    // 2. Fill the image: 1x1 (full rate) at gaze, 4x4 (low rate) at periphery
+    // We use a simple distance-based falloff
+    for (uint32_t y = 0; y < vrsHeight; ++y) {
+        for (uint32_t x = 0; x < vrsWidth; ++x) {
+            float dist = glm::distance(glm::vec2(x, y), glm::vec2(gazeX, gazeY));
+            vrsData[y * vrsWidth + x] = (dist < foveaRadius) ? 0x0 : 0x4; // 0x0=1x1, 0x4=4x4
+        }
+    }
+    // 3. Upload to GPU
+    vrsBuffer.upload(vrsData);
+}
+----
+
+== Why These Changes?
+
+By integrating eye-tracking data directly into our Vulkan 1.4 rendering pass, we enable **Dynamic Foveated Rendering (DFR)**. This allows the engine to save up to 60% of fragment processing costs in complex PBR scenes by only rendering the tiny area the user is actually looking at in full detail. Because our engine uses dynamic rendering, adding the `vrsAttachment` to our `passInfo` is a simple `pNext` extension away.
+
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/03_gaze_driven_logic.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/01_introduction.adoc[Next]

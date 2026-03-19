@@ -1,0 +1,63 @@
+:pp: {plus}{plus}
+= Implementation
+
+The magic of late latching happens in the final moments before the CPU gives the GPU the "go ahead." In our engine's main loop, we've already submitted our command buffers using the `vk::SubmitInfo2` structure with the appropriate timeline semaphore wait. Now, we just need to update the data and signal the semaphore.
+
+== The "Last-Second" View Prediction
+
+To get the absolute latest head pose, we call `xrLocateSpace` using the `predictedDisplayTime` we calculated in the previous chapter.
+
+[source,cpp]
+----
+// 1. Get the absolute latest head pose from OpenXR
+XrSpaceLocation spaceLocation{XR_TYPE_SPACE_LOCATION};
+XrResult result = xrLocateSpace(viewSpace, baseSpace, predictedDisplayTime, &spaceLocation);
+
+if (XR_UNQUALIFIED_SUCCESS(result) && (spaceLocation.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
+    // 2. Convert XrSpaceLocation to our engine's internal View/Projection matrices
+    auto latestViewMatrix = convertXrPoseToMatrix(spaceLocation.pose);
+
+    // 3. Directly update the Host-Visible UBO buffer (already persistently mapped)
+    std::memcpy(mappedUboPointer, &latestViewMatrix, sizeof(latestViewMatrix));
+
+    // 4. Flush the memory range if it's not coherent
+    // This ensures the GPU can see our update immediately
+    vk::MappedMemoryRange flushRange;
+    flushRange.setMemory(*uboBufferMemory);
+    flushRange.setOffset(0);
+    flushRange.setSize(sizeof(latestViewMatrix));
+    device.flushMappedMemoryRanges(flushRange);
+}
+
+// 5. Signal the timeline semaphore to value X, unblocking the GPU
+vk::SemaphoreSignalInfo signalInfo;
+signalInfo.setSemaphore(*lateLatchingSemaphore);
+signalInfo.setValue(waitValue);
+device.signalSemaphore(signalInfo);
+----
+
+== Persistent Mapping: The Efficiency Requirement
+
+Wait, there’s an important architectural detail here: **Persistent Mapping**. For late latching to work effectively, we cannot afford the overhead of calling `vkMapMemory` and `vkUnmapMemory` every frame.
+
+*   **The Concept**: We map the Vulkan buffer once during initialization and keep the CPU-side pointer (`mappedUboPointer`) available for the lifetime of the application.
+*   **The Why**: Mapping memory is an expensive system call that often involves kernel-mode transitions. In our late latching loop, we have less than a millisecond to perform the update. We need the raw performance of a direct `memcpy`.
+
+== The Coherency Question: `vkFlushMappedMemoryRanges`
+
+Not all GPU memory is "Coherent." On some hardware (especially discrete desktop GPUs), the CPU and GPU have separate caches. Even if we `memcpy` the data, the GPU might still see the "stale" version in its cache.
+
+If our memory heap doesn't have the `VK_MEMORY_PROPERTY_HOST_COHERENT_BIT` flag, we must call `vkFlushMappedMemoryRanges`. This forces the CPU cache to write the data out to physical VRAM where the GPU can see it. In our late latching implementation, this flush is the final step before we open the digital gate.
+
+== Limitations of Late Latching
+
+This technique is most effective for "fast-moving" data like the head pose or hand tracking data. However, it’s not suitable for updating entire scene hierarchies or large amounts of vertex data.
+
+*   **Data Size**: Keep your late-latched updates small (usually just a few matrices).
+*   **Timing**: If the update takes too long, the GPU will idle while waiting for the semaphore, which can reduce your overall framerate.
+
+By focusing purely on the view and projection matrices, we keep the overhead minimal and the visual latency as low as the hardware allows.
+
+With late latching implemented, our virtual environment is now as anchored as possible. In the next chapter, we will shift our focus to **Action Spaces**—how we turn user input (button clicks and hand movements) into meaningful interactions within this spatially-aligned world.
+
+xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/02_last_second_update.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/04_incorporating_into_the_engine.adoc[Next]

@@ -1,0 +1,18 @@
+:pp: {plus}{plus}
+= Late Latching and Timeline Semaphores
+
+In spatial computing, the gap between "I think my head is here" and "the pixel is actually drawn on the display" is known as the **Motion-to-Photon (M2P)** latency. Even with the predictive frame loop we explored in the previous chapter, there is still a window of time where the user's head can move after we've started our simulation but before the GPU has finished rendering. If we use stale head poses, the virtual world will feel like it's "swimming" or trailing behind the user's actual movement.
+
+This is where **Late Latching** comes in. Instead of gathering our head pose once at the start of the frame and using it for everything, we want to "latch" onto the most up-to-date pose as late as humanly possible—ideally, right before the GPU begins executing the draw calls that depend on it.
+
+To achieve this in Vulkan 1.4 without causing massive CPU stalls, we leverage **Timeline Semaphores**. Traditionally, synchronizing the CPU and GPU required "heavy" operations like `vkDeviceWaitIdle` or binary semaphores that are difficult to manage across complex frames. Timeline semaphores allow us to create a 64-bit monotonically increasing counter that both the CPU and GPU can wait on or signal.
+
+By gating our Uniform Buffer Object (UBO) or Push Constant updates behind a timeline semaphore value, we can ensure that the GPU only proceeds with a draw call once the CPU has finished writing the absolute latest view and projection matrices. This minimizes the prediction error and keeps the virtual world anchored firmly to the user's reality.
+
+In this chapter, we will look at how to:
+
+1. Orchestrate the CPU/GPU handshake using timeline semaphores.
+2. Update our shader data at the "last microsecond" before submission.
+3. Integrate these late-breaking updates into the engine's command buffer flow.
+
+xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/02_last_second_update.adoc[Next]

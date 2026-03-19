@@ -1,0 +1,51 @@
+:pp: {plus}{plus}
+= ML-Driven Segmentation: Understanding Reality
+
+In standard Augmented Reality (AR), virtual objects are often drawn directly on top of the camera feed. This is known as **Naïve Compositing**, and it frequently leads to a jarring "Ghosting Effect"—where a virtual robot appears to float in front of a real table that should logically be occluding it. To fix this, we use **Semantic Segmentation**.
+
+== The Concept: Pixel-Wise Understanding
+
+Semantic segmentation is the process of labeling every pixel in the camera feed with a category. Unlike simple object detection, which just places a box around an item, segmentation provides a high-resolution, pixel-perfect understanding of the scene.
+
+1.  **Input**: A raw RGB camera frame captured by the headset.
+2.  **ML Pass**: A neural network (often a **U-Net** or **Transformer** architecture) processes the frame.
+3.  **Output**: A **Segmentation Mask** where each pixel value corresponds to a category: 0 for Background, 1 for Table, 2 for Human Hand, etc.
+
+By understanding *what* occupies every pixel in the real world, our engine can make intelligent decisions about *how* to blend virtual content, ensuring that digital objects respect the physical boundaries of the user's room.
+
+== Implementing the Occlusion Mask
+
+In our Vulkan engine, we treat the output of this ML pass as a specialized texture: the **Occlusion Mask**. This texture is used in our final composite shader to gate the visibility of virtual pixels.
+
+Authoring this in **Slang**, we can efficiently sample the mask and perform conditional logic to handle complex real-world occlusion.
+
+[source,slang]
+----
+// A Slang fragment shader utilizing a semantic mask for occlusion
+[shader("pixel")]
+float4 fragmentMain(V2P input) : SV_Target {
+    // 1. Sample the virtual scene color
+    float4 virtualColor = sceneTexture.Sample(input.uv);
+
+    // 2. Sample the ML-generated semantic mask (using integer labels)
+    uint label = semanticMask.Sample(input.uv).r;
+
+    // 3. Perform Semantic Occlusion
+    // If the pixel is labeled as "Human Hand", we hide the virtual object
+    // to allow the user's physical hand to appear "in front" of the digital content.
+    if (label == SEMANTIC_LABEL_HAND) {
+        // Transparent output allows the passthrough camera feed to show through
+        return float4(0, 0, 0, 0);
+    }
+
+    return virtualColor;
+}
+----
+
+== The Depth Buffer of Reality
+
+While semantic labels tell us *what* an object is, they don't always provide its exact distance. High-end spatial engines combine these labels with raw depth data from **LiDAR**. This enables **Depth-Aware Semantic Occlusion**, where a virtual robot can hide behind a real chair but still appear in front of a real-world wall further back in the room.
+
+By utilizing on-GPU inference, we generate these masks with minimal latency, ensuring that as the user moves their hand, the virtual world responds and "tucks behind" it instantly.
+
+xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/03_per_pixel_masking.adoc[Next]

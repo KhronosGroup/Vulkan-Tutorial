@@ -230,7 +230,7 @@ finished:
 ----
 void drawFrame() {
     ...
-    auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
+    auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
 }
 ----
 
@@ -240,7 +240,7 @@ Using the maximum value of a 64-bit unsigned integer means we effectively disabl
 The next two parameters specify synchronization objects that are to be signaled when the presentation engine is finished using the image.
 That's the point in time where we can start drawing to it.
 It is possible to specify a semaphore, fence or both.
-We're going to use our `presentCompleteSemaphores` for that purpose here.
+We're going to use our `presentCompleteSemaphore` for that purpose here.
 
 The last parameter specifies a variable to output the index of the swap chain image that has become available.
 The index refers to the `VkImage` in our `swapChainImages` array.

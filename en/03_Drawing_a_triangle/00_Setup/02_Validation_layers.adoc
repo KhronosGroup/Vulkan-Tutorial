@@ -274,7 +274,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
 The first parameter specifies the severity of the message, which is one of
 the following flags:
 
-* `vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose`: Diagnostic message
+* `vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose`: Diagnostic message from Vulkan components like the loader, layers and drivers
 * `vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo`   : Informational message like the creation of a resource
 * `vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning`: Message about behavior that is not necessarily an error, but very likely a bug in your application
 * `vk::DebugUtilsMessageSeverityFlagBitsEXT::eError`  : Message about behavior that is invalid and may cause crashes
@@ -345,8 +345,7 @@ We'll need to fill in a structure with details about the messenger and its callb
 void setupDebugMessenger()
 {
     ...
-    vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
-                                                        vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+    vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
                                                         vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
     vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(
             vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
@@ -358,10 +357,7 @@ void setupDebugMessenger()
 ----
 
 The `messageSeverity` field allows you to specify all the types of
-severities you would like your callback to be called for. We've specified
-all types except for `vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo` here to
-receive notifications about possible problems while leaving out verbose
-general debug info.
+severities you would like your callback to be called for. We're only interested in messages that hint at application issues and might need fixing. So we request the `eWarning` and `eError` flags.
 
 Similarly, the `messageType` field lets you filter which types of messages
 your callback is notified about. We've simply enabled all types here. You

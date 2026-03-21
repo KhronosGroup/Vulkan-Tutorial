@@ -1,0 +1,73 @@
+:pp: {plus}{plus}
+
+= Non-Uniform Indexing: Resource Arrays in Subgroups
+
+== The Descriptor Limit
+
+In traditional Vulkan, **descriptor sets** (collections of resources like textures or buffers) are "uniform" across a draw call or dispatch. This means that every thread in a workgroup must access the same resource from a given descriptor set index.
+
+But what happens if you have an array of textures, and you want thread A to access texture index 5 while thread B in the same subgroup wants texture index 12? In early Vulkan, this would result in undefined behavior or a device crash.
+
+This is where **Non-Uniform Indexing** comes in.
+
+== Non-Uniform Indexing (Descriptor Indexing)
+
+Vulkan's **Descriptor Indexing** (standard since 1.2 and refined in 1.4) allows you to use a variable as an index into a descriptor array. However, because threads in a subgroup execute in lockstep, the hardware needs to know when an index might be different ("non-uniform") across the subgroup.
+
+In Slang (which inherits from HLSL), we use the `NonUniformResourceIndex` function to tell the compiler: "This index might be different for every thread, so don't optimize it as a uniform value."
+
+[source,slang]
+----
+// An array of textures in a descriptor set
+Texture2D textures[];
+
+// Each thread picks its own texture based on a material ID
+uint materialID = getMaterialID();
+
+// We must explicitly mark the index as non-uniform
+float4 color = textures[NonUniformResourceIndex(materialID)].Sample(sampler, uv);
+----
+
+=== GLSL: nonuniformEXT
+
+In GLSL, this requires the `GL_EXT_nonuniform_qualifier` extension. Instead of a function call, you use a special keyword: `nonuniformEXT`.
+
+[source,glsl]
+----
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(binding = 0) uniform sampler2D textures[];
+
+// The GLSL equivalent of NonUniformResourceIndex
+uint materialID = getMaterialID();
+vec4 color = texture(textures[nonuniformEXT(materialID)], uv);
+----
+
+Without `nonuniformEXT`, the compiler might assume `materialID` is the same for all threads in a subgroup and optimize the access, which would lead to incorrect results (all threads would get the same texture value, likely from the first thread's index).
+
+== Why Is This a Subgroup Feature?
+
+You might wonder why this is in the subgroup chapter instead of the memory chapter. The reason is how the hardware executes this instruction.
+
+When a subgroup encounters a non-uniform index, the GPU must **scalarize** (serialize the access for each unique index) the access. It effectively loops through the unique indices present in the subgroup:
+
+1.  Find all threads wanting texture 5.
+2.  Perform the load for those threads.
+3.  Find all threads wanting texture 12.
+4.  Perform the load for those threads.
+
+This process is handled by the hardware, but it relies on the same subgroup partitioning logic we discussed in the previous section. By understanding that this "looping" happens at the subgroup level, you can better predict the performance impact of divergent resource access.
+
+== Performance Best Practices
+
+*   **Minimize Divergence**: If all 32 threads in a subgroup access the same texture, the hardware only needs to do one load. If all 32 threads access *different* textures, the load operation might take up to 32 times longer.
+*   **Subgroup Sorting**: If you have a large workload, consider sorting it so that threads in the same subgroup are more likely to access the same or nearby resources.
+*   **Vulkan 1.4 Features**: Modern Vulkan 1.4 hardware often has better support for non-uniform access, sometimes even avoiding the full scalarization loop for certain resource types.
+
+== Conclusion
+
+Subgroup operations represent a paradigm shift in GPU programming. By moving from "workgroup-wide synchronization" to "wave-aware communication," you can unlock the full potential of modern GPU architectures.
+
+In the next chapter, we'll step back and look at how these Vulkan compute concepts interact with the broader ecosystem, starting with **OpenCL on Vulkan**.
+
+xref:03_subgroup_partitioning.adoc[Previous: Subgroup Partitioning] | xref:../05_OpenCL_on_Vulkan/01_introduction.adoc[Next: OpenCL on Vulkan]

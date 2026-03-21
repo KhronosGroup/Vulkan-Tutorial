@@ -1,0 +1,64 @@
+:pp: {plus}{plus}
+= The Divergence Audit: Identifying and Refactoring Branch Divergence
+
+One of the most insidious performance killers in GPU compute is **Branch Divergence**. To understand why, we need to remember that GPUs operate on groups of invocations (wavefronts or warps) that execute the same instruction in lock-step. When your code includes a branch—like an `if-else` statement—and some invocations in the subgroup take the `if` path while others take the `else` path, the hardware is forced to **serialize** those paths.
+
+The hardware will execute the `if` path for all relevant invocations (while masking out the others), and then it will execute the `else` path for the remaining invocations (masking out the first group). During this time, the ALUs for the inactive invocations are essentially idle, and you're effectively cutting your GPU's throughput in half.
+
+== Identifying Divergence
+
+A **Divergence Audit** is a methodical process for identifying where these "divergent" branches are occurring and refactoring your code to minimize their impact.
+
+=== Tool-Based Identification
+Look for metrics in your profiler like **Active Lane Ratio** or **Instruction Execution Efficiency**. A low ratio indicates that many lanes in your subgroups are being idled by divergent control flow.
+
+For example, in NVIDIA Nsight, you might look at the "Warp Execution Efficiency" metric. If it's consistently below 50%, you likely have a significant divergence problem.
+
+=== In-Shader Visualization
+You can also use **Subgroup Operations** (Chapter 4) to manually inspect divergence directly in your shader. By using `WaveActiveBallot()`, you can generate a bitmask of which invocations are taking a particular path.
+
+[source,slang]
+----
+// Visualize divergence in your shader
+bool local_test = data[globalID.x] > threshold;
+
+// Ballot tells us exactly which lanes in the subgroup are 'true'
+uint4 lane_mask = WaveActiveBallot(local_test);
+
+// If only some lanes are true, we are divergent!
+uint active_lanes = countbits(lane_mask.x) + countbits(lane_mask.y) +
+                    countbits(lane_mask.z) + countbits(lane_mask.w);
+----
+
+== Refactoring Strategies
+
+Once you've identified a divergent branch, there are several ways to refactor it.
+
+=== Strategy 1: Subgroup-Level Branching
+If a branch can be evaluated identically for all invocations in a subgroup, the hardware can execute it without any penalty. This is often called "Uniform Branching."
+
+[source,slang]
+----
+// Refactored, subgroup-aware branch
+bool local_test = data[globalID.x] > threshold;
+
+if (WaveActiveAllTrue(local_test)) {
+    // Fast path: everyone is doing the same work!
+    do_complex_work_fast();
+} else if (WaveActiveAnyTrue(local_test)) {
+    // Slow path: only some are doing work, but we only enter if necessary
+    do_complex_work_slow();
+}
+----
+
+=== Strategy 2: Replacing Control Flow with Data Flow
+A more advanced technique is to **Replace Control Flow with Data Flow**. Instead of using an `if` to choose between two calculations, you can perform both and use a mathematical trick to select the result. This keeps the execution pipeline "saturated" and avoids the serialization penalty of branching.
+
+Functions like `lerp()`, `clamp()`, and `step()` are your best friends here. In many cases, performing a few extra arithmetic operations is faster than the cost of a divergent branch.
+
+=== Strategy 3: Work Sorting
+If your divergence is caused by processing different types of data (e.g., in a ray tracer where some rays hit a complex material and others hit a simple one), you can use a **sorting pass** to group similar workloads together. By ensuring that all invocations in a subgroup are processing the same type of data, you can eliminate divergence entirely at the cost of the sort.
+
+By conducting regular divergence audits, you can identify the "hidden" costs in your compute kernels and refactor them into more efficient, SIMD-friendly patterns. This is the difference between code that "just runs" and code that truly masters the GPU's architecture.
+
+xref:02_instruction_throughput.adoc[Previous: Instruction Throughput Analysis] | xref:../12_Diagnostics_and_Refinement/01_introduction.adoc[Next: Diagnostics and Refinement]

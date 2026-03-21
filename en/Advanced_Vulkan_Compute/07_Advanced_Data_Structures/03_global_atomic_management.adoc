@@ -1,0 +1,128 @@
+:pp: {plus}{plus}
+
+= Global Atomic Management: Lock-Free Lists and Queues
+
+== Why 64-bit Atomics?
+
+In early Vulkan, atomics were limited to 32-bit integers. While useful for simple counters, they weren't enough to handle pointers or complex data structures. With **Vulkan 1.4**, 64-bit atomics are a core feature, which opens the door to building truly lock-free data structures.
+
+A 64-bit atomic can store both a value and a "tag" (to avoid the **ABA problem**—where a value is changed from A to B and back to A, tricking a thread into thinking it never changed) or a full 64-bit **Buffer Device Address** (a pointer).
+
+== What Does "Lock-Free" Actually Mean?
+
+In traditional CPU programming, if two threads want to update the same piece of data, we use a **mutex** (mutual exclusion) to "lock" the data, perform the update, and then "unlock" it. On a GPU, this is a disaster. Because thousands of threads are running in lock-step (**SIMT**—Single Instruction, Multiple Threads), if one thread takes a lock and the others wait, the entire GPU can grind to a halt—a situation called **deadlock**.
+
+A **Lock-Free** algorithm is one that guarantees that at least one thread in the system will make progress in a finite number of steps. Instead of locking, we use **Atomic Operations**. These are special hardware instructions that perform a "Read-Modify-Write" sequence in a single, uninterruptible step.
+
+In our linked list example, we use `InterlockedExchange` (or `atomicExchange` in GLSL). This instruction says: "Take this new value, put it in memory, and give me whatever was there before—all without letting any other thread touch that memory location in between."
+
+Because every thread successfully completes its "exchange" and gets a unique `oldHead`, no thread ever has to wait for another. They all make progress simultaneously. This is the essence of being lock-free on the GPU.
+
+== Building Lock-Free Linked Lists
+
+Linked lists are the foundation of many GPU algorithms, particularly for **Order-Independent Transparency (OIT)**. In a per-pixel linked list, every pixel in the framebuffer stores a "head" pointer to a list of transparent fragments that hit that pixel.
+
+=== The Anatomy of a GPU Linked List
+
+A GPU-resident linked list consists of three main components:
+
+1.  **The Head Buffer**: A 2D texture or buffer (matching the screen resolution) that stores the index of the first node for each pixel. It is initialized to a "null" value (e.g., `0xFFFFFFFF`).
+2.  **The Node Pool**: A large linear buffer that stores the actual data for every fragment.
+3.  **The Atomic Counter**: A single integer used to "allocate" nodes from the pool.
+
+[source,slang]
+----
+struct Node {
+    float4 color;      // Fragment color
+    float  depth;      // Fragment depth
+    uint   nextIdx;    // Index of the next node in the pool
+};
+
+RWStructuredBuffer<uint> headBuffer; // size: width * height
+RWStructuredBuffer<Node> nodePool;   // size: Max total fragments
+RWStructuredBuffer<uint> counter;    // size: 1
+----
+
+When a fragment is processed:
+
+1.  The thread atomically increments the `counter` to get a unique `newNodeIdx`.
+2.  The thread uses `InterlockedExchange` on the `headBuffer` at its pixel location. It writes `newNodeIdx` and receives the `oldHead`.
+3.  The thread writes its data and the `oldHead` (as `nextIdx`) into `nodePool[newNodeIdx]`.
+
+This structure allows thousands of fragments to be added to millions of different lists simultaneously without ever needing a global lock.
+
+=== Beyond Exchange: Compare-and-Swap (CAS)
+
+While `InterlockedExchange` is great for simple lists, more complex structures (like thread-safe queues) often need **Compare-and-Swap (CAS)**, exposed as `InterlockedCompareExchange` in Slang.
+
+CAS works like this: "Only update this memory if its current value matches my 'expected' value." If it doesn't match, it means another thread changed the data first. In that case, our thread must "retry" the operation with the new value. This "loop until success" pattern is common in advanced lock-free programming and is much more efficient than a traditional lock because threads only wait if there is actual contention, and they never leave the hardware scheduler.
+
+=== GLSL: atomicAdd and 64-bit Atomics
+
+In GLSL, you use the `atomicAdd` and `atomicExchange` functions. For 64-bit atomics, you must enable the `GL_EXT_shader_atomic_int64` extension.
+
+[source,glsl]
+----
+#extension GL_EXT_shader_atomic_int64 : enable
+
+layout(binding = 0) buffer HeadBuffer { uint64_t heads[]; };
+layout(binding = 1) buffer Counter    { uint64_t count; };
+
+void addNode(uint pixelIdx, Node newNode) {
+    // 64-bit atomic add to a global counter
+    uint64_t newNodeIdx = atomicAdd(count, 1UL);
+
+    // 64-bit atomic exchange to update the head pointer
+    uint64_t oldHead = atomicExchange(heads[pixelIdx], newNodeIdx);
+
+    // ... update node and next pointer
+}
+----
+
+While Slang provides a more unified `InterlockedAdd` that works across different bit-widths, GLSL requires being explicit about the extensions and the types (e.g., using `1UL` for 64-bit literals).
+
+While the example above uses 32-bit indices for simplicity, 64-bit atomics allow you to do this across different buffers or even different memory types using raw pointers.
+
+== Building Work Queues
+
+A **Work Queue** is a list of tasks that the GPU needs to perform. In a **GPU-Driven Pipeline**, one compute dispatch might generate a list of objects that need to be culled, and then another dispatch might process that list.
+
+=== The Anatomy of a Work Queue
+
+A work queue is essentially a **producer-consumer** structure. On the GPU, this is typically implemented as a **Linear Buffer** with an atomic counter, or a **Ring Buffer** for persistent workloads.
+
+[source,slang]
+----
+struct Task {
+    uint objectID;
+    uint drawCommandIdx;
+};
+
+struct WorkQueue {
+    RWStructuredBuffer<Task> data;    // Storage for pending tasks
+    RWStructuredBuffer<uint> counter; // Number of tasks currently in the queue
+};
+
+void pushTask(WorkQueue queue, Task myTask) {
+    uint slot;
+    // Atomic increment to claim a unique slot
+    InterlockedAdd(queue.counter[0], 1, slot);
+
+    // Check for buffer overflow!
+    if (slot < MAX_QUEUE_SIZE) {
+        queue.data[slot] = myTask;
+    }
+}
+----
+
+By using a global work queue, you can handle variable-sized workloads without ever returning to the CPU.
+
+== Optimizing Atomics with Subgroups
+
+Atomics are relatively expensive because they have to be coordinated across the entire GPU. If thousands of threads are all trying to add to the same counter, the hardware will serialize them, leading to a massive performance drop.
+
+As we discussed in Chapter 4, you can use **Subgroup Operations** to **coalesce** (combine multiple operations into one) these atomics. Instead of every thread calling `InterlockedAdd`, you can have the threads in a subgroup perform a **Subgroup Reduction** to calculate the total amount they need to add, pick one "leader" thread to perform a single atomic add for the whole subgroup, and then distribute the resulting base index to the other threads.
+
+This simple optimization can improve the throughput of global atomics by 32x or 64x, making complex data structures viable for even the most demanding real-time applications.
+
+xref:02_gpu_resident_trees.adoc[Previous: GPU-Resident Trees] | xref:04_device_addressable_buffers.adoc[Next: Device-Addressable Buffers]

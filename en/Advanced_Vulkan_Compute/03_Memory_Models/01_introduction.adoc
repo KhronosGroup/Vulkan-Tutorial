@@ -1,0 +1,34 @@
+:pp: {plus}{plus}
+
+= Memory Models and Consistency: Introduction
+
+== Overview
+
+In the previous chapter, we looked at how to keep the GPU busy through high occupancy and tight data layouts. But as you scale your compute dispatches from simple, independent tasks to complex, cooperative algorithms, you'll quickly encounter a much more challenging problem: **Memory Consistency** (ensuring all parts of the GPU see the same data at the same time).
+
+How do you know that a value written by one invocation is visible to another? What happens when two invocations try to write to the same location at once? How do you share data efficiently between thousands of threads without crashing into a race condition?
+
+=== The Explicit Nature of Vulkan
+
+On the CPU, you're used to a world where memory is generally **coherent**. If Thread A writes a value to a variable, Thread B can usually read it shortly after without any special ceremony because the hardware keeps the caches in sync automatically.
+
+On the GPU, this is **not** the case. With thousands of threads executing concurrently across multiple compute units, each with its own hierarchical caches (**L1** - Level 1 and **L2** - Level 2, etc.), keeping everyone's view of memory in sync is an incredibly expensive task. Vulkan's philosophy is simple: **synchronization is never automatic**. If you want a write to be visible to a read, you must explicitly say so.
+
+== The Three Pillars of Memory Management
+
+In this chapter, we'll dive deep into the mechanisms Vulkan provides to manage this complexity:
+
+1.  **The Vulkan Memory Model**: Mastering Availability, Visibility, and Domain operations to create a formal **"Happens-Before"** relationship (a strict ordering of operations) between threads.
+2.  **Shared Memory (LDS)**: Utilizing a small, ultra-fast, workgroup-local memory for high-speed data exchange and manual caching.
+3.  **Memory Consistency**: Using Slang's `GroupMemoryBarrierWithGroupSync` vs. fine-grained Vulkan 1.4 barriers to minimize pipeline stalls and maximize throughput.
+
+== Why This Matters
+
+Efficient memory synchronization is the difference between a high-performance simulation and a broken, non-deterministic mess.
+
+*   **Over-synchronization**: Your kernels will be slow because every thread is constantly waiting for every other thread.
+*   **Under-synchronization**: You'll get flickering results, "ghost" data, and hard-to-debug crashes that only appear on certain hardware.
+
+We'll start by looking at the theoretical foundation: the **Vulkan Memory Model**. While it might seem abstract at first, it is the key to writing portable, robust compute code that works on every GPU from a smartphone to a high-end workstation.
+
+xref:../02_Compute_Architecture/04_vulkan_1_4_scalar_layouts.adoc[Previous: Scalar Layouts] | xref:02_vulkan_memory_model.adoc[Next: The Vulkan Memory Model]

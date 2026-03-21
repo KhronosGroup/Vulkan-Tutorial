@@ -1,0 +1,56 @@
+:pp: {plus}{plus}
+= Direct CPU-to-Image Access: Utilizing Host Image Copies
+
+== Moving Data Directly on the Host
+
+One of the most powerful features in **Vulkan 1.4** is the ability to move data directly on the host (CPU). This is handled by the `vk::Device::copyMemoryToImageEXT` function (or its equivalent in your RAII wrapper). This function takes raw CPU memory and copies it directly into a GPU-optimal image.
+
+This is a major productivity boost. You no longer have to manage staging buffers, command pools, or submission queues for simple, direct image updates. It's the most direct way to move data from a CPU-side resource, like a dynamic texture or a screenshot buffer, into a GPU-side image.
+
+== Implementing the Host Copy
+
+To use this feature, you first need to check for support for the `VK_EXT_host_image_copy` extension (now part of Vulkan 1.4). Once confirmed, you can perform a copy like this:
+
+[,c++]
+----
+// 1. Prepare the copy info
+auto copyInfo = vk::MemoryToImageCopyEXT{
+    .pHostPointer = cpuData,
+    .memoryRowLength = width,
+    .memoryImageHeight = height,
+    .imageSubresource = { .aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1 },
+    .imageExtent = { .width = width, .height = height, .depth = 1 }
+};
+
+auto hostCopyInfo = vk::CopyMemoryToImageInfoEXT{
+    .dstImage = *gpuImage,
+    .dstImageLayout = vk::ImageLayout::eGeneral,
+    .regionCount = 1,
+    .pRegions = &copyInfo
+};
+
+// 2. Perform the copy directly on the CPU
+device.copyMemoryToImageEXT(hostCopyInfo);
+----
+
+== Use Cases and Advantages
+
+Host Image Copies are ideal for scenarios where you need to update a small amount of data quickly and don't want to wait for the GPU's command processor.
+
+-   **Dynamic Textures**: Updating UI elements, font atlases, or small dynamic textures.
+-   **Screenshots**: Copying a GPU-optimal image back to the CPU for saving to disk (using the inverse `copyImageToMemoryEXT`).
+-   **Debugging**: Quickly inspecting the contents of a GPU-side resource from your CPU code.
+
+The primary advantage is **lower latency**. Because you aren't recording and submitting a command buffer, you eliminate all the driver and hardware overhead associated with submission. The CPU simply moves the bytes, and they are available on the GPU immediately.
+
+== Potential in Simple Engine
+
+In `Simple Engine`, we can use Host Image Copies to optimize our **Screenshot** system. Currently, taking a screenshot involves a multi-step process of recording a command buffer to copy the swapchain image to a staging buffer, submitting that command buffer, and then waiting for a fence on the CPU. This is slow and can cause a noticeable hitch in the frame rate.
+
+By moving to `copyImageToMemoryEXT` (available in Vulkan 1.4), we can perform the screenshot copy directly on the CPU. Once the frame is finished and the swapchain image is in the `ePresentSrcKHR` layout, we can call `copyImageToMemoryEXT` from our main thread. This moves the pixels directly from the GPU's memory into our CPU-side screenshot buffer, completely bypassing the command submission and fence-wait cycle. This results in a much smoother user experience and a cleaner, more direct implementation of the screenshot feature in our engine.
+
+In the next section, we'll see how to handle the synchronization required to ensure that these bytes are visible to the GPU and that we don't create any host-device hazards.
+
+== Navigation
+
+Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_visibility_flushes.adoc[Visibility & Flushes]

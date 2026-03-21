@@ -1,0 +1,72 @@
+:pp: {plus}{plus}
+= Staging Synchronization: Coordinating Graphics and Transfer
+
+== The Handshake
+
+Once your background transfer queue has finished copying a new asset to GPU-optimal memory, you need a way to tell the graphics queue that the data is ready to be sampled. This is where the **Timeline Semaphore** and **Queue Family Ownership Transfer** come together.
+
+The coordination follows a simple three-step process:
+
+1.  **Transfer Release**: The transfer queue performs its copy and then records a pipeline barrier to "release" ownership of the resource (as we learned in Chapter 3).
+2.  **Semaphore Signal**: The transfer queue signals a specific value on a timeline semaphore when its work is finished.
+3.  **Graphics Acquire**: The graphics queue waits for that same semaphore value and then records its own pipeline barrier to "acquire" ownership of the resource.
+
+== Coordinating the Handshake
+
+The beauty of the **Wait-Before-Signal** pattern we learned in Chapter 4 is that the graphics queue can be submitted *before* the transfer has even finished. As long as the graphics queue waits for the correct timeline value, the hardware will ensure the transfer completes first.
+
+[,c++]
+----
+// Graphics Queue Submission (Wait for Transfer)
+auto waitInfo = vk::SemaphoreSubmitInfo{
+    .semaphore = *transferTimeline,
+    .value = upload_complete_value,
+    .stageMask = vk::PipelineStageFlagBits2::eFragmentShader
+};
+
+auto acquireBarrier = vk::ImageMemoryBarrier2{
+    .srcStageMask = vk::PipelineStageFlagBits2::eNone,
+    .srcAccessMask = vk::AccessFlagBits2::eNone,
+    .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+    .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
+    .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .srcQueueFamilyIndex = transferQueueIndex,
+    .dstQueueFamilyIndex = graphicsQueueIndex,
+    .image = newTexture.image(),
+    .subresourceRange = subresourceRange
+};
+
+// Record and submit the acquire barrier on the graphics queue
+graphicsCommandBuffer.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &acquireBarrier});
+
+auto submit = vk::SubmitInfo2{
+    .waitSemaphoreInfoCount = 1,
+    .pWaitSemaphoreInfos = &waitInfo,
+    // ...
+};
+
+graphicsQueue.submit2(submit);
+----
+
+== Handling Resource Lifetimes
+
+When you stream assets in the background, you must also be careful with the lifetime of your **Staging Buffer**. You cannot reuse or destroy the staging buffer until the transfer queue has finished copying from it. This is another area where the timeline semaphore is invaluable. By tagging each staging allocation with its completion value, you can build a simple "garbage collector" that reclaims memory only when it's safe to do so.
+
+By coordinating your staging synchronization with your timeline semaphores, you can build an engine that is both high-performance and extremely robust. In the next chapter, we'll see how these same principles apply to the modern world of **Dynamic Rendering**, where traditional subpass dependencies have been replaced by these explicit synchronization patterns.
+
+== Coordinating in Simple Engine
+
+In `Simple Engine`, this coordination happens in the `Renderer::ProcessPendingMeshUploads` method. When the `LoadingThread` has finished a transfer, it adds the new mesh/texture to a thread-safe queue. The main renderer then checks this queue once per frame.
+
+For each new asset, the renderer:
+
+1.  **Gets the Timeline Value**: It retrieves the `uploadTimelineValue` that the loading thread signaled for this specific upload.
+2.  **Records the Acquire Barrier**: It records a `vk::ImageMemoryBarrier2` on the main graphics command buffer. Since we use `eConcurrent` for our images, this barrier primarily handles the layout transition from `eTransferDstOptimal` to `eShaderReadOnlyOptimal` and ensures the data is invalidated in the graphics caches.
+3.  **Waits for Completion**: It adds a `vk::SemaphoreSubmitInfo` to the main frame submission. This tells the `graphicsQueue` to wait until the `uploadTimeline` has reached the `uploadTimelineValue` before it can start executing the fragment shaders that sample the new texture.
+
+This robust handshake ensures that `Simple Engine` never tries to draw a texture that is still being copied, even if the background thread is running on a different CPU core and submitting to a different GPU queue.
+
+== Navigation
+
+Previous: xref:02_non_blocking_uploads.adoc[Non-Blocking Data Uploads] | Next: xref:../Dynamic_Rendering_Sync/01_introduction.adoc[Synchronization in Dynamic Rendering]

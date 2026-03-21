@@ -1,0 +1,68 @@
+:pp: {plus}{plus}
+= Maximizing Throughput: Identifying Overlap Candidates
+
+== Finding the "Holes" in the GPU
+
+To maximize GPU throughput, we need to think beyond the simple linear execution of our command buffers. We want to find workloads that are **latency-bound** (spending a lot of time waiting for memory or fixed-function units) and pair them with workloads that are **compute-bound** (using the GPU's arithmetic units heavily).
+
+A classic example of this is the **Shadow Pass**. While the GPU is busy doing vertex processing and rasterizing depth-only geometry for shadows, many of the compute and shading units are sitting idle. This is a perfect "hole" that can be filled with an asynchronous compute task, such as a physics simulation or an occlusion culling pass.
+
+== The Simple Engine Case Study: Physics and Audio Compute
+
+In our `Simple Engine`, we have two major systems that are prime candidates for asynchronous compute: the **Physics System** (`physics_system.cpp`) and the **Audio HRTF System** (`audio_system.cpp`).
+
+The `PhysicsSystem` performs complex simulation tasks like integration and collision detection using GPU-accelerated compute shaders (`shaders/physics.slang`). Similarly, the `AudioSystem` uses a compute shader (`shaders/hrtf.slang`) to process audio spatialization (Head-Related Transfer Function) on the GPU.
+
+Currently, both systems follow a **sequential, blocking** pattern. For example, the physics simulation is submitted to the GPU, and the CPU immediately stalls at a fence:
+
+[,c++]
+----
+// Sequential Physics Dispatch (Current Engine)
+physicsSystem->Update(deltaTime); // Internally calls SimulatePhysicsOnGPU
+
+// Inside PhysicsSystem::SimulatePhysicsOnGPU:
+// 1. Submit compute commands to computeQueue
+// 2. ReadbackGPUPhysicsData: blocks on a fence (CPU STALL!)
+----
+
+This CPU-side stall is a missed opportunity for overlap. To maximize throughput, we can re-architect this flow to be asynchronous by utilizing the engine's dedicated **Compute Queue** (obtained via `renderer->GetComputeQueue()`). By submitting these tasks early in the frame and only synchronizing when the data is strictly necessary, we can keep both the graphics and compute hardware units fully occupied.
+
+Beyond physics and audio, the engine's **Forward+ Rendering** path (see `ForwardPlus_Rendering.adoc`) is another prime candidate for overlap. The Forward+ compute pass (`forward_plus_cull.slang`) builds light lists for each tile on the screen. While this compute pass *does* require the depth buffer from the current frame to perform effective Z-culling, it doesn't need to wait for the entire geometry pass to finish.
+
+If we use **Timeline Semaphores**, we can tell the compute queue to wait only until the **Depth Pre-pass** is complete. While the graphics queue continues with the main **Opaque Geometry** rendering, the compute queue can simultaneously be culling lights for those same pixels, perfectly overlapping the compute-heavy light assignment with the raster-heavy geometry processing.
+
+== The Dependency Architecture
+
+The key to allowing these workloads to overlap is the way we architect our dependencies. If we use a single, global timeline for everything, we might inadvertently create a bottleneck. Instead, we should use multiple timeline semaphores—one for each major "engine" of the GPU—and have them coordinate only when strictly necessary.
+
+For example, your graphics queue could signal a "Geometry Complete" value on its own timeline. Your compute queue could wait for that value before starting its work, while simultaneously continuing with other tasks that don't depend on the geometry.
+
+[,c++]
+----
+// Compute queue waiting for graphics geometry completion
+auto computeWaitInfo = vk::SemaphoreSubmitInfo{
+    .semaphore = *graphicsTimeline,
+    .value = geometryFrameValue,
+    .stageMask = vk::PipelineStageFlagBits2::eComputeShader
+};
+
+auto computeSubmit = vk::SubmitInfo2{
+    .waitSemaphoreInfoCount = 1,
+    .pWaitSemaphoreInfos = &computeWaitInfo,
+    // ...
+};
+
+computeQueue.submit2(computeSubmit);
+----
+
+== Submitting for Overlap
+
+Simply having multiple queues isn't enough. You also need to submit your work in a way that the hardware can actually parallelize. On most modern hardware, this means submitting your "background" compute work to a dedicated asynchronous compute queue. This queue has its own command processor and can feed tasks to the compute units independently of the main graphics queue.
+
+By decoupling the submission of your compute work from your main graphics loop, you allow the driver to schedule them concurrently. If the graphics queue is momentarily stalled (e.g., waiting for the display or a cache flush), the compute queue can step in and keep the hardware busy.
+
+In the next section, we'll see a concrete implementation of this pattern: async post-processing.
+
+== Navigation
+
+Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_async_post_processing.adoc[Async Post-Processing]

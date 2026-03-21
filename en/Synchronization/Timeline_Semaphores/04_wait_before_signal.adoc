@@ -1,0 +1,69 @@
+:pp: {plus}{plus}
+= Wait-Before-Signal Submission: Decoupling Execution
+
+== The Paradigm Shift
+
+In legacy Vulkan, you generally had to submit work in the order it was intended to execute. If Command Buffer B depended on Command Buffer A, you either had to submit A first, or submit them both in the same `vkQueueSubmit` call with a binary semaphore connecting them.
+
+Timeline Semaphores introduce the **Wait-Before-Signal** submission pattern. This allows you to submit Command Buffer B to the GPU *before* Command Buffer A has even been recorded, let alone submitted. You simply tell Command Buffer B to wait for a specific value on a timeline semaphore. As long as Command Buffer A (or some other process) eventually signals that value, the GPU will correctly manage the dependency.
+
+== How It Works
+
+This pattern works because Vulkan separates the **submission** of work from the **execution** of work. When you call `queue.submit2`, the driver simply adds your commands to the queue's internal buffer. The hardware's command processor then monitors the specified timeline semaphores. It will not begin executing the commands until all the "wait" values have been reached.
+
+[,c++]
+----
+// Submit the "Waiter" first!
+auto waitInfo = vk::SemaphoreSubmitInfo{
+    .semaphore = *timelineSemaphore,
+    .value = 10,
+    .stageMask = vk::PipelineStageFlagBits2::eAllCommands
+};
+
+auto submitWaiter = vk::SubmitInfo2{
+    .waitSemaphoreInfoCount = 1,
+    .pWaitSemaphoreInfos = &waitInfo,
+    .commandBufferInfoCount = 1,
+    .pCommandBufferInfos = &waitCommandBufferInfo
+};
+
+graphicsQueue.submit2(submitWaiter);
+
+// ... Later, perhaps in a different thread or even a different frame ...
+
+// Submit the "Signaler"
+auto signalInfo = vk::SemaphoreSubmitInfo{
+    .semaphore = *timelineSemaphore,
+    .value = 10,
+    .stageMask = vk::PipelineStageFlagBits2::eAllCommands
+};
+
+auto submitSignaler = vk::SubmitInfo2{
+    .signalSemaphoreInfoCount = 1,
+    .pSignalSemaphoreInfos = &signalInfo,
+    .commandBufferInfoCount = 1,
+    .pCommandBufferInfos = &signalCommandBufferInfo
+};
+
+transferQueue.submit2(submitSignaler);
+----
+
+== Why This Matters
+
+This decoupling is a game-changer for modern, multi-threaded engine architectures.
+
+1.  **Reduced CPU Latency**: Your main thread can submit all its work to the GPU as soon as the command buffers are recorded, without waiting for background threads (like an asset loader or a physics engine) to finish their work.
+2.  **Asynchronous Overlap**: It makes it much easier to implement overlapping passes. For example, your GPU can start its geometry pass while the CPU is still finishing the recording of the post-processing pass, as long as the post-processing pass waits for the geometry timeline value.
+3.  **Simplified Architecture**: You can build your submission logic around the "needs" of each pass, rather than worrying about the strict ordering of API calls.
+
+Wait-before-signal is the final piece of the puzzle for a truly modern Vulkan renderer. By combining the precision of Synchronization 2 with the flexibility of Timeline Semaphores, you can build an engine that is both easier to reason about and capable of squeezing every last drop of performance out of the hardware.
+
+== Simple Engine: Non-Blocking Submission
+
+In `Simple Engine`, we will use this pattern to decouple our `PhysicsSystem` from our `Renderer`. Currently, the renderer must wait for the physics simulation to finish on the CPU before it can even *record* its command buffers. This creates a massive CPU stall every frame.
+
+With wait-before-signal, our `Renderer` will simply record its commands to wait for the `physicsTimeline` to reach a specific value (e.g., `currentFrameIndex`). It can then submit those commands immediately to the `graphicsQueue`. Even if the `PhysicsSystem` hasn't finished its simulation on the `computeQueue` yet, the GPU will correctly wait at the beginning of the frame's rendering. This allows the CPU to move on to other tasks (like audio processing or input handling) while the GPU is efficiently managing the dependency itself.
+
+== Navigation
+
+Previous: xref:03_monotonic_counter.adoc[The Monotonic Counter] | Next: xref:../Frame_in_Flight/01_introduction.adoc[Frame-in-Flight Architecture]

@@ -1,0 +1,53 @@
+:pp: {plus}{plus}
+= The Validation Layer: Configuring Your Environment
+
+== Enabling Sync Validation
+
+The **LunarG Synchronization Validation** layer is not part of the standard `VK_LAYER_KHRONOS_validation` by default on all platforms. In many environments, you must explicitly enable it through the `vk_layer_settings.txt` file or through your engine's `vk::InstanceCreateInfo`.
+
+To enable it via the instance, you add the `VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT` flag to the `vk::ValidationFeaturesEXT` structure and pass it as the `pNext` of your `vk::InstanceCreateInfo`.
+
+[,c++]
+----
+auto syncValidationFeature = vk::ValidationFeaturesEXT{
+    .enabledValidationFeatureCount = 1,
+    .pEnabledValidationFeatures = &vk::ValidationFeatureEnableEXT::eSynchronizationValidation
+};
+
+auto instanceCreateInfo = vk::InstanceCreateInfo{
+    .pNext = &syncValidationFeature,
+    // ...
+};
+
+auto instance = vk::raii::Instance(context, instanceCreateInfo);
+----
+
+== Working with vk_layer_settings.txt
+
+For a more flexible approach, you can create a `vk_layer_settings.txt` file in your application's working directory. This file allows you to configure many aspects of the validation layers without recompiling your code.
+
+----
+# Example vk_layer_settings.txt
+khronos_validation.enables = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT
+khronos_validation.report_flags = error;warning;perf;info
+----
+
+== What the Layer Actually Does
+
+Once enabled, the sync validation layer begins tracking every resource in your engine. It keeps a record of the last stage that wrote to a resource, the stage that is currently reading from it, and the stage that is next in line.
+
+If it detects a situation where two stages could be accessing the same memory without a proper barrier—for example, if a fragment shader starts reading a texture before its transfer copy has finished—the layer will emit a validation error.
+
+It’s important to note that the sync validation layer has a **non-trivial performance overhead**. It is not meant to be left on in your production or release builds. It should be used exclusively during development and testing to catch hazards before they become bugs.
+
+== Simple Engine: Development Workflow
+
+In `Simple Engine`, we integrate Synchronization Validation directly into our debug builds. When you run the engine with the `--debug-sync` command-line flag (or enable it in `renderer_core.cpp`), we automatically add `vk::ValidationFeatureEnableEXT::eSynchronizationValidation` to our instance creation.
+
+This is a critical part of our development workflow. Whenever we add a new rendering pass—like our recent **Forward+ Lighting** or **Ray Query Shadows**—we run the engine with synchronization validation enabled. This allows us to catch any "Write-After-Read" (WAR) or "Read-After-Write" (RAW) hazards early, before they manifest as flickering pixels or intermittent GPU hangs. By letting the tools find these hazards for us, we can spend more time optimizing our engine and less time chasing down elusive synchronization bugs.
+
+In the next section, we'll see how to decipher the error messages this layer produces.
+
+== Navigation
+
+Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_interpreting_vuids.adoc[Interpreting VUIDs]

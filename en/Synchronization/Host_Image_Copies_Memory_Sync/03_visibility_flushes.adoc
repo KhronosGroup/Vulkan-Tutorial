@@ -1,0 +1,58 @@
+:pp: {plus}{plus}
+= Visibility & Flushes: Mastering Coherency
+
+== Understanding Host-Device Synchronization
+
+When you use **Host Image Copies**, you are essentially performing a direct memory copy between the CPU and GPU. This is highly efficient, but it introduces a new kind of synchronization challenge. We must ensure that the data we write on the host (CPU) is **visible** to the GPU before it starts using it, and that any previous GPU work is **available** before we start our host copy.
+
+In the world of **Synchronization 2**, we use `vk::MemoryBarrier2` to express this. We are no longer syncing two different GPU stages; we are syncing the host and the device.
+
+== The Host-to-Device Dependency
+
+The most common case is a **Host-to-Device** dependency. You write some data on the CPU and then want the GPU to read it in a shader. To do this, you use a barrier with `srcStageMask = vk::PipelineStageFlagBits2::eHost` and `dstStageMask` set to the shader stage where the image will be read.
+
+[,c++]
+----
+auto hostToDeviceBarrier = vk::ImageMemoryBarrier2{
+    .srcStageMask = vk::PipelineStageFlagBits2::eHost,
+    .srcAccessMask = vk::AccessFlagBits2::eHostWrite,
+    .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+    .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
+    .oldLayout = vk::ImageLayout::eGeneral,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .image = gpuImage.image(),
+    .subresourceRange = subresourceRange
+};
+
+commandBuffer.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &hostToDeviceBarrier});
+----
+
+The `eHost` stage mask is a special flag that tells the GPU: "This data was updated on the CPU. Please ensure that all CPU writes are visible before the fragment shader starts its read."
+
+== The Device-to-Host Dependency
+
+The inverse case is a **Device-to-Host** dependency—for example, when you take a screenshot. You must ensure that the GPU has finished its rendering before the CPU starts the host copy. To do this, you record a barrier with the appropriate GPU stages as the source and `eHost` as the destination.
+
+[,c++]
+----
+auto deviceToHostBarrier = vk::ImageMemoryBarrier2{
+    .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+    .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+    .dstStageMask = vk::PipelineStageFlagBits2::eHost,
+    .dstAccessMask = vk::AccessFlagBits2::eHostRead,
+    .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+    .newLayout = vk::ImageLayout::eGeneral,
+    .image = gpuImage.image(),
+    .subresourceRange = subresourceRange
+};
+
+commandBuffer.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &deviceToHostBarrier});
+----
+
+In addition to the barrier, you must also use a **Fence** or a **Timeline Semaphore** on the CPU side to ensure that the command buffer containing the barrier has actually finished executing on the GPU before you attempt to call `device.copyImageToMemoryEXT`.
+
+By mastering these host-device handshakes, you can build a renderer that is both extremely fast and perfectly robust, giving you a powerful new tool for managing your engine's memory. In the final chapters of this series, we'll see how to debug and optimize these complex synchronization patterns using the latest Vulkan tools.
+
+== Navigation
+
+Previous: xref:02_cpu_to_image_access.adoc[Direct CPU-to-Image Access] | Next: xref:../Synchronization_Validation/01_introduction.adoc[Debugging with Synchronization Validation]

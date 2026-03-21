@@ -65,4 +65,4 @@ In the next section, we'll see a concrete implementation of this pattern: async 
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_async_post_processing.adoc[Async Post-Processing]
+Previous: xref:Synchronization/Async_Compute_Overlap/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Async_Compute_Overlap/03_async_post_processing.adoc[Async Post-Processing]

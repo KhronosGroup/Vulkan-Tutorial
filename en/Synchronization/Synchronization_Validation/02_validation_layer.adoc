@@ -50,4 +50,4 @@ In the next section, we'll see how to decipher the error messages this layer pro
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_interpreting_vuids.adoc[Interpreting VUIDs]
+Previous: xref:Synchronization/Synchronization_Validation/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Synchronization_Validation/03_interpreting_vuids.adoc[Interpreting VUIDs]

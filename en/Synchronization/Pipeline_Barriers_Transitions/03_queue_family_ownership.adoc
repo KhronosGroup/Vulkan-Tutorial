@@ -71,4 +71,4 @@ However, even with `eConcurrent`, you still need to synchronize the *execution* 
 
 == Navigation
 
-Previous: xref:02_image_barrier.adoc[The Image Barrier] | Next: xref:04_global_vs_local_barriers.adoc[Global vs. Local Barriers]
+Previous: xref:Synchronization/Pipeline_Barriers_Transitions/02_image_barrier.adoc[The Image Barrier] | Next: xref:Synchronization/Pipeline_Barriers_Transitions/04_global_vs_local_barriers.adoc[Global vs. Local Barriers]

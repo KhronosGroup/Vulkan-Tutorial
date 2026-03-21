@@ -24,4 +24,4 @@ By the end of this chapter, you'll be able to confidently architect a high-perfo
 
 == Navigation
 
-Previous: xref:../Transfer_Queues_Streaming/03_staging_sync.adoc[Staging Synchronization] | Next: xref:02_subpass_replacement.adoc[Subpass Replacement]
+Previous: xref:Synchronization/Transfer_Queues_Streaming/03_staging_sync.adoc[Staging Synchronization] | Next: xref:Synchronization/Dynamic_Rendering_Sync/02_subpass_replacement.adoc[Subpass Replacement]

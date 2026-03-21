@@ -103,4 +103,4 @@ This refactor will allow us to remove the `inFlightFences` array entirely, simpl
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_resource_lifetimes.adoc[Resource Lifetimes]
+Previous: xref:Synchronization/Frame_in_Flight/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Frame_in_Flight/03_resource_lifetimes.adoc[Resource Lifetimes]

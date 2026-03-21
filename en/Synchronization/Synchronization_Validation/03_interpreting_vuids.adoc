@@ -37,4 +37,4 @@ By treating every VUID as a learning opportunity, you can systematically improve
 
 == Navigation
 
-Previous: xref:02_validation_layer.adoc[The Validation Layer] | Next: xref:../Profiling_Optimization/01_introduction.adoc[Profiling, Batching, and Optimization]
+Previous: xref:Synchronization/Synchronization_Validation/02_validation_layer.adoc[The Validation Layer] | Next: xref:Synchronization/Profiling_Optimization/01_introduction.adoc[Profiling, Batching, and Optimization]

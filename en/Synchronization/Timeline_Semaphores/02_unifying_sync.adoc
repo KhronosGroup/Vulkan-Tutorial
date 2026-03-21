@@ -70,4 +70,4 @@ Our next major architectural update will replace these with a single `Renderer::
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_monotonic_counter.adoc[The Monotonic Counter]
+Previous: xref:Synchronization/Timeline_Semaphores/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Timeline_Semaphores/03_monotonic_counter.adoc[The Monotonic Counter]

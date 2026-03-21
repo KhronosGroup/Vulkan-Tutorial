@@ -69,4 +69,4 @@ This robust handshake ensures that `Simple Engine` never tries to draw a texture
 
 == Navigation
 
-Previous: xref:02_non_blocking_uploads.adoc[Non-Blocking Data Uploads] | Next: xref:../Dynamic_Rendering_Sync/01_introduction.adoc[Synchronization in Dynamic Rendering]
+Previous: xref:Synchronization/Transfer_Queues_Streaming/02_non_blocking_uploads.adoc[Non-Blocking Data Uploads] | Next: xref:Synchronization/Dynamic_Rendering_Sync/01_introduction.adoc[Synchronization in Dynamic Rendering]

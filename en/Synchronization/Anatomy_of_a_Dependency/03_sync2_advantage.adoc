@@ -29,7 +29,7 @@ Notice the problem? The `srcStageMask` and `dstStageMask` were passed as argumen
 
 This led to "over-synchronization." By merging the stages at the function level, you were inadvertently telling the GPU to wait for *all* the source stages to finish before *any* of the destination stages could start. You were creating a bottleneck where one didn't need to exist.
 
-image::{imagesdir}/sync2_problem_over_sync.svg[Legacy Synchronization Log Jam, width=600, align="center"]
+image::/images/sync2_problem_over_sync.svg[Legacy Synchronization Log Jam, width=600, align="center"]
 
 == The "Chain of Intent": Unification with vk::DependencyInfo
 
@@ -56,7 +56,7 @@ vk::DependencyInfo dependencyInfo{
 commandBuffer.pipelineBarrier2(dependencyInfo);
 ----
 
-image::{imagesdir}/sync2_solution_granular.svg[Synchronization 2 Granular Control, width=600, align="center"]
+image::/images/sync2_solution_granular.svg[Synchronization 2 Granular Control, width=600, align="center"]
 
 This is a massive win for human readability. When you look at that `imageBarrier` block, you see a complete "handshake." You know exactly what work is finishing (`src`) and exactly what work is waiting (`dst`). There's no need to hunt through function arguments or global variables to find the other half of the dependency.
 
@@ -192,4 +192,4 @@ In the next section, we'll dive deeper into how to pick the right stages and fla
 
 == Navigation
 
-Previous: xref:02_execution_vs_memory.adoc[Execution vs. Memory Dependencies] | Next: xref:04_refined_pipeline_stages.adoc[Refined Pipeline Stages]
+Previous: xref:Synchronization/Anatomy_of_a_Dependency/02_execution_vs_memory.adoc[Execution vs. Memory Dependencies] | Next: xref:Synchronization/Anatomy_of_a_Dependency/04_refined_pipeline_stages.adoc[Refined Pipeline Stages]

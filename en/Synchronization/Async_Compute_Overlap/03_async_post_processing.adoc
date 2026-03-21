@@ -67,4 +67,4 @@ In the final section of this chapter, we'll look at how to identify and eliminat
 
 == Navigation
 
-Previous: xref:02_maximizing_throughput.adoc[Maximizing Throughput] | Next: xref:04_bubble_problem.adoc[The Bubble Problem]
+Previous: xref:Synchronization/Async_Compute_Overlap/02_maximizing_throughput.adoc[Maximizing Throughput] | Next: xref:Synchronization/Async_Compute_Overlap/04_bubble_problem.adoc[The Bubble Problem]

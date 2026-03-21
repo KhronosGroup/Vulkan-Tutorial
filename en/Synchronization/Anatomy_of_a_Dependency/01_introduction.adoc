@@ -5,7 +5,7 @@
 
 Every Vulkan operation, from a simple color clear to a complex ray-traced reflections pass, lives and breathes by the dependencies we define. In this chapter, we take a deep dive into the core mechanics of how data actually moves through the Vulkan pipeline and why synchronization is about much more than just "setting a bitmask."
 
-image::../../../images/rendering_pipeline_flowchart.png[Rendering Pipeline Flowchart, width=600, alt="Flowchart showing the stages of a modern Vulkan rendering pipeline"]
+image::/images/rendering_pipeline_flowchart.png[Rendering Pipeline Flowchart, width=600, alt="Flowchart showing the stages of a modern Vulkan rendering pipeline"]
 
 To truly master synchronization, we first need to break down what happens when the GPU processes your commands. We often talk about the GPU as a "massive parallel processor," but what does that mean for data integrity? We'll start by deconstructing the fundamental differences between **Execution Dependencies** (the "when" of GPU work) and **Memory Dependencies** (the "where" and "visibility" of data).
 
@@ -22,4 +22,4 @@ By the end of this chapter, you’ll have a clear understanding of the "handshak
 
 == Navigation
 
-Previous: xref:../introduction.adoc[Introduction] | Next: xref:02_execution_vs_memory.adoc[Execution vs. Memory Dependencies]
+Previous: xref:Synchronization/introduction.adoc[Introduction] | Next: xref:Synchronization/Anatomy_of_a_Dependency/02_execution_vs_memory.adoc[Execution vs. Memory Dependencies]

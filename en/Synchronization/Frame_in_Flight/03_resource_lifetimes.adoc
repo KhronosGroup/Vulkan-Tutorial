@@ -58,4 +58,4 @@ By moving to a timeline-based **Garbage Collection (GC)** system, we can be much
 
 == Navigation
 
-Previous: xref:02_managing_concurrent_frames.adoc[Managing Concurrent Frames] | Next: xref:../Async_Compute_Overlap/01_introduction.adoc[Asynchronous Compute & Execution Overlap - Introduction]
+Previous: xref:Synchronization/Frame_in_Flight/02_managing_concurrent_frames.adoc[Managing Concurrent Frames] | Next: xref:Synchronization/Async_Compute_Overlap/01_introduction.adoc[Asynchronous Compute & Execution Overlap - Introduction]

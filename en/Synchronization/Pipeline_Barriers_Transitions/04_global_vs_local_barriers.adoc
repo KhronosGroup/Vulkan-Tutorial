@@ -62,4 +62,4 @@ One area where `Simple Engine` could be further optimized is in the consolidatio
 
 == Navigation
 
-Previous: xref:03_queue_family_ownership.adoc[Queue Family Ownership] | Next: xref:../Timeline_Semaphores/01_introduction.adoc[Timeline Semaphores: The Master Clock]
+Previous: xref:Synchronization/Pipeline_Barriers_Transitions/03_queue_family_ownership.adoc[Queue Family Ownership] | Next: xref:Synchronization/Timeline_Semaphores/01_introduction.adoc[Timeline Semaphores: The Master Clock]

@@ -49,4 +49,4 @@ One optimization we plan for a future version of `Simple Engine` is to centraliz
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_visualizing_stalls.adoc[Visualizing Stalls]
+Previous: xref:Synchronization/Profiling_Optimization/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Profiling_Optimization/03_visualizing_stalls.adoc[Visualizing Stalls]

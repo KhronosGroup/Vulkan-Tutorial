@@ -53,4 +53,4 @@ In the next section, we'll see how to handle the synchronization required to ens
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_visibility_flushes.adoc[Visibility & Flushes]
+Previous: xref:Synchronization/Host_Image_Copies_Memory_Sync/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Host_Image_Copies_Memory_Sync/03_visibility_flushes.adoc[Visibility & Flushes]

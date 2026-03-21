@@ -27,4 +27,4 @@ By the end of this chapter, you'll have the knowledge and the tools to take your
 
 == Navigation
 
-Previous: xref:../Synchronization_Validation/03_interpreting_vuids.adoc[Interpreting VUIDs] | Next: xref:02_barrier_batching.adoc[Barrier Batching]
+Previous: xref:Synchronization/Synchronization_Validation/03_interpreting_vuids.adoc[Interpreting VUIDs] | Next: xref:Synchronization/Profiling_Optimization/02_barrier_batching.adoc[Barrier Batching]

@@ -32,4 +32,4 @@ Keep profiling, keep refining, and keep building!
 
 == Navigation
 
-Previous: xref:02_barrier_batching.adoc[Barrier Batching] | Next: xref:../introduction.adoc[Back to Introduction]
+Previous: xref:Synchronization/Profiling_Optimization/02_barrier_batching.adoc[Barrier Batching] | Next: xref:Synchronization/introduction.adoc[Back to Introduction]

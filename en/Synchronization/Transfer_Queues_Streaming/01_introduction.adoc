@@ -29,4 +29,4 @@ By the end of this chapter, you'll have a streaming architecture that allows you
 
 == Navigation
 
-Previous: xref:../Async_Compute_Overlap/04_bubble_problem.adoc[The Bubble Problem] | Next: xref:02_non_blocking_uploads.adoc[Non-Blocking Data Uploads]
+Previous: xref:Synchronization/Async_Compute_Overlap/04_bubble_problem.adoc[The Bubble Problem] | Next: xref:Synchronization/Transfer_Queues_Streaming/02_non_blocking_uploads.adoc[Non-Blocking Data Uploads]

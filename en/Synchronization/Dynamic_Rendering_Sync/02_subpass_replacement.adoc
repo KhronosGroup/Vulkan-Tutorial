@@ -60,4 +60,4 @@ This explicit approach is what allowed us to easily add **Forward+ Lighting** to
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_local_read_sync.adoc[Local Read Sync]
+Previous: xref:Synchronization/Dynamic_Rendering_Sync/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Dynamic_Rendering_Sync/03_local_read_sync.adoc[Local Read Sync]

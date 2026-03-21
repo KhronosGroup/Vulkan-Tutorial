@@ -55,4 +55,4 @@ By mastering these host-device handshakes, you can build a renderer that is both
 
 == Navigation
 
-Previous: xref:02_cpu_to_image_access.adoc[Direct CPU-to-Image Access] | Next: xref:../Synchronization_Validation/01_introduction.adoc[Debugging with Synchronization Validation]
+Previous: xref:Synchronization/Host_Image_Copies_Memory_Sync/02_cpu_to_image_access.adoc[Direct CPU-to-Image Access] | Next: xref:Synchronization/Synchronization_Validation/01_introduction.adoc[Debugging with Synchronization Validation]

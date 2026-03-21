@@ -63,4 +63,4 @@ In the next section, we'll see how to coordinate the synchronization to ensure t
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_staging_sync.adoc[Staging Synchronization]
+Previous: xref:Synchronization/Transfer_Queues_Streaming/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Transfer_Queues_Streaming/03_staging_sync.adoc[Staging Synchronization]

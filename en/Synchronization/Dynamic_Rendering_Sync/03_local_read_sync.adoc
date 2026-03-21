@@ -64,4 +64,4 @@ By mastering local read synchronization, you can build a modern deferred rendere
 
 == Navigation
 
-Previous: xref:02_subpass_replacement.adoc[Subpass Replacement] | Next: xref:../Host_Image_Copies_Memory_Sync/01_introduction.adoc[Host Image Copies & Memory Mapped Sync]
+Previous: xref:Synchronization/Dynamic_Rendering_Sync/02_subpass_replacement.adoc[Subpass Replacement] | Next: xref:Synchronization/Host_Image_Copies_Memory_Sync/01_introduction.adoc[Host Image Copies & Memory Mapped Sync]

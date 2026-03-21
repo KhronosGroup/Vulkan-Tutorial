@@ -33,7 +33,7 @@ This series is designed as an "Advanced Topic" that builds directly on the found
 *   Modern c{pp} (RAII, smart pointers, and basic templates).
 *   The fundamental concepts of graphics pipelines (Vertex/Fragment stages).
 
-If you’re new to Vulkan, we strongly recommend completing the xref:../00_Introduction.adoc[main tutorial] first. For those following along with our engine-building journey, this series perfectly complements the xref:../Building_a_Simple_Engine/introduction.adoc[Building a Simple Engine] tutorial by providing the deep-dive synchronization knowledge required for a truly professional-grade renderer.
+If you’re new to Vulkan, we strongly recommend completing the xref:00_Introduction.adoc[main tutorial] first. For those following along with our engine-building journey, this series perfectly complements the xref:Building_a_Simple_Engine/introduction.adoc[Building a Simple Engine] tutorial by providing the deep-dive synchronization knowledge required for a truly professional-grade renderer.
 
 === A Note on Tooling
 
@@ -43,17 +43,17 @@ Let's begin by tearing down a dependency to see what it's really made of.
 
 == Chapters in this series
 
-1.  xref:Anatomy_of_a_Dependency/01_introduction.adoc[The Anatomy of a Dependency] - Understanding the core mechanics of how data moves through the pipeline.
-2.  xref:Pipeline_Barriers_Transitions/01_introduction.adoc[Pipeline Barriers and Image Layout Transitions] - Mastering the new barrier system.
-3.  xref:Timeline_Semaphores/01_introduction.adoc[Timeline Semaphores: The Master Clock] - Moving to a monotonic world.
-4.  xref:Frame_in_Flight/01_introduction.adoc[Frame-in-Flight Architecture] - Building the heartbeat of your engine.
-5.  xref:Async_Compute_Overlap/01_introduction.adoc[Asynchronous Compute & Execution Overlap] - Parallelizing your GPU work.
-6.  xref:Transfer_Queues_Streaming/01_introduction.adoc[Transfer Queues & Asset Streaming Sync] - Streaming assets without the stutter.
-7.  xref:Dynamic_Rendering_Sync/01_introduction.adoc[Synchronization in Dynamic Rendering] - Modern sync in a pass-less world.
-8.  xref:Host_Image_Copies_Memory_Sync/01_introduction.adoc[Host Image Copies & Memory Mapped Sync] - Direct CPU-to-GPU memory management.
-9.  xref:Synchronization_Validation/01_introduction.adoc[Debugging with Synchronization Validation] - Letting the tools find your hazards.
-10. xref:Profiling_Optimization/01_introduction.adoc[Profiling, Batching, and Optimization] - Squeezing out every last millisecond.
+1.  xref:Synchronization/Anatomy_of_a_Dependency/01_introduction.adoc[The Anatomy of a Dependency] - Understanding the core mechanics of how data moves through the pipeline.
+2.  xref:Synchronization/Pipeline_Barriers_Transitions/01_introduction.adoc[Pipeline Barriers and Image Layout Transitions] - Mastering the new barrier system.
+3.  xref:Synchronization/Timeline_Semaphores/01_introduction.adoc[Timeline Semaphores: The Master Clock] - Moving to a monotonic world.
+4.  xref:Synchronization/Frame_in_Flight/01_introduction.adoc[Frame-in-Flight Architecture] - Building the heartbeat of your engine.
+5.  xref:Synchronization/Async_Compute_Overlap/01_introduction.adoc[Asynchronous Compute & Execution Overlap] - Parallelizing your GPU work.
+6.  xref:Synchronization/Transfer_Queues_Streaming/01_introduction.adoc[Transfer Queues & Asset Streaming Sync] - Streaming assets without the stutter.
+7.  xref:Synchronization/Dynamic_Rendering_Sync/01_introduction.adoc[Synchronization in Dynamic Rendering] - Modern sync in a pass-less world.
+8.  xref:Synchronization/Host_Image_Copies_Memory_Sync/01_introduction.adoc[Host Image Copies & Memory Mapped Sync] - Direct CPU-to-GPU memory management.
+9.  xref:Synchronization/Synchronization_Validation/01_introduction.adoc[Debugging with Synchronization Validation] - Letting the tools find your hazards.
+10. xref:Synchronization/Profiling_Optimization/01_introduction.adoc[Profiling, Batching, and Optimization] - Squeezing out every last millisecond.
 
 == Navigation
 
-Next: xref:Anatomy_of_a_Dependency/01_introduction.adoc[The Anatomy of a Dependency]
+Next: xref:Synchronization/Anatomy_of_a_Dependency/01_introduction.adoc[The Anatomy of a Dependency]

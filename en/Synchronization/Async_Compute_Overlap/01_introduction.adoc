@@ -25,4 +25,4 @@ By the end of this chapter, you'll be able to move your engine from a serial seq
 
 == Navigation
 
-Previous: xref:../Frame_in_Flight/03_resource_lifetimes.adoc[Resource Lifetimes] | Next: xref:02_maximizing_throughput.adoc[Maximizing Throughput]
+Previous: xref:Synchronization/Frame_in_Flight/03_resource_lifetimes.adoc[Resource Lifetimes] | Next: xref:Synchronization/Async_Compute_Overlap/02_maximizing_throughput.adoc[Maximizing Throughput]

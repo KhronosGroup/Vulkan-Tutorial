@@ -47,4 +47,4 @@ This becomes incredibly powerful when paired with our `MemoryPool`. Instead of u
 
 == Navigation
 
-Previous: xref:02_unifying_sync.adoc[Unifying Synchronization] | Next: xref:04_wait_before_signal.adoc[Wait-Before-Signal Submission]
+Previous: xref:Synchronization/Timeline_Semaphores/02_unifying_sync.adoc[Unifying Synchronization] | Next: xref:Synchronization/Timeline_Semaphores/04_wait_before_signal.adoc[Wait-Before-Signal Submission]

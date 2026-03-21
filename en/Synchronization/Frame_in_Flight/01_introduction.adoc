@@ -27,4 +27,4 @@ Let's begin by looking at how to rebuild the heartbeat of our engine: the main r
 
 == Navigation
 
-Previous: xref:../Timeline_Semaphores/04_wait_before_signal.adoc[Wait-Before-Signal Submission] | Next: xref:02_managing_concurrent_frames.adoc[Managing Concurrent Frames]
+Previous: xref:Synchronization/Timeline_Semaphores/04_wait_before_signal.adoc[Wait-Before-Signal Submission] | Next: xref:Synchronization/Frame_in_Flight/02_managing_concurrent_frames.adoc[Managing Concurrent Frames]

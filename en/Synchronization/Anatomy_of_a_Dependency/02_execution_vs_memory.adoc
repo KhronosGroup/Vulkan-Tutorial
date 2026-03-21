@@ -58,4 +58,4 @@ For our textures and vertex buffers, we use `DeviceLocal` memory for maximum per
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_sync2_advantage.adoc[The Synchronization 2 Advantage]
+Previous: xref:Synchronization/Anatomy_of_a_Dependency/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Anatomy_of_a_Dependency/03_sync2_advantage.adoc[The Synchronization 2 Advantage]

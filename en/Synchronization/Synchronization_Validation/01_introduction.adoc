@@ -27,4 +27,4 @@ By the end of this chapter, you'll have the tools and the knowledge to ensure th
 
 == Navigation
 
-Previous: xref:../Host_Image_Copies_Memory_Sync/03_visibility_flushes.adoc[Visibility & Flushes] | Next: xref:02_validation_layer.adoc[The Validation Layer]
+Previous: xref:Synchronization/Host_Image_Copies_Memory_Sync/03_visibility_flushes.adoc[Visibility & Flushes] | Next: xref:Synchronization/Synchronization_Validation/02_validation_layer.adoc[The Validation Layer]

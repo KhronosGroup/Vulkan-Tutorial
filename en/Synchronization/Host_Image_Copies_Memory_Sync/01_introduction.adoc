@@ -25,4 +25,4 @@ By the end of this chapter, you'll have a complete understanding of how to manag
 
 == Navigation
 
-Previous: xref:../Dynamic_Rendering_Sync/03_local_read_sync.adoc[Local Read Sync] | Next: xref:02_cpu_to_image_access.adoc[Direct CPU-to-Image Access]
+Previous: xref:Synchronization/Dynamic_Rendering_Sync/03_local_read_sync.adoc[Local Read Sync] | Next: xref:Synchronization/Host_Image_Copies_Memory_Sync/02_cpu_to_image_access.adoc[Direct CPU-to-Image Access]

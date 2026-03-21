@@ -7,7 +7,7 @@ In the world of modern Vulkan, the image memory barrier is the definitive tool f
 
 If we want to write to an image as a color attachment, the GPU hardware expects it to be in `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL`. If we later want to sample that same image in a shader, it must be transitioned to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`. This is not just a driver-side "flag"—on some hardware, this transition might trigger a physical reorganization of the data or a cache flush.
 
-image::../../../images/image_barrier_anatomy.svg[Anatomy of an Image Barrier]
+image::/images/image_barrier_anatomy.svg[Anatomy of an Image Barrier]
 
 When we talk about "physical reorganization," we're referring to how different hardware units see the same bits. For instance, a Rasterizer might use a specialized tiled compression format (like Delta Color Compression) to save bandwidth. However, a Compute shader sampling that same image might not understand that compression. The layout transition ensures the data is "decompressed" or moved into a format that the next stage can consume.
 
@@ -117,4 +117,4 @@ One specific trick we use in `Simple Engine` is the **Layout Tracking** system. 
 
 == Navigation
 
-Previous: xref:01_introduction.adoc[Introduction] | Next: xref:03_queue_family_ownership.adoc[Queue Family Ownership]
+Previous: xref:Synchronization/Pipeline_Barriers_Transitions/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Pipeline_Barriers_Transitions/03_queue_family_ownership.adoc[Queue Family Ownership]

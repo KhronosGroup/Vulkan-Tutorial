@@ -7,7 +7,7 @@ A "bubble" in the GPU timeline is a period where some units are idle because the
 
 To find these, we use hardware profilers like **NVIDIA Nsight Graphics**, **AMD Radeon GPU Profiler**, or even the **LunarG Synchronization Validation** layer. In a profiler, a bubble looks like a gap in the timeline where the Graphics or Compute rows are empty while the other is busy.
 
-image::../../../images/vulkan_simplified_pipeline.svg[Vulkan Simplified Pipeline, width=400, alt="Simplified diagram of the Vulkan pipeline used to illustrate where bubbles can occur"]
+image::/images/vulkan_simplified_pipeline.svg[Vulkan Simplified Pipeline, width=400, alt="Simplified diagram of the Vulkan pipeline used to illustrate where bubbles can occur"]
 
 == Common Causes of Bubbles
 
@@ -27,4 +27,4 @@ By systematically finding and eliminating these bubbles, you move from a rendere
 
 == Navigation
 
-Previous: xref:03_async_post_processing.adoc[Async Post-Processing] | Next: xref:../Transfer_Queues_Streaming/01_introduction.adoc[Transfer Queues & Asset Streaming Sync]
+Previous: xref:Synchronization/Async_Compute_Overlap/03_async_post_processing.adoc[Async Post-Processing] | Next: xref:Synchronization/Transfer_Queues_Streaming/01_introduction.adoc[Transfer Queues & Asset Streaming Sync]

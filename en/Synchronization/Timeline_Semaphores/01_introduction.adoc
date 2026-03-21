@@ -25,4 +25,4 @@ Let's begin by unifying our synchronization primitives.
 
 == Navigation
 
-Previous: xref:../Pipeline_Barriers_Transitions/04_global_vs_local_barriers.adoc[Global vs. Local Barriers] | Next: xref:02_unifying_sync.adoc[Unifying Synchronization]
+Previous: xref:Synchronization/Pipeline_Barriers_Transitions/04_global_vs_local_barriers.adoc[Global vs. Local Barriers] | Next: xref:Synchronization/Timeline_Semaphores/02_unifying_sync.adoc[Unifying Synchronization]

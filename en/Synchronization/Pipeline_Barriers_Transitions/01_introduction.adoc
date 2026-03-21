@@ -15,4 +15,4 @@ Let's begin by looking at the workhorse of modern Vulkan synchronization: the Im
 
 == Navigation
 
-Previous: xref:../Anatomy_of_a_Dependency/04_refined_pipeline_stages.adoc[Refined Pipeline Stages] | Next: xref:02_image_barrier.adoc[The Image Barrier]
+Previous: xref:Synchronization/Anatomy_of_a_Dependency/04_refined_pipeline_stages.adoc[Refined Pipeline Stages] | Next: xref:Synchronization/Pipeline_Barriers_Transitions/02_image_barrier.adoc[The Image Barrier]

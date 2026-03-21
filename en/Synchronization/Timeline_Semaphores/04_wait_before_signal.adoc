@@ -66,4 +66,4 @@ With wait-before-signal, our `Renderer` will simply record its commands to wait 
 
 == Navigation
 
-Previous: xref:03_monotonic_counter.adoc[The Monotonic Counter] | Next: xref:../Frame_in_Flight/01_introduction.adoc[Frame-in-Flight Architecture]
+Previous: xref:Synchronization/Timeline_Semaphores/03_monotonic_counter.adoc[The Monotonic Counter] | Next: xref:Synchronization/Frame_in_Flight/01_introduction.adoc[Frame-in-Flight Architecture]

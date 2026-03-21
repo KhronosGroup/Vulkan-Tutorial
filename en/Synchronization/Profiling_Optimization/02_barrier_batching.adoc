@@ -1,0 +1,52 @@
+:pp: {plus}{plus}
+= Barrier Batching: Consolidating Your Synchronization
+
+== The Cost of a Call
+
+Every time you call `commandBuffer.pipelineBarrier2`, you are making a trip from your CPU code into the Vulkan driver. The driver then has to parse your `vk::DependencyInfo`, validate your stage and access masks, and then record the actual hardware instructions into the command buffer.
+
+If you have ten different images to transition, and you record ten individual barriers, you are performing ten driver trips. This overhead can add up, especially in a complex frame with many passes.
+
+== The Solution: Batching
+
+**Barrier Batching** is the practice of collecting all your global, image, and buffer barriers and submitting them in a single `pipelineBarrier2` call. This is one of the easiest ways to reduce the CPU overhead of your synchronization code.
+
+The `vk::DependencyInfo` structure is specifically designed for this. It allows you to provide an array of barriers of each type.
+
+[,c++]
+----
+std::vector<vk::ImageMemoryBarrier2> imageBarriers = { /* ... multiple image transitions ... */ };
+vk::MemoryBarrier2 globalBarrier = { /* ... a broad memory dependency ... */ };
+
+auto dependencyInfo = vk::DependencyInfo{
+    .memoryBarrierCount = 1,
+    .pMemoryBarriers = &globalBarrier,
+    .imageMemoryBarrierCount = static_cast<uint32_t>(imageBarriers.size()),
+    .pImageMemoryBarriers = imageBarriers.data()
+};
+
+// One call into the driver instead of many
+commandBuffer.pipelineBarrier2(dependencyInfo);
+----
+
+== Hardware Benefits
+
+Batching is not just about reducing CPU overhead; it also provides significant benefits on the GPU. When you provide multiple barriers in a single call, the driver can consolidate the cache flushes and the pipeline stalls.
+
+Instead of stalling the pipeline and flushing caches five different times, the hardware can potentially do it all at once. This reduces the total time the GPU spends waiting and increases the time it spends rendering.
+
+== Implementation Strategy
+
+A good strategy for an engine is to have a "Barrier Manager" that collects barriers throughout a pass. When you reach a synchronization point—for example, at the end of a G-Buffer pass—the manager flushes all the collected barriers in a single batch.
+
+By thinking in terms of batches rather than individual barriers, you move toward a more "holistic" approach to synchronization, ensuring that your engine remains high-performance as you add more complexity to your renderer. In the next section, we'll see how to use profiling tools to visualize the impact of these optimizations.
+
+== Simple Engine: Consolidation
+
+In `Simple Engine`, we apply this principle of barrier batching in our `Renderer::Render` loop. For example, during the **Opaque Pass** to **Post-Processing** transition, we collect all necessary image barriers—including those for the scene color and the depth buffer—into a single `vk::DependencyInfo`.
+
+One optimization we plan for a future version of `Simple Engine` is to centralize this further. By implementing a "Barrier Manager" that collects barriers across all systems (Renderer, Physics, Audio), we can reduce our total number of `pipelineBarrier2` calls per frame. This is a critical part of our roadmap toward a full **Render Graph** system, where all synchronization is calculated globally for each frame, ensuring that we never emit redundant barriers and that all transitions are batched for maximum hardware performance.
+
+== Navigation
+
+Previous: xref:Synchronization/Profiling_Optimization/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Profiling_Optimization/03_visualizing_stalls.adoc[Visualizing Stalls]

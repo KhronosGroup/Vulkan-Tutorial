@@ -1,0 +1,18 @@
+:pp: {plus}{plus}
+= Pipeline Barriers and Layout Transitions: The Core Loop
+
+== Introduction
+
+If the previous chapter was about understanding the theoretical "handshake" between GPU stages, this chapter is where we get our hands dirty with the actual implementation. In the modern Vulkan 1.3+ landscape, the `vk::ImageMemoryBarrier2` is the most common tool in our synchronization toolbox. It's how we transition images between layouts, ensure data is visible across different hardware caches, and manage the complex state changes required for high-performance rendering.
+
+We often think of an image as just a grid of pixels, but to the GPU, it's a sophisticated resource that can be optimized for different types of access. A layout that's great for writing as a color attachment might be terrible for sampling in a fragment shader. Managing these transitions efficiently—and only when strictly necessary—is what separates a stuttering renderer from a smooth, 60 FPS experience.
+
+In this chapter, we're going to dive deep into the mechanics of these barriers. We'll start with the anatomy of the image barrier itself, specifically within the context of **Dynamic Rendering**, which has largely replaced the legacy "Render Pass" system. We'll then tackle one of the most misunderstood topics in Vulkan: **Queue Family Ownership**. This is the explicit "hand-off" required when you want to move a resource, like a texture or a buffer, between the Graphics, Compute, and Transfer queues of your engine.
+
+Finally, we'll look at the performance implications of our choices. Vulkan gives us the option of using **Global Memory Barriers** or more specific, resource-bound barriers. We'll learn how to determine which one to use and when, so we can give the driver exactly the right amount of information to keep the hardware running at full tilt without introducing unnecessary stalls.
+
+Let's begin by looking at the workhorse of modern Vulkan synchronization: the Image Memory Barrier 2.
+
+== Navigation
+
+Previous: xref:Synchronization/Anatomy_of_a_Dependency/04_refined_pipeline_stages.adoc[Refined Pipeline Stages] | Next: xref:Synchronization/Pipeline_Barriers_Transitions/02_image_barrier.adoc[The Image Barrier]

@@ -70,36 +70,23 @@ We're now going to change `createVertexBuffer` to only use a host visible buffer
 ----
 void createVertexBuffer() {
     vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    vk::raii::Buffer stagingBuffer(nullptr);
+    vk::raii::DeviceMemory stagingBufferMemory(nullptr);
 
-    vk::BufferCreateInfo stagingInfo{ .size = bufferSize, .usage = vk::BufferUsageFlagBits::eTransferSrc, .sharingMode = vk::SharingMode::eExclusive };
-    vk::raii::Buffer stagingBuffer(device, stagingInfo);
-    vk::MemoryRequirements memRequirementsStaging = stagingBuffer.getMemoryRequirements();
-    vk::MemoryAllocateInfo memoryAllocateInfoStaging{  .allocationSize = memRequirementsStaging.size, .memoryTypeIndex = findMemoryType(memRequirementsStaging.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) };
-    vk::raii::DeviceMemory stagingBufferMemory(device, memoryAllocateInfoStaging);
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
 
-    stagingBuffer.bindMemory(stagingBufferMemory, 0);
-    void* dataStaging = stagingBufferMemory.mapMemory(0, stagingInfo.size);
-    memcpy(dataStaging, vertices.data(), stagingInfo.size);
+    void* data = stagingBufferMemory.mapMemory(0, bufferSize);
+    memcpy(data, vertices.data(), bufferSize);
     stagingBufferMemory.unmapMemory();
 
-    vk::BufferCreateInfo bufferInfo{ .size = bufferSize,  .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, .sharingMode = vk::SharingMode::eExclusive };
-    vertexBuffer = vk::raii::Buffer(device, bufferInfo);
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
 
-    vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
-    vk::MemoryAllocateInfo memoryAllocateInfo{  .allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal) };
-    vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
-
-    vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
-
-    copyBuffer(stagingBuffer, vertexBuffer, stagingInfo.size);
+    copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 }
 ----
 
 We're now using a new `stagingBuffer` with `stagingBufferMemory` for mapping and copying the vertex data.
 In this chapter, we're going to use two new buffer usage flags:
-Note, we have to create a temporary pointer to a new vk::raii::Buffer object
-because the vk::raii::Buffer has the constructor deleted and thus doesn't
-play well with std::make_unique, this is just a trick to get it to work.
 
 * `VK_BUFFER_USAGE_TRANSFER_SRC_BIT`: Buffer can be used as source in a memory transfer operation.
 * `VK_BUFFER_USAGE_TRANSFER_DST_BIT`: Buffer can be used as destination in a memory transfer operation.
@@ -175,14 +162,7 @@ We can now call `copyBuffer` from the `createVertexBuffer` function to move the 
 
 [,c++]
 ----
-vk::BufferCreateInfo bufferInfo{ .size = bufferSize,  .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, .sharingMode = vk::SharingMode::eExclusive };
-vertexBuffer = vk::raii::Buffer(device, bufferInfo);
-
-vk::MemoryRequirements memRequirements = vertexBuffer.getMemoryRequirements();
-vk::MemoryAllocateInfo memoryAllocateInfo{  .allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal) };
-vertexBufferMemory = vk::raii::DeviceMemory( device, memoryAllocateInfo );
-
-vertexBuffer.bindMemory( *vertexBufferMemory, 0 );
+createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
 
 copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 ----

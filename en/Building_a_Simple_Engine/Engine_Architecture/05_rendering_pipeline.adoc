@@ -132,7 +132,7 @@ class Rendergraph {
 private:
     // Resource description and management structure
     // Represents Image resource used during rendering (textures)
-    struct ImageResource {
+    struct Resource {
         std::string name;                     // Human-readable identifier for debugging and referencing
         vk::Format format;                    // Pixel format (RGBA8, Depth24Stencil8, etc.)
         vk::Extent2D extent;                  // Dimensions in pixels for 2D resources

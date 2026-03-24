@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.29)
 
-set (TEMPLATE_NAME "VulkanTemplate")
+set (TEMPLATE_NAME "VulkanTutorial")
 
 project (${TEMPLATE_NAME})
 

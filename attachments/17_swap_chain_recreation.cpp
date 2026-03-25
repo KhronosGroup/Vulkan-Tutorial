@@ -425,7 +425,8 @@ class HelloTriangleApplication
 	{
 		auto &commandBuffer = commandBuffers[frameIndex];
 		commandBuffer.begin({});
-		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+
+		// Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eUndefined,
@@ -453,7 +454,8 @@ class HelloTriangleApplication
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.draw(3, 1, 0, 0);
 		commandBuffer.endRendering();
-		// After rendering, transition the swapchain image to PRESENT_SRC
+
+		// After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eColorAttachmentOptimal,
@@ -535,7 +537,7 @@ class HelloTriangleApplication
 		}
 		// On other success codes than eSuccess and eSuboptimalKHR we just throw an exception.
 		// On any error code, aquireNextImage already threw an exception.
-		else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+		if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
 		{
 			assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 			throw std::runtime_error("failed to acquire swap chain image!");

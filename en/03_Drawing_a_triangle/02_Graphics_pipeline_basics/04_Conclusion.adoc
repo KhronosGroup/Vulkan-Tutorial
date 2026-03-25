@@ -10,58 +10,53 @@ Here are the types of objects we have now, as a quick recap:
 * Pipeline layout: the uniform and push values referenced by the shader that can be updated at draw time
 * Dynamic rendering: the formats of the attachments that will be used during rendering
 
-All of these combined fully define the functionality of the graphics pipeline, so we can now begin filling in the `VkGraphicsPipelineCreateInfo` structure at the end of the `createGraphicsPipeline` function.
+All of these combined fully define the functionality of the graphics pipeline, so we can now begin filling in the `vk::GraphicsPipelineCreateInfo` structure at the end of the `createGraphicsPipeline` function.
 
 [,c++]
 ----
-vk::GraphicsPipelineCreateInfo pipelineInfo({}, 2, shaderStages);
+vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
+    {.stageCount          = 2,
+     .pStages             = shaderStages,
 ----
 
-We start by referencing the array of `VkPipelineShaderStageCreateInfo` structs.
+We start by referencing the array of `vk::PipelineShaderStageCreateInfo` structs.
 
 [,c++]
 ----
-vk::GraphicsPipelineCreateInfo pipelineInfo({}, 2, shaderStages, &vertexInputInfo, &inputAssembly, {}, &viewportState, &rasterizer, &multisampling, {}, &colorBlending,
-            &dynamicState);
+     .pVertexInputState   = &vertexInputInfo,
+     .pInputAssemblyState = &inputAssembly,
+     .pViewportState      = &viewportState,
+     .pRasterizationState = &rasterizer,
+     .pMultisampleState   = &multisampling,
+     .pColorBlendState    = &colorBlending,
+     .pDynamicState       = &dynamicState,
 ----
 
 Then we reference all the structures describing the fixed-function stage.
 
 [,c++]
 ----
-vk::GraphicsPipelineCreateInfo pipelineInfo({}, 2, shaderStages, &vertexInputInfo, &inputAssembly, {}, &viewportState, &rasterizer, &multisampling, {}, &colorBlending,
-            &dynamicState, *pipelineLayout);
+     .layout              = pipelineLayout,
 ----
 
 After that comes the pipeline layout, which is a Vulkan handle rather than a struct pointer.
 
 [,c++]
 ----
-vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
-vk::GraphicsPipelineCreateInfo pipelineInfo{ .pNext = &pipelineRenderingCreateInfo,
-    .stageCount = 2, .pStages = shaderStages,
-    .pVertexInputState = &vertexInputInfo, .pInputAssemblyState = &inputAssembly,
-    .pViewportState = &viewportState, .pRasterizationState = &rasterizer,
-    .pMultisampleState = &multisampling, .pColorBlendState = &colorBlending,
-    .pDynamicState = &dynamicState, .layout = pipelineLayout, .renderPass = nullptr };
+     .renderPass          = nullptr},
+    {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format}};
 ----
 
-Note that we're using dynamic rendering instead of a traditional render pass, so we set the `renderPass` parameter to `nullptr` and include a `vk::PipelineRenderingCreateInfo` structure in the `pNext` chain. This structure specifies the formats of the attachments that will be used during rendering.
+Note that we're using dynamic rendering instead of a traditional render pass, so we set the `renderPass` parameter to `nullptr` and include a `vk::PipelineRenderingCreateInfo` structure in the `vk::StructureChain`. This structure specifies the formats of the attachments that will be used during rendering.
 
-[,c++]
-----
-pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
-pipelineInfo.basePipelineIndex = -1; // Optional
-----
-
-There are actually two more parameters: `basePipelineHandle` and `basePipelineIndex`.
+There are actually two more members in the vk::GraphicsPipelineCreateInfo: `basePipelineHandle` and `basePipelineIndex`.
 Vulkan allows you to create a new graphics pipeline by deriving from an existing pipeline.
 The idea of pipeline derivatives is that it is less expensive to set up pipelines when they have much functionality in common with an existing pipeline and switching between pipelines from the same parent can also be done quicker.
 You can either specify the handle of an existing pipeline with `basePipelineHandle` or reference another pipeline that is about to be created by index with `basePipelineIndex`.
-Right now there is only a single pipeline, so we'll simply specify a null handle and an invalid index.
-These values are only used if the `VK_PIPELINE_CREATE_DERIVATIVE_BIT` flag is also specified in the `flags` field of `VkGraphicsPipelineCreateInfo`.
+These values are only used if the `vk::PipelineCreateFlagBits::eDerivative` flag is also specified in the `flags` field of `vk::GraphicsPipelineCreateInfo`.
+Right now there is only a single pipeline, so we'll ignore those members.
 
-Now prepare for the final step by creating a class member to hold the `VkPipeline` object:
+Now prepare for the final step by creating a class member to hold the `vk::raii::Pipeline` object:
 
 [,c++]
 ----
@@ -72,14 +67,11 @@ And finally, create the graphics pipeline:
 
 [,c++]
 ----
-graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 ----
 
-The `vkCreateGraphicsPipelines` function actually has more parameters than the usual object creation functions in Vulkan.
-It is designed to take multiple `VkGraphicsPipelineCreateInfo` objects and create multiple `VkPipeline` objects in a single call.
-
-The second parameter, for which we've passed the `VK_NULL_HANDLE` argument, references an optional `VkPipelineCache` object.
-A pipeline cache can be used to store and reuse data relevant to pipeline creation across multiple calls to `vkCreateGraphicsPipelines` and even across program executions if the cache is stored to a file.
+The second parameter, for which we've passed the `nullptr` argument, references an optional `vk::raii::PipelineCache` object.
+A pipeline cache can be used to store and reuse data relevant to pipeline creation across multiple calls to `vk::raii::Pipeline` constructors and even across program executions if the cache is stored to a file.
 This makes it possible to significantly speed up pipeline creation at a later time.
 We'll get into this in the pipeline cache chapter.
 

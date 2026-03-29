@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.29)
 
+include(FetchContent)
+
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
 # Option to enable/disable Vulkan C++20 module support for this standalone project
@@ -10,6 +12,17 @@ if(ENABLE_CPP20_MODULE)
     set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 endif()
 
+# Tracy profilfer
+option(TRACY_ENABLE "" ON)
+option(TRACY_ON_DEMAND "" ON)
+FetchContent_Declare(Tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy
+    GIT_TAG v0.13.1
+    GIT_SHALLOW ON
+    EXCLUDE_FROM_ALL
+    SYSTEM)
+FetchContent_MakeAvailable(Tracy)
+
 # Add CMake module path for custom find modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
@@ -18,6 +31,7 @@ find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
+find_package (Tracy REQUIRED)
 
 # Find or download Vulkan-Hpp headers matching the Vulkan SDK/NDK version
 find_package(VulkanHpp REQUIRED)
@@ -189,6 +203,7 @@ target_link_libraries(SimpleEngine PUBLIC
     glm::glm
     tinygltf::tinygltf
     KTX::ktx
+    TracyClient
 )
 
 if (ANDROID)

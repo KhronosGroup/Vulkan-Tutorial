@@ -31,7 +31,6 @@ find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
-find_package (Tracy REQUIRED)
 
 # Find or download Vulkan-Hpp headers matching the Vulkan SDK/NDK version
 find_package(VulkanHpp REQUIRED)

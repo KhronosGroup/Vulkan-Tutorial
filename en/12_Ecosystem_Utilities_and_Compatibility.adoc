@@ -213,7 +213,7 @@ The first step is to detect what features are available on the user's GPU. This 
 bool dynamicRenderingSupported = false;
 
 // Check for Vulkan 1.3 support
-if (deviceProperties.apiVersion >= VK_VERSION_1_3) {
+if (deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
     dynamicRenderingSupported = true;
 } else {
     // Check for the extension on older Vulkan versions
@@ -419,7 +419,7 @@ Timeline semaphores (introduced in Vulkan 1.2) provide a more flexible synchroni
 bool timelineSemaphoresSupported = false;
 
 // Check for Vulkan 1.2 support or extension
-if (deviceProperties.apiVersion >= VK_VERSION_1_2) {
+if (deviceProperties.apiVersion >= VK_API_VERSION_1_2) {
     timelineSemaphoresSupported = true;
 } else {
     // Check for extension
@@ -471,7 +471,7 @@ The Synchronization2 feature (Vulkan 1.3) simplifies pipeline barriers and memor
 bool synchronization2Supported = false;
 
 // Check for Vulkan 1.3 support or extension
-if (deviceProperties.apiVersion >= VK_VERSION_1_3) {
+if (deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
     synchronization2Supported = true;
 } else {
     // Check for extension

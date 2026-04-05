@@ -191,7 +191,7 @@ In the previous chapter, we had to write code like this for *each feature* we wa
 bool dynamicRenderingSupported = false;
 
 // Check for Vulkan 1.3 support
-if (deviceProperties.apiVersion >= VK_VERSION_1_3) {
+if (deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
     dynamicRenderingSupported = true;
 } else {
     // Check for the extension on older Vulkan versions

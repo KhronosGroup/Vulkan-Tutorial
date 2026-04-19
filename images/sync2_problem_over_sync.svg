@@ -1,0 +1,44 @@
+<svg width="600" height="300" viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="600" height="300" fill="#f8f9fa" />
+
+  <!-- Title -->
+  <text x="300" y="30" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">Legacy Vulkan 1.0: The "Log Jam" Problem</text>
+
+  <!-- Source Stages -->
+  <rect x="50" y="70" width="120" height="40" rx="5" fill="#e74c3c" />
+  <text x="110" y="95" font-family="Arial" font-size="12" fill="white" text-anchor="middle">TRANSFER</text>
+
+  <rect x="50" y="190" width="120" height="40" rx="5" fill="#e67e22" />
+  <text x="110" y="215" font-family="Arial" font-size="12" fill="white" text-anchor="middle">COMPUTE</text>
+
+  <!-- The Bottleneck (Barrier) -->
+  <rect x="250" y="70" width="100" height="160" rx="5" fill="#34495e" />
+  <text x="300" y="145" font-family="Arial" font-size="14" font-weight="bold" fill="white" text-anchor="middle">BARRIER</text>
+  <text x="300" y="165" font-family="Arial" font-size="10" fill="white" text-anchor="middle">(Global Masks)</text>
+
+  <!-- Destination Stages -->
+  <rect x="430" y="70" width="120" height="40" rx="5" fill="#2ecc71" />
+  <text x="490" y="95" font-family="Arial" font-size="12" fill="white" text-anchor="middle">VERTEX</text>
+
+  <rect x="430" y="190" width="120" height="40" rx="5" fill="#3498db" />
+  <text x="490" y="215" font-family="Arial" font-size="12" fill="white" text-anchor="middle">FRAGMENT</text>
+
+  <!-- Arrows (Problem) -->
+  <path d="M 170 90 L 250 140" stroke="#c0392b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <path d="M 170 210 L 250 160" stroke="#d35400" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+
+  <path d="M 350 140 L 430 90" stroke="#34495e" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <path d="M 350 160 L 430 210" stroke="#34495e" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+
+  <!-- Red "Wait" indication -->
+  <text x="400" y="115" font-family="Arial" font-size="10" fill="#c0392b" font-style="italic">Wait for Compute too!</text>
+  <text x="400" y="185" font-family="Arial" font-size="10" fill="#c0392b" font-style="italic">Wait for Transfer too!</text>
+
+  <!-- Marker -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34495e" />
+    </marker>
+  </defs>
+</svg>

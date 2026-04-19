@@ -1,0 +1,63 @@
+:pp: {plus}{plus}
+= Subpass Replacement: Syncing Without the Pass
+
+== The End of the Subpass Dependency
+
+In the legacy Vulkan "Render Pass" system, you defined your dependencies upfront. If you wanted to use a G-Buffer pass and then a lighting pass, you'd create a subpass dependency that specified how data was transitioned and synchronized. This was often confusing because it separated the synchronization from the actual commands that were using it.
+
+With **Dynamic Rendering**, we replace these dependencies with **Synchronization 2** barriers that we record directly between our draw calls. This approach is far more intuitive. If your second draw call needs to read from the output of the first, you record a barrier in between.
+
+== A Concrete Example
+
+Imagine you're building a G-Buffer. You have a "Depth-Only" pass to pre-populate the depth buffer, followed by a "Main Pass" that reads from that depth buffer for early-Z testing.
+
+[,c++]
+----
+// 1. Depth Pre-Pass
+commandBuffer.beginRendering(depthPrePassInfo);
+// ... record depth draw calls ...
+commandBuffer.endRendering();
+
+// 2. Synchronization Barrier
+auto depthBarrier = vk::ImageMemoryBarrier2{
+    .srcStageMask = vk::PipelineStageFlagBits2::eLateFragmentTests,
+    .srcAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+    .dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
+    .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentRead,
+    .oldLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+    .newLayout = vk::ImageLayout::eDepthAttachmentOptimal, // No layout change needed
+    .image = depthBuffer.image(),
+    .subresourceRange = subresourceRange
+};
+
+commandBuffer.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &depthBarrier});
+
+// 3. Main Pass
+commandBuffer.beginRendering(mainPassInfo);
+// ... record main draw calls ...
+commandBuffer.endRendering();
+----
+
+== Why This is Better
+
+-   **Clarity**: You can see exactly what is being synchronized and why, right there in your command buffer.
+-   **Flexibility**: You can decide on the synchronization at runtime, making it much easier to build a flexible rendering graph.
+-   **Modernity**: It matches the way other modern APIs, like DirectX 12, handle synchronization, making your engine code more portable.
+
+By using explicit barriers, you move away from the "black box" of the legacy render pass system and toward a clear, surgical synchronization architecture. In the next section, we'll see how **Vulkan 1.4** takes this even further by allowing for efficient on-tile read operations.
+
+== Simple Engine: Dynamic Rendering Sync
+
+In `Simple Engine`, we use this explicit synchronization between our **Opaque Pre-Pass** and our **Main Pass**. Because we don't have a traditional render pass to handle these transitions, we record our own `vk::ImageMemoryBarrier2` to ensure the depth buffer is properly flushed and invalidated.
+
+Specifically, in `Renderer::Render`, you'll find the following sequence:
+
+1.  **Depth Pre-Pass**: We call `commandBuffer.beginRendering` for the depth pre-pass.
+2.  **Barrier**: After `endRendering`, we record a `depthToRead2` barrier. This barrier synchronizes the `eLateFragmentTests` (the depth writes) with the `eEarlyFragmentTests` (the depth reads) of the next pass.
+3.  **Main Opaque Pass**: We then call `beginRendering` again for our main opaque color pass, which now has safe access to the pre-filled depth buffer.
+
+This explicit approach is what allowed us to easily add **Forward+ Lighting** to `Simple Engine`. Since we already had the depth buffer synchronized, adding the light culling compute pass between the pre-pass and the main pass was a straightforward matter of adding one more barrier, without having to re-architect a complex legacy render pass.
+
+== Navigation
+
+Previous: xref:Synchronization/Dynamic_Rendering_Sync/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Dynamic_Rendering_Sync/03_local_read_sync.adoc[Local Read Sync]

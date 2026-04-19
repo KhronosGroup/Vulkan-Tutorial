@@ -1,0 +1,69 @@
+:pp: {plus}{plus}
+
+= Setup and Installation: Preparing Your SYCL Environment
+
+To use SYCL with a Vulkan backend, you'll need a SYCL implementation that supports it. While there are several options, **AdaptiveCpp** (formerly known as hipSYCL) is currently the most mature open-source project for targeting Vulkan through the SYCL programming model.
+
+== Choosing Your Implementation
+
+The SYCL ecosystem is diverse, but for Vulkan developers, two main implementations stand out:
+
+1.  **AdaptiveCpp**: A flexible, multi-backend implementation that can target Vulkan, CUDA, ROCm, and Level Zero. It is the primary focus for cross-vendor Vulkan compatibility.
+2.  **Intel oneAPI DPC{pp}**: While primarily focused on Intel hardware, it can target other backends (like CUDA and ROCm) through "plugin" architectures, though its Vulkan support is often handled through interoperability rather than a native backend.
+
+In this tutorial, we will focus on **AdaptiveCpp** as it provides the most direct path to utilizing the Vulkan 1.4 features we've discussed.
+
+== Prerequisites
+
+Before installing AdaptiveCpp, ensure your system has the following dependencies:
+
+*   **Vulkan SDK**: Version 1.3.239 or higher (1.4 is recommended).
+*   **LLVM and Clang**: Version 14 or newer (used as the compiler base).
+*   **CMake**: Version 3.18 or higher.
+*   **Python 3**: For build scripts.
+*   **Boost Libraries**: Used by the AdaptiveCpp runtime.
+
+== Installing AdaptiveCpp
+
+AdaptiveCpp can be built from source or installed via package managers on some Linux distributions. Building from source is the most reliable way to ensure the Vulkan backend is correctly enabled.
+
+[source,bash]
+----
+git clone --recursive https://github.com/AdaptiveCpp/AdaptiveCpp.git
+cd AdaptiveCpp
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/opt/adaptivecpp \
+         -DWITH_VULKAN_BACKEND=ON \
+         -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+----
+
+Once installed, add `/opt/adaptivecpp/bin` to your system `PATH` and set the `ACPP_COMPILER` environment variable to point to the installed `acpp` executable.
+
+== Configuring the Vulkan Backend
+
+To ensure AdaptiveCpp targets Vulkan, you can use the `--acpp-targets="vulkan-generic"` flag when compiling your code. This tells the compiler to generate SPIR-V that is compatible with any Vulkan 1.3+ driver.
+
+For advanced features like **Buffer Device Address** or **64-bit Atomics**, you may need to specify more targeted profiles or ensure your Vulkan driver supports the required extensions (which we've been tracking throughout this series).
+
+== Verifying Your Installation
+
+To verify that your environment is correctly set up, use the `acpp-info` tool (included with AdaptiveCpp). Run the following command in your terminal:
+
+[source,bash]
+----
+acpp-info
+----
+
+You should see a list of available backends. Look for the **Vulkan** section. It should list your GPU as a supported device.
+
+If the Vulkan backend does not appear, double-check that you built AdaptiveCpp with `-DWITH_VULKAN_BACKEND=ON` and that your `VK_ICD_FILENAMES` or `VK_DRIVER_FILES` environment variables are correctly pointing to your GPU driver.
+
+== Your First SYCL Kernel
+
+With your environment ready, you can now compile a simple single-source C{pp} file. Unlike traditional Vulkan development, where you might have separate `.cpp` and `.slang` files, everything now lives in a single `.cpp` file that you compile with `acpp`.
+
+In the next section, we'll dive into the syntax of **Single-Source GPGPU** and see how to write your first kernel using this powerful model.
+
+xref:01_introduction.adoc[Previous: High-Level Abstraction: SYCL and Single-Source C{pp}] | xref:03_single_source_gpgpu.adoc[Next: Single-Source GPGPU]

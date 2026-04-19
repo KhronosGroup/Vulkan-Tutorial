@@ -1,0 +1,41 @@
+:pp: {plus}{plus}
+
+= GPU-Side Command Generation: Autonomous Execution
+
+== Building Command Chains on the GPU
+
+In a typical Vulkan application, the CPU records a series of commands: `vkCmdBindPipeline`, `vkCmdBindDescriptorSets`, `vkCmdDispatch`, etc. These commands are "baked" into the command buffer.
+
+With **GPU-Side Command Generation** (often utilizing the engine's built-in indirect buffers and BDA), we can go a step further. Instead of the CPU deciding the entire sequence of commands, the GPU can build a list of "commands" that it wants to execute.
+
+This is a key component of **GPU-Driven Pipelines**. The GPU can analyze its own state and decide to:
+
+1.  Dispatch a compute shader to update a set of physics.
+2.  Dispatch another compute shader to build a BVH.
+3.  Generate a series of draw calls to render the updated scene.
+
+== How It Works: The Buffer-First Approach
+
+In a GPU-driven pipeline, the CPU typically records a "master" compute dispatch. This dispatch iterates over your objects or tasks and writes to a series of **Indirect Command Buffers**:
+
+*   **Dispatch Indirect Buffer**: Stores the `x, y, z` parameters for future compute shaders.
+*   **Draw Indirect Buffer**: Stores the `vertexCount`, `instanceCount`, etc., for future rendering.
+*   **Resource Buffer**: Stores the raw pointers (Buffer Device Address) that those shaders and draws will need.
+
+== Why This Matters for Performance
+
+When the GPU generates its own commands, the CPU is completely out of the loop. There is no longer any need to:
+
+*   **Re-record Command Buffers**: No CPU overhead for every frame.
+*   **CPU-Side Culling**: No "back-and-forth" data exchange.
+*   **Synchronization Overhead**: Synchronization happens entirely within the GPU's command stream.
+
+== The Power of Autonomy
+
+This autonomous model allows for **Single-Pass Rendering** (performing culling and drawing in a single GPU pass). Instead of the CPU having to wait for the GPU's culling result to know what to draw, the GPU can cull objects and then draw them in the same command stream.
+
+This is the standard architecture for many modern, high-end rendering engines. It scales to millions of objects because the cost of "culling and drawing" is independent of the CPU's performance.
+
+In the next section, we'll look at the final piece of the puzzle: **Multi-Draw Indirect (MDI)**, which bridges our compute analysis to the graphics pipeline.
+
+xref:02_indirect_dispatch.adoc[Previous: Indirect Dispatch] | xref:04_multi_draw_indirect_mdi.adoc[Next: Multi-Draw Indirect (MDI)]

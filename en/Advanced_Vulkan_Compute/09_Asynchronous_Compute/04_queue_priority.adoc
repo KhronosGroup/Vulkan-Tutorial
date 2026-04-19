@@ -1,0 +1,39 @@
+:pp: {plus}{plus}
+= Queue Priority: Managing Latency-Critical Workloads
+
+When you're dealing with multiple queues, you're essentially handing the GPU multiple streams of work and letting its hardware scheduler decide how to prioritize them. By default, the scheduler tries to be fair, but in a high-performance engine, "fair" isn't always what you want. You might have a critical physics update that *must* finish before the next frame, while a background path-trace denoiser can afford to take a few extra milliseconds.
+
+Vulkan provides a way to influence this through **Queue Priority**. When you create a logical device (`VkDeviceCreateInfo`), you specify a `priority` for each queue within a queue family. This value is a floating-point number between 0.0 and 1.0, where 1.0 represents the highest priority.
+
+[source,cpp]
+----
+// Setting up high-priority compute queues
+float priorities[] = { 1.0f, 0.1f }; // High priority for physics, low for denoising
+vk::DeviceQueueCreateInfo queueCreateInfo {
+    .queueFamilyIndex = computeQueueFamilyIndex,
+    .queueCount = 2,
+    .pQueuePriorities = priorities
+};
+----
+
+== How the Scheduler Uses Priority
+It's important to understand that queue priority is a **hint**, not a guarantee. The exact behavior depends heavily on the hardware's internal scheduler. Most modern GPUs use one of two main strategies:
+
+1.  **Strict Priority**: The scheduler will always pick a task from a higher-priority queue if one is ready. This is great for responsiveness but can lead to **starvation** of low-priority tasks if the high-priority queue is constantly busy.
+2.  **Weighted Round-Robin**: The scheduler assigns a certain percentage of execution time to each queue based on its priority. For example, a queue with priority 1.0 might get twice as many "scheduling slots" as a queue with priority 0.5.
+
+High-end desktop GPUs often have sophisticated hardware that can **preempt** a low-priority task (e.g., stop a long-running compute shader) to make room for a high-priority one. However, preemption is not free; it involves saving and restoring the GPU's state, which can take several microseconds.
+
+== Global Queue Priority
+If you're building a system where latency is truly the only thing that matters—like a VR (Virtual Reality) compositor or an AR (Augmented Reality) spatial tracker—you might need even more control. This is where `VK_EXT_global_priority` comes in. This extension allows you to request **Real-Time** priority for a queue.
+
+Unlike standard queue priority, which only works relative to other queues on your device, global priority tells the driver (and the OS) that your workload is more important than even other applications running on the same GPU. Use this sparingly, as it can cause stuttering in the rest of the system if used incorrectly.
+
+== Avoiding the "Single-Queue Trap"
+A common mistake is to create multiple high-priority queues within the same queue family. If you do this, you've essentially returned to a "first-come, first-served" model. The hardware scheduler can only do its job if you provide clear, distinct priorities.
+
+Another critical consideration is **Queue Family** (a group of queues with similar capabilities) selection. Some Vulkan implementations offer multiple queue families, each with different capabilities. For example, a "Dedicated Compute" queue family might have specialized hardware for compute dispatches that don't share any resources with the graphics engine, making them more efficient and less likely to cause **pipeline bubbles** (gaps in the GPU's execution timeline). Always check the `VkQueueFamilyProperties` to understand what each queue family offers.
+
+In practice, managing queue priorities is a balancing act. Used correctly, it's a powerful tool for ensuring that your engine remains responsive and that the most critical tasks are always handled with the urgency they require. This orchestration is the hallmark of a truly advanced Vulkan engine—moving beyond just "doing the work" to "doing the work in the right order at the right time."
+
+xref:03_timeline_semaphores.adoc[Previous: Timeline Semaphores] | xref:../10_Specialized_Math/01_introduction.adoc[Next: Specialized Math]

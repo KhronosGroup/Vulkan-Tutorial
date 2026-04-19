@@ -1,0 +1,83 @@
+:pp: {plus}{plus}
+
+= Workgroups and Invocations: The 3D Lattice
+
+== Introduction
+
+In the basic compute tutorial, we used a simple one-dimensional dispatch. While that works for simple tasks, it doesn't represent how the GPU actually schedules work. To write high-performance kernels, you need to understand how Vulkan's 3D grid system maps to the physical silicon of the GPU.
+
+The grid system is more than just a convenient way to index into textures; it defines how your workload is subdivided and scheduled across the hardware.
+
+== The Three-Tier Hierarchy
+
+When you define a compute dispatch, you are working with a hierarchy of units. Getting these dimensions right is the first step toward high performance.
+
+1.  **Global Dispatch Grid**: This is the entire workload, defined in `vkCmdDispatch(x, y, z)`.
+2.  **Workgroups**: The global grid is subdivided into workgroups. The GPU's hardware scheduler assigns these workgroups to physical compute units.
+3.  **Invocations**: Each workgroup contains multiple individual threads, defined by the `local_size` in your shader.
+
+=== Workgroup Locality
+
+In the previous section, we mentioned that a workgroup cannot be split across multiple physical **Compute Units** (CU, on AMD/Intel) or **Streaming Multiprocessors** (SM, on NVIDIA). This means that all invocations within a workgroup are physically executed on the same hardware block.
+
+This locality is a key design constraint. It allows invocations in the same workgroup to share a fast, local memory known as **LDS** (Local Data Store) or **groupshared** memory, but it also means that the size of your workgroup is limited by the physical resources of a single CU/SM. If your workgroup size is too large, the GPU simply won't be able to schedule it.
+
+== The Math of Indexing
+
+Vulkan provides several built-in variables to help you find your place in the grid. In Slang, these are typically passed as parameters to the entry point using semantics like `SV_DispatchThreadID`, `SV_GroupThreadID`, and `SV_GroupID`.
+
+Let's look at how these relate in a typical shader:
+
+[source,slang]
+----
+[numthreads(16, 16, 1)]
+void main(
+    uint3 groupID      : SV_GroupID,           // gl_WorkGroupID
+    uint3 localID      : SV_GroupThreadID,     // gl_LocalInvocationID
+    uint3 globalID     : SV_DispatchThreadID   // gl_GlobalInvocationID
+) {
+    // globalID: The unique index for this thread in the entire grid
+    // Formula: globalID = groupID * numthreads + localID
+    uint x = globalID.x;
+    uint y = globalID.y;
+
+    // Process pixel (x, y)
+}
+----
+
+Using a 2D or 3D grid makes spatial tasks (like image processing or physics simulations) much cleaner. Instead of manually calculating a 1D index, you can use `.xy` or `.xyz` coordinates that match your data structure.
+
+== Choosing Optimal Sizes
+
+A common mistake is choosing workgroup sizes based solely on what "fits" your data. For example, if you're processing a 10x10 image, you might choose a workgroup size of (10, 10, 1).
+
+However, GPUs execute invocations in bundles of 32 or 64—known as **Subgroups**, **Warps** (NVIDIA), or **Wavefronts** (AMD). If your workgroup size is not a multiple of the hardware's native bundle size, you are leaving silicon idle. This is called **internal fragmentation**.
+
+=== The Rule of 32/64
+
+*   **NVIDIA** GPUs typically prefer multiples of **32** (Warps).
+*   **AMD** GPUs typically prefer multiples of **64** (Wavefronts), though modern RDNA architectures can also handle 32.
+*   **Intel** GPUs have variable sizes (8, 16, 32).
+
+A safe, portable choice for many workloads is a workgroup size of **64** or **256** (e.g., `16x16` or `8x8x4`). This ensures that most hardware can keep its **SIMD** (Single Instruction, Multiple Data) lanes full.
+
+== Dispatching the Work
+
+When you call `vkCmdDispatch(groupCountX, groupCountY, groupCountZ)`, you are defining how many times the `local_size` block is repeated.
+
+If you have an image of size `width` x `height` and a workgroup size of `16x16`, your dispatch would look like this:
+
+[source,cpp]
+----
+uint32_t groupCountX = (width + 15) / 16;
+uint32_t groupCountY = (height + 15) / 16;
+commandBuffer.dispatch(groupCountX, groupCountY, 1);
+----
+
+Note the use of "rounding up" (`(width + 15) / 16`). This ensures that if your image size isn't a perfect multiple of 16, you don't miss the last few pixels. Inside the shader, you would then use a bounds check: `if (x < width && y < height)`.
+
+== What's Next?
+
+Understanding how workgroups map to hardware is the foundation of GPU compute. But mapping work to hardware is only part of the story; we also need to keep that hardware busy. In the next section, we'll talk about **Occupancy** and how to hide the massive latency of VRAM.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_occupancy_and_latency_hiding.adoc[Next: Occupancy and Latency Hiding]

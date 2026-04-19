@@ -1,0 +1,76 @@
+:pp: {plus}{plus}
+
+= Subgroup Shuffles, Broadcasts, and Arithmetic
+
+== Exchanging Data Without Memory
+
+In the previous section, we introduced the concept of a **Subgroup** as the hardware's native execution width (e.g., 32 or 64 threads). What makes subgroups truly powerful is the ability to share data between invocations without ever writing to memory. No VRAM, no LDS—just register-to-register communication.
+
+This is done through three primary categories of operations: **Broadcasts** (sending one value to all), **Shuffles** (swapping values between specific threads), and **Arithmetic (Reductions/Scans)** (performing math across the whole subgroup).
+
+== Subgroup Broadcasts
+
+The simplest form of subgroup communication is the **Broadcast**. This allows one thread in the subgroup to share its local value with all other threads in the same subgroup.
+
+[source,slang]
+----
+// Slang example of a subgroup broadcast
+float localValue = computeSomeData();
+float sharedValue = WaveReadLaneAt(localValue, 0); // Everyone gets thread 0's value
+----
+
+In the example above, every thread in the subgroup will now have the same `sharedValue`, which was originally unique to thread 0. This is incredibly useful for sharing "anchor" values or configuration data that only one thread needs to calculate or load.
+
+=== GLSL: The Subgroup Way
+
+In GLSL, you use the `subgroup` intrinsics. This requires enabling the proper extension (usually `GL_KHR_shader_subgroup_basic` or `GL_KHR_shader_subgroup_ballot` depending on the operation).
+
+[source,glsl]
+----
+#extension GL_KHR_shader_subgroup_basic : enable
+
+// The GLSL equivalent of a subgroup broadcast
+float localValue = computeSomeData();
+float sharedValue = subgroupBroadcast(localValue, 0);
+----
+
+== Subgroup Shuffles
+
+While a broadcast sends one value to everyone, a **Shuffle** allows for more complex patterns. You can think of it as a **permutation,** (a rearrangement) of the registers across the subgroup.
+
+In Slang, we can use `WaveReadLaneAt` for general indexing, or more specific functions for relative movements.
+
+[source,slang]
+----
+// Every thread "swaps" its value with its neighbor (assuming 32 threads)
+uint neighborIdx = (WaveGetLaneIndex() + 1) % 32;
+float neighborValue = WaveReadLaneAt(localValue, neighborIdx);
+----
+
+Modern GPUs also support more specialized shuffles like `WaveReadLaneFirst` and bitwise shuffles. These are often more efficient than a general shuffle because they map directly to hardware data-paths.
+
+== Subgroup Arithmetic (Reductions and Scans)
+
+Beyond just moving data, subgroups can perform math across all threads in a single instruction. These are called **Reductions** and **Scans**.
+
+*   **Subgroup Reduction**: Combines values from all threads into a single result (e.g., `WaveActiveSum`, `WaveActiveMin`, `WaveActiveMax`).
+*   **Subgroup Scan (Inclusive/Exclusive)**: Each thread receives the partial sum (or min/max) of all threads up to its own index. In an **inclusive** scan, the current thread's value is included; in an **exclusive** scan, it is not.
+
+[source,slang]
+----
+// Calculate the sum of all local values in the subgroup
+float subgroupTotal = WaveActiveSum(localValue);
+
+// Each thread gets the sum of all values from threads with a lower ID
+float runningSum = WavePrefixSum(localValue);
+----
+
+These operations are the building blocks of high-performance prefix sums, **stream compaction** (filtering an array to only active elements), and parallel reductions. Instead of writing a complex multi-pass kernel that uses shared memory and barriers, you can often do the same work within a single subgroup in just a few cycles.
+
+== Choosing the Right Operation
+
+While it's tempting to use subgroup operations everywhere, remember that they only work within a single subgroup. If you need to share data across an entire 1024-thread workgroup, you will still need to use **Shared Memory (LDS)** to bridge the gap between subgroups.
+
+However, a "subgroup-first" approach is often the fastest. Perform as much work as possible within the subgroup, and only use LDS when you absolutely must communicate with another subgroup.
+
+xref:01_introduction.adoc[Previous: Introduction to Subgroups] | xref:03_subgroup_partitioning.adoc[Next: Subgroup Partitioning]

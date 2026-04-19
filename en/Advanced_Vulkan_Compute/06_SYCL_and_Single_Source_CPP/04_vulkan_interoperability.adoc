@@ -1,0 +1,53 @@
+:pp: {plus}{plus}
+
+= Vulkan Interoperability: Sharing Buffers and Images
+
+== Bridging the Gap
+
+While SYCL is perfect for complex simulations, you might still want to use native Vulkan for your final rendering. For example, you could have a SYCL-based fluid simulation and a custom Vulkan renderer that draws the results using path tracing.
+
+In the past, you would have to copy the data from the "SYCL device" back to the CPU and then down to the "Vulkan device." This is incredibly slow and inefficient. Thanks to the **Vulkan Backend Extensions** in SYCL, we can now share memory and synchronization objects directly.
+
+== SYCL_EXT_oneapi_backend_vulkan
+
+The most common way to achieve this interoperability is through the `SYCL_EXT_oneapi_backend_vulkan` extension. This extension allows you to:
+
+1.  **Extract Native Handles**: Get the underlying **native handles** (the original Vulkan objects like `VkBuffer` or `VkImage`) from a SYCL buffer or image.
+2.  **Import Native Handles**: Wrap an existing `VkBuffer` or `VkImage` into a SYCL object.
+3.  **Coordinate Synchronization**: Use SYCL events to synchronize with Vulkan semaphores and fences.
+
+[source,cpp]
+----
+// Wrapping an existing Vulkan buffer for use in SYCL
+vk::raii::Buffer myVulkanBuffer = ...;
+sycl::queue q;
+
+// Import the Vulkan buffer into SYCL
+sycl::buffer<float> mySYCLBuffer = sycl::make_buffer<sycl::backend::ext_oneapi_vulkan>(
+    *myVulkanBuffer, q.get_context()
+);
+
+// Now you can use mySYCLBuffer in a parallel_for kernel!
+q.submit([&](sycl::handler& h) {
+    auto acc = mySYCLBuffer.get_access<sycl::access::mode::read_write>(h);
+    h.parallel_for(range<1>(1024), [=](id<1> idx) {
+        acc[idx] *= 2.0f;
+    });
+});
+----
+
+== Efficient Data Flow
+
+By importing your Vulkan vertex or index buffers directly into SYCL, you can perform complex simulations and update the geometry without any copies between the CPU and GPU. The data stays on the GPU at all times.
+
+This is especially powerful for **Compute-Driven Rendering** (where the GPU's compute logic decides what to render). Your SYCL simulation can update a storage buffer, and then your native Vulkan renderer can use that same buffer in a `vkCmdDrawIndirect` call.
+
+== Coordination and Semaphores
+
+The most challenging part of interoperability is synchronization. You need to ensure that the SYCL kernels have finished writing to the buffer before the Vulkan renderer starts reading from it.
+
+SYCL handles this through **External Semaphores** (Vulkan semaphores that can be shared between different APIs). You can export a SYCL event into a `VkSemaphore` that the Vulkan renderer can wait on, or vice versa. This allows for a seamless, low-latency pipeline where both the high-level and low-level code cooperate on the same hardware resources.
+
+In the next section, we'll look at the ultimate way to simplify memory management in SYCL: **Unified Shared Memory (USM)**.
+
+xref:03_single_source_gpgpu.adoc[Previous: Single-Source GPGPU] | xref:05_unified_shared_memory_usm.adoc[Next: Unified Shared Memory (USM)]

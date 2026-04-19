@@ -1,0 +1,12 @@
+:pp: {plus}{plus}
+= Cooperative Matrices and Specialized Math
+
+In the previous chapters, we've looked at how to move data efficiently and how to orchestrate complex workloads. But what happens when the workload itself is computationally intense? For a long time, GPU compute was synonymous with floating-point operations (FP32). However, modern hardware has evolved to include specialized units designed for a very specific type of work: high-speed linear algebra.
+
+This is the world of **Cooperative Matrices**. While you might have heard of "Tensor Cores" on NVIDIA or "Matrix Core" on AMD, Vulkan provides a vendor-neutral abstraction for these specialized units through the `VK_KHR_cooperative_matrix` extension (now part of Vulkan 1.4). These units aren't just for machine learning; they are incredibly powerful for any task that involves heavy matrix multiplication and accumulation (the **GEMM**—General Matrix-Matrix Multiplication—operation).
+
+Whether you're building a fluid simulation that requires solving large systems of linear equations or a signal processing pipeline that relies on complex transforms, Cooperative Matrices can provide a massive throughput boost. By performing small matrix multiplications directly in the hardware's specialized units, you can achieve performance that far exceeds what a standard compute shader loop could deliver.
+
+In this chapter, we're going to dive into how these specialized math units work. We'll explore how to use the `cooperative_matrix` types in Slang and GLSL, and we'll see how to leverage **Mixed Precision**—using FP16 or Int8 for calculations while maintaining accuracy where it counts. This is about more than just speed; it's about utilizing the full potential of modern GPU silicon for high-performance computing tasks.
+
+xref:../09_Asynchronous_Compute/04_queue_priority.adoc[Previous: Queue Priority] | xref:02_cooperative_matrices.adoc[Next: Cooperative Matrices]

@@ -1,0 +1,64 @@
+:pp: {plus}{plus}
+
+= Advanced Vulkan Compute: The Power of Parallelism
+
+== Introduction
+
+Welcome to the "Advanced Vulkan Compute" tutorial series! This series is designed for developers who have mastered the basics of Vulkan compute shaders and are looking to push the boundaries of what's possible with modern GPU hardware.
+
+Vulkan is not just a graphics API; it is a powerful, low-level framework for general-purpose GPU programming (GPGPU). While the initial tutorials covered how to dispatch a simple compute shader, this series dives deep into the architecture, memory models, and advanced features that enable high-performance simulations, complex data structures, and heterogeneous execution.
+
+=== Beyond the Basics
+
+In a basic compute shader, you might just be multiplying an array of floats. In advanced compute, you are:
+
+*   **Orchestrating thousands of threads** to work together on a single problem.
+*   **Managing memory consistency** to ensure that data written by one thread is safely read by another.
+*   **Leveraging specialized hardware** like subgroup shuffles and cooperative matrices to bypass slow **VRAM** (Video Random Access Memory).
+*   **Building GPU-resident data structures** like **BVH** (Bounding Volume Hierarchies) and Octrees that never need to touch the CPU.
+
+To do this effectively, you need more than just a passing knowledge of GLSL or Slang; you need to understand the underlying hardware architecture and the Vulkan execution model.
+
+=== What You Will Learn
+
+This tutorial series is organized into several key areas:
+
+1.  **Compute Architecture** - Mapping workgroups to Compute Units (CU) and Streaming Multiprocessors (SM), and mastering occupancy.
+2.  **Memory Models and Consistency** - Understanding the Vulkan Memory Model, shared memory (**LDS** - Local Data Store), and fine-grained synchronization.
+3.  **Subgroup Operations** - Using cross-invocation communication to avoid VRAM round-trips and maximize **SIMD** (Single Instruction, Multiple Data) throughput.
+4.  **Heterogeneous Ecosystems** - Running OpenCL C and SYCL code on top of Vulkan using `clspv`, `clvk`, and AdaptiveCpp.
+5.  **Advanced Data Structures** - Moving complex structures like trees and linked lists entirely to the GPU using 64-bit atomics and **BDA** (Buffer Device Address).
+6.  **GPU-Driven Pipelines** - Moving command generation and workload management entirely to the GPU for autonomous execution.
+7.  **Asynchronous Orchestration** - Running compute and graphics concurrently using Synchronization 2 and multiple hardware queues.
+8.  **Advanced Math & Optimization** - Using Cooperative Matrices for linear algebra and auditing kernels for divergence and throughput.
+
+=== Prerequisites
+
+This series assumes you are comfortable with:
+
+*   Standard Vulkan initialization (Instance, Device, Queues).
+*   Basic Compute Pipelines and Descriptor Sets.
+*   C{pp}20 and GLSL/Slang shader languages.
+*   The concepts covered in the xref:11_Compute_Shader.adoc[Compute Shader] chapter of the main tutorial.
+
+=== How to Use This Tutorial
+
+Each chapter is designed to be self-contained but builds on the concepts of previous ones. We recommend following them in order if you're new to advanced compute, or jumping to specific sections if you're looking to solve a particular problem.
+
+Let's dive into the world of high-performance GPU computing!
+
+== Chapters
+
+* xref:02_Compute_Architecture/01_introduction.adoc[The Compute Architecture and Execution Model]
+* xref:03_Memory_Models/01_introduction.adoc[Memory Models and Consistency]
+* xref:04_Subgroup_Operations/01_introduction.adoc[Subgroup Operations: The Hidden Power]
+* xref:05_OpenCL_on_Vulkan/01_introduction.adoc[Heterogeneous Ecosystem: OpenCL on Vulkan]
+* xref:06_SYCL_and_Single_Source_CPP/01_introduction.adoc[High-Level Abstraction: SYCL and Single-Source C{pp}]
+* xref:07_Advanced_Data_Structures/01_introduction.adoc[Advanced Data Structures on the GPU]
+* xref:08_GPU_Driven_Pipelines/01_introduction.adoc[Indirect Dispatch and GPU-Driven Pipelines]
+* xref:09_Asynchronous_Compute/01_introduction.adoc[Asynchronous Compute Orchestration]
+* xref:10_Specialized_Math/01_introduction.adoc[Cooperative Matrices and Specialized Math]
+* xref:11_Performance_Optimization/01_introduction.adoc[Performance Auditing and Optimization]
+* xref:12_Diagnostics_and_Refinement/01_introduction.adoc[Diagnostics and AI-Assisted Compute Refinement]
+
+xref:11_Compute_Shader.adoc[Previous: Basic Compute Shaders] | xref:02_Compute_Architecture/01_introduction.adoc[Next: Compute Architecture]

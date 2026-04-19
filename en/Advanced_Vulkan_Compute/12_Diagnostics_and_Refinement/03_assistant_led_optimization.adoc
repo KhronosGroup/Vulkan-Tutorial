@@ -1,0 +1,67 @@
+:pp: {plus}{plus}
+= AI-Assisted Optimization and Refinement
+
+The field of GPU compute is evolving rapidly, and the sheer complexity of advanced Vulkan compute can sometimes feel overwhelming. This is where **AI-Assisted Optimization**—leveraging Large Language Models (LLMs) to analyze and refactor your code—is becoming a game-changer.
+
+== The New Workflow
+
+As a Vulkan developer, you're no longer alone in the optimization process. Modern AI assistants can act as a second pair of eyes, helping you navigate the pitfalls of SIMD architecture and memory consistency.
+
+=== Example: From Naive to Wave-Aware
+Imagine you have a naive loop that calculates a prefix sum across a buffer.
+
+[source,slang]
+----
+// Naive approach: One thread does all the work in a loop
+void computeMain(uint3 globalID : SV_DispatchThreadID) {
+    if (globalID.x == 0) {
+        uint total = 0;
+        for (uint i = 0; i < bufferSize; i++) {
+            total += data[i];
+            data[i] = total;
+        }
+    }
+}
+----
+
+An AI assistant can instantly recognize this as a sequential bottleneck and suggest a **Subgroup-Aware** (Wave) refactoring using the techniques we discussed in Chapter 4.
+
+[source,slang]
+----
+// AI-Suggested Refactor: Parallel prefix sum using Wave operations
+void computeMain(uint3 globalID : SV_DispatchThreadID) {
+    uint val = data[globalID.x];
+
+    // Perform a parallel prefix sum within the subgroup
+    uint inclusive_sum = WavePrefixSum(val) + val;
+
+    // WaveReadLaneAt allows us to get the total from the last lane
+    uint subgroup_total = WaveReadLaneAt(inclusive_sum, WaveGetLaneCount() - 1);
+
+    // ... further logic to combine subgroup totals ...
+    data[globalID.x] = inclusive_sum;
+}
+----
+
+== Effective Prompting for Shaders
+
+To get the most out of an AI assistant, you need to provide **Context**. Don't just paste your code; explain the constraints:
+
+* **"Refactor this Slang shader to use Wave operations for better throughput."**
+* **"Identify potential bank conflicts in this groupshared memory access pattern."**
+* **"How can I use Buffer Device Address to optimize this tree traversal?"**
+
+By framing your questions with the specific terms of art we've learned in this series—like **Subgroups**, **LDS**, **BDA**, and **Barriers**—you'll receive much more accurate and actionable suggestions.
+
+== The Golden Rule: Trust but Verify
+
+It's crucial to remember that an AI assistant is just that—an **assistant**. While it's great for generating suggestions and identifying patterns, you are still the primary architect.
+
+1. **Verify Correctness**: AI-generated code can sometimes have subtle bugs, especially with complex synchronization. Always run your code through **GPU-Assisted Validation** (Chapter 12, Section 2).
+2. **Profile Performance**: A "clever" refactor might actually be slower on certain hardware. Always verify the AI's suggestions with a **Divergence Audit** or an **Instruction Throughput Analysis** (Chapter 11).
+
+== Closing the Loop
+
+As we move toward the final conclusion of this series, we've seen how modern tools like GPU-Assisted Validation and AI-led refactoring can transform the compute development workflow. In the next section, we'll summarize everything we've learned and look ahead to the future of high-performance Vulkan compute.
+
+xref:02_compute_validation.adoc[Previous: Compute Validation] | xref:../conclusion.adoc[Next: Series Conclusion]

@@ -1,0 +1,29 @@
+:pp: {plus}{plus}
+
+= Heterogeneous Ecosystem: OpenCL on Vulkan
+
+== Introduction
+
+Vulkan is often seen as the "modern successor" to OpenGL, primarily focused on real-time graphics. However, in the world of **HPC** (High-Performance Computing) and **GPGPU** (General-Purpose GPU programming), **OpenCL** has been the industry standard for over a decade. Millions of lines of legacy code for physics, financial modeling, and scientific simulation are written in OpenCL C.
+
+Until recently, running OpenCL code on a Vulkan-only driver was a significant challenge. But thanks to the **Vulkan 1.4** ecosystem and tools like `clspv` and `clvk`, that gap has finally been bridged.
+
+== Why Run OpenCL on Vulkan?
+
+You might wonder why we would want to run "legacy" OpenCL code on a modern API like Vulkan. There are three main reasons:
+
+1.  **Code Reuse**: Porting a massive, battle-tested OpenCL kernel to GLSL or Slang is error-prone and time-consuming. By using the OpenCL-on-Vulkan pipeline, you can run your existing kernels with minimal changes.
+2.  **Cross-Vendor Compatibility**: Not all hardware vendors provide a high-quality, native OpenCL driver (especially on mobile or integrated GPUs). By layering OpenCL on top of Vulkan, you can provide an OpenCL implementation wherever Vulkan is available.
+3.  **Unified Tooling**: If your application already uses Vulkan for rendering, being able to handle compute workloads through the same API simplifies your synchronization, memory management, and deployment.
+
+== The "Vulkan Flavor" of OpenCL
+
+It's important to understand that we aren't just running OpenCL as-is. We are using a specific "Vulkan-compatible" subset of OpenCL. This involves:
+
+*   **SPIR-V as the Bridge**: OpenCL C kernels are compiled into **SPIR-V** (Standard Portable Intermediate Representation - V), the same binary format used by Vulkan for its shaders.
+*   **Memory Mapping**: Mapping OpenCL's pointer-based memory model (Buffers and Images) to Vulkan's explicit memory management.
+*   **Execution Models**: Aligning OpenCL's global and local work sizes with Vulkan's workgroups and invocations.
+
+In this chapter, we'll explore the two primary ways to bridge this gap: **AOT** (Ahead-of-Time, compiling before the program runs) compilation using `clspv`, and **Runtime Layering** using `clvk`.
+
+xref:../04_Subgroup_Operations/04_non_uniform_indexing.adoc[Previous: Non-Uniform Indexing] | xref:02_setup_and_installation.adoc[Next: Setup and Installation]

@@ -1,0 +1,28 @@
+:pp: {plus}{plus}
+= Performance Auditing and Optimization
+
+We've covered a vast range of advanced Vulkan compute topics—from low-level architecture to high-level abstractions like SYCL. But there's one question that every developer eventually faces: "Is this as fast as it can be?" Answering this question is not about guesswork or intuition; it's about a rigorous, methodical approach to **Performance Auditing**.
+
+In the world of GPU compute, a "fast" kernel can be held back by many things. It might be waiting on memory (**memory-bound**), it might be overwhelmed by complex arithmetic (**compute-bound**), or it might be suffering from "divergence"—where different invocations in a **subgroup** (or **warp/wavefront**) are forced to take different execution paths, causing the hardware to serialize their work.
+
+Optimization is not just about writing "clever" code. It's about understanding the **bottlenecks**. If your kernel is memory-bound, adding more arithmetic operations won't slow it down, but it also won't make it faster. Conversely, if you're compute-bound, optimizing your memory access pattern might not yield any noticeable gains.
+
+== Moving Beyond Naive Optimization
+
+When we talk about optimization in a massively parallel environment like Vulkan, we need a standard set of metrics and models to guide us. In this chapter, we will introduce:
+
+* **The Roofline Model**: A fundamental analytical tool that allows us to visualize whether a kernel is limited by the peak bandwidth of **VRAM** (Video Random Access Memory) or the peak throughput of the **ALU** (Arithmetic Logic Unit).
+* **Instruction Throughput Analysis**: Understanding the cost of individual **ISA** (Instruction Set Architecture) commands, and how to identify "heavy" operations like double-precision floats or complex transcendental functions.
+* **Divergence Audits**: A methodology for identifying where **SIMD** (Single Instruction, Multiple Data) execution breaks down, causing lanes to sit idle while others work.
+
+We'll move beyond looking at high-level Slang or GLSL code and start thinking about what the hardware actually sees. This involves understanding the **Occupancy** of the **CU** (Compute Unit) or **SM** (Streaming Multiprocessor) and how to minimize **pipeline stalls** caused by memory latency.
+
+By the end of this chapter, you'll be equipped with the methodology to move from "making it work" to "making it fly."
+
+== Chapter Roadmap
+
+1. **Instruction Throughput Analysis**: Learning to identify compute-bound vs. memory-bound kernels using the Roofline Model.
+2. **The Divergence Audit**: Techniques for visualizing and refactoring divergent branching logic.
+
+[horizontal]
+*Previous:* xref:../10_Specialized_Math/03_mixed_precision.adoc[Mastering Mixed Precision] | *Next:* xref:02_instruction_throughput.adoc[Instruction Throughput Analysis]

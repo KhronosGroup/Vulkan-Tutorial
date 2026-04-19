@@ -1,0 +1,81 @@
+:pp: {plus}{plus}
+= System Integration
+
+In a standard desktop application, our engine is typically responsible for creating a `VkInstance` and selecting a `VkPhysicalDevice` based on its own internal logic. When we move to OpenXR, we are no longer the sole decision-maker. We must first negotiate with the XR runtime to ensure our graphics context is compatible with the headset's compositor.
+
+The bridge between OpenXR and Vulkan is the extension **XR_KHR_vulkan_enable2**. This extension provides the mechanism for OpenXR to specify exactly which instance and device extensions are required, as well as any specific feature flags that must be enabled for the spatial pipeline to function.
+
+== The Architectural Boundary: Why a Handshake?
+
+To understand why this negotiation is necessary, we must first understand the architectural boundary between our engine and the **OpenXR Runtime**. Unlike a standard windowing system, an XR runtime (like SteamVR, Meta Link, or Monado) often operates as a separate, high-priority system service or process.
+
+1.  **Process Isolation**: The runtime manages the physical hardware (cameras, IMUs, and displays) and performs critical tasks like **Asynchronous Reprojection**—warping the final image if our engine misses its frame deadline.
+2.  **VRAM Sharing**: Because the runtime and our engine are separate processes, they must share access to the GPU's memory. This isn't just a simple copy; it is a "Zero-Copy" handoff where we both see the same physical memory addresses.
+3.  **Synchronization**: We need a way to tell the runtime "I am done rendering this frame" and for the runtime to tell us "I am done using this image, you can have it back."
+
+The handshake is our way of telling the OS and the XR runtime: "We are both speaking the same dialect of Vulkan, using the same extensions, and looking at the same physical silicon."
+
+== Querying XR Graphics Requirements
+
+Before we can even create our Vulkan instance, we must initialize our OpenXR instance and query the graphics requirements for the specific system (the headset) we are targeting. This is performed using the `xrGetVulkanGraphicsRequirements2KHR` function.
+
+This call populates an `XrGraphicsRequirementsVulkanKHR` structure, which contains two critical pieces of information:
+
+1.  **minApiVersionSupported**: The minimum Vulkan version the runtime supports.
+2.  **maxApiVersionSupported**: The maximum Vulkan version the runtime has been tested with.
+
+Since we are targeting Vulkan 1.4, we must verify that our chosen version falls within this range. Most modern runtimes are rapidly updating to support the latest specifications, ensuring we have access to the advanced synchronization tools we need.
+
+== Extending the Engine Context
+
+Our engine's initialization logic needs to be modified to accept these external requirements. Instead of hardcoding a static list of instance extensions, we perform a coordinated handshake:
+
+1.  **Query OpenXR**: Ask the runtime for its mandatory instance extensions using `xrGetVulkanInstanceExtensionsKHR`.
+2.  **Merge and Initialize**: Combine these OpenXR requirements with our engine's own mandatory extensions (such as `VK_EXT_debug_utils`) and create the instance.
+
+[IMPORTANT]
+====
+**The String Parsing Pitfall**: `xrGetVulkanInstanceExtensionsKHR` returns the required extensions as a single, space-separated string (e.g., `"VK_KHR_external_memory_capabilities VK_KHR_get_physical_device_properties2"`). You must manually parse this string and split it into individual `const char*` entries before passing them to `vk::InstanceCreateInfo`.
+====
+
+The same principle applies to the physical device. The XR runtime may require specific device extensions, such as `VK_KHR_external_memory` or color space extensions, to safely share images between our application and the compositor process.
+
+[source,cpp]
+----
+// Example of merging requirements in our Engine's initialization
+std::vector<const char*> instanceExtensions = engineDefaults.getInstanceExtensions();
+
+// 1. Query the length of the extension string
+uint32_t xrExtensionCount = 0;
+xrGetVulkanInstanceExtensionsKHR(xrInstance, systemId, 0, &xrExtensionCount, nullptr);
+
+// 2. Retrieve the space-separated string
+std::string xrExtensionString(xrExtensionCount, '\0');
+xrGetVulkanInstanceExtensionsKHR(xrInstance, systemId, xrExtensionCount, &xrExtensionCount, xrExtensionString.data());
+
+// 3. Parse the string into individual extension names
+std::stringstream ss(xrExtensionString);
+std::string extension;
+while (ss >> extension) {
+    // Check if we already have it, then add it
+    if (std::find(instanceExtensions.begin(), instanceExtensions.end(), extension) == instanceExtensions.end()) {
+        instanceExtensions.push_back(strdup(extension.c_str()));
+    }
+}
+
+vk::InstanceCreateInfo createInfo({}, &applicationInfo,
+                                  static_cast<uint32_t>(layers.size()), layers.data(),
+                                  static_cast<uint32_t>(instanceExtensions.size()), instanceExtensions.data());
+
+vk::raii::Instance instance(context, createInfo);
+----
+
+== Why the Handshake Matters: Zero-Copy Efficiency
+
+The ultimate goal of this handshake is **Zero-Copy Efficiency**. If we selected a GPU that the XR runtime couldn't talk to, the operating system would be forced to copy our final rendered frames through system memory to reach the headset's display. This would destroy our frame budget and introduce "judder"—the visual stuttering that causes motion sickness in XR.
+
+By following the `XR_KHR_vulkan_enable2` protocol, we guarantee that our frames stay on the GPU at all times, moving from our render pipeline to the headset's display with the absolute minimum possible latency.
+
+In the next section, we will look at **Hardware Alignment**, where we ensure that the `VkPhysicalDevice` we select is the exact same one the headset is physically connected to.
+
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/03_hardware_alignment_luid.adoc[Next]

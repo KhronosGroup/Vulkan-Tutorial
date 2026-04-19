@@ -149,3 +149,104 @@
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Robustness2.adoc[Robustness2]
 ** Appendix
 *** xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix]
+
+* OpenXR and Vulkan 1.4 Spatial Computing
+** xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[Introduction]
+** The OpenXR-Vulkan 1.4 Handshake
+*** xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[System Integration]
+*** xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/03_hardware_alignment_luid.adoc[Hardware Alignment (LUID)]
+*** xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/04_vulkan_1_4_feature_requirements.adoc[Vulkan 1.4 Feature Requirements]
+*** xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/05_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Runtime-Owned Swapchains
+*** xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/02_external_image_negotiation.adoc[External Image Negotiation]
+*** xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/03_raii_resource_integration.adoc[RAII Resource Integration]
+*** xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/04_memory_ownership_lifecycle.adoc[Memory Ownership Lifecycle]
+*** xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/05_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Dynamic Rendering for Spatial Views
+*** xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/02_rendering_to_spatial_swapchains.adoc[Rendering into Spatial Swapchains]
+*** xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/03_stereo_viewport_scissor.adoc[Stereo Viewport & Scissor Management]
+*** xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** The Predictive Frame Loop
+*** xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/02_xr_lifecycle.adoc[The XR Lifecycle]
+*** xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/03_display_time_prediction.adoc[Display Time Prediction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Late Latching
+*** xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/02_last_second_update.adoc[The Last-Second Update]
+*** xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/03_implementation.adoc[Implementation]
+*** xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Action Spaces and Input
+*** xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/02_openxr_action_system.adoc[The OpenXR Action System]
+*** xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/03_space_manifolds.adoc[Space Manifolds]
+*** xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Slang for Spatial Shaders
+*** xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/02_native_multiview.adoc[Native Multiview (N=2)]
+*** xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/03_slang_architecture.adoc[Slang Architecture]
+*** xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Quad-Views and Foveated Rendering
+*** xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/02_primary_stereo_with_insets.adoc[Primary Stereo with Insets]
+*** xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Multi-Layer Composition]
+*** xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Variable Rate Shading
+*** xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/02_fragment_density_control.adoc[Fragment Density Control]
+*** xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/03_gaze_driven_logic.adoc[Gaze-Driven Logic]
+*** xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Canted Displays
+*** xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/02_non_parallel_projections.adoc[Non-Parallel Projections]
+*** xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/03_viewport_swizzling.adoc[Viewport Swizzling]
+*** xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** CAVE Architecture
+*** xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/02_projector_based_spatial_tech.adoc[Projector-Based Spatial Tech]
+*** xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/03_hardware_sync.adoc[Hardware Sync]
+*** xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Warp and Blend
+*** xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/02_geometric_correction.adoc[Geometric Correction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/03_post_process_warping.adoc[Post-Process Warping]
+*** xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** LightField Theory
+*** xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/02_4d_lightfield_representation.adoc[4D LightField Representation]
+*** xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/03_high_density_view_arrays.adoc[High-Density View Arrays]
+*** xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Plenoptic Synthesis
+*** xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/02_synthesis_shaders.adoc[Synthesis Shaders]
+*** xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/03_ray_traced_synthesis.adoc[Ray Traced Synthesis]
+*** xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Scene Understanding
+*** xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/02_environmental_ingestion.adoc[Environmental Ingestion]
+*** xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/03_zero_copy_hand_off.adoc[Zero-Copy Hand-off]
+*** xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** ML Inference for Spatial Data
+*** xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/02_on_gpu_inference.adoc[On-GPU Inference]
+*** xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/03_refining_spatial_data.adoc[Refining Spatial Data]
+*** xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Semantic Occlusion
+*** xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/02_ml_driven_segmentation.adoc[ML-Driven Segmentation]
+*** xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/03_per_pixel_masking.adoc[Per-Pixel Masking]
+*** xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Platform Divergence
+*** xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/02_desktop_high_end.adoc[Desktop High-End]
+*** xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/03_mobile_mastery.adoc[Mobile Mastery]
+*** xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** Spatial Diagnostics
+*** xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/01_introduction.adoc[Introduction]
+*** xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/02_spatial_debugging.adoc[Spatial Debugging]
+*** xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/03_automated_qa.adoc[Automated QA]
+*** xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
+** xref:OpenXR_Vulkan_Spatial_Computing/conclusion.adoc[Conclusion]

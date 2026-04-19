@@ -1,0 +1,43 @@
+:pp: {plus}{plus}
+= Gaze-Driven Logic and Eye-Tracking Telemetry
+
+While static peripheral optimization is a great baseline, the real power of foveated rendering comes when we align the high-detail region with the user's actual gaze. This is known as **Dynamic Foveated Rendering (DFR)**. To achieve this, we ingest eye-tracking data from the OpenXR runtime via the **XR_EXT_eye_gaze_interaction** extension.
+
+== The Biological Exploit: Saccadic Suppression
+
+To understand why DFR is so effective, we must look at how the human brain processes visual information. Our eyes are constantly making tiny, rapid movements called **Saccades**. During a saccade, the brain actually "blanks out" visual input for a fraction of a second—a phenomenon called **Saccadic Suppression**.
+
+DFR exploits this. By using high-speed eye tracking (usually 120Hz or higher), our engine can shift the high-detail foveal region to the user's new gaze point during the saccade itself. The user never "catches" the low-resolution periphery because their brain is literally ignoring visual input while the eye is moving.
+
+== Implementing Gaze-Driven VRS
+
+The process involves three steps:
+
+1.  **Ingestion**: Querying the `XrEyeGaze` pose to find where the user is looking in 3D space.
+2.  **Projection**: Projecting that 3D gaze vector onto the 2D plane of the viewport to find the "foveal center" in UV coordinates.
+3.  **Update**: Regenerating or shifting the **Shading Rate Image** so that the 1x1 shading region follows that center.
+
+[source,cpp]
+----
+// Updating the shading rate image based on projected gaze coordinates
+void updateShadingRateMap(vk::raii::CommandBuffer& cmd, const glm::vec2& gazeCenter) {
+    // We use a simple compute shader to fill a small R8_UINT texture.
+    // The shader calculates distance from gazeCenter and assigns:
+    // 0x0 (1x1 shading), 0x4 (2x1), 0x5 (2x2), etc.
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *gazeVrsPipeline);
+    cmd.pushConstants<glm::vec2>(*pipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, gazeCenter);
+    cmd.dispatch(shadingRateWidth / 8, shadingRateHeight / 8, 1);
+}
+----
+
+== Latency: The Immersion Killer
+
+Human eyes move incredibly fast. If your eye-tracking telemetry or your shading rate update has too much latency, the user will see the blurriness at the edge of their vision before the high-detail patch "catches up."
+
+This is why **Late Latching** (which we covered in Chapter 6) is equally important here. We want to sample the eye gaze at the absolute last microsecond before we signal the timeline semaphore to start the GPU work. By minimizing the latency between "where the eye is" and "where the pixels are sharp," we maintain the illusion of a perfectly high-resolution world.
+
+When implemented correctly, DFR allows you to push the boundaries of visual fidelity, enabling effects like heavy path-tracing or complex volumetrics that would be impossible to run at full resolution across the entire screen.
+
+In the next chapter, we will shift from software-driven optimization to hardware-driven geometry by looking at **Canted Displays and Asymmetric Frustums**.
+
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/02_fragment_density_control.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/04_incorporating_into_the_engine.adoc[Next]

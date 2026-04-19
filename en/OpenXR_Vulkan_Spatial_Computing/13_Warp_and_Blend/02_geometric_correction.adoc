@@ -1,0 +1,61 @@
+:pp: {plus}{plus}
+= Geometric Correction: Mapping 3D Scenes to Physical Surfaces
+
+The core of **Geometric Correction** is a coordinate transformation. We start with a perfectly rectangular image rendered by our engine (the "Source"), and we need to transform it into a "Warped" image that looks correct when projected onto a physical surface like a curved screen or a corner.
+
+== The Concept: Reverse Lookup
+
+To understand warping, you must think in reverse. Instead of asking "Where does this source pixel go?", we ask **"For this pixel on my wall, where should I look in my rendered frame?"**
+
+1.  **Rectilinear Source**: A standard 3D render (straight lines, 90-degree corners).
+2.  **Physical Destination**: A curved screen or a corner where two walls meet.
+3.  **The Warp Map**: A Look-Up Table (LUT) that maps every destination pixel to a $(u, v)$ coordinate in the source render.
+
+Treating correction as a reverse lookup is essential because it ensures that every pixel on the output display is filled exactly once, preventing gaps or "holes" in the final image.
+
+== Implementing the Warp Map
+
+The "brain" of this operation is the **Warp Map**. This is typically a `vk::raii::Image` containing floating-point data.
+
+[source,slang]
+----
+// A simple compute-based warping kernel in Slang
+RWTexture2D<float4> outputTarget; // The final image sent to the projector
+Texture2D<float4> sourceRender;   // The rectilinear frame we rendered
+Texture2D<float2> warpMap;        // The LUT containing (u, v) coordinates
+
+[numthreads(16, 16, 1)]
+void main(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+    float2 outputDim;
+    outputTarget.GetDimensions(outputDim.x, outputDim.y);
+
+    if (dispatchThreadID.x >= outputDim.x || dispatchThreadID.y >= outputDim.y)
+        return;
+
+    // 1. Look up the source coordinate from the Warp Map
+    // This tells us: "To draw pixel (x,y) on the wall, look at (u,v) in the render"
+    float2 sourceUV = warpMap.Load(int3(dispatchThreadID.xy, 0));
+
+    // 2. Sample the source image using high-quality interpolation
+    // We use Bilinear or Bicubic filtering to prevent "aliasing"
+    SamplerState linearSampler;
+    float4 color = sourceRender.SampleLevel(linearSampler, sourceUV, 0);
+
+    // 3. Write the warped pixel to the output
+    outputTarget[dispatchThreadID.xy] = color;
+}
+----
+
+== Luminance Summation and Edge Blending
+
+In a multi-projector setup, the edges of the images overlap.
+
+*   **The Problem**: In the overlap region, you have light from *two* projectors hitting the same spot. This area will be twice as bright as the rest of the wall, creating a distracting "hot spot."
+*   **The Solution**: **Luminance Edge Blending**. We include an alpha channel in our Warp Map that defines a smooth gradient (1.0 to 0.0) in the overlap region. By multiplying the final color by this alpha, we "fade out" one projector as the other "fades in," maintaining uniform brightness across the entire wall.
+
+== Precision: Bicubic vs Sinc Filtering
+
+Because warping involves sampling a texture at non-integer coordinates, the quality of your filtering is paramount. While `SamplerState` with linear filtering is fast, it can lead to "blurring" in areas of high warp. High-end spatial engines often implement custom **Bicubic** or **Lanczos** filters in the compute shader to preserve sharpness during the coordinate transformation.
+
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/03_post_process_warping.adoc[Next]

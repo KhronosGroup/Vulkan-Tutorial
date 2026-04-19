@@ -1,0 +1,36 @@
+:pp: {plus}{plus}
+= Automated QA: Headless CI/CD for Spatial Engines
+
+Testing a spatial engine is traditionally a manual, time-consuming process. Someone must put on a headset, walk around the physical room, and manually check for rendering artifacts. For professional engine development, this is a major bottleneck. We need **Automated QA** that can run in a **Headless** CI/CD (Continuous Integration / Continuous Deployment) environment.
+
+== The Concept: The Headless Runtime
+
+A **Headless Runtime** (such as the **OpenXR Simulator** or **Null Runtime**) allows our engine to run without a physical headset or even a physical GPU (using software Vulkan implementations like **SwiftShader**).
+
+1.  **Mock Tracking Data**: The simulator provides pre-recorded or scripted tracking data (poses and controller inputs).
+2.  **Swapchain Capture**: The engine renders frames into the OpenXR swapchain as usual, but the simulator captures these frames directly to disk rather than displaying them.
+3.  **Visual Validation**: We compare these captured frames against "Gold Standard" baseline images to ensure no rendering regressions have been introduced by a code change.
+
+== AI Vision Analysis for Regressions
+
+Traditional "Pixel-Perfect" image comparison often fails in spatial computing due to subtle differences in reprojection, slight floating-point variations in view matrices, or hardware-specific MSAA patterns.
+
+Instead, we use **AI Vision Models**. We feed the rendered frames from our CI/CD pipeline into a neural network trained to detect specific **Spatial Artifacts**:
+
+*   **Asymmetric Frustum Errors**: Detecting if the projection matrices are causing "stretching" or "pinching" at the edges of the view.
+*   **Multiview Inconsistencies**: Checking if an object is missing from one eye but present in the other.
+*   **Temporal Mask Flicker**: Analyzing a sequence of frames to identify instability in **Semantic Occlusion** masks.
+
+By using AI, we can automate the "someone put on the headset" step, catching bugs within minutes of a pull request being submitted.
+
+== Performance Monitoring in CI
+
+Finally, we track **Spatial Performance Metrics** in every build to prevent performance "creep."
+
+*   **Submission Latency**: The total time between `xrWaitFrame` and `xrEndFrame`.
+*   **Wait-to-Begin Gap**: The time the CPU spends waiting for the late-latching sync point.
+*   **Memory Footprint**: Tracking the VRAM usage of our 4D **LightField** and **Semantic Occlusion** buffers.
+
+By combining headless simulation, AI-driven visual analysis, and automated performance tracking, we ensure that our spatial engine remains visually stunning, stable, and efficient across every commit and every hardware target.
+
+xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/02_spatial_debugging.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/04_incorporating_into_the_engine.adoc[Next]

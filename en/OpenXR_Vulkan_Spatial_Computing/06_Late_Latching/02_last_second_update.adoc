@@ -1,0 +1,52 @@
+:pp: {plus}{plus}
+= The Last-Second Update
+
+To implement late latching, we need a mechanism that allows the GPU to sit in a "ready state" for as long as possible without stalling the entire hardware pipeline. In Vulkan 1.4, the combination of **Timeline Semaphores** and **Synchronization 2** provides exactly what we need.
+
+== Gating the Pipeline: The Wait-Before-Submit Pattern
+
+Think of a timeline semaphore as a **Digital Gate**. In a standard loop, the CPU prepares everything, then sends it to the GPU. In a "Late Latching" loop, we change the order of operations:
+
+1.  **CPU Records Commands**: We record our entire command buffer, including all the draw calls for our spatial views. However, we use a placeholder matrix or just "stale" data from the start of the frame.
+2.  **CPU Submits Work**: We submit the command buffer to the GPU using `vkQueueSubmit2`.
+3.  **GPU Waits**: Crucially, we tell the GPU to **WAIT** at the very beginning of the pipeline (usually the Vertex Shader stage) until a specific timeline semaphore reaches a target value.
+4.  **CPU Polls**: While the GPU is sitting at the gate, the CPU is free to keep polling OpenXR for the absolute latest head pose.
+5.  **The Signal**: Only at the last possible microsecond, the CPU updates the matrix in memory and **Signals** the semaphore. The GPU gate opens, and the draw calls begin with the freshest possible data.
+
+== Stage Mask Selection: Where to Wait?
+
+A critical performance decision is *where* the GPU should wait. In `vk::SemaphoreSubmitInfo`, we specify a `stageMask`.
+
+*   **Top of Pipe**: If we wait here, the GPU does nothing.
+*   **Vertex Shader**: If we wait here, the GPU can still perform "Top of Pipe" work like command parsing or index fetching. It only stalls when it needs the actual vertex data.
+*   **Fragment Shader**: This is usually too late for late latching, as the geometry has already been rasterized based on the (potentially stale) vertex positions.
+
+By waiting at the **Vertex Shader** stage, we maximize hardware utilization while still ensuring that our projection and view matrices are as fresh as the hardware allows.
+
+[source,cpp]
+----
+// Configure the timeline semaphore wait for the GPU
+vk::TimelineSemaphoreSubmitInfo timelineSubmitInfo;
+uint64_t waitValue = currentFrameCount + 1;
+timelineSubmitInfo.setWaitSemaphoreValues(waitValue);
+
+vk::SubmitInfo2 submitInfo;
+vk::SemaphoreSubmitInfo waitSemaphoreInfo;
+waitSemaphoreInfo.setSemaphore(*lateLatchingSemaphore);
+waitSemaphoreInfo.setValue(waitValue);
+waitSemaphoreInfo.setStageMask(vk::PipelineStageFlagBits2::eVertexShader);
+
+submitInfo.setWaitSemaphoreInfos(waitSemaphoreInfo);
+submitInfo.setCommandBufferInfos(commandBufferInfo);
+
+// The GPU will now wait at the vertex shader stage until the CPU signals waitValue
+queue.submit2(submitInfo);
+----
+
+== Why This Kills "Swim"
+
+"Swim" is the nauseating effect where virtual objects seem to float or slide slightly when you move your head. It happens because of the **Latency Gap**—the time between when your engine sampled the head pose and when the pixels were actually shown.
+
+By using the wait-before-submit pattern, we reduce that gap from ~10-15ms down to ~1-2ms. The virtual world feels "anchored" to the physical space because the view matrices being used by the GPU were updated only microseconds before the first vertex was processed.
+
+xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/06_Late_Latching/03_implementation.adoc[Next]

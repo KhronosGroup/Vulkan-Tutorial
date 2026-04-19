@@ -1,0 +1,56 @@
+:pp: {plus}{plus}
+= Post-Process Warping and Lens Distortion
+
+While the previous section focused on external physical surfaces like CAVE walls, **Warping** is also a fundamental part of head-mounted displays (HMDs). In a headset, the lenses themselves introduce significant **Pin-Cushion Distortion**. To counteract this, the engine must apply a **Barrel Distortion** post-process so that the final image looks rectilinear to the user.
+
+== The Physics of the Lens: Why Warp?
+
+To understand HMD warping, you must look at the glass. VR lenses are designed to take a tiny display and magnify it to cover your entire field of view. This magnification is not uniform.
+
+1.  **Pin-Cushion Distortion**: The lens physically stretches the image more at the corners than in the center.
+2.  **The Solution**: We pre-distort the image in the opposite direction (**Barrel Distortion**). By "squeezing" the corners in our shader, the lens's physical stretch pulls them back into their correct rectilinear positions.
+
+== Mathematical Models of Distortion
+
+Most lens distortion can be modeled using a radial polynomial (like the **Brown-Conrady** model). This model uses coefficients ($k_1, k_2, k_3$) to shift the $(u, v)$ coordinates based on their distance from the optical center.
+
+[source,slang]
+----
+// Applying a simple radial distortion model in Slang
+float2 ApplyDistortion(float2 uv, float2 k)
+{
+    float2 center = float2(0.5, 0.5);
+    float2 d = uv - center;
+    float r2 = dot(d, d);
+
+    // Barrel distortion: k[0] and k[1] are typically positive
+    // This shifts pixels towards the center based on their distance
+    float2 distortedD = d * (1.0 + k.x * r2 + k.y * r2 * r2);
+
+    return center + distortedD;
+}
+----
+
+== Chromatic Aberration: The Rainbow Effect
+
+Lenses also refract different wavelengths of light at different angles. This causes Red, Green, and Blue light to hit the user's eye at slightly different positions, creating "color fringing" or **Chromatic Aberration**.
+
+To fix this, we apply a slightly different warp to each color channel. In our Vulkan compute shader, this is as simple as performing three samples instead of one:
+
+[source,slang]
+----
+float4 color;
+// We sample the source image three times with different distortion coefficients
+color.r = sourceRender.SampleLevel(s, ApplyDistortion(uv, k_red), 0).r;
+color.g = sourceRender.SampleLevel(s, ApplyDistortion(uv, k_green), 0).g;
+color.b = sourceRender.SampleLevel(s, ApplyDistortion(uv, k_blue), 0).b;
+color.a = 1.0;
+----
+
+== Rendering 1.2x: The Oversampling Tax
+
+Because warping "squeezes" the image, some areas of your render will be scaled down while others are scaled up. To prevent the center of your view from looking blurry after the warp, you must render your 3D scene at a **Higher Resolution** than the physical display (typically 1.2x to 1.4x the panel resolution). This ensures that even after the distortion is applied, you still have 1:1 pixel mapping in the most critical areas.
+
+In the next chapter, we will move from pixels to 4D functions by exploring **LightField Theory**.
+
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/02_geometric_correction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/04_incorporating_into_the_engine.adoc[Next]

@@ -1,0 +1,87 @@
+:pp: {plus}{plus}
+= Memory Ownership Lifecycle
+
+In a standard desktop Vulkan application, we use `vkAcquireNextImageKHR` to get an image index from the swapchain. When we are done, we call `vkQueuePresentKHR`. In OpenXR, this is replaced by a more explicit three-step lifecycle: **Wait**, **Acquire**, and **Release**.
+
+This lifecycle is designed to allow the XR runtime to manage high-frequency tasks like asynchronous reprojection while keeping our engine's rendering pipeline efficient.
+
+== The Three-Step Dance: Syncing with the Compositor
+
+Unlike a desktop window, which can handle images whenever the GPU is ready, an XR headset is a rigid, time-sensitive display. The compositor needs to know exactly when it can "take" an image to show it to the user.
+
+1.  **Wait**: "Is there an image available for me to start drawing into?"
+2.  **Acquire**: "Give me the index of that image and lock it for my use."
+3.  **Release**: "I'm done drawing; you can have it back now."
+
+This dance ensures that the engine and the compositor never attempt to access the same memory at the same time, preventing the "tearing" and "stuttering" that can occur if synchronization fails.
+
+== 1. Wait (`xrWaitSwapchainImage`)
+
+The first step is `xrWaitSwapchainImage`. This call is a blocking operation (with an optional timeout) that waits until the XR runtime is ready for the application to begin writing to the next image in the swapchain.
+
+[source,cpp]
+----
+XrSwapchainImageWaitInfo waitInfo{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+waitInfo.timeout = XR_INFINITE_DURATION;
+xrWaitSwapchainImage(xrSwapchain, &waitInfo);
+----
+
+**Why wait?** If our engine is rendering faster than the headset's refresh rate (e.g., we are rendering at 144 FPS but the headset is 90Hz), `xrWaitSwapchainImage` will block our engine thread. This acts as the "Pacing" mechanism for our entire engine loop, ensuring we don't waste GPU power on frames that will never be shown.
+
+== 2. Acquire (`xrAcquireSwapchainImage`)
+
+Once the wait is satisfied, we call `xrAcquireSwapchainImage`. This function actually identifies which specific image index in our swapchain we should render into.
+
+[source,cpp]
+----
+uint32_t imageIndex;
+XrSwapchainImageAcquireInfo acquireInfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+xrAcquireSwapchainImage(xrSwapchain, &acquireInfo, &imageIndex);
+----
+
+After this call, our application formally "owns" the image at `imageIndex`. This is the Vulkan-level guarantee that the compositor is no longer reading from this specific piece of VRAM.
+
+== 3. Synchronization and Layout Transitions
+
+Even though OpenXR manages the ownership, we are still responsible for Vulkan-side synchronization. When an image is returned to us, it might be in a state used by the XR compositor (usually `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` or `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`).
+
+We must use a **Pipeline Barrier** (ideally via **Synchronization 2** in Vulkan 1.4) to transition it to `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` before we can use it in our dynamic rendering pass.
+
+[source,cpp]
+----
+vk::ImageMemoryBarrier2 barrier{};
+barrier.oldLayout = vk::ImageLayout::eUndefined; // Safe to use undefined if we don't care about previous contents
+barrier.newLayout = vk::ImageLayout::eColorAttachmentOptimal;
+barrier.image = framebuffers[imageIndex].image;
+barrier.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+barrier.srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+barrier.dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+barrier.dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite;
+
+vk::DependencyInfo depInfo({}, 0, nullptr, 0, nullptr, 1, &barrier);
+commandBuffer.pipelineBarrier2(depInfo);
+----
+
+== 4. Release (`xrReleaseSwapchainImage`)
+
+Finally, once our command buffer has been submitted to the GPU (but not necessarily finished executing), we call `xrReleaseSwapchainImage`. This tells the XR runtime: "I am finished writing to this image; you may take it back for composition."
+
+[source,cpp]
+----
+XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+xrReleaseSwapchainImage(xrSwapchain, &releaseInfo);
+----
+
+**Crucial Detail**: Calling `Release` does not mean the GPU has finished rendering. It means the *CPU* is done recording commands. The runtime will use the synchronization primitives we enabled during the handshake (like timeline semaphores) to wait for the GPU to actually finish the work before it displays the image.
+
+== Summary of Resource Management
+
+We have now seen how to:
+
+1.  Negotiate image formats and sizes with the XR runtime.
+2.  Wrap raw runtime-owned images into our RAII engine structures.
+3.  Manage the lifecycle of image ownership during our frame loop.
+
+With our resources properly managed, we can now move on to the actual rendering process. In the next chapter, we will see how to use **Dynamic Rendering** to render our spatial views directly into these images with maximum efficiency.
+
+xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/03_raii_resource_integration.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/05_incorporating_into_the_engine.adoc[Next]

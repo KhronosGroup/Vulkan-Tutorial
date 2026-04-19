@@ -1,0 +1,62 @@
+:pp: {plus}{plus}
+= Rendering into Spatial Swapchains
+
+The beauty of the dynamic rendering system we've already built is that it doesn't care where an image comes from. Whether it's a standard swapchain or a set of images provided by an XR runtime, the process of beginning a rendering session remains consistent and lightweight.
+
+== Binding XR Images: The Runtime Handover
+
+In our previous chapter, we learned how to wrap `XrSwapchainImageVulkanKHR` handles into `vk::raii::Image` and `vk::raii::ImageView`. With dynamic rendering, we take these image views and provide them directly to the `vk::RenderingInfo` structure at the start of each frame.
+
+This represents a **Decoupling of the Graphics Pipeline**. Our engine no longer owns the final output buffer; it simply "paints" into whatever view the XR runtime provides.
+
+[source,cpp]
+----
+// Define the color attachment for our XR view
+vk::RenderingAttachmentInfo colorAttachment{};
+colorAttachment.imageView = *xrImageView; // Our RAII-wrapped image view from the XR runtime
+colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+colorAttachment.clearValue = vk::ClearValue{vk::ClearColorValue{std::array{0.0f, 0.0f, 0.0f, 1.0f}}};
+
+// Configure the rendering session
+vk::RenderingInfo renderingInfo{};
+renderingInfo.renderArea = vk::Rect2D{{0, 0}, {xrWidth, xrHeight}};
+renderingInfo.layerCount = 1; // 1 for standard mono/stereo, more if using multiview arrays
+renderingInfo.colorAttachmentCount = 1;
+renderingInfo.pColorAttachments = &colorAttachment;
+
+// Begin dynamic rendering session
+commandBuffer.beginRendering(renderingInfo);
+
+// ... Recording draw commands as usual ...
+
+commandBuffer.endRendering();
+----
+
+== Handling XR Pipeline State: The Power of `pNext`
+
+As we've seen in our engine construction, our `vk::raii::Pipeline` doesn't require a static `vk::RenderPass` object. Instead, we use `vk::PipelineRenderingCreateInfo` in the `pNext` chain of our graphics pipeline.
+
+For XR, this is particularly powerful because we can quickly swap between different swapchain formats (like HDR10 or standard RGBA) simply by updating this info structure during pipeline creation. This allows our engine to support **Variable Quality Levels** or different headset requirements without recompiling shaders or rebuilding complex render pass objects.
+
+[source,cpp]
+----
+vk::PipelineRenderingCreateInfo pipelineRenderingInfo{};
+pipelineRenderingInfo.colorAttachmentCount = 1;
+pipelineRenderingInfo.pColorAttachmentFormats = &xrColorFormat;
+pipelineRenderingInfo.depthAttachmentFormat = vk::Format::eD32Sfloat; // If our XR view has depth
+
+// Link to our graphics pipeline create info
+vk::GraphicsPipelineCreateInfo pipelineInfo{};
+pipelineInfo.pNext = &pipelineRenderingInfo;
+// ... Standard pipeline configuration ...
+----
+
+== Decoupling the Frame Loop: Separation of Concerns
+
+By using dynamic rendering, we've successfully decoupled our engine's internal rendering logic from the physical output. Our `VulkanContext` remains focused on managing pipeline state and recording commands, while the OpenXR loop manages the "render area" and provides the target images.
+
+This **Separation of Concerns** is what allows our engine to scale seamlessly. Whether we are rendering to a 4K desktop monitor or a dual-eye VR headset, the core command recording logic remains the same. The only thing that changes is *where* the image view points and *how* the projection matrices are calculated.
+
+xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/04_Dynamic_Rendering/03_stereo_viewport_scissor.adoc[Next]

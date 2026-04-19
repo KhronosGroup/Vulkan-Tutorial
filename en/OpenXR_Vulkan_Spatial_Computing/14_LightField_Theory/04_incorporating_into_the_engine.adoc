@@ -1,0 +1,61 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+The introduction of **LightField Theory** and plenoptic data structures requires our `simple_game_engine` to handle high-density memory arrays using **Buffer Device Address (BDA)** in `renderer_core.cpp`. *This is currently left as an exercise for the reader to implement.*
+
+== Enabling BDA in the Backend
+
+In `renderer_core.cpp`, we must enable the BDA feature during logical device creation. This allows us to treat GPU buffers as raw 64-bit pointers in our Slang shaders.
+
+[source,cpp]
+----
+// renderer_core.cpp
+bool Renderer::createLogicalDevice(bool enableValidationLayers) {
+    // ...
+    vk::PhysicalDeviceVulkan12Features vulkan12Features;
+    vulkan12Features.bufferDeviceAddress = vk::True;
+
+    // NEW: Also enable 1.4 features for easier memory management
+    vk::PhysicalDeviceVulkan13Features vulkan13Features;
+    vulkan13Features.dynamicRendering = vk::True;
+    vulkan13Features.pNext = &vulkan12Features;
+    // ...
+}
+----
+
+== Mapping 4D LightField Buffers
+
+In `renderer_resources.cpp`, we create a high-density buffer for our ST/UV planes. Instead of a standard descriptor set, we retrieve the raw device address.
+
+[source,cpp]
+----
+// renderer_resources.cpp
+// Supporting Struct: Push Constants for BDA
+struct LightFieldPushConstants {
+    uint64_t lightFieldDataAddress;
+    float4 uvScaling;
+    // ...
+};
+
+void Renderer::createLightFieldBuffer(size_t totalBytes) {
+    // 1. Create the buffer with BDA usage
+    vk::BufferCreateInfo createInfo{
+        .size = totalBytes,
+        .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress
+    };
+    lightFieldBuffer = vk::raii::Buffer(device, createInfo);
+
+    // 2. Retrieve the raw 64-bit address
+    vk::BufferDeviceAddressInfo addressInfo{ .buffer = *lightFieldBuffer };
+    uint64_t gpuPointer = device.getBufferAddress(addressInfo);
+
+    // 3. Pass this pointer to our Slang shader via Push Constants
+    pushConstants.lightFieldDataAddress = gpuPointer;
+}
+----
+
+== Why These Changes?
+
+By moving from traditional descriptor sets to BDA for lightfield data, we avoid the overhead of binding thousands of individual view textures. Our engine can now manage massive plenoptic datasets (often multi-gigabyte) as a single contiguous block of memory. This ensures maximum cache locality during the synthesis pass, which is critical for maintaining spatial immersion.
+
+xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/03_high_density_view_arrays.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/01_introduction.adoc[Next]

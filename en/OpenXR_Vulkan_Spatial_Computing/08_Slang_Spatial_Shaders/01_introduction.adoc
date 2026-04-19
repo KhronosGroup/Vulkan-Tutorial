@@ -1,0 +1,23 @@
+:pp: {plus}{plus}
+= Slang for Spatial Shaders: Single-Pass Stereo and Beyond
+
+Welcome to one of the most exciting parts of our spatial computing journey! Up to this point, we've focused on the "Vulkan-to-OpenXR" plumbing—how to get images, how to time our frames, and how to track user input. Now, we're shifting our focus into the **Shaders**. In spatial computing, we aren't just rendering to a single flat screen; we're rendering for two eyes, and potentially even more views for foveated or wide-FOV headsets.
+
+The traditional way to handle stereo rendering was to simply draw the entire scene twice—once for the left eye and once for the right. While this is conceptually simple, it's incredibly inefficient. The CPU has to submit twice as many draw calls, and the GPU has to process the same geometry twice, often with nearly identical vertex data. This is where **Single-Pass Stereo** comes in, and more specifically, the **N-View** mindset.
+
+[source,slang]
+----
+// The "N-View" mindset in Slang
+void main(uint viewID : SV_ViewID) {
+    // Shaders that know which eye they are rendering for
+    float4 eyePosition = loadEyePosition(viewID);
+}
+----
+
+In this chapter, we're going to explore how **Slang** makes authoring these multi-view shaders much more natural and productive than traditional GLSL or HLSL. We'll start by looking at **Native Multiview** (`VK_KHR_multiview`), a core Vulkan feature that allows the GPU to broadcast a single draw call to multiple layers of an image array, each representing a different view.
+
+We'll define some key concepts like **SIMD** (Single Instruction, Multiple Data) and how it relates to our "N-View" architecture, and we'll see how Slang's modern syntax allows us to write shaders that are clean, readable, and highly optimized for spatial hardware. Whether you're targeting a simple mobile VR headset or a high-end desktop AR system, the principles of efficient multi-view shader design remain the same.
+
+In the following sections, we'll dive deep into the implementation of **Native Multiview** and then see how to architect our **Slang** shaders to take full advantage of this hardware-level optimization.
+
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/02_native_multiview.adoc[Next]

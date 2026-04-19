@@ -63,6 +63,59 @@ This script uses vcpkg to install the required dependencies, including:
 
 You will also need to install the Vulkan SDK separately from https://vulkan.lunarg.com/.
 
+== Generating the Site Locally
+
+This tutorial's site is generated using link:https://antora.org/[Antora],
+a multi-repository documentation site generator. If you want to generate the
+site locally then:
+
+. Install link:https://github.com/nvm-sh/nvm[npm] and  optionally install
+`Antora` (you can use `npx` instead)
+
+. Assuming you are in the repository's root directory, fetch the Khronos
+Antora UI bundle and build it:
++
+[source,bash]
+----
+git clone https://github.com/KhronosGroup/antora-ui-khronos.git
+cd antora-ui-khronos/
+npx update-browserslist-db@latest
+./node_modules/gulp/bin/gulp.js bundle
+----
++
+. Copy the generated UI bundle into the repository's root directory:
++
+[source,bash]
+----
+cd ../
+cp ./antora-ui-khronos/build/ui-bundle.zip ./
+----
++
+. Then configure the Khronos Vulkan Samples Antora tree:
++
+[source,bash]
+----
+cd antora/
+make
+----
++
+. And navigate back to the repository's root folder and run:
++
+[source,bash]
+----
+cd ../
+antora antora-ci-playbook.yml --stacktrace
+----
++
+Or in case you don't have antora installed, you can also:
++
+[source,bash]
+----
+npx antora antora-ci-playbook.yml --stacktrace
+----
++
+. The generated site's index HTML should be accessible at: build/site/index.html 
+
 == License
 
 The contents of this repository are licensed as https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0], unless stated otherwise.

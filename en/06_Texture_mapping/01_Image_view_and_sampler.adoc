@@ -18,7 +18,8 @@ vk::raii::ImageView textureImageView = nullptr;
 
 ...
 
-void initVulkan() {
+void initVulkan()
+{
     ...
     createTextureImage();
     createTextureImageView();
@@ -28,8 +29,8 @@ void initVulkan() {
 
 ...
 
-void createTextureImageView() {
-
+void createTextureImageView()
+{
 }
 ----
 
@@ -38,25 +39,33 @@ The only two changes you have to make are the `format` and the `image`:
 
 [,c++]
 ----
-vk::ImageViewCreateInfo viewInfo{ .image = image, .viewType = vk::ImageViewType::e2D, .format = format, .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }};
+vk::ImageViewCreateInfo viewInfo{
+    .image            = image,
+    .viewType         = vk::ImageViewType::e2D,
+    .format           = format,
+    .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}};
 ----
 
-I've left out the explicit `viewInfo.components` initialization, because `VK_COMPONENT_SWIZZLE_IDENTITY` is defined as `0` anyway.
-Finish creating the image view by calling `vkCreateImageView`:
+I've left out the explicit `viewInfo.components` initialization, because it is default initialized to `vk::ComponentSwizzle::eIdentity` anyway.
+Finish creating the image view by calling the `vk::raii::ImageView` constructor:
 
 [,c++]
 ----
-vk::raii::ImageView( device, viewInfo );
+textureImageView = vk::raii::ImageView(device, viewInfo);
 ----
 
 Because so much of the logic is duplicated from `createImageViews`, you may wish to abstract it into a new `createImageView` function:
 
 [,c++]
 ----
-vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format) {
-    vk::ImageViewCreateInfo viewInfo{ .image = image, .viewType = vk::ImageViewType::e2D,
-        .format = format, .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
-    return vk::raii::ImageView( device, viewInfo );
+vk::raii::ImageView createImageView(vk::Image const &image, vk::Format format)
+{
+  vk::ImageViewCreateInfo viewInfo{
+      .image            = image,
+      .viewType         = vk::ImageViewType::e2D,
+      .format           = format,
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}};
+  return vk::raii::ImageView(device, viewInfo);
 }
 ----
 
@@ -64,8 +73,9 @@ The `createTextureImageView` function can now be simplified to:
 
 [,c++]
 ----
-void createTextureImageView() {
-    textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb);
+void createTextureImageView()
+{
+  textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb);
 }
 ----
 
@@ -73,12 +83,15 @@ And `createImageViews` can be simplified to:
 
 [,c++]
 ----
-void createImageViews() {
-    swapChainImageViews.resize(swapChainImages.size());
+void createImageViews()
+{
+  assert(swapChainImageViews.empty());
 
-    for (uint32_t i = 0; i < swapChainImages.size(); i++) {
-        swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat);
-    }
+  swapChainImageViews.reserve(swapChainImages.size());
+  for ( auto &image: swapChainImages )
+  {
+    swapChainImageViews.emplace_back(createImageView(image, swapChainSurfaceFormat.format));
+  }
 }
 ----
 
@@ -116,7 +129,8 @@ We'll be using that sampler to read colors from the texture in the shader later 
 
 [,c++]
 ----
-void initVulkan() {
+void initVulkan()
+{
     ...
     createTextureImage();
     createTextureImageView();
@@ -126,12 +140,12 @@ void initVulkan() {
 
 ...
 
-void createTextureSampler() {
-
+void createTextureSampler()
+{
 }
 ----
 
-Samplers are configured through a `VkSamplerCreateInfo` structure, which specifies all filters and transformations that it should apply.
+Samplers are configured through a `vk::SamplerCreateInfo` structure, which specifies all filters and transformations that it should apply.
 
 [,c++]
 ----
@@ -140,12 +154,16 @@ vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter =
 
 The `magFilter` and `minFilter` fields specify how to interpolate texels that are magnified or minified.
 Magnification concerns the oversampling problem describes above, and minification concerns undersampling.
-The choices are `VK_FILTER_NEAREST` and `VK_FILTER_LINEAR`, corresponding to the modes demonstrated in the images above.
+The choices are `vk::Filter::eNearest` and `vk::Filter::eLinear`, corresponding to the modes demonstrated in the images above.
 
 [,c++]
 ----
-vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat };
+vk::SamplerCreateInfo samplerInfo{.magFilter    = vk::Filter::eLinear,
+                                  .minFilter    = vk::Filter::eLinear,
+                                  .mipmapMode   = vk::SamplerMipmapMode::eLinear,
+                                  .addressModeU = vk::SamplerAddressMode::eRepeat,
+                                  .addressModeV = vk::SamplerAddressMode::eRepeat,
+                                  .addressModeW = vk::SamplerAddressMode::eRepeat};
 ----
 
 The addressing mode can be specified per axis using the `addressMode` fields.
@@ -154,11 +172,11 @@ Most of these are demonstrated in the image above.
 Note that the axes are called U, V and W instead of X, Y and Z.
 This is a convention for texture space coordinates.
 
-* `VK_SAMPLER_ADDRESS_MODE_REPEAT`: Repeat the texture when going beyond the image dimensions.
-* `VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT`: Like repeat, but inverts the coordinates to mirror the image when going beyond the dimensions.
-* `VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE`: Take the color of the edge closest to the coordinate beyond the image dimensions.
-* `VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE`: Like clamp to edge, but instead uses the edge opposite to the closest edge.
-* `VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER`: Return a solid color when sampling beyond the dimensions of the image.
+* `vk::SamplerAddressMode::eRepeat`: Repeat the texture when going beyond the image dimensions.
+* `vk::SamplerAddressMode::eMirroredRepeat`: Like repeat, but inverts the coordinates to mirror the image when going beyond the dimensions.
+* `vk::SamplerAddressMode::eClampToEdge`: Take the color of the edge closest to the coordinate beyond the image dimensions.
+* `vk::SamplerAddressMode::eMirrorClampToEdge`: Like clamp to edge, but instead uses the edge opposite to the closest edge.
+* `vk::SamplerAddressMode::eClampToBorder`: Return a solid color when sampling beyond the dimensions of the image.
 
 It doesn't really matter which addressing mode we use here, because we're not going to sample outside of the image in this tutorial.
 However, the repeat mode is probably the most common mode, because it can be used to tile textures like floors and walls.
@@ -166,9 +184,14 @@ However, the repeat mode is probably the most common mode, because it can be use
 [,c++]
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
-vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
-    .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy};
+vk::SamplerCreateInfo        samplerInfo{.magFilter        = vk::Filter::eLinear,
+                                         .minFilter        = vk::Filter::eLinear,
+                                         .mipmapMode       = vk::SamplerMipmapMode::eLinear,
+                                         .addressModeU     = vk::SamplerAddressMode::eRepeat,
+                                         .addressModeV     = vk::SamplerAddressMode::eRepeat,
+                                         .addressModeW     = vk::SamplerAddressMode::eRepeat,
+                                         .anisotropyEnable = vk::True,
+                                         .maxAnisotropy    = properties.limits.maxSamplerAnisotropy};
 ----
 
 The `anisotropyEnable` field specifies if anisotropic filtering should be used.
@@ -182,20 +205,25 @@ To figure out which value we can use, we need to retrieve the properties of the 
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 ----
 
-If you look at the documentation for the `VkPhysicalDeviceProperties` structure, you'll see that it contains a `VkPhysicalDeviceLimits` member named `limits`.
+If you look at the documentation for the `vk::PhysicalDeviceProperties` structure, you'll see that it contains a `vk::PhysicalDeviceLimits` member named `limits`.
 This struct in turn has a member called `maxSamplerAnisotropy` and this is the maximum value we can specify for `maxAnisotropy`.
-If we want to go for maximum quality, we can simply use that value directly:
+If we want to go for maximum quality, we can simply use that value directly.
+You can either query the properties at the beginning of your program and pass them around to the functions that need them, or query them in the `createTextureSampler` function itself.
 
 [,c++]
 ----
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
-vk::SamplerCreateInfo samplerInfo{.magFilter = vk::Filter::eLinear, .minFilter = vk::Filter::eLinear,  .mipmapMode = vk::SamplerMipmapMode::eLinear, 
-    .addressModeU = vk::SamplerAddressMode::eRepeat, .addressModeV = vk::SamplerAddressMode::eRepeat, .addressModeW = vk::SamplerAddressMode::eRepeat,
-    .anisotropyEnable = vk::True, .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
-    .compareEnable = vk::False, .compareOp = vk::CompareOp::eAlways};
+vk::SamplerCreateInfo        samplerInfo{.magFilter        = vk::Filter::eLinear,
+                                         .minFilter        = vk::Filter::eLinear,
+                                         .mipmapMode       = vk::SamplerMipmapMode::eLinear,
+                                         .addressModeU     = vk::SamplerAddressMode::eRepeat,
+                                         .addressModeV     = vk::SamplerAddressMode::eRepeat,
+                                         .addressModeW     = vk::SamplerAddressMode::eRepeat,
+                                         .anisotropyEnable = vk::True,
+                                         .maxAnisotropy    = properties.limits.maxSamplerAnisotropy,
+                                         .compareEnable    = vk::False,
+                                         .compareOp        = vk::CompareOp::eAlways};
 ----
-
-You can either query the properties at the beginning of your program and pass them around to the functions that need them, or query them in the `createTextureSampler` function itself.
 
 [,c++]
 ----
@@ -212,8 +240,8 @@ samplerInfo.unnormalizedCoordinates = vk::False;
 ----
 
 The `unnormalizedCoordinates` field specifies which coordinate system you want to use to address texels in an image.
-If this field is `VK_TRUE`, then you can simply use coordinates within the `[0, texWidth)` and `[0, texHeight)` range.
-If it is `VK_FALSE`, then the texels are addressed using the `[0, 1)` range on all axes.
+If this field is `vk::True`, then you can simply use coordinates within the `[0, texWidth)` and `[0, texHeight)` range.
+If it is `vk::False`, then the texels are addressed using the `[0, 1)` range on all axes.
 Real-world applications almost always use normalized coordinates, because then it's possible to use textures of varying resolutions with the exact same coordinates.
 
 [,c++]
@@ -242,19 +270,20 @@ Add a class member to hold the handle of the sampler object and create the sampl
 
 [,c++]
 ----
-vk::raii::ImageView textureImageView = nullptr;
-vk::raii::Sampler textureSampler = nullptr;
+vk::raii::ImageView    textureImageView   = nullptr;
+vk::raii::Sampler      textureSampler     = nullptr;
 
 ...
 
-void createTextureSampler() {
+void createTextureSampler()
+{
     ...
 
     textureSampler = vk::raii::Sampler(device, samplerInfo);
 }
 ----
 
-Note the sampler does not reference a `VkImage` anywhere.
+Note the sampler does not reference a `vk::Image` anywhere.
 The sampler is a distinct object that provides an interface to extract colors from a texture.
 It can be applied to any image you want, whether it is 1D, 2D or 3D.
 This is different from many older APIs, which combined texture images and filtering into a single state.
@@ -281,22 +310,30 @@ And even though it is very unlikely that a modern graphics card will not support
 
 [,c++]
 ----
-bool isDeviceSuitable(VkPhysicalDevice device) {
+bool isDeviceSuitable(VkPhysicalDevice device)
+{
     ...
 
-    vk::PhysicalDeviceFeatures supportedFeatures = device.getPhysicalDeviceFeatures();
+		auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
+		                                                                     vk::PhysicalDeviceVulkan13Features,
+		                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
+		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
-    return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
+		// Return true if the physicalDevice meets all the criteria
+		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
 ----
 
-The `vkGetPhysicalDeviceFeatures` repurposes the `VkPhysicalDeviceFeatures` struct to indicate which features are supported rather than requested by setting the boolean values.
+The `vk::raii::PhysicalDevice::getFeatures2` repurposes the `vk::PhysicalDeviceFeatures` struct to indicate which features are supported rather than requested by setting the boolean values.
 
 Instead of enforcing the availability of anisotropic filtering, it's also possible to simply not use it by conditional setting:
 
 [,c++]
 ----
-samplerInfo.anisotropyEnable = VK_FALSE;
+samplerInfo.anisotropyEnable = vk::False;
 samplerInfo.maxAnisotropy = 1.0f;
 ----
 

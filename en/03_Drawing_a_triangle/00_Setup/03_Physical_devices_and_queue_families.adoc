@@ -232,8 +232,12 @@ Finally, we need to check that all optionally supported required features are ac
 
 [,c++]
 ----
-auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
+                                                                     vk::PhysicalDeviceVulkan11Features,
+                                                                     vk::PhysicalDeviceVulkan13Features,
+                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                 features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 ----
 
@@ -265,11 +269,13 @@ bool isDeviceSuitable( vk::raii::PhysicalDevice const & physicalDevice )
                                                        { return strcmp( availableDeviceExtension.extensionName, requiredDeviceExtension ) == 0; } );
                          } );
 
-  // Check if the physicalDevice supports the required features (dynamic rendering and extended dynamic state)
-  auto features =
-    physicalDevice
-      .template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-  bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+  // Check if the physicalDevice supports the required features (shader draw parameters, dynamic rendering and extended dynamic state)
+  auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
+                                                                       vk::PhysicalDeviceVulkan11Features,
+                                                                       vk::PhysicalDeviceVulkan13Features,
+                                                                       vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+  bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+                                  features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                                   features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
   // Return true if the physicalDevice meets all the criteria

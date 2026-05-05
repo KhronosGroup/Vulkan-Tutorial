@@ -93,8 +93,9 @@ struct Vertex {
     glm::vec2 pos;
     glm::vec3 color;
 
-    static vk::VertexInputBindingDescription getBindingDescription() {
-        return { 0, sizeof(Vertex), vk::VertexInputRate::eVertex };
+    static vk::VertexInputBindingDescription getBindingDescription()
+    {
+      return {.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
     }
 };
 ----
@@ -122,11 +123,11 @@ We're going to add another helper function to `Vertex` to fill in these structs.
 
 ...
 
-static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions() {
-    return {
-        vk::VertexInputAttributeDescription( 0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos) ),
-        vk::VertexInputAttributeDescription( 1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color) )
-    };
+    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+    {
+      return {{{.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, pos)},
+               {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)}}};
+    }
 }
 ----
 
@@ -134,9 +135,9 @@ As the function prototype indicates, there are going to be two of these structur
 An attribute description struct describes how to extract a vertex attribute from a chunk of vertex data originating from a binding description.
 We have two attributes, position and color, so we need two attribute description structs.
 
-The `binding` parameter tells Vulkan from which binding the per-vertex data comes.
 The `location` parameter references the `location` directive of the input in the vertex shader.
 The input in the vertex shader with location `0` is the position, which has two 32-bit float components.
+The `binding` parameter tells Vulkan from which binding the per-vertex data comes.
 
 The `format` parameter describes the type of data for the attribute.
 A bit confusingly, the formats are specified using the same enumeration as color formats.
@@ -170,12 +171,12 @@ Find the `vertexInputInfo` struct and modify it to reference the two description
 
 [,c++]
 ----
-auto                                   bindingDescription    = Vertex::getBindingDescription();
-auto                                   attributeDescriptions = Vertex::getAttributeDescriptions();
-vk::PipelineVertexInputStateCreateInfo vertexInputInfo{ .vertexBindingDescriptionCount   = 1,
-                                                        .pVertexBindingDescriptions      = &bindingDescription,
-                                                        .vertexAttributeDescriptionCount = static_cast<uint32_t>( attributeDescriptions.size() ),
-                                                        .pVertexAttributeDescriptions    = attributeDescriptions.data() };
+auto                                     bindingDescription    = Vertex::getBindingDescription();
+auto                                     attributeDescriptions = Vertex::getAttributeDescriptions();
+vk::PipelineVertexInputStateCreateInfo   vertexInputInfo{.vertexBindingDescriptionCount   = 1,
+                                                         .pVertexBindingDescriptions      = &bindingDescription,
+                                                         .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+                                                         .pVertexAttributeDescriptions    = attributeDescriptions.data()};
 ----
 
 The pipeline is now ready to accept vertex data in the format of the `vertices` container and pass it on to our vertex shader.

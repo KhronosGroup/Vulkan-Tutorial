@@ -327,7 +327,6 @@ class HelloTriangleApplication
 		vk::PipelineShaderStageCreateInfo fragShaderStageInfo{.stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain"};
 		vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-
 		vk::PipelineVertexInputStateCreateInfo   vertexInputInfo;
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
 		vk::PipelineViewportStateCreateInfo      viewportState{.viewportCount = 1, .scissorCount = 1};
@@ -388,7 +387,8 @@ class HelloTriangleApplication
 	void recordCommandBuffer(uint32_t imageIndex)
 	{
 		commandBuffer.begin({});
-		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+
+		// Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eUndefined,
@@ -417,7 +417,8 @@ class HelloTriangleApplication
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.draw(3, 1, 0, 0);
 		commandBuffer.endRendering();
-		// After rendering, transition the swapchain image to PRESENT_SRC
+
+		// After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eColorAttachmentOptimal,
@@ -471,21 +472,29 @@ class HelloTriangleApplication
 
 	void drawFrame()
 	{
-		queue.waitIdle();        // NOTE: for simplicity, wait for the queue to be idle before starting the frame
-		                         // In the next chapter you see how to use multiple frames in flight and fences to sync
-
-		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
-		recordCommandBuffer(imageIndex);
-
-		device.resetFences(*drawFence);
-		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
-		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount = 1, .pWaitSemaphores = &*presentCompleteSemaphore, .pWaitDstStageMask = &waitDestinationStageMask, .commandBufferCount = 1, .pCommandBuffers = &*commandBuffer, .signalSemaphoreCount = 1, .pSignalSemaphores = &*renderFinishedSemaphore};
-		queue.submit(submitInfo, *drawFence);
-		result = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
-		if (result != vk::Result::eSuccess)
+		auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
 		{
 			throw std::runtime_error("failed to wait for fence!");
 		}
+		device.resetFences(*drawFence);
+
+		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
+
+		recordCommandBuffer(imageIndex);
+
+		queue.waitIdle();        // NOTE: for simplicity, wait for the queue to be idle before starting the frame
+		                         // In the next chapter you see how to use multiple frames in flight and fences to sync
+
+		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+		                                  .pWaitSemaphores      = &*presentCompleteSemaphore,
+		                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+		                                  .commandBufferCount   = 1,
+		                                  .pCommandBuffers      = &*commandBuffer,
+		                                  .signalSemaphoreCount = 1,
+		                                  .pSignalSemaphores    = &*renderFinishedSemaphore};
+		queue.submit(submitInfo, *drawFence);
 
 		const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1, .pWaitSemaphores = &*renderFinishedSemaphore, .swapchainCount = 1, .pSwapchains = &*swapChain, .pImageIndices = &imageIndex};
 		result = queue.presentKHR(presentInfoKHR);

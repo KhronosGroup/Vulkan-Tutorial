@@ -330,7 +330,6 @@ class HelloTriangleApplication
 		vk::PipelineShaderStageCreateInfo fragShaderStageInfo{.stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain"};
 		vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-
 		vk::PipelineVertexInputStateCreateInfo   vertexInputInfo;
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
 		vk::PipelineViewportStateCreateInfo      viewportState{.viewportCount = 1, .scissorCount = 1};
@@ -392,7 +391,8 @@ class HelloTriangleApplication
 	{
 		auto &commandBuffer = commandBuffers[frameIndex];
 		commandBuffer.begin({});
-		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+
+		// Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eUndefined,
@@ -420,7 +420,8 @@ class HelloTriangleApplication
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.draw(3, 1, 0, 0);
 		commandBuffer.endRendering();
-		// After rendering, transition the swapchain image to PRESENT_SRC
+
+		// After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eColorAttachmentOptimal,

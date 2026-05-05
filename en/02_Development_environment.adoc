@@ -278,21 +278,6 @@ image::/images/library_directory.png[]
 
 Tinyobjloader can be installed with vcpkg like so: vcpkg install tinyobjloader
 
-=== Setting up Visual Studio
-
-==== Setting up a CMake project
-
-Now that you have installed all the dependencies, we can set up a basic
-CMake project for Vulkan and write a little bit of code to make sure that
-everything works.
-
-We will assume that you already have some basic experience with CMake, like
-how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
-
-You can now use the code from any of the following chapters found in the `attachment` folder as a template for your Vulkan projects. Make a copy, rename it to something like `HelloTriangle` and remove all the code in `main.cpp`.
-
-Congratulations, you're all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[playing with Vulkan]!
-
 == Linux
 
 These instructions will be aimed at Ubuntu, Fedora and Arch Linux users, but
@@ -515,3 +500,28 @@ You are now all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[th
 == Android
 
 Vulkan is a first-class API on Android and widely supported. But using it differs in several key areas from window management to build systems. So while the basic chapters focus on desktop platforms, the tutorial also has a xref:14_Android.adoc[dedicated chapter] that walks you through setting up your development environment and getting the tutorial code up-and-running on Android.
+
+== Setting up a CMake project
+
+Now that you have installed all the dependencies, we can set up a basic
+CMake project for Vulkan and write a little bit of code to make sure that
+everything works.
+
+We will assume that you already have some basic experience with CMake, like
+how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
+
+The `attachment\template` folder contains a CMake template that you can use to create a project file in the `build` folder for your IDE of choice. Use this as a starting point to work along the tutorial:
+
+----
+cd attachments\template
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[path\to\vcpkg]\scripts\buildsystems\vcpkg.cmake
+----
+
+Alternatively you can do the same in the `attachments` folder, which will create a project with all chapters from the tutorial:
+
+----
+cd attachments
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[path\to\vcpkg]\scripts\buildsystems\vcpkg.cmake
+----
+
+Congratulations, you're all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[playing with Vulkan]!

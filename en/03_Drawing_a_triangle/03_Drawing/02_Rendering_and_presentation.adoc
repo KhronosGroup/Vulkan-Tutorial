@@ -8,7 +8,8 @@ Let's start by creating the function and call it from `mainLoop`:
 
 [,c++]
 ----
-void mainLoop() {
+void mainLoop()
+{
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         drawFrame();
@@ -17,8 +18,8 @@ void mainLoop() {
 
 ...
 
-void drawFrame() {
-
+void drawFrame()
+{
 }
 ----
 
@@ -78,25 +79,24 @@ After operation B begins executing, semaphore S is automatically reset back to b
 Pseudocode of what was just described:
 
 ----
-VkCommandBuffer A, B = ... // record command buffers
-VkSemaphore S = ... // create a semaphore
+vk::raii::CommandBuffer A, B = ... // record command buffers
+vk::raii::Semaphore S = ...        // create a semaphore
 
 // enqueue A, signal S when done - starts executing immediately
-vkQueueSubmit(work: A, signal: S, wait: None)
+queue.submit(work: A, signal: S, wait: None)
 
 // enqueue B, wait on S to start
-vkQueueSubmit(work: B, signal: None, wait: S)
+queue.submit(work: B, signal: None, wait: S)
 ----
 
-Note that in this code snippet, both calls to `vkQueueSubmit()` return immediately - the waiting only happens on the GPU.
+Note that in this code snippet, both calls to `queue.submit()` return immediately - the waiting only happens on the GPU.
 The CPU continues running without blocking.
 To make the CPU wait, we need a different synchronization primitive, which we will now describe.
 
 === Fences
 
 A fence has a similar purpose, in that it is used to synchronize execution, but it is for ordering the execution on the CPU, otherwise known as the host.
-Concretely, if the host needs to know when the GPU has finished something, we
-use a fence.
+Concretely, if the host needs to know when the GPU has finished something, we use a fence.
 
 Similar to semaphores, fences are either in a signaled or unsignaled state.
 Whenever we submit work to execute, we can attach a fence to that work.
@@ -114,13 +114,13 @@ Thus, we are safe to let the host save the file to disk, as the memory transfer 
 Pseudocode for what was described:
 
 ----
-VkCommandBuffer A = ... // record command buffer with the transfer
-VkFence F = ... // create the fence
+vk::raii::CommandBuffer A = ... // record command buffer with the transfer
+vk::raii::Fence F = ...         // create the fence
 
 // enqueue A, start work immediately, signal F when done
-vkQueueSubmit(work: A, fence: F)
+queue.submit(work: A, fence: F)
 
-vkWaitForFence(F) // blocks execution until A has finished executing
+device.waitForFences(F) // blocks execution until A has finished executing
 
 save_screenshot_to_disk() // can't run until the transfer has finished
 ----
@@ -163,15 +163,16 @@ Create three class members to store these semaphore objects and fence object:
 [,c++]
 ----
 vk::raii::Semaphore presentCompleteSemaphore = nullptr;
-vk::raii::Semaphore renderFinishedSemaphore = nullptr;
-vk::raii::Fence drawFence = nullptr;
+vk::raii::Semaphore renderFinishedSemaphore  = nullptr;
+vk::raii::Fence     drawFence                = nullptr;
 ----
 
 To create the semaphores, we'll add the last `create` function for this part of the tutorial: `createSyncObjects`:
 
 [,c++]
 ----
-void initVulkan() {
+void initVulkan()
+{
     createInstance();
     setupDebugMessenger();
     createSurface();
@@ -187,8 +188,8 @@ void initVulkan() {
 
 ...
 
-void createSyncObjects() {
-
+void createSyncObjects()
+{
 }
 ----
 
@@ -196,39 +197,49 @@ Creating semaphores requires filling in the `vk::SemaphoreCreateInfo`, but in th
 
 [,c++]
 ----
-void createSyncObjects() {
-    presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-    renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-    drawFence = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
+void createSyncObjects()
+{
+  presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+  renderFinishedSemaphore  = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+  drawFence                = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
 }
 ----
 
-Future versions of the Vulkan API or extensions may add functionality for the `flags` and `pNext` parameters like it does for the other structures.
+Future versions of the Vulkan API or extensions may add functionality for the `flags` and `pNext` members of `vk::SemaphoreCreateInfo` like it does for the other structures.
 
 Onto the main drawing function!
 
 == Waiting for the previous frame
 
 At the start of the frame, we want to wait until the previous frame has finished, so that the command buffer and semaphores are available to use.
-To do that, we call `device.waitForFences`:
+To do that, we call `vk::raii::Device::waitForFences`:
 
 [,c++]
 ----
-void drawFrame() {
+void drawFrame()
+{
     auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
+		if (fenceResult != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to wait for fence!");
+		}
+		device.resetFences(*drawFence);
 }
 ----
 
-The `waitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
+The `vk::raii::Device::waitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
 The `vk::True` we pass here indicates that we want to wait for all fences, but in the case of a single one it doesn't matter.
 This function also has a timeout parameter that we set to the maximum value of a 64 bit unsigned integer, `UINT64_MAX`, which effectively disables the timeout.
+
+We need to make sure that the fence is reset if the previous frame has already happened, so we know to wait on it later.
 
 Next, let's grab an image from the framebuffer after the previous frame has
 finished:
 
 [,c++]
 ----
-void drawFrame() {
+void drawFrame()
+{
     ...
     auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
 }
@@ -242,10 +253,9 @@ That's the point in time where we can start drawing to it.
 It is possible to specify a semaphore, fence or both.
 We're going to use our `presentCompleteSemaphore` for that purpose here.
 
-The last parameter specifies a variable to output the index of the swap chain image that has become available.
-The index refers to the `VkImage` in our `swapChainImages` array.
-We're going to use that index to pick the `VkFrameBuffer`. Then we'll record
-into that framebuffer.
+That function returns a pair of values: the usual `vk::Result`, and the index of the swap chain image that has become available.
+The index refers to the `vk::Image` in our `swapChainImages` array.
+We're going to use that index to pick the `vk::raii::FrameBuffer`. Then we'll record into that framebuffer.
 
 == Recording the command buffer
 
@@ -257,14 +267,6 @@ Now call the function `recordCommandBuffer` to record the commands we want.
 recordCommandBuffer(imageIndex);
 ----
 
-We need to make sure that the fence is reset if the previous frame has
-already happened, so we know to wait on it later.
-
-[,c++]
-----
-device.resetFences(*drawFence);
-----
-
 With a fully recorded command buffer, we can now submit it.
 
 == Submitting the command buffer
@@ -274,14 +276,13 @@ Queue submission and synchronization is configured through parameters in the `vk
 [,c++]
 ----
 vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-const vk::SubmitInfo submitInfo{
-    .waitSemaphoreCount = 1,
-    .pWaitSemaphores = &*presentCompleteSemaphore,
-    .pWaitDstStageMask = &waitDestinationStageMask,
-    .commandBufferCount = 1,
-    .pCommandBuffers = &*commandBuffer,
-    .signalSemaphoreCount = 1,
-    .pSignalSemaphores = &*renderFinishedSemaphore};
+const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
+                                  .pWaitSemaphores      = &*presentCompleteSemaphore,
+                                  .pWaitDstStageMask    = &waitDestinationStageMask,
+                                  .commandBufferCount   = 1,
+                                  .pCommandBuffers      = &*commandBuffer,
+                                  .signalSemaphoreCount = 1,
+                                  .pSignalSemaphores    = &*renderFinishedSemaphore};
 ----
 
 The first three parameters specify which semaphores to wait on before execution begins and in which stage(s) of the pipeline to wait.
@@ -292,19 +293,18 @@ Each entry in the `waitStages` array corresponds to the semaphore with the same 
 The next parameter specifies which command buffers to actually submit for
 execution. We simply submit the single command buffer we have.
 
-The `pSignalSemaphores` parameter specifies which semaphores to signal once the
- command buffer(s) have finished execution.
+The `pSignalSemaphores` parameter specifies which semaphores to signal once the command buffer(s) have finished execution.
 In our case we're using the `renderFinishedSemaphore` for that purpose.
 
 [,c++]
 ----
-graphicsQueue.submit(submitInfo, *drawFence);
+queue.submit(submitInfo, *drawFence);
 ----
 
-We can now submit the command buffer to the graphics queue using `submit`.
+We can now submit the command buffer to the graphics queue using `vk::raii::Queue::submit`.
 The function takes an array of `vk::SubmitInfo` structures as argument for efficiency when the workload is much larger.
 The last parameter references an optional fence that will be signaled when the command buffers finish execution.
-This allows us to know when it is safe for the command buffer to be reused, thus we want to give it `drawFence`, which is waited on in the next frame.
+This allows us to know when it is safe for the command buffer to be reused, thus we want to give it `*drawFence`, which is waited on in the next frame.
 
 == Subpass dependencies
 
@@ -317,33 +317,37 @@ We have only a single subpass right now, but the operations right before and rig
 There are two built-in dependencies that take care of the transition at the start of the render pass and at the end of the render pass, but the former does not occur at the right time.
 It assumes that the transition occurs at the start of the pipeline, but we haven't acquired the image yet at that point!
 There are two ways to deal with this problem.
-We could change the `waitStages` for the `imageAvailableSemaphore` to `VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT` to ensure that the render passes don't begin until the image is available, or we can make the render pass wait for the `VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT` stage.
+We could change the `waitStages` for the `presentCompleteSemaphore` to `vk::PipelineStageFlagBits::eTopOfPipe` to ensure that the render passes don't begin until the image is available, or we can make the render pass wait for the `vk::PipelineStageFlagBits::eColorAttachmentOutput` stage.
 I've decided to go with the second option here, because it's a good excuse to have a look at subpass dependencies and how they work.
 
-Subpass dependencies are specified in `VkSubpassDependency` structs.
+Subpass dependencies are specified in `vk::SubpassDependency` structs.
 Go to the `createRenderPass` function and add one:
 
 [,c++]
 ----
-vk::SubpassDependency dependency(VK_SUBPASS_EXTERNAL, {});
+vk::SubpassDependency dependency{
+    .srcSubpass    = vk::SubpassExternal,
+    .dstSubpass    = 0}
 ----
 
 The first two fields specify the indices of the dependency and the dependent subpass.
-The special value `VK_SUBPASS_EXTERNAL` refers to the implicit subpass before or after the render pass depending on whether it is specified in `srcSubpass` or `dstSubpass`.
+The special value `vk::SubpassExternal` refers to the implicit subpass before or after the render pass depending on whether it is specified in `srcSubpass` or `dstSubpass`.
 The index `0` refers to our subpass, which is the first and only one.
-The `dstSubpass` must always be higher than `srcSubpass` to prevent cycles in the dependency graph (unless one of the subpasses is `VK_SUBPASS_EXTERNAL`).
+The `dstSubpass` must always be higher than `srcSubpass` to prevent cycles in the dependency graph (unless one of the subpasses is `vk::SubpassExternal`).
 
 [,c++]
 ----
-vk::SubpassDependency dependency(VK_SUBPASS_EXTERNAL, {},
-        vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        {}, vk::AccessFlagBits::eColorAttachmentWrite);
+vk::SubpassDependency dependency{
+    .srcSubpass    = vk::SubpassExternal,
+    .dstSubpass    = 0,
+    .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+    .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+    .srcAccessMask = vk::AccessFlagBits::eNone,
+    .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite};
 ----
 
-The next two fields specify the operations to wait on and the operations that
- should wait on this are in the color attachment stage.
-The last two fields specify the stages in which these operations occur and
-invovles the writing of the color attachment.
+The next two fields specify the operations to wait on and the operations that should wait on this are in the color attachment stage.
+The last two fields specify the stages in which these operations occur and involves the writing of the color attachment.
 We need to wait for the swap chain to finish reading from the image before we can access it.
 This can be accomplished by waiting on the color attachment output stage itself.
 
@@ -355,7 +359,7 @@ renderPassInfo.dependencyCount = 1;
 renderPassInfo.pDependencies = &dependency;
 ----
 
-The `VkRenderPassCreateInfo` struct has two fields to specify an array of dependencies.
+The `vk::RenderPassCreateInfo` struct has two fields to specify an array of dependencies.
 
 The above is completely optional and not reproduced in the
 link:/attachments/15_hello_triangle.cpp[demo code.]
@@ -369,14 +373,14 @@ Presentation is configured through a `vk::PresentInfoKHR` structure at the end o
 ----
 const vk::PresentInfoKHR presentInfoKHR{
     .waitSemaphoreCount = 1,
-    .pWaitSemaphores = &*renderFinishedSemaphore,
-    .swapchainCount = 1,
-    .pSwapchains = &*swapChain,
-    .pImageIndices = &imageIndex};
+    .pWaitSemaphores    = &*renderFinishedSemaphore,
+    .swapchainCount     = 1,
+    .pSwapchains        = &*swapChain,
+    .pImageIndices      = &imageIndex};
 ----
 
 The first two parameters specify which semaphores to wait on before presentation can happen, just like `vk::SubmitInfo`.
-Since we want to wait on the command buffer to finish execution, thus our triangle being drawn, we take the semaphores which will be signaled and wait on them, thus we use `signalSemaphores`.
+Since we want to wait on the command buffer to finish execution, thus our triangle being drawn, we take the semaphores which will be signaled and wait on them, thus we use `renderFinishedSemaphore`.
 
 The next two parameters specify the swap chains to present images to and the index of the image for each swap chain.
 This will almost always be single.
@@ -392,11 +396,11 @@ It's not necessary if you're only using a single swap chain, because you can use
 
 [,c++]
 ----
-result = presentQueue.presentKHR(presentInfoKHR);
+result = queue.presentKHR(presentInfoKHR);
 ----
 
-The `presentKHR` function submits the request to present an image to the swap chain.
-We'll add error handling for both `swapChain.acquireNextImage` and `queue.presentKHR` in the next chapter, because their failure does not necessarily mean that the program should terminate, unlike the functions we've seen so far.
+The `vk::raii::Queue::presentKHR` function submits the request to present an image to the swap chain.
+We'll add error handling for both `vk::raii::SwapchainKHR::acquireNextImage` and `vk::raii::Queue::presentKHR` in the next chapter, because their failure does not necessarily mean that the program should terminate, unlike the functions we've seen so far.
 
 If you did everything correctly up to this point, then you should now see something resembling the following when you run your program:
 
@@ -431,7 +435,7 @@ void mainLoop() {
 }
 ----
 
-You can also wait for operations in a specific command queue to be finished with `vkQueueWaitIdle`.
+You can also wait for operations in a specific command queue to be finished with `vk::raii::Queue::waitIdle`.
 These functions can be used as a very rudimentary way to perform synchronization.
 You'll see that the program now exits without problems when closing the window.
 

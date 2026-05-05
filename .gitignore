@@ -30,3 +30,5 @@ attachments/simple_engine/android/app/build/**
 attachments/simple_engine/android/gradle/wrapper/**
 attachments/simple_engine/android/gradlew
 attachments/simple_engine/android/gradlew.bat
+
+attachments/template/build/**

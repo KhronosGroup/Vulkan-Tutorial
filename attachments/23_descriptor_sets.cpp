@@ -44,14 +44,13 @@ struct Vertex
 
 	static vk::VertexInputBindingDescription getBindingDescription()
 	{
-		return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
+		return {.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
 	}
 
 	static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
 	{
-		return {
-		    vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos)),
-		    vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color))};
+		return {{{.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, pos)},
+		         {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)}}};
 	}
 };
 
@@ -141,7 +140,7 @@ class HelloTriangleApplication
 
 	static void framebufferResizeCallback(GLFWwindow *window, int width, int height)
 	{
-		auto app                = static_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(window));
+		auto app                = reinterpret_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
 	}
 
@@ -266,7 +265,7 @@ class HelloTriangleApplication
 		vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
 		                                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
 		vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(
-            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
+		    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 		vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{.messageSeverity = severityFlags,
 		                                                                      .messageType     = messageTypeFlags,
 		                                                                      .pfnUserCallback = &debugCallback};
@@ -308,6 +307,7 @@ class HelloTriangleApplication
 		                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
 		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
 		                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
 		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria
@@ -346,12 +346,16 @@ class HelloTriangleApplication
 		}
 
 		// query for required features (Vulkan 1.1 and 1.3)
-		vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-		    {},                                                          // vk::PhysicalDeviceFeatures2
-		    {.shaderDrawParameters = true},                              // vk::PhysicalDeviceVulkan11Features
-		    {.synchronization2 = true, .dynamicRendering = true},        // vk::PhysicalDeviceVulkan13Features
-		    {.extendedDynamicState = true}                               // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
-		};
+		vk::StructureChain<vk::PhysicalDeviceFeatures2,
+		                   vk::PhysicalDeviceVulkan11Features,
+		                   vk::PhysicalDeviceVulkan13Features,
+		                   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+		    featureChain = {
+		        {},                                                          // vk::PhysicalDeviceFeatures2
+		        {.shaderDrawParameters = true},                              // vk::PhysicalDeviceVulkan11Features
+		        {.synchronization2 = true, .dynamicRendering = true},        // vk::PhysicalDeviceVulkan13Features
+		        {.extendedDynamicState = true}                               // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+		    };
 
 		// create a Device
 		float                     queuePriority = 0.5f;
@@ -411,7 +415,8 @@ class HelloTriangleApplication
 
 	void createDescriptorSetLayout()
 	{
-		vk::DescriptorSetLayoutBinding    uboLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr);
+		vk::DescriptorSetLayoutBinding uboLayoutBinding{
+		    .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex};
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1, .pBindings = &uboLayoutBinding};
 		descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
 	}
@@ -426,7 +431,10 @@ class HelloTriangleApplication
 
 		auto                                     bindingDescription    = Vertex::getBindingDescription();
 		auto                                     attributeDescriptions = Vertex::getAttributeDescriptions();
-		vk::PipelineVertexInputStateCreateInfo   vertexInputInfo{.vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &bindingDescription, .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()), .pVertexAttributeDescriptions = attributeDescriptions.data()};
+		vk::PipelineVertexInputStateCreateInfo   vertexInputInfo{.vertexBindingDescriptionCount   = 1,
+		                                                         .pVertexBindingDescriptions      = &bindingDescription,
+		                                                         .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+		                                                         .pVertexAttributeDescriptions    = attributeDescriptions.data()};
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
 		vk::PipelineViewportStateCreateInfo      viewportState{.viewportCount = 1, .scissorCount = 1};
 
@@ -434,7 +442,7 @@ class HelloTriangleApplication
 		                                                    .rasterizerDiscardEnable = vk::False,
 		                                                    .polygonMode             = vk::PolygonMode::eFill,
 		                                                    .cullMode                = vk::CullModeFlagBits::eBack,
-		                                                    .frontFace               = vk::FrontFace::eClockwise,
+		                                                    .frontFace               = vk::FrontFace::eCounterClockwise,
 		                                                    .depthBiasEnable         = vk::False,
 		                                                    .lineWidth               = 1.0f};
 
@@ -450,7 +458,7 @@ class HelloTriangleApplication
 		std::vector<vk::DynamicState>      dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 		vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
 
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 0, .pushConstantRangeCount = 0};
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0};
 		pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
 		vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
@@ -477,18 +485,30 @@ class HelloTriangleApplication
 		commandPool = vk::raii::CommandPool(device, poolInfo);
 	}
 
+	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
+	{
+		vk::BufferCreateInfo   bufferInfo{.size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive};
+		vk::raii::Buffer       buffer          = vk::raii::Buffer(device, bufferInfo);
+		vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements();
+		vk::MemoryAllocateInfo allocInfo{.allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)};
+		vk::raii::DeviceMemory bufferMemory = vk::raii::DeviceMemory(device, allocInfo);
+		buffer.bindMemory(*bufferMemory, 0);
+		return {std::move(buffer), std::move(bufferMemory)};
+	}
+
 	void createVertexBuffer()
 	{
-		vk::DeviceSize         bufferSize = sizeof(vertices[0]) * vertices.size();
-		vk::raii::Buffer       stagingBuffer({});
-		vk::raii::DeviceMemory stagingBufferMemory({});
-		createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+		vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+		auto [stagingBuffer, stagingBufferMemory] =
+		    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		void *dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
 		memcpy(dataStaging, vertices.data(), bufferSize);
 		stagingBufferMemory.unmapMemory();
 
-		createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
+		std::tie(vertexBuffer, vertexBufferMemory) =
+		    createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 	}
@@ -497,40 +517,35 @@ class HelloTriangleApplication
 	{
 		vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
-		vk::raii::Buffer       stagingBuffer({});
-		vk::raii::DeviceMemory stagingBufferMemory({});
-		createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+		auto [stagingBuffer, stagingBufferMemory] =
+		    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		void *data = stagingBufferMemory.mapMemory(0, bufferSize);
 		memcpy(data, indices.data(), (size_t) bufferSize);
 		stagingBufferMemory.unmapMemory();
 
-		createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
+		std::tie(indexBuffer, indexBufferMemory) =
+		    createBuffer(bufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		copyBuffer(stagingBuffer, indexBuffer, bufferSize);
 	}
 
 	void createUniformBuffers()
 	{
-		uniformBuffers.clear();
-		uniformBuffersMemory.clear();
-		uniformBuffersMapped.clear();
-
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
-			vk::DeviceSize         bufferSize = sizeof(UniformBufferObject);
-			vk::raii::Buffer       buffer({});
-			vk::raii::DeviceMemory bufferMem({});
-			createBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, buffer, bufferMem);
+			vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+			auto [buffer, bufferMem]  = createBuffer(
+			    bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			uniformBuffers.emplace_back(std::move(buffer));
 			uniformBuffersMemory.emplace_back(std::move(bufferMem));
-			uniformBuffersMapped.emplace_back(uniformBuffersMemory[i].mapMemory(0, bufferSize));
+			uniformBuffersMapped.emplace_back(uniformBuffersMemory.back().mapMemory(0, bufferSize));
 		}
 	}
 
 	void createDescriptorPool()
 	{
-		vk::DescriptorPoolSize       poolSize(vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT);
+		vk::DescriptorPoolSize       poolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT};
 		vk::DescriptorPoolCreateInfo poolInfo{.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, .maxSets = MAX_FRAMES_IN_FLIGHT, .poolSizeCount = 1, .pPoolSizes = &poolSize};
 		descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
 	}
@@ -538,33 +553,30 @@ class HelloTriangleApplication
 	void createDescriptorSets()
 	{
 		std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
-		vk::DescriptorSetAllocateInfo        allocInfo{.descriptorPool = descriptorPool, .descriptorSetCount = static_cast<uint32_t>(layouts.size()), .pSetLayouts = layouts.data()};
+		vk::DescriptorSetAllocateInfo        allocInfo{.descriptorPool     = descriptorPool,
+		                                               .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+		                                               .pSetLayouts        = layouts.data()};
 
 		descriptorSets = device.allocateDescriptorSets(allocInfo);
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
 			vk::DescriptorBufferInfo bufferInfo{.buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject)};
-			vk::WriteDescriptorSet   descriptorWrite{.dstSet = descriptorSets[i], .dstBinding = 0, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo};
+			vk::WriteDescriptorSet   descriptorWrite{.dstSet          = descriptorSets[i],
+			                                         .dstBinding      = 0,
+			                                         .dstArrayElement = 0,
+			                                         .descriptorCount = 1,
+			                                         .descriptorType  = vk::DescriptorType::eUniformBuffer,
+			                                         .pBufferInfo     = &bufferInfo};
 			device.updateDescriptorSets(descriptorWrite, {});
 		}
-	}
-
-	void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer &buffer, vk::raii::DeviceMemory &bufferMemory)
-	{
-		vk::BufferCreateInfo bufferInfo{.size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive};
-		buffer                                 = vk::raii::Buffer(device, bufferInfo);
-		vk::MemoryRequirements memRequirements = buffer.getMemoryRequirements();
-		vk::MemoryAllocateInfo allocInfo{.allocationSize = memRequirements.size, .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)};
-		bufferMemory = vk::raii::DeviceMemory(device, allocInfo);
-		buffer.bindMemory(bufferMemory, 0);
 	}
 
 	void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size)
 	{
 		vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1};
 		vk::raii::CommandBuffer       commandCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
-		commandCopyBuffer.begin(vk::CommandBufferBeginInfo{.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+		commandCopyBuffer.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 		commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
 		commandCopyBuffer.end();
 		queue.submit(vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr);
@@ -597,7 +609,8 @@ class HelloTriangleApplication
 	{
 		auto &commandBuffer = commandBuffers[frameIndex];
 		commandBuffer.begin({});
-		// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+
+		// Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eUndefined,
@@ -624,11 +637,12 @@ class HelloTriangleApplication
 		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
-		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
+		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexTypeValue<decltype(indices)::value_type>::value);
 		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[frameIndex], nullptr);
-		commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
+		commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		commandBuffer.endRendering();
-		// After rendering, transition the swapchain image to PRESENT_SRC
+
+		// After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR
 		transition_image_layout(
 		    imageIndex,
 		    vk::ImageLayout::eColorAttachmentOptimal,
@@ -661,11 +675,11 @@ class HelloTriangleApplication
 		    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		    .image               = swapChainImages[imageIndex],
 		    .subresourceRange    = {
-		           .aspectMask     = vk::ImageAspectFlagBits::eColor,
-		           .baseMipLevel   = 0,
-		           .levelCount     = 1,
-		           .baseArrayLayer = 0,
-		           .layerCount     = 1}};
+		        .aspectMask     = vk::ImageAspectFlagBits::eColor,
+		        .baseMipLevel   = 0,
+		        .levelCount     = 1,
+		        .baseArrayLayer = 0,
+		        .layerCount     = 1}};
 		vk::DependencyInfo dependency_info = {
 		    .dependencyFlags         = {},
 		    .imageMemoryBarrierCount = 1,
@@ -699,7 +713,8 @@ class HelloTriangleApplication
 		UniformBufferObject ubo{};
 		ubo.model = rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.view  = lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj  = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
+		ubo.proj =
+		    glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
 		ubo.proj[1][1] *= -1;
 
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -806,7 +821,7 @@ class HelloTriangleApplication
 		           vk::PresentModeKHR::eFifo;
 	}
 
-	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities)
+	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
 	{
 		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 		{

@@ -14,7 +14,7 @@ To use dynamic rendering, we need to specify the formats of the attachments that
 
 [,c++]
 ----
-vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainImageFormat };
+vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format };
 ----
 
 This structure specifies that we'll be using one color attachment with the format of our swap chain images. We then include this structure in the `vk::StructureChain`, starting with the `vk::GraphicsPipelineCreateInfo` structure:

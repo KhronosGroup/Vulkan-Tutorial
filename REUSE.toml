@@ -1,0 +1,47 @@
+version = 1
+
+[[annotations]]
+path = [
+    "**.adoc",
+    "images/**",
+]
+SPDX-FileCopyrightText = "The Khronos Group, Inc."
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path ="attachments/**"
+SPDX-FileCopyrightText = "The Khronos Group, Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "antora-ci-playbook.yml",
+    "antora/**",
+    ".github/workflows/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Sascha Willems"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = [
+    ".github/workflows/reuse-compliance.yml",
+    ".gitignore",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Khronos Group, Inc."
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "attachments/CMake/FindVulkan.cmake"
+SPDX-FileCopyrightText = "Holochip Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "attachments/simple_engine/**",
+    "scripts/**",
+]
+SPDX-FileCopyrightText = "Holochip Corporation"
+SPDX-License-Identifier = "Apache-2.0"
+

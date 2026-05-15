@@ -148,6 +148,7 @@ precedence = "closest"
 SPDX-FileCopyrightText = [
     "2023-2026 The Khronos Group, Inc.",
 ]
+
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]

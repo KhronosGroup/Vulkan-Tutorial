@@ -1,0 +1,50 @@
+:pp: {plus}{plus}
+= The Monotonic Counter: Tracking Global Progress
+
+== Understanding the Counter
+
+At the heart of every timeline semaphore is a single `uint64_t` value. This value is monotonic, meaning it can only ever increase. This simple property allows us to treat the entire execution of our GPU/CPU engine as a single, unified timeline.
+
+When you submit a command buffer to a queue, you associate it with a signal operation on a timeline semaphore. You assign a specific value to that signal—say, `frame_index * 10 + pass_index`. As the GPU completes each pass, the semaphore value increments.
+
+== Tracking Progress
+
+Because we can query this value from the CPU at any time using `device.getSemaphoreCounterValue`, we can build much more intelligent engine logic. For example, instead of waiting for a "Render Complete" fence, we can query the timeline and see exactly which stage the GPU is currently working on.
+
+[,c++]
+----
+uint64_t currentValue = device.getSemaphoreCounterValue(*timelineSemaphore);
+if (currentValue >= PassValues::eShadowPassComplete) {
+    // We can start preparing the next pass that depends on shadows
+}
+----
+
+This is particularly useful for asynchronous resource management. You can tag resources with the timeline value at which they were last used. When you need to reuse or destroy a resource, you simply check if the current semaphore value has exceeded that tag. This eliminates the need for conservative `deviceWaitIdle()` calls, which are often the primary cause of GPU bubbles and CPU stalls.
+
+== Strategic Value Selection
+
+Choosing how to increment your timeline values is an architectural decision. A common pattern is to use a large increment for each frame (e.g., 1000) and then use small sub-increments for each major pass within that frame.
+
+*   Frame 1:
+    *   Start: 1000
+    *   Shadow Pass: 1010
+    *   G-Buffer Pass: 1020
+    *   Lighting Pass: 1030
+*   Frame 2:
+    *   Start: 2000
+    *   Shadow Pass: 2010
+    *   ...
+
+This numbering scheme provides plenty of "headroom" for adding new passes or sub-steps without having to re-calculate every single synchronization value in your engine. It also makes your logs much easier to read, as the frame number is clearly encoded in the timeline value.
+
+By treating the timeline as a "master clock," you move away from micro-managing individual dependencies and toward managing the overall state and progress of your renderer. In the next section, we'll see how this enables one of the most powerful submission patterns in Vulkan: the wait-before-signal.
+
+== Simple Engine: Tracking Frame Progress
+
+In `Simple Engine`, we will use the monotonic counter to track the progress of each system. We'll define a set of `TimelineValues` that represent major milestones in our frame. For example, our `Renderer` could signal a value like `currentFrameIndex * 10 + passOffset` to indicate that a specific rendering stage has finished.
+
+This becomes incredibly powerful when paired with our `MemoryPool`. Instead of using a simple "frames since destroy" counter (like we currently do in `pendingASDeletions`), we can tag each resource with the exact `TimelineValue` at which it was last used by the GPU. When the `MemoryPool` needs to reclaim memory, it can simply query the current semaphore value. If `currentValue >= resourceTagValue`, the resource is guaranteed to be safe for destruction or reuse, with no extra stalls or conservative waits required.
+
+== Navigation
+
+Previous: xref:Synchronization/Timeline_Semaphores/02_unifying_sync.adoc[Unifying Synchronization] | Next: xref:Synchronization/Timeline_Semaphores/04_wait_before_signal.adoc[Wait-Before-Signal Submission]

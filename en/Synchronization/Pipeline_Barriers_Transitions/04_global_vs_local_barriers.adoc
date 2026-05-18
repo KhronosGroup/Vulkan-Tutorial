@@ -1,0 +1,65 @@
+:pp: {plus}{plus}
+= Global vs. Local Barriers: Precision and Performance
+
+== The Dilemma of Choice
+
+Vulkan gives us two ways to synchronize memory: **Global Memory Barriers** and **Specific Resource Barriers** (Image and Buffer barriers). It's often tempting to just use a global barrier for everything—it's simpler to write, requires less bookkeeping, and covers all your bases. However, this convenience comes at a cost.
+
+A global barrier affects *all* memory accesses of the specified type across the entire GPU. If you only need to transition a single texture, but you use a global memory barrier, the GPU might end up flushing its entire L1 and L2 cache, potentially stalling other unrelated work that was running perfectly fine.
+
+== When to Use Global Barriers
+
+Global barriers are not "evil"; they are simply a broad tool. They are excellent for scenarios where you are about to perform a major state change that affects many resources simultaneously.
+
+For example, if you are moving from a G-Buffer pass to a complex lighting pass that will read from multiple textures and buffers, a single global barrier might be more efficient than recording ten individual image and buffer barriers. Consolidating into a single global barrier reduces the driver overhead of processing the `vk::DependencyInfo` and can sometimes lead to better hardware utilization if many resources are transitioning between similar stages.
+
+[,c++]
+----
+auto globalBarrier = vk::MemoryBarrier2{
+    .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+    .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+    .dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+    .dstAccessMask = vk::AccessFlagBits2::eShaderRead
+};
+
+commandBuffer.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &globalBarrier});
+----
+
+== When to Use Resource Barriers
+
+Resource-specific barriers (`vk::ImageMemoryBarrier2` and `vk::BufferMemoryBarrier2`) are your "surgical" tools. You should use them whenever the dependency is limited to a specific resource, especially if that resource is being transitioned between layouts.
+
+The primary advantage of an image barrier is that it allows the driver to perform layout-specific optimizations. A global memory barrier *cannot* transition an image layout. If you need to change an image from `eColorAttachmentOptimal` to `eShaderReadOnlyOptimal`, you *must* use an image memory barrier.
+
+== The Golden Rule: Batching
+
+Whether you choose global or local barriers, the most important rule for Vulkan synchronization performance is **Batching**.
+
+Avoid calling `pipelineBarrier2` multiple times in a row. Every call to `pipelineBarrier2` has a non-trivial overhead. Instead, collect all your barriers (global, image, and buffer) into a single `vk::DependencyInfo` and submit them in one go.
+
+[,c++]
+----
+std::vector<vk::ImageMemoryBarrier2> imageBarriers = { /* ... */ };
+vk::MemoryBarrier2 globalBarrier = { /* ... */ };
+
+auto dependencyInfo = vk::DependencyInfo{
+    .memoryBarrierCount = 1,
+    .pMemoryBarriers = &globalBarrier,
+    .imageMemoryBarrierCount = static_cast<uint32_t>(imageBarriers.size()),
+    .pImageMemoryBarriers = imageBarriers.data()
+};
+
+commandBuffer.pipelineBarrier2(dependencyInfo);
+----
+
+By batching your barriers, you give the driver the opportunity to consolidate the cache flushes and stage stalls, ensuring that the GPU spends as little time as possible waiting and as much time as possible rendering.
+
+== Simple Engine: Optimization
+
+In `Simple Engine`, we primarily use **Image Memory Barriers** because most of our synchronization involves layout transitions (e.g., from `eColorAttachmentOptimal` to `eShaderReadOnlyOptimal`). However, we do use **Global Memory Barriers** in our `ComputeSystem` (e.g., in `physics_system.cpp`) when we need to ensure that all previous compute writes to any and all storage buffers are visible to subsequent shader stages.
+
+One area where `Simple Engine` could be further optimized is in the consolidation of these barriers. Currently, some of our systems emit their own barriers independently. In a future update, we plan to move toward a **Render Graph** architecture. This would allow the engine to collect all necessary barriers across all systems for an entire frame and batch them into a single, highly-optimized `vkCmdPipelineBarrier2` call, further reducing driver overhead and improving GPU occupancy.
+
+== Navigation
+
+Previous: xref:Synchronization/Pipeline_Barriers_Transitions/03_queue_family_ownership.adoc[Queue Family Ownership] | Next: xref:Synchronization/Timeline_Semaphores/01_introduction.adoc[Timeline Semaphores: The Master Clock]

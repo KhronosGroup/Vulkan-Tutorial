@@ -1,0 +1,55 @@
+<svg width="600" height="300" viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="600" height="300" fill="#f8f9fa" />
+
+  <!-- Title -->
+  <text x="300" y="30" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">Synchronization 2: Granular and Parallel</text>
+
+  <!-- Source Stages -->
+  <rect x="50" y="70" width="120" height="40" rx="5" fill="#e74c3c" />
+  <text x="110" y="95" font-family="Arial" font-size="12" fill="white" text-anchor="middle">TRANSFER</text>
+
+  <rect x="50" y="190" width="120" height="40" rx="5" fill="#e67e22" />
+  <text x="110" y="215" font-family="Arial" font-size="12" fill="white" text-anchor="middle">COMPUTE</text>
+
+  <!-- Granular Barriers -->
+  <rect x="250" y="70" width="100" height="40" rx="5" fill="#34495e" />
+  <text x="300" y="95" font-family="Arial" font-size="12" font-weight="bold" fill="white" text-anchor="middle">BARRIER 1</text>
+
+  <rect x="250" y="190" width="100" height="40" rx="5" fill="#34495e" />
+  <text x="300" y="215" font-family="Arial" font-size="12" font-weight="bold" fill="white" text-anchor="middle">BARRIER 2</text>
+
+  <!-- Destination Stages -->
+  <rect x="430" y="70" width="120" height="40" rx="5" fill="#2ecc71" />
+  <text x="490" y="95" font-family="Arial" font-size="12" fill="white" text-anchor="middle">VERTEX</text>
+
+  <rect x="430" y="190" width="120" height="40" rx="5" fill="#3498db" />
+  <text x="490" y="215" font-family="Arial" font-size="12" fill="white" text-anchor="middle">FRAGMENT</text>
+
+  <!-- Direct Arrows (No Crossing) -->
+  <line x1="170" y1="90" x2="250" y2="90" stroke="#e74c3c" stroke-width="2" marker-end="url(#arrowhead-red)" />
+  <line x1="350" y1="90" x2="430" y2="90" stroke="#2ecc71" stroke-width="2" marker-end="url(#arrowhead-green)" />
+
+  <line x1="170" y1="210" x2="250" y2="210" stroke="#e67e22" stroke-width="2" marker-end="url(#arrowhead-orange)" />
+  <line x1="350" y1="210" x2="430" y2="210" stroke="#3498db" stroke-width="2" marker-end="url(#arrowhead-blue)" />
+
+  <!-- Green "Fast" indication -->
+  <text x="400" y="115" font-family="Arial" font-size="10" fill="#27ae60" font-style="italic">Wait ONLY for Transfer</text>
+  <text x="400" y="235" font-family="Arial" font-size="10" fill="#2980b9" font-style="italic">Wait ONLY for Compute</text>
+
+  <!-- Markers -->
+  <defs>
+    <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e74c3c" />
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2ecc71" />
+    </marker>
+    <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e67e22" />
+    </marker>
+    <marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3498db" />
+    </marker>
+  </defs>
+</svg>

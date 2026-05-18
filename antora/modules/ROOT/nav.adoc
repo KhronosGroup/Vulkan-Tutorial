@@ -61,6 +61,28 @@
 ** xref:courses/18_Ray_tracing/05_Shadow_transparency.adoc[Shadow transparency]
 ** xref:courses/18_Ray_tracing/06_Reflections.adoc[Reflections]
 ** xref:courses/18_Ray_tracing/07_Conclusion.adoc[Conclusion]
+* Synchronization 2
+** xref:Synchronization/introduction.adoc[Introduction]
+** Anatomy of a Dependency
+*** xref:Synchronization/Anatomy_of_a_Dependency/01_introduction.adoc[Introduction]
+** Pipeline Barriers and Transitions
+*** xref:Synchronization/Pipeline_Barriers_Transitions/01_introduction.adoc[Introduction]
+** Timeline Semaphores: The Master Clock
+*** xref:Synchronization/Timeline_Semaphores/01_introduction.adoc[Introduction]
+** Frame-in-Flight Architecture
+*** xref:Synchronization/Frame_in_Flight/01_introduction.adoc[Introduction]
+** Asynchronous Compute & Execution Overlap
+*** xref:Synchronization/Async_Compute_Overlap/01_introduction.adoc[Introduction]
+** Transfer Queues & Asset Streaming Sync
+*** xref:Synchronization/Transfer_Queues_Streaming/01_introduction.adoc[Introduction]
+** Synchronization in Dynamic Rendering
+*** xref:Synchronization/Dynamic_Rendering_Sync/01_introduction.adoc[Introduction]
+** Host Image Copies & Memory Mapped Sync
+*** xref:Synchronization/Host_Image_Copies_Memory_Sync/01_introduction.adoc[Introduction]
+** Debugging with Synchronization Validation
+*** xref:Synchronization/Synchronization_Validation/01_introduction.adoc[Introduction]
+** Profiling, Batching, and Optimization
+*** xref:Synchronization/Profiling_Optimization/01_introduction.adoc[Introduction]
 * xref:90_FAQ.adoc[FAQ]
 * link:https://github.com/KhronosGroup/Vulkan-Tutorial[GitHub Repository, window=_blank]
 

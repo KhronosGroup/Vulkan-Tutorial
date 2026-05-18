@@ -1,0 +1,64 @@
+:pp: {plus}{plus}
+= Concurrent Execution and Synchronization 2
+
+To achieve true parallelism between graphics and compute, we need to talk about the Vulkan timeline. In a standard single-queue setup, everything happens sequentially—you dispatch compute, wait for it to finish, and then begin your graphics work. This is straightforward but inefficient. By using multiple queues, we can submit work to a dedicated **compute queue** and have the GPU execute it alongside a main **graphics queue**.
+
+The challenge, however, isn't just submitting the work; it's making sure it stays synchronized where it matters. If our compute dispatch is generating a texture that the graphics pass needs, we can't let the graphics start reading until the compute is done. But we *can* let the graphics do everything else—like clearing buffers, processing vertices, or even rasterizing other, unrelated objects.
+
+This is where **Synchronization 2** (`VK_KHR_synchronization2`) shines. The older Vulkan synchronization was powerful but notoriously complex and difficult to read. It relied on bitmasks for pipeline stages and access types that were often redundant. Synchronization 2 simplifies this by grouping them into more logical structures and, more importantly, it introduces a more robust way to express **dependency chains** across different queues.
+
+== Async Compute vs. Concurrent Execution
+It's important to distinguish between "overlapping" work on a single queue and "asynchronous" work on separate hardware queues.
+
+On a single queue, the GPU can still overlap work—for example, it can start a new vertex shader while fragment shaders from a previous draw are still finishing. This is **Concurrent Execution**. However, it still follows a single command stream.
+
+**Asynchronous Compute** uses separate hardware engines (ACE) to feed the compute units (CU/SM). This means the compute engine is pulling commands from a completely different memory stream than the graphics engine. This is where true parallelism happens, allowing the GPU to keep its ALUs (Arithmetic Logic Units) saturated even when the graphics engine is bottlenecked by other factors like the ROPs (Raster Output Processors) or fixed-function geometry hardware.
+
+== Queue Ownership Transfer: The Handshake
+One of the most cryptic, but essential, parts of multi-queue Vulkan is **Queue Ownership Transfer**. Most Vulkan resources (like `VkBuffer` or `VkImage`) are created with a sharing mode of `VK_SHARING_MODE_EXCLUSIVE` by default. This means they are owned by exactly one queue family at a time.
+
+To move a resource from a compute queue to a graphics queue, you must perform a "handshake" consisting of two parts:
+
+1.  **Release**: A barrier on the **source** queue that "releases" ownership.
+2.  **Acquire**: A barrier on the **destination** queue that "acquires" ownership.
+
+If you omit either part, you have **undefined behavior** and potential data corruption. Synchronization 2 makes this explicit by including the `srcQueueFamilyIndex` and `dstQueueFamilyIndex` in the barrier structures.
+
+[source,cpp]
+----
+// ON THE COMPUTE QUEUE (Source)
+vk::ImageMemoryBarrier2 releaseBarrier {
+    .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+    .srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+    .dstStageMask = vk::PipelineStageFlagBits2::eNone, // We don't care about the destination stage yet
+    .dstAccessMask = vk::AccessFlagBits2::eNone,      // Or the access mask
+    .oldLayout = vk::ImageLayout::eGeneral,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .srcQueueFamilyIndex = computeQueueFamilyIndex,
+    .dstQueueFamilyIndex = graphicsQueueFamilyIndex,
+    .image = *sharedImage // Extract handle from vk::raii::Image
+};
+// ... (subresourceRange setup)
+
+// ON THE GRAPHICS QUEUE (Destination)
+vk::ImageMemoryBarrier2 acquireBarrier {
+    .srcStageMask = vk::PipelineStageFlagBits2::eNone, // We don't care about the source stage here
+    .srcAccessMask = vk::AccessFlagBits2::eNone,      // Or the access mask
+    .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+    .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
+    .oldLayout = vk::ImageLayout::eGeneral,
+    .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    .srcQueueFamilyIndex = computeQueueFamilyIndex,
+    .dstQueueFamilyIndex = graphicsQueueFamilyIndex,
+    .image = *sharedImage // Extract handle from vk::raii::Image
+};
+// ... (subresourceRange setup)
+----
+
+Notice how the `oldLayout` and `newLayout` must **match exactly** in both barriers. This is a critical requirement. The "Release" barrier ensures the memory is **available** (written out to memory/L2 cache), and the "Acquire" barrier ensures it is **visible** (invalidating read caches on the destination engine).
+
+The real "magic" happens when we use **Semaphore-based synchronization** (using `VkSemaphore` objects to coordinate work between queues) between queues. We submit our compute workload with a "signal" semaphore, and our graphics workload with a "wait" semaphore. The GPU handles the internal scheduling, stalling the graphics queue only when it reaches the specific pipeline stage that needs the compute result. This allows the GPU's hardware scheduler to keep the compute units busy during the geometry-heavy parts of the graphics pass, effectively "hiding" the cost of the compute work.
+
+Remember, though, that not all hardware is created equal. Some mobile GPUs have unified hardware for compute and graphics, where "concurrency" might just mean the scheduler interleaved the tasks. High-end desktop GPUs, on the other hand, often have dedicated compute pipes that can run entirely in parallel with the graphics engines. Profiling is your only way to know if your orchestration is truly delivering the performance gains you expect.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_timeline_semaphores.adoc[Next: Timeline Semaphores]

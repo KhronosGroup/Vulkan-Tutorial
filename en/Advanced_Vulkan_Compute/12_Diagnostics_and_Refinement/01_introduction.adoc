@@ -1,0 +1,28 @@
+:pp: {plus}{plus}
+= Diagnostics and AI-Assisted Compute Refinement: Introduction
+
+== Overview
+
+In this final chapter, we're going to explore the modern landscape of Vulkan compute development. As our kernels become more complex and our orchestration more elaborate, the traditional methods of debugging and optimization can sometimes feel inadequate. If you've spent any time writing compute shaders, you know the frustration: your code compiles, your dispatch returns success, but your output buffer is full of zeros—or worse, your entire system hangs with a "Device Lost" error.
+
+The GPU is often described as a "**Black Box**"—a powerful processor that performs millions of operations in parallel but offers very little visibility into what's actually happening inside. Unlike C{pp} code on the CPU, you can't easily set a breakpoint, step through your logic line by line, or inspect the state of every register. To build robust and efficient compute pipelines, we need a new set of tools and a new way of thinking about the development process.
+
+== The Diagnostic Pillars
+
+To pull back the curtain on the GPU, we'll focus on two modern techniques for runtime verification:
+
+*   **GPU-Assisted Validation (GAV)**: This is a powerful feature of the Vulkan validation layers. Instead of just checking if your API calls are valid, GAV actually injects small amounts of diagnostic code directly into your shaders at runtime. This process, known as **instrumentation**, allows the layers to detect errors that would otherwise go completely unnoticed—from **Out-of-Bounds (OOB)** buffer access to invalid pointer dereferences when using **Buffer Device Address (BDA)**.
+*   **Shader printf**: We'll explore how to use standard `printf` logic inside a shader to "see" the values of your variables across thousands of parallel invocations. While it might seem primitive, in a massively parallel environment, it's often the only way to track down subtle logic errors.
+
+== AI-Assisted Development
+
+Finally, we'll look at the emerging role of **AI-Assisted Optimization**. **Large Language Models (LLMs)**—AI models trained on vast amounts of code—are becoming increasingly adept at understanding shader code and suggesting parallel-friendly refactors.
+
+Whether you're struggling to vectorize a naive loop or looking for a more efficient **Subgroup** pattern (using the **Wave** operations we learned in Chapter 4), an AI assistant can be a valuable partner in your development process. However, as we'll see, the key to using AI effectively is knowing how to "talk" to it using the specific **terms of art** we've mastered in this series—like **LDS (Local Data Store)**, **Barriers**, and **Occupancy**.
+
+== Chapter Roadmap
+
+1.  **Compute Validation**: Setting up and using GPU-Assisted Validation to catch memory errors and using `printf` for shader debugging.
+2.  **Assistant-Led Optimization**: Leveraging AI to refactor naive compute kernels into wave-aware, high-performance patterns.
+
+xref:../11_Performance_Optimization/03_divergence_audit.adoc[Previous: Divergence Audit] | xref:02_compute_validation.adoc[Next: Compute Validation]

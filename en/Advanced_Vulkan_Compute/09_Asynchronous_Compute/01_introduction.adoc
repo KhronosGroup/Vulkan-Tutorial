@@ -1,0 +1,20 @@
+:pp: {plus}{plus}
+= Asynchronous Compute Orchestration
+
+In the earlier chapters, we've focused heavily on making individual kernels as fast as possible. We've optimized memory access, leveraged subgroups, and even built entire data structures on the GPU. But there's a higher level of optimization that often goes overlooked: how we schedule these dispatches alongside the rest of the engine's workload.
+
+Modern GPUs aren't just single, monolithic processors; they are complex systems with multiple hardware engines capable of working in parallel. To understand asynchronous compute, we first have to understand the physical hardware. A typical high-performance GPU has several specialized engines:
+
+* **Graphics Engine**: The primary engine, capable of vertex processing, rasterization, and fragment shading, as well as general-purpose compute.
+* **Asynchronous Compute Engine (ACE)**: A dedicated scheduler and hardware path for compute dispatches. These can often run entirely in parallel with the graphics engine, using compute units (CUs) or streaming multiprocessors (SMs) that aren't being fully utilized by the graphics workload.
+* **Transfer/Copy Engine**: A specialized DMA (Direct Memory Access) engine for moving data between host and device memory without consuming any compute resources.
+
+Vulkan exposes these hardware engines through **Queue Families**. Each family has a set of **capabilities** (e.g., `VK_QUEUE_GRAPHICS_BIT`, `VK_QUEUE_COMPUTE_BIT`, `VK_QUEUE_TRANSFER_BIT`). While the main graphics queue family usually supports everything, a "Dedicated Compute" or "Async Compute" family might *only* support compute and transfer.
+
+By using separate compute queues from these dedicated families, we can overlap heavy compute dispatches—like path-trace denoising, physics simulations, or complex AI pathfinding—with the main graphics rendering pass. While the graphics hardware is busy processing geometry and rasterizing triangles, the compute units can be simultaneously crunching numbers for your simulation.
+
+In this chapter, we're going to move beyond the simple "one queue for all" model. We'll explore how to use Vulkan's **Synchronization 2** (`VK_KHR_synchronization2`) to orchestrate complex, concurrent workloads without causing **pipeline stalls** (where the GPU sits idle waiting for a resource). We'll also look at **Queue Priority**, a feature that allows us to tell the hardware which tasks are truly latency-critical, ensuring that a background simulation doesn't delay a time-sensitive physics update.
+
+Orchestrating these workloads requires a shift in how we think about the GPU's timeline. It's no longer just a linear sequence of commands, but a multi-lane highway where different types of traffic can move at different speeds, occasionally merging or yielding to ensure the overall throughput is maximized.
+
+xref:../08_GPU_Driven_Pipelines/04_multi_draw_indirect_mdi.adoc[Previous: Multi-Draw Indirect (MDI)] | xref:02_concurrent_execution.adoc[Next: Concurrent Execution]

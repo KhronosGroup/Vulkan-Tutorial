@@ -1,0 +1,101 @@
+:pp: {plus}{plus}
+
+= Device-Addressable Buffers: Pointer-like Flexibility
+
+== The End of Descriptor Set Hell
+
+If you've spent any time with Vulkan, you know the pain of **Descriptor Sets**. Managing layouts, updating pools, and binding sets before every draw or dispatch call is one of the most boilerplate-heavy parts of the API.
+
+But what if you didn't have to bind anything? What if you could just pass a raw 64-bit address to your shader and have it access the memory directly, just like a pointer in C{pp}? This is what **Buffer Device Address (BDA)** allows.
+
+== What is BDA?
+
+**Buffer Device Address** (available since Vulkan 1.2 and core in 1.4) allows you to query a 64-bit GPU address for any `VkBuffer`. This address is a raw pointer that can be stored in other buffers, passed to shaders via push constants, or even used to build complex, linked data structures across different memory regions.
+
+To use BDA, you must enable the `bufferDeviceAddress` feature and create your buffers with the `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`.
+
+[source,cpp]
+----
+// C++ side: Obtaining a device address
+vk::BufferDeviceAddressInfo info {
+    .buffer = *myBuffer // Extracting the handle from a vk::raii::Buffer
+};
+uint64_t myGPUAddress = device.getBufferAddress(info);
+
+// Pass myGPUAddress to a shader via a push constant!
+----
+
+== BDA in Shaders
+
+In Slang or GLSL, you can treat this 64-bit address as a raw pointer. This completely bypasses the need for descriptor sets for many use cases.
+
+[source,slang]
+----
+// Slang example of using BDA
+struct MyData {
+    float4 value;
+    MyData* next; // A raw BDA pointer!
+};
+
+// We receive the starting address as a 64-bit integer (uint64_t)
+void process(uint64_t startAddress) {
+    MyData* p = (MyData*)startAddress;
+
+    // We can traverse the structure just like in C++!
+    while (p != nullptr) {
+        doSomething(p->value);
+        p = p->next;
+    }
+}
+----
+
+=== GLSL: buffer_reference
+
+In GLSL, this requires the `GL_EXT_buffer_reference` and `GL_EXT_shader_explicit_arithmetic_types_int64` extensions. Instead of raw C{pp} pointers, you use the `buffer_reference` keyword to define "pointers" to buffer blocks.
+
+[source,glsl]
+----
+#extension GL_EXT_buffer_reference : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
+
+// Define a buffer block as a reference type
+layout(buffer_reference, std430) buffer MyData {
+    vec4 value;
+    MyData next; // Pointer-like reference to another MyData
+};
+
+layout(push_constant) uniform Constants {
+    MyData startPtr; // We receive the 64-bit address as a reference
+};
+
+void main() {
+    MyData p = startPtr;
+
+    while (uint64_t(p) != 0) {
+        doSomething(p.value);
+        p = p.next;
+    }
+}
+----
+
+While the Slang syntax is much closer to C{pp}, both produce the same low-level **SPIR-V** instructions for 64-bit address calculation and memory access.
+
+== Why BDA is a Game-Changer
+
+1.  **Zero Binding Overhead**: You can pass thousands of buffer addresses to a single shader via a single push constant or a "pointer buffer," completely bypassing the CPU cost of managing descriptor pools and sets.
+2.  **Complex Data Structures**: You can build real linked lists, trees, and graphs where nodes contain actual 64-bit pointers to other nodes, allowing for "pointer chasing" that was previously impossible.
+3.  **Heterogeneous Programming**: BDA is the foundation for SYCL's **Unified Shared Memory (USM)**. It bridges the gap between the pointer-based world of C{pp} and the explicit world of Vulkan.
+
+=== The Cost of Freedom: Safety and Performance
+
+With great power comes great responsibility. Unlike Descriptor Sets, where the Vulkan validation layers can often catch out-of-bounds access, **BDA is raw and unchecked**. If you access an invalid address or go out of bounds, you won't get a helpful error message—you'll likely trigger a **GPU hang** (where the screen freezes) or a "Device Lost" error.
+
+Performance-wise, BDA is generally as fast as standard buffer access. However, because the hardware doesn't know the size of the buffer being accessed, it can't always perform the same cache optimizations as it does with explicit descriptors. For most advanced compute tasks, the flexibility of raw pointers far outweighs these minor trade-offs.
+
+== Conclusion
+
+By combining 64-bit atomics, subgroup operations, and raw buffer device addresses, we have all the tools we need to build complex, autonomous data structures on the GPU. We are no longer limited by the "flat array" model of traditional compute.
+
+In the next chapter, we'll see how to take this a step further and use these structures to drive the entire rendering pipeline directly from the GPU: **Indirect Dispatch and GPU-Driven Pipelines**.
+
+xref:03_global_atomic_management.adoc[Previous: Global Atomic Management] | xref:../08_GPU_Driven_Pipelines/01_introduction.adoc[Next: Indirect Dispatch]

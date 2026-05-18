@@ -1,0 +1,66 @@
+:pp: {plus}{plus}
+
+= Memory Consistency: Slang Barriers and Pipeline Stalls
+
+In the previous sections, we've explored the "what" and "where" of synchronization. Now, we'll focus on the "how"—specifically, how to balance safety with performance to keep your GPU's pipeline full.
+
+== The All-In-One Barrier: GroupMemoryBarrierWithGroupSync
+
+Most developers start with Slang's `GroupMemoryBarrierWithGroupSync()`. This is a high-level function that combines two critical operations:
+
+1.  **Execution Sync**: It forces every thread in the current workgroup to wait at this line. No thread can proceed until its neighbors have also reached the barrier.
+2.  **Memory Barrier**: It ensures that all memory writes performed by the workgroup (to both shared and global memory) are made available and visible.
+
+This function is essentially the "Safe Mode" of synchronization. Use it when you need to be 100% sure that all data is ready for the next step of an algorithm.
+
+=== GLSL: The Explicit Barriers
+
+In GLSL, you don't have a single "magic" function that does everything. Instead, you have to be explicit about what you are synchronizing. This is where many bugs creep in, but it's also where you can find performance wins.
+
+[source,glsl]
+----
+// The GLSL equivalent of Slang's GroupMemoryBarrierWithGroupSync()
+memoryBarrierShared(); // Make shared memory writes available/visible
+barrier();             // Wait for all threads to reach this point
+----
+
+If you are working with **Global Memory** (SSBOs), `barrier()` alone is not enough! You must also call `memoryBarrierBuffer()` to ensure that your writes to the buffer are actually visible to other threads before they proceed past the barrier.
+
+[source,glsl]
+----
+// Ensuring global memory is ready for other threads in the workgroup
+memoryBarrierBuffer();
+barrier();
+----
+
+Vulkan 1.4 further refines this with **Memory Semantics**, allowing you to specify exactly which "domain" (Uniform, Buffer, Image, or Shared) you are synchronizing, avoiding the "sync everything" penalty of a general barrier.
+
+== The Cost of Syncing
+
+Synchronization is not free. Every time you call a barrier, you are essentially telling the GPU: "Stop what you are doing and wait."
+
+*   **Workgroup Barriers** are expensive because they involve many threads (e.g., 256 or 1024). The hardware must track all these threads and ensure they have all reached the same point.
+*   **Pipeline Stalls**: If some threads finish their work quickly but others are delayed by slow memory fetches, the fast threads sit idle, wasting potential **TFLOPS** (trillions of floating-point operations per second).
+
+=== Reducing the Impact
+
+To minimize the performance penalty of synchronization, consider these strategies:
+
+1.  **Batch Your Work**: Try to do as much work as possible between barriers. One large kernel with two barriers is often faster than two small kernels with one barrier each.
+2.  **Double-Buffering Shared Memory**: Instead of reading and writing to the same shared memory array (which requires a barrier), use two arrays. Write to `A` while reading from `B`, then swap.
+3.  **Atomic Operations**: For simple tasks like incrementing a global counter, use `InterlockedAdd` (which Slang inherits from HLSL). **Atomic operations** handle synchronization at the hardware level, which is often much faster than a manual barrier because they are "uninterruptible" by other threads.
+
+== Fine-Grained Control in Vulkan 1.4
+
+Modern Vulkan (1.3+) and Synchronization 2 allow for even more granular control. In your shader, you can use more specific barrier types if your language supports them:
+
+*   **`GroupMemoryBarrier()`**: Only synchronizes memory, without forcing an execution sync.
+*   **Subgroup Barriers**: Synchronizing within a bundle of 32/64 threads (a **subgroup**) is significantly faster than synchronizing an entire workgroup because it doesn't need to involve the GPU's global scheduler.
+
+== What's Next?
+
+We've covered the fundamentals of how GPUs execute code and how they manage memory. But there is a hidden layer of performance that many developers miss.
+
+In the next chapter, we'll dive into **Subgroup Operations**. By learning how to communicate between threads *within* a bundle, we can bypass shared memory altogether and perform high-speed data exchange directly through registers.
+
+xref:03_shared_memory_lds.adoc[Previous: Shared Memory (LDS)] | xref:../04_Subgroup_Operations/01_introduction.adoc[Next: Why Subgroups Matter]

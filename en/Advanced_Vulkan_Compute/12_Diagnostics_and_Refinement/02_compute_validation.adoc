@@ -1,0 +1,71 @@
+:pp: {plus}{plus}
+= Compute Validation and GPU-Assisted Debugging
+
+Debugging a compute shader is notoriously difficult. Unlike CPU code, you can't easily set a breakpoint or step through your logic line by line. Most errors—like an out-of-bounds buffer access—will simply result in garbage data or, in the worst-case scenario, a "Device Lost" error that provides almost no information about what went wrong.
+
+== GPU-Assisted Validation (GAV)
+
+This is where **GPU-Assisted Validation** (GAV) comes in. Part of the standard Vulkan Validation Layers, GAV works by injecting small amounts of diagnostic code directly into your shaders at runtime. This **instrumentation** allows the layers to track and report errors that would otherwise be invisible.
+
+=== Enabling GAV in C++
+To enable GAV, you configure the `vk::ValidationFeaturesEXT` structure when creating your Vulkan instance.
+
+[source,cpp]
+----
+// Enabling GPU-Assisted Validation via RAII
+std::vector<vk::ValidationFeatureEnableEXT> enabledFeatures = {
+    vk::ValidationFeatureEnableEXT::eGpuAssisted,
+    vk::ValidationFeatureEnableEXT::eGpuAssistedReserveBindingSlot
+};
+
+vk::ValidationFeaturesEXT validationFeatures {
+    .enabledValidationFeatureCount = static_cast<uint32_t>(enabledFeatures.size()),
+    .pEnabledValidationFeatures = enabledFeatures.data()
+};
+
+vk::InstanceCreateInfo createInfo {
+    .pNext = &validationFeatures,
+    // ... other setup ...
+};
+----
+
+=== What GAV Detects
+* **Out-of-Bounds Access**: If you try to read from `data[100]` when the buffer only has 50 elements, GAV will catch it.
+* **Invalid Pointers**: When using **Buffer Device Address (BDA)**, GAV can detect if you're dereferencing a null or invalid pointer.
+* **Uninitialized Descriptors**: It ensures that every descriptor your shader touches has been correctly bound and initialized.
+
+== Shader Printf: Seeing Inside the Kernel
+
+While GAV is great for catching errors, sometimes you just need to see the values of your variables. This is where `debugPrintfEXT` (from the `GL_EXT_debug_printf` extension) becomes your best friend.
+
+=== In the Shader (Slang)
+Slang supports `printf` directly, which maps to the underlying Vulkan extension.
+
+[source,slang]
+----
+// Using printf in a compute shader
+void computeMain(uint3 globalID : SV_DispatchThreadID) {
+    float some_value = calculate_complex_math(globalID.x);
+
+    if (some_value < 0.0f) {
+        // Output will appear in your application's debug callback
+        printf("Thread %d: Warning! Negative value detected: %f\n", globalID.x, some_value);
+    }
+}
+----
+
+=== In the Host Code
+To see the output from `printf`, you must:
+1. Enable the `VK_KHR_shader_non_semantic_info` extension on your device.
+2. Have a standard **Debug Messenger** callback registered. The output from your shader will arrive as a `VkDebugUtilsMessengerCallbackDataEXT` with a message ID that identifies it as a printf call.
+
+== Interpreting the Output
+
+When a validation error or a `printf` occurs, the output can be verbose. Look for:
+* **The Shader Module**: Which shader triggered the message.
+* **The Instruction Offset**: The specific SPIR-V instruction that failed.
+* **The Value**: For `printf`, this is your formatted string. For GAV, it might be the invalid index or pointer address.
+
+While GAV and `printf` have a significant performance cost, they are indispensable for development. They turn the "black box" of the GPU into a transparent environment where you can build complex, reliable compute pipelines with confidence.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_assistant_led_optimization.adoc[Next: AI-Assisted Optimization]

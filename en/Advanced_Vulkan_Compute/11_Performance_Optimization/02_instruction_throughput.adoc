@@ -1,0 +1,49 @@
+:pp: {plus}{plus}
+= Analyzing Instruction Throughput: Compute-Bound vs. Memory-Bound
+
+Every GPU kernel has a "heartbeat"—a rate at which it processes instructions and accesses memory. Understanding this heartbeat is the key to effective optimization. To do this, we need to distinguish between two primary types of bottlenecks: **Compute-Bound** and **Memory-Bound**.
+
+== The Roofline Model
+
+A powerful way to visualize this is the **Roofline Model**. Imagine a graph where the x-axis is **Arithmetic Intensity** (the ratio of math operations to memory bytes accessed) and the y-axis is **Performance** (GFLOPS).
+
+The "roof" of this model is determined by the hardware's peak theoretical performance.
+
+* If your kernel has low arithmetic intensity (lots of memory access, little math), it's trapped on the "slope" of the roof—it's **Memory-Bound**.
+* If your kernel has high arithmetic intensity, it hits the flat part of the roof—it's **Compute-Bound**.
+
+== Identifying the Bottleneck
+
+To identify these bottlenecks, you need to look at **Hardware Metrics** using profiling tools like NVIDIA Nsight, AMD Radeon GPU Profiler (RGP), or Intel VTune.
+
+=== Compute-Bound Kernels
+A **Compute-Bound** kernel is one where the hardware's arithmetic units (**ALUs**) are fully occupied. These kernels are characterized by:
+
+* **High ALU Utilization**: The ALUs are active for a large percentage of the time.
+* **Low Memory Throughput**: The memory bus is relatively idle.
+* **Fix**: Simplify your math, use **Mixed Precision**, or leverage specialized units like **Cooperative Matrices**.
+
+=== Memory-Bound Kernels
+A **Memory-Bound** kernel is one where the ALUs are often idle, waiting for data from VRAM. These kernels show:
+
+* **Low ALU Utilization**: The arithmetic units are "stalled" waiting for memory.
+* **High VRAM Throughput**: You're hitting the hardware's bandwidth limits.
+* **Fix**: Improve **Memory Coalescing**, use **Shared Memory (LDS)** to reuse data, or use **Subgroup Operations** to share data without touching VRAM.
+
+== Understanding Stall Reasons
+
+Modern profilers can tell you *why* a wavefront is stalled. Common reasons include:
+
+* **Instruction Fetch Stall**: The hardware can't fetch the next instruction fast enough (rare for compute).
+* **Execution Stall**: The ALUs are busy with a long-running instruction (like a complex transcendental function).
+* **Memory Dependency Stall**: The most common stall—the wavefront is waiting for a `load` from VRAM to complete.
+
+== Latency Hiding and Occupancy
+
+As we discussed in Chapter 2, the GPU hides memory latency by switching between active wavefronts. This is why **Occupancy** is so important. If you have low occupancy, the GPU might run out of "work" to do while it's waiting for memory, leading to idle ALUs and poor performance.
+
+However, be careful! Higher occupancy isn't always better. If your occupancy is too high, you might increase **Cache Contention**, where different wavefronts are constantly evicting each other's data from the L1 or L2 caches. Finding the "sweet spot" for occupancy is a critical part of the tuning process.
+
+Optimization is an iterative process. You profile, identify the bottleneck, apply a targeted fix, and then profile again. This is how you eventually arrive at a truly optimized solution that makes the most of the GPU's massive parallel potential.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_divergence_audit.adoc[Next: Divergence Audit]

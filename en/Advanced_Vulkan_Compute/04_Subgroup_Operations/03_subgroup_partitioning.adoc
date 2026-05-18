@@ -1,0 +1,73 @@
+:pp: {plus}{plus}
+
+= Subgroup Partitioning: Ballot and Match
+
+== Beyond Lockstep Execution
+
+In the previous section, we saw how threads in a subgroup can share data. But what happens when threads in the same subgroup want to do different things? This is where **Subgroup Partitioning** comes in.
+
+On a GPU, all threads in a subgroup (the SIMD bundle) execute the same instruction at the same time. When you have an `if` statement, some threads might take the "true" branch while others take the "false" branch. The hardware handles this by "masking out" the threads that shouldn't execute the current instruction. This is called **Branch Divergence**, and as we discussed in Chapter 2, it can be a major performance killer.
+
+Subgroup partitioning tools like **Ballot** and **Match** allow you to "see" these masks and use them to optimize your code.
+
+== Subgroup Ballot
+
+A **Ballot** operation asks a boolean question to every thread in the subgroup and returns a **bitmask** (a sequence of bits where each bit represents a thread) where each bit represents the answer from one thread.
+
+[source,slang]
+----
+// Does this thread have a valid result?
+bool hasResult = computeIsSuccessful();
+
+// Get a bitmask of all threads in the subgroup that have a valid result
+uint4 activeMask = WaveActiveBallot(hasResult);
+----
+
+In Slang (and Vulkan SPIR-V), a ballot returns a `uint4` (128 bits) to support subgroups up to 128 threads wide, though 32 or 64 is more common.
+
+Once you have this mask, you can use bitwise operations to make decisions:
+
+*   `WaveActiveCountBits(hasResult)`: How many threads are active? (Slang provides a convenient shorthand for this)
+*   `countbits(activeMask)`: Low-level bit count on the mask.
+*   `WavePrefixCountBits(hasResult)`: What is my **rank** (the number of active threads with a lower index) among active threads?
+
+This is incredibly useful for **Stream Compaction**. If only 5 threads out of 32 have data to write to a buffer, they can use these operations to calculate exactly which index in the output buffer they should write to, without any atomic operations!
+
+== Subgroup Match
+
+While `Ballot` works on booleans, **Match** works on values. It finds all threads in the subgroup that have the *same value* for a given variable.
+
+[source,slang]
+----
+// Every thread has a 'key' (e.g., a material ID or a hash)
+uint myKey = ...;
+
+// Get a mask of all threads that have the same key as me
+uint4 sameKeyMask = WaveMatch(myKey);
+----
+
+This is a specialized operation (often requiring Vulkan 1.1 or specific extensions) that is a game-changer for **Global Atomic Reduction** (combining atomic operations from multiple threads into one).
+
+Imagine 32 threads all trying to add to the same global counter. Normally, this would result in 32 serialized atomic operations. With `WaveMatch`, the threads can identify which of them are hitting the same address, pick one **"leader"** thread (one thread that acts on behalf of the group) to perform a single atomic add for the whole group, and then distribute the result back.
+
+== Subgroup Elect
+
+The simplest form of partitioning is `WaveIsFirstLane()`. it returns `true` for exactly one thread (or **lane**) in the subgroup (usually the one with the lowest active ID) and `false` for all others.
+
+[source,slang]
+----
+if (WaveIsFirstLane()) {
+    // Only one thread in the subgroup performs this expensive task
+    performGlobalLogging();
+}
+----
+
+This is perfect for tasks that only need to happen once per wave, such as writing a debug message or updating a global timestamp.
+
+== Using Masks for Flow Control
+
+By combining these operations, you can write "wave-aware" code that adapts to how the threads are branching. Instead of just letting the hardware mask out threads, you can explicitly check the `activeMask` and skip entire blocks of code if no threads are interested, or use the mask to re-order work to minimize divergence.
+
+In the next section, we'll look at how these same subgroup concepts apply to accessing memory and resources through **Non-Uniform Indexing**.
+
+xref:02_cross_invocation_communication.adoc[Previous: Shuffles and Broadcasts] | xref:04_non_uniform_indexing.adoc[Next: Non-Uniform Indexing]

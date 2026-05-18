@@ -1,0 +1,68 @@
+:pp: {plus}{plus}
+
+= The Vulkan Memory Model: Availability, Visibility, and Domain Operations
+
+In a GPU, you have thousands of threads running concurrently across multiple compute units, each with its own hierarchical caches (L1 - Level 1, L2 - Level 2, etc.) Because of this, it's not enough to simply write a value to a buffer and expect another thread to see it immediately.
+
+Instead, you need to follow a formal protocol to ensure that data written by one part of the device is available and visible to another. This protocol is defined by the **Vulkan Memory Model**.
+
+== The Three Pillars of Synchronization
+
+When you want to share data between two different operations, (e.g., a write in one thread and a read in another), you need to establish a **Happens-Before** relationship. This is done through three distinct operations:
+
+1.  **Availability Operation**: This ensures that data written to a local cache is "pushed" out to a domain that is accessible to other operations. Think of this as flushing a cache.
+2.  **Visibility Operation**: This ensures that data that is available in a shared domain is "pulled" into the local cache of the thread that needs to read it. Think of this as invalidating a local cache so it's forced to read fresh data.
+3.  **Memory Domain**: This is the common "meeting ground" where availability and visibility operations meet (usually the L2 cache or VRAM).
+
+=== The Flow of Data
+
+[source,text]
+----
+Thread A (Write) -> Availability Operation (Make Available)
+                            |
+                     [Memory Domain]
+                            |
+Thread B (Read)  <- Visibility Operation (Make Visible)
+----
+
+== Happens-Before and Execution Barriers
+
+A "Happens-Before" relationship is established when an execution barrier (like `vkCmdPipelineBarrier2`) is used to synchronize two operations. This barrier specifies:
+
+*   **srcStageMask/dstStageMask**: Which stages of the pipeline must complete before the next stages can begin.
+*   **srcAccessMask/dstAccessMask**: Which memory operations are being performed (writes vs. reads).
+
+In Vulkan 1.4, these masks have been simplified and unified with **Synchronization 2**, which we'll use throughout this tutorial. For example, a barrier between two compute dispatches might look like this:
+
+[source,cpp]
+----
+vk::BufferMemoryBarrier2 bufferBarrier {
+    .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+    .srcAccessMask = vk::AccessFlagBits2::eShaderWrite, // Availability
+    .dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+    .dstAccessMask = vk::AccessFlagBits2::eShaderRead   // Visibility
+};
+
+vk::DependencyInfo dependencyInfo {
+    .bufferMemoryBarrierCount = 1,
+    .pBufferMemoryBarriers = &bufferBarrier
+};
+// ...
+commandBuffer.pipelineBarrier2(dependencyInfo);
+----
+
+== Why You Need to Care
+
+If you skip these steps, your kernel might appear to work on one GPU but fail on another. This is because different architectures have different cache coherency strategies. NVIDIA's caches might behave differently than AMD's or Intel's.
+
+The Vulkan Memory Model is your way of telling the driver exactly what you need, so it can emit the minimal set of hardware instructions to keep your data safe without sacrificing performance.
+
+== Data Races and Undefined Behavior
+
+When two threads access the same memory location and at least one of them is a write, and they aren't synchronized by a "Happens-Before" relationship, you have a **Data Race**.
+
+In Vulkan, data races result in **Undefined Behavior**. This doesn't just mean you get the wrong value; it could mean you read old data, partially updated data, or even crash the GPU if the race condition leads to an out-of-bounds access or a malformed pointer.
+
+Next, we'll see how to apply these concepts to **Shared Memory (LDS)**, which is much faster than global VRAM.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_shared_memory_lds.adoc[Next: Shared Memory (LDS)]

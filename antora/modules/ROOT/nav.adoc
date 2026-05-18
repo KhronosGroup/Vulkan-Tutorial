@@ -149,3 +149,60 @@
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Robustness2.adoc[Robustness2]
 ** Appendix
 *** xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix]
+* Advanced Vulkan Compute
+** xref:Advanced_Vulkan_Compute/introduction.adoc[Introduction]
+** The Compute Architecture and Execution Model
+*** xref:Advanced_Vulkan_Compute/02_Compute_Architecture/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/02_Compute_Architecture/02_workgroups_and_invocations.adoc[Workgroups and Invocations]
+*** xref:Advanced_Vulkan_Compute/02_Compute_Architecture/03_occupancy_and_latency_hiding.adoc[Occupancy and Latency Hiding]
+*** xref:Advanced_Vulkan_Compute/02_Compute_Architecture/04_vulkan_1_4_scalar_layouts.adoc[Vulkan 1.4 Scalar Layouts]
+** Memory Models and Consistency
+*** xref:Advanced_Vulkan_Compute/03_Memory_Models/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/03_Memory_Models/02_vulkan_memory_model.adoc[The Vulkan Memory Model]
+*** xref:Advanced_Vulkan_Compute/03_Memory_Models/03_shared_memory_lds.adoc[Shared Memory (LDS)]
+*** xref:Advanced_Vulkan_Compute/03_Memory_Models/04_memory_consistency.adoc[Memory Consistency]
+** Subgroup Operations: The Hidden Power
+*** xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/02_cross_invocation_communication.adoc[Cross-Invocation Communication]
+*** xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/03_subgroup_partitioning.adoc[Subgroup Partitioning]
+*** xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/04_non_uniform_indexing.adoc[Non-Uniform Indexing]
+** Heterogeneous Ecosystem: OpenCL on Vulkan
+*** xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/02_setup_and_installation.adoc[Setup and Installation]
+*** xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/03_clspv_pipeline.adoc[The clspv Pipeline]
+*** xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/04_kernel_portability.adoc[Kernel Portability]
+*** xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/05_clvk_and_layering.adoc[clvk and Layering]
+** High-Level Abstraction: SYCL and Single-Source C++
+*** xref:Advanced_Vulkan_Compute/06_SYCL_and_Single_Source_CPP/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/06_SYCL_and_Single_Source_CPP/02_setup_and_installation.adoc[Setup and Installation]
+*** xref:Advanced_Vulkan_Compute/06_SYCL_and_Single_Source_CPP/03_single_source_gpgpu.adoc[Single-Source GPGPU]
+*** xref:Advanced_Vulkan_Compute/06_SYCL_and_Single_Source_CPP/04_vulkan_interoperability.adoc[Vulkan Interoperability]
+*** xref:Advanced_Vulkan_Compute/06_SYCL_and_Single_Source_CPP/05_unified_shared_memory_usm.adoc[Unified Shared Memory (USM)]
+** Advanced Data Structures on the GPU
+*** xref:Advanced_Vulkan_Compute/07_Advanced_Data_Structures/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/07_Advanced_Data_Structures/02_gpu_resident_trees.adoc[GPU-Resident Trees]
+*** xref:Advanced_Vulkan_Compute/07_Advanced_Data_Structures/03_global_atomic_management.adoc[Global Atomic Management]
+*** xref:Advanced_Vulkan_Compute/07_Advanced_Data_Structures/04_device_addressable_buffers.adoc[Device-Addressable Buffers]
+** Indirect Dispatch and GPU-Driven Pipelines
+*** xref:Advanced_Vulkan_Compute/08_GPU_Driven_Pipelines/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/08_GPU_Driven_Pipelines/02_indirect_dispatch.adoc[Indirect Dispatch]
+*** xref:Advanced_Vulkan_Compute/08_GPU_Driven_Pipelines/03_gpu_side_command_generation.adoc[GPU-Side Command Generation]
+*** xref:Advanced_Vulkan_Compute/08_GPU_Driven_Pipelines/04_multi_draw_indirect_mdi.adoc[Multi-Draw Indirect (MDI)]
+** Asynchronous Compute Orchestration
+*** xref:Advanced_Vulkan_Compute/09_Asynchronous_Compute/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/09_Asynchronous_Compute/02_concurrent_execution.adoc[Concurrent Execution]
+*** xref:Advanced_Vulkan_Compute/09_Asynchronous_Compute/03_timeline_semaphores.adoc[Timeline Semaphores]
+*** xref:Advanced_Vulkan_Compute/09_Asynchronous_Compute/04_queue_priority.adoc[Queue Priority]
+** Cooperative Matrices and Specialized Math
+*** xref:Advanced_Vulkan_Compute/10_Specialized_Math/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/10_Specialized_Math/02_cooperative_matrices.adoc[Cooperative Matrices]
+*** xref:Advanced_Vulkan_Compute/10_Specialized_Math/03_mixed_precision.adoc[Mixed Precision]
+** Performance Auditing and Optimization
+*** xref:Advanced_Vulkan_Compute/11_Performance_Optimization/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/11_Performance_Optimization/02_instruction_throughput.adoc[Instruction Throughput Analysis]
+*** xref:Advanced_Vulkan_Compute/11_Performance_Optimization/03_divergence_audit.adoc[The "Divergence" Audit]
+** Diagnostics and AI-Assisted Compute Refinement
+*** xref:Advanced_Vulkan_Compute/12_Diagnostics_and_Refinement/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/12_Diagnostics_and_Refinement/02_compute_validation.adoc[Compute Validation]
+*** xref:Advanced_Vulkan_Compute/12_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Assistant-Led Optimization]
+** xref:Advanced_Vulkan_Compute/conclusion.adoc[Conclusion]

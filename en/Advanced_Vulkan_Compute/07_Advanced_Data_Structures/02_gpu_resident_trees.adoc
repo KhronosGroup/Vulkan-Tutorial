@@ -1,0 +1,104 @@
+:pp: {plus}{plus}
+
+= GPU-Resident Trees: BVH and Octrees
+
+== Why Trees?
+
+Trees are the fundamental structure for spatial partitioning. Whether you're searching for which triangles are hit by a ray or which objects are near a particle, a linear search through every object is too slow.
+
+While trees are easy to build recursively on the CPU, they are notoriously difficult to build on the GPU because of the SIMD execution model and lack of a shared heap. However, with the right approach, a GPU can build a tree much faster than a CPU ever could.
+
+== Bounding Volume Hierarchies (BVH)
+
+A BVH is a tree where each node represents a bounding box that contains all its children. This is the heart of every ray tracing engine.
+
+Traditionally, a BVH is "flattened" into a linear array where child links are represented as array indices. On modern hardware, we can build these trees using **Radix Trees** (a space-optimized tree) or **Morton Codes**.
+
+=== The Anatomy of a BVH Node
+
+A typical **Inner Node** in a BVH must store its spatial boundaries and pointers to its children. A **Leaf Node** stores its boundaries and a list of primitives (like triangles) it contains.
+
+To save space and improve cache locality, these are often packed into a single structure:
+
+[source,slang]
+----
+struct BVHNode {
+    float3 min;           // AABB Min: The minimum corner of the bounding box
+    uint   childOrLeaf;   // Index to children OR first triangle in leaf
+    float3 max;           // AABB Max: The maximum corner of the bounding box
+    uint   count;         // Number of children (if inner) OR triangles (if leaf)
+};
+----
+
+In this layout:
+
+*   **AABB (Axis-Aligned Bounding Box)**: Represented by two points (`min` and `max`). This is the most common volume because checking if a ray hits a box is extremely fast on the GPU.
+*   **childOrLeaf**: A single 32-bit integer that points to the next level of the tree. If `count > 0`, it's a leaf node. If `count == 0`, it's an inner node and `childOrLeaf` is the index of the first child in the `nodePool` buffer.
+
+=== Building the Hierarchy: Morton Codes
+
+1.  **Morton Coding**: We map 3D positions into a 1D **space-filling curve** (the **Z-curve**). This is done by **interleaving the bits** of the X, Y, and Z coordinates. For example, if X is `010` and Y is `101`, the Morton code would be `011001` (0 from X[0], 1 from Y[0], 1 from X[1], 0 from Y[1] etc). This mapping has the magical property that points that are close in 3D space will be close in 1D space, effectively "flattening" the 3D hierarchy into a sorted list.
+2.  **Radix Sorting**: Once we have the Morton codes, we use a high-performance GPU **radix sort**. Radix sort is a non-comparative sorting algorithm that sorts numbers bit-by-bit. Because it doesn't require complex comparisons, it's incredibly efficient on SIMD hardware. Sorting the Morton codes is what actually "groups" our objects spatially.
+3.  **Hierarchy Construction**: After sorting, each thread in a compute dispatch builds one part of the tree. By looking at the first bit where two adjacent Morton codes differ, a thread can determine where a node in the tree should be split. This is known as a **Linear BVH** (LBVH), and it allows the entire tree to be built in parallel without any global locks.
+
+This process is "embarrassingly parallel" and can build a BVH for millions of triangles in just a few milliseconds.
+
+== Octrees
+
+An Octree is a tree where each node has exactly eight children, partitioning space into **octants** (the eight natural divisions of 3D space, like the corners of a cube). This is the perfect structure for fluid simulations or **voxel-based rendering** where you need to quickly find which part of space is occupied.
+
+=== The Anatomy of an Octree Node
+
+Unlike a BVH node which has a flexible number of children, a pure Octree node always represents a perfect cube that can be split into eight smaller cubes.
+
+[source,slang]
+----
+struct OctreeNode {
+    uint childIndices[8]; // Indices to the eight octants
+    float3 center;        // Center of the node's cube
+    float  extent;        // Half-width of the node's cube
+    uint   payload;       // User data (e.g., color, density, or material)
+};
+----
+
+However, storing eight 32-bit indices (32 bytes) per node can be very memory-intensive. In practice, developers often use **Pointer-Based Octrees** where only a single `firstChildIndex` is stored, and the eight children are guaranteed to be contiguous in the `nodePool`. This reduces the node size to a single index and a few bits of metadata.
+
+=== Construction Strategies: Top-Down vs. Bottom-Up
+
+*   **Bottom-Up**: Start with every object as a leaf, and use `SubgroupMatch` (from Chapter 4) to find objects that should belong to the same parent node. This is fast but requires complex sorting.
+*   **Top-Down**: Start with one root node and use global atomics to "subdivide" nodes as needed. This is more intuitive but can lead to high memory contention.
+
+== Traversing the Tree: Stacks and Bitfields
+
+Once the tree is built, how do we use it? In C{pp}, you'd use a recursive function. On the GPU, recursion is often forbidden or performs poorly because each thread has a limited amount of **Private Memory** (registers) for its call stack.
+
+Instead, we use **Stack-Based Traversal** or **Stackless Traversal**:
+
+1.  **Stack-Based**: Each thread maintains its own small array of "nodes to visit" in registers or local memory. This is fast but consumes precious registers, potentially lowering **Occupancy** (the number of active threads the hardware can run simultaneously).
+2.  **Stackless (Threaded Trees)**: Each node stores a "skip pointer" to the next node in a **Depth-First Search (DFS)** order. If a ray misses a node, it simply follows the skip pointer to bypass all that node's children. This requires zero stack space but makes the tree-building process more complex.
+
+== Implementation Challenges: The Memory Bottleneck
+
+The biggest challenge when building trees on the GPU is **Memory Management**. In a traditional C{pp} application, you'd use `malloc` or `new` to create nodes as you need them. In a compute shader, these don't exist.
+
+Why? Because traditional CPUs use a **centralized heap manager** for `malloc`, which relies on a global lock to prevent different threads from claiming the same memory. If 10,000 GPU threads all tried to call `malloc` at the same time, the hardware would spend all its time waiting for the lock, leading to a massive performance collapse.
+
+Instead, we have to pre-allocate a **"node pool"** (a large buffer) and use a single atomic counter to "allocate" nodes from this pool. Each thread that needs a node simply increments the counter and uses the result as its unique index into the pool.
+
+[source,slang]
+----
+// Simple node allocation using atomics
+struct Node { ... };
+RWStructuredBuffer<Node> nodePool;
+RWStructuredBuffer<uint> nodeCounter;
+
+uint allocateNode() {
+    uint index;
+    InterlockedAdd(nodeCounter[0], 1, index);
+    return index;
+}
+----
+
+While this works, it can be slow if thousands of threads are all hitting the same counter. In the next section, we'll look at how **64-bit Atomics** and **Global Atomic Management** can optimize this process for massive scale.
+
+xref:01_introduction.adoc[Previous: Introduction to Advanced Data Structures] | xref:03_global_atomic_management.adoc[Next: Global Atomic Management]

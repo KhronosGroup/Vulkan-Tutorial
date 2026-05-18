@@ -1,0 +1,47 @@
+:pp: {plus}{plus}
+
+= Multi-Draw Indirect (MDI): Bridging Compute to Graphics
+
+== Bridging the Gap
+
+Throughout this chapter, we've focused on how to make compute shaders more autonomous. But the final goal of most graphics applications is... well, graphics. We need a way to take the results of our compute-based culling or analysis and turn them into draw calls.
+
+**Multi-Draw Indirect (MDI)** is the ultimate bridge between the compute and graphics pipelines. It allows a single Vulkan command to execute an arbitrary number of draw calls, where the parameters for each draw call come from a GPU-side buffer.
+
+== How It Works: The MDI Pipeline
+
+1.  **Cull Phase (Compute)**: A compute shader analyzes your scene (e.g., millions of objects) and decides which ones are visible. It writes the `vertexCount`, `instanceCount`, etc., for each visible object into a large **Indirect Buffer**.
+2.  **Count Buffer**: The compute shader also keeps an atomic counter of how many objects were visible and writes this count into a separate **Draw Count Buffer**.
+3.  **The Draw (Graphics)**: The CPU calls `vkCmdDrawIndexedIndirectCount`. This single command tells the GPU to read its own counts and parameters and draw the objects.
+
+[source,cpp]
+----
+// The layout of the data in the MDI buffer (matching vk::DrawIndexedIndirectCommand)
+struct IndirectDrawCommand {
+    uint32_t indexCount;
+    uint32_t instanceCount;
+    uint32_t firstIndex;
+    int32_t  vertexOffset;
+    uint32_t firstInstance;
+};
+----
+
+== Why MDI is Essential for GPU-Driven Rendering
+
+Without MDI, the CPU would have to read back the visibility count from the GPU and then record a separate `vkCmdDraw` for every visible object. For a scene with 10,000 visible objects, that would be 10,000 CPU calls and 10,000 command records every frame.
+
+With MDI, those 10,000 objects are rendered with **one command**. This is how modern engines can handle massive "culling-first" architectures.
+
+== Best Practices for MDI
+
+*   **Max Draw Count**: Always specify a reasonable maximum draw count in the `vkCmdDrawIndexedIndirectCount` call to prevent the GPU from over-reading its buffers in case of errors.
+*   **Buffer Alignment**: Ensure that your indirect buffer follows the correct alignment and stride requirements for your hardware.
+*   **Combine with BDA**: Use **Buffer Device Address** (from Chapter 7) to pass object-specific data (like materials and transforms) to your shaders, bypassing traditional descriptor sets.
+
+== Conclusion: The Future is GPU-Driven
+
+By mastering **Indirect Dispatch**, **GPU-Side Command Generation**, and **Multi-Draw Indirect**, you've moved from a traditional "CPU-lead" pipeline to a modern "GPU-driven" architecture. Your applications are now more scalable, lower latency, and more efficient.
+
+In the next chapter, we'll look at how to coordinate these heavy compute workloads with your graphics rendering using **Asynchronous Compute Orchestration**.
+
+xref:03_gpu_side_command_generation.adoc[Previous: GPU-Side Command Generation] | xref:../09_Asynchronous_Compute/01_introduction.adoc[Next: Asynchronous Compute Orchestration]

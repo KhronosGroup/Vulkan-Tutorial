@@ -1,0 +1,37 @@
+:pp: {plus}{plus}
+
+= Indirect Dispatch and GPU-Driven Pipelines
+
+== Introduction
+
+In traditional Vulkan applications, the CPU is the "conductor" of the orchestra. It decides what to draw, how many threads to dispatch, and which resources to bind. The GPU is simply a "performer" that executes the commands the CPU gives it.
+
+However, as scenes become more complex—with millions of dynamic objects and complex physics—the CPU can no longer keep up. The overhead of the CPU calculating which objects are visible and then recording thousands of command buffers becomes the primary bottleneck.
+
+In this chapter, we'll explore **GPU-Driven Pipelines**, where the GPU takes over the role of the conductor.
+
+== Moving Beyond Static Dispatches
+
+A static dispatch (`vkCmdDispatch`) requires the CPU to know exactly how many workgroups to run. If you're doing something like object culling, the CPU doesn't know how many objects will pass the cull until the GPU has finished its work.
+
+With **Indirect Dispatch** (`vkCmdDispatchIndirect`), the CPU doesn't provide the dispatch size. Instead, it provides a **Vulkan Buffer** that contains the dispatch parameters. The GPU itself can then write to this buffer, effectively deciding how much work it needs to do.
+
+== The Autonomous GPU
+
+GPU-driven pipelines take this even further with features like:
+
+1.  **GPU-Side Command Generation**: Utilizing modern engine features to build entire chains of commands on the GPU, allowing it to "decide" its own execution path.
+2.  **Multi-Draw Indirect (MDI)**: A feature allowing a single compute dispatch to generate thousands of draw calls, effectively rendering an entire scene without a single CPU-side loop.
+3.  **Variable-Sized Workloads**: Handling everything from particle systems to high-fidelity culling without any CPU-side intervention.
+
+== Why This Matters
+
+By moving the "decision-making" to the GPU, we can:
+
+*   **Eliminate CPU Bottlenecks**: Free up the CPU for AI, game logic, and other tasks.
+*   **Minimize Latency**: Eliminate the round-trip delay between a GPU's compute analysis and its subsequent rendering.
+*   **Scale to Millions**: Handle scene complexity that would be impossible with traditional CPU-bound pipelines.
+
+In this chapter, we'll learn how to build these autonomous pipelines, starting with the fundamental building block: **Indirect Dispatch**.
+
+xref:../07_Advanced_Data_Structures/04_device_addressable_buffers.adoc[Previous: Device-Addressable Buffers] | xref:02_indirect_dispatch.adoc[Next: Indirect Dispatch]

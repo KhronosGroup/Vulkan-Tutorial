@@ -1,0 +1,122 @@
+:pp: {plus}{plus}
+= Working with Cooperative Matrices
+
+[NOTE]
+====
+This section requires the `VK_KHR_cooperative_matrix` extension and Vulkan 1.3 or higher. In Vulkan 1.4, this extension is promoted to the core API.
+====
+
+To understand why **Cooperative Matrices** are so powerful, we need to rethink how we approach matrix multiplication on a GPU. In a traditional "naive" loop, each invocation is responsible for calculating one or more elements of the result matrix. This involves a lot of redundant memory reads and is inherently bound by the hardware's standard floating-point throughput.
+
+Cooperative Matrices change the game by introducing a new way for a group of invocations (a **Subgroup**) to work together on a single matrix multiplication and accumulation (the **GEMM** operation). Instead of individual invocations working in isolation, the entire subgroup "cooperates" to perform the operation.
+
+== The Concept: Matrix Fragments and Subgroup Scope
+
+The key to cooperative matrices is the concept of a **Fragment**. When you declare a cooperative matrix type, the data is not stored in a single contiguous array that's accessible to any invocation. Instead, it's **distributed** across the invocations in the subgroup.
+
+Each invocation only owns a small piece of the matrix. You can think of it as the hardware "sharding" the matrix across its registers. This allows the GPU to use specialized hardware units (like **Tensor Cores** on NVIDIA or **Matrix Cores** on AMD) to perform the math directly on those registers without the overhead of traditional ALU instructions.
+
+Crucially, the operation happens at the **Subgroup Scope**. This means every invocation in a subgroup must participate in the load, multiply, and store operations simultaneously. If you try to call a cooperative matrix function inside a divergent branch where some members of the subgroup are inactive, you'll likely encounter undefined behavior or a GPU hang.
+
+The standard GEMM operation performed by these units is:
+[latexmath]
+++++
+D = A \times B + C
+++++
+Where latexmath:[A] is an latexmath:[M \times K] matrix, latexmath:[B] is a latexmath:[K \times N] matrix, and latexmath:[C, D] are latexmath:[M \times N] matrices.
+
+== Memory Layout: Strides and Majorness
+
+When loading fragments from memory, you must specify how the matrix is laid out in your buffer.
+
+1. **Row-Major vs. Column-Major**: Most Vulkan applications prefer **Row-Major** (where elements of a row are contiguous).
+2. **Stride**: This is the distance (in elements, not bytes) between the start of one row and the start of the next. For a simple tightly-packed matrix, the stride is equal to the number of columns.
+
+If your buffer contains a large matrix and you are only loading a small $16 \times 16$ tile, the stride would be the width of the *entire* large matrix.
+
+== Slang: Tiled Matrix Multiplication
+
+Slang treats cooperative matrices as first-class types, allowing for expressive tiled algorithms. Here is how you might implement a block of a larger matrix multiply:
+
+[source,slang]
+----
+import slang_vulkan_compute;
+
+// Matrix dimensions supported by the physical device
+const int M = 16;
+const int N = 16;
+const int K = 16;
+
+struct Params {
+    uint64_t addrA, addrB, addrC;
+    uint32_t strideA, strideB, strideC;
+    uint32_t totalK;
+};
+
+ParameterBlock<Params> cb;
+
+[numthreads(32, 1, 1)] // Subgroup size must match hardware expectations
+void computeMain(uint3 threadId : SV_GroupThreadID, uint3 groupId : SV_GroupID) {
+    // Each subgroup handles one (M x N) tile of the output matrix C
+    CooperativeMatrix<float, M, N> acc = 0.0f;
+
+    // Loop over the K dimension in blocks of 'K'
+    for (uint32_t k = 0; k < cb.totalK; k += K) {
+        CooperativeMatrix<float16, M, K> matA;
+        CooperativeMatrix<float16, K, N> matB;
+
+        // Load tiles from memory using Buffer Device Address
+        matA.load((float16*)cb.addrA, getOffsetA(groupId, k), cb.strideA);
+        matB.load((float16*)cb.addrB, getOffsetB(groupId, k), cb.strideB);
+
+        // Accumulate product: acc = matA * matB + acc
+        acc = mul(matA, matB) + acc;
+    }
+
+    // Store the final accumulated tile
+    acc.store((float*)cb.addrC, getOffsetC(groupId), cb.strideC);
+}
+----
+
+== GLSL: The Low-Level Win
+
+While Slang makes the code look like standard matrix math, it's helpful to see the GLSL equivalent to understand the "win" that Vulkan 1.4 provides through the `GL_KHR_cooperative_matrix` extension. Note the explicit "Use" types which hint to the compiler how to optimize register allocation.
+
+[source,glsl]
+----
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : enable
+
+// Define the fragments with explicit scopes and uses
+layout(constant_id = 0) const int M = 16;
+layout(constant_id = 1) const int N = 16;
+layout(constant_id = 2) const int K = 16;
+
+// UseA and UseB are inputs, UseAccumulator is for C and D
+coopmat<float16_t, gl_ScopeSubgroup, M, K, gl_MatrixUseA> matA;
+coopmat<float16_t, gl_ScopeSubgroup, K, N, gl_MatrixUseB> matB;
+coopmat<float, gl_ScopeSubgroup, M, N, gl_MatrixUseAccumulator> acc;
+
+void main() {
+    // Explicit loading requires byte-offset and row-stride
+    coopMatLoad(matA, dataA, offsetA, strideA, gl_CooperativeMatrixLayoutRowMajor);
+    coopMatLoad(matB, dataB, offsetB, strideB, gl_CooperativeMatrixLayoutRowMajor);
+
+    // acc = matA * matB + acc
+    acc = coopMatMulAdd(matA, matB, acc);
+
+    coopMatStore(acc, dataC, offsetC, strideC, gl_CooperativeMatrixLayoutRowMajor);
+}
+----
+
+== Hardware Constraints and Capabilities
+
+The physical dimensions (latexmath:[M, N, K]) are not arbitrary. You must query `VkPhysicalDeviceCooperativeMatrixPropertiesKHR` to find supported combinations.
+
+* **Subgroup Size**: On NVIDIA, these units typically expect a subgroup size of 32. On AMD, it might be 64. Using the wrong subgroup size in your `[numthreads]` will result in a failure to initialize the cooperative matrix types.
+* **Precision Trade-offs**: It is standard practice to use `float16` for the input matrices (A and B) to maximize throughput and save bandwidth, while using `float32` for the accumulator (C and D). This "Mixed Precision GEMM" provides the best balance of speed and numerical stability.
+* **Alignment**: Memory addresses passed to `.load()` and `.store()` usually require specific alignment (e.g., 16 bytes). Loading from a misaligned address can lead to a device lost error.
+
+By leveraging these specialized units, you can achieve throughput that is often an order of magnitude higher than what's possible with standard floating-point units. This makes cooperative matrices essential for any performance-critical linear algebra on the GPU.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_mixed_precision.adoc[Next: Mastering Mixed Precision]

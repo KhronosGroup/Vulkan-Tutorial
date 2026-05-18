@@ -1,0 +1,62 @@
+:pp: {plus}{plus}
+
+= Single-Source GPGPU: Introduction to SYCL and AdaptiveCpp
+
+== The Single-Source Philosophy
+
+Traditional GPU development is "dual-source": you write C{pp} for the CPU and GLSL/HLSL/Slang for the GPU. You then manually compile the GPU code, load it as SPIR-V, and manage the data exchange between the two.
+
+SYCL is **single-source**. Your entire application is written in standard C{pp}. A SYCL-aware compiler (like Clang or AdaptiveCpp) splits the code into CPU and GPU parts during compilation.
+
+== Anatomy of a SYCL Program
+
+A typical SYCL program consists of three main components:
+
+1.  **Queue**: Represents the device (e.g., a Vulkan GPU) where you want to execute work.
+2.  **Buffer**: A high-level abstraction for data that can be accessed by both the CPU and the GPU.
+3.  **Command Group**: A block of code (usually a lambda) that defines the work to be done.
+
+[source,cpp]
+----
+// Simple SYCL vector addition
+sycl::queue q; // Automatically picks a device (e.g., Vulkan GPU)
+
+// Allocate data
+std::vector<float> a(1024), b(1024), c(1024);
+// ... initialize a and b ...
+
+{
+    // High-level buffer abstraction
+    sycl::buffer<float> bufA(a), bufB(b), bufC(c);
+
+    q.submit([&](sycl::handler& h) {
+        // Accessors tell SYCL the dependencies (SYCL handles memory transfers!)
+        sycl::accessor accA(bufA, h, sycl::read_only);
+        sycl::accessor accB(bufB, h, sycl::read_only);
+        sycl::accessor accC(bufC, h, sycl::write_only);
+
+        // Define the kernel using a lambda
+        h.parallel_for(sycl::range<1>(1024), [=](sycl::id<1> idx) {
+            accC[idx] = accA[idx] + accB[idx];
+        });
+    });
+}
+// When the scope ends, bufC is destroyed and data is automatically synced back to 'c'
+----
+
+== AdaptiveCpp and the Vulkan Backend
+
+**AdaptiveCpp** is a leading SYCL implementation that excels at targeting multiple backends. When you use the Vulkan backend:
+
+1.  **SPIR-V Translation**: The compiler translates the C{pp} kernel lambda into a SPIR-V blob that uses Vulkan-style descriptor sets and storage buffers.
+2.  **Runtime Orchestration**: The AdaptiveCpp runtime calls the Vulkan API (e.g., `vkCmdBegin`, `vkCmdDispatch`, `vkQueueSubmit`) to execute your kernels.
+
+This means your code is standard SYCL, but the performance is driven by the same low-level Vulkan features we've discussed: **Vulkan Memory Model**, **Subgroup Operations**, and **Pipeline Barriers**.
+
+== Advantages for Complex Simulations
+
+In a complex simulation (like fluid dynamics), you might have hundreds of interconnected kernels. Manually managing the `VkSemaphore` and `VkFence` objects for every dependency is a nightmare. SYCL's **Directed Acyclic Graph** (**DAG**—a structure representing tasks and their dependencies) of **accessors** (objects that define how kernels read/write to buffers) automatically calculates the optimal Vulkan synchronization for you, ensuring that work is executed as concurrently as possible without race conditions.
+
+In the next section, we'll look at how to take this high-level code and integrate it with a native Vulkan application through **Interoperability**.
+
+xref:02_setup_and_installation.adoc[Previous: Setup and Installation] | xref:04_vulkan_interoperability.adoc[Next: Vulkan Interoperability]

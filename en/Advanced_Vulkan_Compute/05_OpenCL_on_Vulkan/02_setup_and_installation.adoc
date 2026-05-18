@@ -1,0 +1,76 @@
+:pp: {plus}{plus}
+
+= Setup and Installation: Preparing Your Environment
+
+To run OpenCL code on Vulkan, you'll need a few extra tools in your development kit. The two most important are **clspv** (the compiler) and **clvk** (the runtime library).
+
+== Where to Get the Tools
+
+Both `clspv` and `clvk` are open-source projects hosted on GitHub. They are not currently part of the standard Vulkan SDK, so you will need to fetch and build them yourself, although pre-built binaries are occasionally available for certain platforms.
+
+- **clspv**: link:https://github.com/google/clspv[github.com/google/clspv]
+- **clvk**: link:https://github.com/khrnxs/clvk[github.com/khrnxs/clvk]
+
+== Building clspv
+
+`clspv` is a complex tool built on top of LLVM and Clang. Because of this, it has several dependencies:
+
+1.  **CMake**: Version 3.17.2 or higher.
+2.  **Python 3**: Used for various build scripts.
+3.  **Git**: For cloning the repository and its dependencies.
+4.  **C{pp} Compiler**: A modern compiler (GCC 7+, Clang 5+, or MSVC 2017+).
+
+To build `clspv`, follow these steps:
+
+[source,bash]
+----
+git clone --recursive https://github.com/google/clspv.git
+cd clspv
+mkdir build && cd build
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja clspv
+----
+
+Once the build is complete, you'll have a `clspv` executable in your `build` folder. Add this to your system's `PATH` for easier access.
+
+== Building clvk
+
+`clvk` is simpler to build than `clspv`, as it primarily needs a Vulkan driver and headers to function.
+
+[source,bash]
+----
+git clone --recursive https://github.com/khrnxs/clvk.git
+cd clvk
+mkdir build && cd build
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja
+----
+
+This will produce a shared library (e.g., `libOpenCL.so.1` on Linux or `OpenCL.dll` on Windows).
+
+== Platform-Specific Notes
+
+While the build process is similar across platforms, there are a few important considerations:
+
+=== Linux
+
+On Linux, ensure you have the Vulkan SDK or your distribution's Vulkan development packages installed (`vulkan-headers`, `libvulkan-dev`). Most developers prefer using `clvk` as a **Vulkan Layer** or by explicitly linking against the `clvk` shared library.
+
+=== Windows
+
+For Windows, you'll need Visual Studio. `clspv` can be built using the Visual Studio command prompt. To use `clvk`, you can rename the generated `OpenCL.dll` to `clvk.dll` (to avoid conflicts with any system-wide OpenCL drivers) and load it dynamically in your application.
+
+=== Android
+
+Android is one of the most popular platforms for `clvk`. To build for Android, you'll need the **Android NDK**. You can cross-compile `clspv` on your host machine to generate SPIR-V binaries, and then include the `clvk` library as a native shared library in your Android project's `jniLibs` folder.
+
+== Verifying Your Setup
+
+Once you've built the tools, verify your installation:
+
+1.  **clspv**: Run `clspv --version` in your terminal. It should report the current version and its LLVM/Clang base.
+2.  **clvk**: You can use a tool like `clinfo` to check if `clvk` is correctly recognized as an OpenCL platform on your system. Run it with `LD_LIBRARY_PATH=/path/to/clvk/build clinfo` on Linux to see if the Vulkan-backed OpenCL device appears.
+
+Now that your environment is ready, let's look at how to use `clspv` to compile your first OpenCL kernel for Vulkan.
+
+xref:01_introduction.adoc[Previous: OpenCL on Vulkan] | xref:03_clspv_pipeline.adoc[Next: The clspv Pipeline]

@@ -1,0 +1,49 @@
+:pp: {plus}{plus}
+= Multi-Layer Composition
+
+Rendering a **Quad-View** is only half the battle. Once we have our four views (base eyes and high-detail insets), we need to get them to the **OpenXR Compositor** for the final display. This is where **Multi-Layer Composition** comes in.
+
+== The Layer Stack: Modular Imagery
+
+In OpenXR, you don't just submit a single image. You submit an array of **Composition Layers**. Think of the compositor as a "Super-GPU" that performs a final, high-priority pass to stack these images together before they hit the display.
+
+1.  **Base Layer**: Your standard 3D world (usually indices 0 and 1 of your quad-view).
+2.  **Inset Layer**: The high-detail foveal data (indices 2 and 3).
+3.  **Overlay Layer**: A flat HUD or menu that stays perfectly sharp, regardless of the 3D scene's resolution.
+
+[source,cpp]
+----
+// 1. Defining Composition Layers in OpenXR
+XrCompositionLayerProjection baseLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+XrCompositionLayerProjection insetLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+
+// 2. Submitting both layers to xrEndFrame
+// The order matters: the last layer in the list is drawn on top.
+std::vector<XrCompositionLayerBaseHeader*> layers;
+layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&baseLayer));
+layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&insetLayer));
+
+XrFrameEndInfo frameEndInfo{XR_TYPE_FRAME_END_INFO};
+frameEndInfo.layerCount = layers.size();
+frameEndInfo.layers = layers.data();
+xrEndFrame(session, &frameEndInfo);
+----
+
+== Masking and Blending
+
+How does the compositor know where to show the high-detail inset? Each layer specifies a **Projection View**. For quad-views, the inset layer's views will have a smaller FOV but the same camera pose.
+
+The compositor uses the FOV tangents to mathematically "place" the high-detail image over the low-detail one. It then performs a **Soft Edge Blend** to ensure the transition between the 20 PPD and 60 PPD regions is invisible to the user.
+
+== Resource Synchronization: Multi-Swapchain Pacing
+
+From an engine perspective, this means we are now managing **Multiple Swapchains** per frame.
+
+*   **Pacing**: We must call `xrWaitSwapchainImage` and `xrAcquireSwapchainImage` for *each* swapchain (Base and Inset).
+*   **Vulkan Sync**: Our command buffer recording must ensure that all four views are rendered and transitioned before we call `xrReleaseSwapchainImage`.
+
+This multi-layer approach is incredibly flexible. Each layer can even have its own resolution and bit-depth, allowing the compositor to optimize the final image based on the specific needs of each part of the scene.
+
+In the next chapter, we'll see how to push our performance even further by looking at **Variable Rate Shading** (VRS).
+
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/02_primary_stereo_with_insets.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/04_incorporating_into_the_engine.adoc[Next]

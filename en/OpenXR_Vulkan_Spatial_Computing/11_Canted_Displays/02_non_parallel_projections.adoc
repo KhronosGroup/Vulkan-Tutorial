@@ -1,0 +1,52 @@
+:pp: {plus}{plus}
+= Calculating Asymmetric Frustums for Wide-FOV Lenses
+
+When you query `xrLocateViews`, the OpenXR runtime returns two pieces of information for each eye: a `pose` (position and orientation) and a `fov` (field of view). While many developers are tempted to simply use a fixed FOV and an eye-offset, this approach will fail on headsets with canted lenses.
+
+== The Tangent Frustum: Mapping Angles to Pixels
+
+To understand why OpenXR uses tangents, we must look at how a camera sees the world. A standard field of view is just an angle. But GPUs work with **Clip Space**—a box from -1 to 1. To get from a 3D world to a 2D box, we need the tangents of the FOV angles.
+
+The `fov` provided by OpenXR is expressed as four tangents: `angleLeft`, `angleRight`, `angleUp`, and `angleDown`.
+
+*   **Symmetric (Desktop)**: Left = -Right, Up = -Down. The optical center is in the middle.
+*   **Asymmetric (XR)**: Left != -Right. The optical center is shifted to align with the physical lens.
+
+== Building the Matrix
+
+To build a proper 4x4 projection matrix from these tangents using `vulkan-hpp`, we use the following logic:
+
+[source,cpp]
+----
+// Constructing an asymmetric projection matrix from OpenXR FOV tangents
+glm::mat4 createProjectionMatrix(const XrFovf& fov, float zNear, float zFar) {
+    const float tanLeft = tan(fov.angleLeft);
+    const float tanRight = tan(fov.angleRight);
+    const float tanUp = tan(fov.angleUp);
+    const float tanDown = tan(fov.angleDown);
+
+    const float tanWidth = tanRight - tanLeft;
+    const float tanHeight = tanUp - tanDown;
+
+    glm::mat4 projection(0.0f);
+    projection[0][0] = 2.0f / tanWidth;
+    projection[1][1] = 2.0f / tanHeight;
+
+    // The "Shift" components: These align the frustum with the lens optical center
+    projection[2][0] = (tanRight + tanLeft) / tanWidth;
+    projection[2][1] = (tanUp + tanDown) / tanHeight;
+
+    projection[2][2] = zFar / (zNear - zFar);
+    projection[2][3] = -1.0f;
+    projection[3][2] = -(zFar * zNear) / (zFar - zNear);
+    return projection;
+}
+----
+
+== Canted Displays: The Rotation Problem
+
+On headsets like the Valve Index or Pimax, the display panels themselves are rotated outward (canted). This means your **View Matrices** (the eye's position and rotation) are also different for each eye.
+
+When you use **Multiview**, you must push an array of projection matrices and an array of view matrices to your Slang shaders. If you try to use a single "stereo" matrix with a fixed offset, the world will appear warped and uncomfortable because the GPU is drawing a rectilinear world for a non-rectilinear display.
+
+xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/03_viewport_swizzling.adoc[Next]

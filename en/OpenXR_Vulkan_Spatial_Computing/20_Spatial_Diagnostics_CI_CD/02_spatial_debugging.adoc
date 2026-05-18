@@ -1,0 +1,39 @@
+:pp: {plus}{plus}
+= Spatial Debugging: Peering into the Black Box
+
+Debugging a spatial engine is fundamentally different from a standard 2D application. Because the XR runtime and its internal compositor are often black boxes, it can be hard to determine if a rendering error is in your engine, the OpenXR handshake, or the compositor's own reprojection logic. To solve this, we use **Spatial Debugging**.
+
+== The Concept: Object Tagging
+
+The **XR_EXT_debug_utils** extension allows you to "label" your OpenXR resources. This is functionally identical to Vulkan's `VK_EXT_debug_utils`. By assigning names to your **Action Sets**, **Spaces**, and **Swapchains**, you can see these names in external tools rather than just raw memory addresses.
+
+[source,cpp]
+----
+// Tagging an OpenXR swapchain for easier debugging
+XrDebugUtilsObjectNameInfoEXT nameInfo{XR_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+nameInfo.objectType = XR_OBJECT_TYPE_SWAPCHAIN;
+nameInfo.objectHandle = reinterpret_cast<uint64_t>(xrSwapchain);
+nameInfo.objectName = "Main World Spatial Swapchain";
+
+// Now, tools like RenderDoc will display this name for the resource
+xrSetDebugUtilsObjectNameEXT(instance, &nameInfo);
+----
+
+== RenderDoc for Spatial Engines
+
+**RenderDoc** is the gold standard for Vulkan debugging, and it provides excellent support for modern spatial pipelines.
+
+1.  **Multi-View Inspection**: You can inspect each layer of your multiview swapchain individually. If one eye is black but the other is rendering, RenderDoc can show you the state of each `SV_ViewID` invocation.
+2.  **Resource State Inspection**: You can verify that your `vk::RenderingInfo` has the correct `viewMask` and that your **Synchronization 2** barriers are actually waiting for the correct stages.
+3.  **Compositor Insights**: Some advanced headsets allow RenderDoc to capture the compositor's final warped and blended frame, letting you see exactly how your layers are being manipulated.
+
+== Frame Analysis: Finding the Stutter
+
+In spatial computing, a "Bug" is often not a crash, but a **Dropped Frame**. A single dropped frame can cause a perceptible "stutter" that breaks immersion.
+
+*   **GPU Profiling**: Use tools like **NVIDIA Nsight Graphics** or **Radeon GPU Profiler** to see if your **Late Latching** wait is taking too long.
+*   **OpenXR Trace**: Most runtimes provide a tracing tool (like the Meta Quest Metrics Tool or SteamVR System Report) that shows **Compositor Pacing**. If your "App GPU Time" is low but the "Compositor Frame Missed" count is high, you likely have a synchronization race condition in your **Wait-Acquire-Release** loop.
+
+By instrumenting your code with debug labels and utilizing frame analysis tools, you can ensure your spatial experience remains rock-steady and comfortable for the user.
+
+xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/03_automated_qa.adoc[Next]

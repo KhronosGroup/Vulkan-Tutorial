@@ -1,0 +1,15 @@
+:pp: {plus}{plus}
+= Canted Displays and Asymmetric Frustums
+
+In a standard desktop renderer, we typically assume that the two virtual cameras (the "eyes") are parallel to each other. This is known as a **Parallel Projection** model. However, many modern high-end headsets—such as the Pimax or Valve Index—utilize a **Canted Display** architecture. In these devices, the physical screens and lenses are tilted outward to provide a wider **Field of View (FOV)**.
+
+This mechanical canting introduces a significant layer of complexity to our rendering pipeline. We can no longer assume that the view matrices are simple lateral offsets of each other. Instead, each eye has its own unique orientation and an **Asymmetric Frustum**—where the focal point is not in the center of the image.
+
+In this chapter, we will explore how to handle these non-parallel architectures by:
+1.  **Decomposing the XR Pose**: Understanding how to use `XrView` data to build proper 4x4 matrices that account for the canting angle.
+2.  **Calculating Asymmetric Frustums**: Using the OpenXR `fov` tangents to build projection matrices where the "center" is shifted to align with the optical axis.
+3.  **Optimizing with Viewport Swizzling**: Utilizing the **VK_NV_viewport_swizzle** extension (or its Vulkan 1.4 equivalents) to optimize how these non-rectilinear projections are rasterized.
+
+By mastering these concepts, your engine will be compatible with the entire spectrum of spatial hardware, from mobile VR headsets with parallel screens to ultra-wide FOV enthusiast hardware.
+
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/02_non_parallel_projections.adoc[Next]

@@ -1,0 +1,75 @@
+:pp: {plus}{plus}
+= RAII Resource Integration
+
+Once we have our raw `VkImage` handles from OpenXR, we need to integrate them into our engine's Resource Acquisition Is Initialization (**RAII**) framework. Our engine uses the `vk::raii` namespace, which provides high-level C++ wrappers that automatically manage the lifetime of Vulkan objects.
+
+However, there is a catch: `vk::raii` objects typically assume they own the resource and will attempt to destroy it when they go out of scope. Because the XR runtime owns these swapchain images, we must ensure that our engine does not accidentally call `vkDestroyImage` on them.
+
+== The Ownership Contract: "Lent, Not Given"
+
+When we receive a `VkImage` from `xrEnumerateSwapchainImages`, we are entering into a legal contract with the XR runtime.
+
+*   **We can**: Bind the image as a color attachment, transition its layout, and write to it with our shaders.
+*   **We cannot**: Destroy the image, change its allocation flags, or attempt to free its memory.
+
+If our engine attempts to call `vkDestroyImage` (which a standard `vk::raii::Image` would do in its destructor), we will likely crash the entire XR system—including the headset runtime and possibly our own graphics drivers.
+
+== Non-Owning Image Wrappers
+
+The simplest way to handle this in `vulkan-hpp` is to treat the `VkImage` handles as non-owning `vk::Image` objects. While we lose the automatic cleanup of the image itself, we still gain the benefit of the type-safe C++ API.
+
+We then create our own `vk::raii::ImageView` for each image. Unlike the image itself, the **Image View** is something our application creates and owns, so it can (and should) be managed by our RAII system.
+
+[source,cpp]
+----
+// Wrapping the raw handles into our engine's per-frame data
+struct XrFrameBuffer {
+    vk::Image image; // Non-owning handle
+    vk::raii::ImageView imageView = nullptr; // RAII owned by us
+};
+
+std::vector<XrFrameBuffer> framebuffers;
+for (const auto& xrImg : xrImages) {
+    XrFrameBuffer fb;
+    fb.image = vk::Image(xrImg.image);
+
+    // Note: If using multiview, the view type might be e2DArray instead of e2D
+    vk::ImageViewCreateInfo viewInfo({}, fb.image, vk::ImageViewType::e2D,
+                                     format, {}, {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+
+    fb.imageView = vk::raii::ImageView(device, viewInfo);
+    framebuffers.push_back(std::move(fb));
+}
+----
+
+== Integrating with Dynamic Rendering
+
+Because we are using **Dynamic Rendering** (introduced in Vulkan 1.3 and core in 1.4), we don't need to wrap these images into `VkFramebuffer` objects. Instead, we can directly reference the `vk::raii::ImageView` in our `vk::RenderingAttachmentInfo`.
+
+[source,cpp]
+----
+vk::RenderingAttachmentInfo colorAttachment{};
+colorAttachment.imageView = *framebuffers[imageIndex].imageView;
+colorAttachment.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+colorAttachment.clearValue = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+
+vk::RenderingInfo renderingInfo({}, renderRect, 1, 0, 1, &colorAttachment);
+commandBuffer.beginRendering(renderingInfo);
+----
+
+== Handling the Lifetime: Hybrid Destruction
+
+In our engine architecture, we keep these `XrFrameBuffer` objects alive for the duration of the `XrSwapchain`'s existence. When the user closes the application or switches environments, we destroy the `XrSwapchain` via `xrDestroySwapchain`.
+
+This leads to a **Hybrid Destruction** flow:
+1.  **Manual Destruction**: `xrDestroySwapchain` signals to the runtime that it can reclaim its VRAM.
+2.  **RAII Destruction**: Our `XrFrameBuffer` structures go out of scope, causing their `vk::raii::ImageView` members to automatically call `vkDestroyImageView`.
+3.  **Safety**: The non-owning `vk::Image` handles disappear without any Vulkan call, fulfilling our contract with the runtime.
+
+This hybrid approach—using raw handles for external resources and RAII for internal ones—is a common pattern when interfacing Vulkan with external runtimes like OpenXR, CUDA, or video decoders.
+
+In the next section, we will look at the **Memory Ownership Lifecycle**, where we master the delicate dance of waiting, acquiring, and releasing these images during our frame loop.
+
+xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/02_external_image_negotiation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/04_memory_ownership_lifecycle.adoc[Next]

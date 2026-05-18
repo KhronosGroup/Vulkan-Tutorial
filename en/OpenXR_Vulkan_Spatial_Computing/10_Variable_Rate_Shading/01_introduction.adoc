@@ -1,0 +1,16 @@
+:pp: {plus}{plus}
+= Variable Rate Shading (VRS) for Peripheral Optimization
+
+The core challenge of high-fidelity spatial computing is the sheer number of pixels we need to push. With headsets moving toward 4K-per-eye resolutions at 90Hz or 120Hz, simply rendering the entire scene at full resolution is often computationally prohibitive. However, human vision provides us with a unique optimization opportunity: **Foveated Rendering**.
+
+Our eyes only perceive high detail in a very small central area called the **fovea**. As we move toward the periphery of our vision, our ability to resolve fine detail drops off significantly. In this chapter, we will explore how to leverage **Variable Rate Shading (VRS)**—a core feature of Vulkan 1.4—to intelligently reduce fragment processing in these peripheral areas without sacrificing perceived quality.
+
+Variable Rate Shading allows us to decoupling the shading rate from the pixel rate. Instead of running a fragment shader once for every pixel, we can tell the hardware to run it once for a group of pixels (e.g., a 2x2 or 4x4 tile). This "coarse shading" significantly reduces the **ALU** (Arithmetic Logic Unit) load on the GPU, which is often the primary bottleneck in complex spatial shaders.
+
+We will focus on two primary strategies:
+1.  **Static Peripheral Optimization**: Reducing shading rates at the edges of the lens where optical distortion and chromatic aberration already obscure detail.
+2.  **Dynamic Gaze-Driven Shading**: Using eye-tracking telemetry to center the high-resolution region wherever the user is currently looking.
+
+By the end of this chapter, you will understand how to integrate the **VK_KHR_fragment_shading_rate** extension (now part of the Vulkan 1.4 core) into your spatial pipeline and how to manage shading rate maps that update in real-time.
+
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/02_fragment_density_control.adoc[Next]

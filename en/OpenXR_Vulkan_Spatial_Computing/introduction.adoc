@@ -1,0 +1,57 @@
+:pp: {plus}{plus}
+= OpenXR and Vulkan 1.4 Spatial Computing: Introduction
+
+Welcome to the frontiers of spatial computing. In this tutorial series, we are going to bridge the gap between traditional 2D engine architecture and the immersive, low-latency requirements of Virtual Reality (VR), Augmented Reality (AR), and Mixed Reality (MR)—collectively known as XR.
+
+== Prerequisites
+
+Before beginning this tutorial, you should have a solid foundation in both the Vulkan API and engine architecture. Specifically, we assume you have completed:
+
+1.  **xref:00_Introduction.adoc[The Core Vulkan Tutorial]**: You should be comfortable with the core concepts of Vulkan, including instance creation, physical devices, logical devices, and the basic graphics pipeline.
+2.  **xref:Building_a_Simple_Engine/introduction.adoc[Building a Simple Engine]**: This series builds directly upon the code and architectural patterns established in the engine tutorial. We will be using the `Simple Engine` codebase as our starting point.
+3.  **Modern C{pp} and RAII**: We utilize `vulkan-hpp` and RAII (Resource Acquisition Is Initialization) throughout the series. You should be familiar with these patterns to follow the C{pp} integration sections.
+
+== The OpenXR Ecosystem: Runtimes and Loaders
+
+Before we dive into the code, it is important to understand the two core components that make OpenXR work: the **Loader** and the **Runtime**.
+
+1.  **The OpenXR Loader**: This is a small, vendor-neutral library that your application links against. Its primary responsibility is to act as a traffic cop. When your engine starts, the loader looks at the system's registry or environment variables to find the currently active XR runtime and redirects all your API calls to it.
+2.  **The OpenXR Runtime**: This is the heavy lifter provided by the hardware manufacturer (such as Meta, Valve, Microsoft, or the open-source Monado project). The runtime contains the actual implementation of the OpenXR spec, including the drivers for the cameras, displays, and tracking sensors.
+
+To follow this tutorial, you will need to have an OpenXR-compatible environment set up on your development machine. This typically involves installing the SDK and ensuring a runtime is active.
+
+[TIP]
+====
+For the most up-to-date installation instructions and to download the necessary headers and loader libraries, we highly recommend visiting the official **link:https://github.com/KhronosGroup/OpenXR-SDK-Source[Khronos OpenXR-SDK-Source]** repository and following the **link:https://www.khronos.org/registry/OpenXR/specs/1.1/html/xrspec.html[OpenXR Specification]** or the excellent **link:https://www.openxr-tutorial.com/[OpenXR Tutorial]** for platform-specific setup guides.
+====
+
+== Why OpenXR?
+
+In the early days of XR, developers had to write custom backends for every headset on the market. OpenXR changed all that by providing a cross-platform, high-performance API that allows a single application to run on devices ranging from the Meta Quest to the Valve Index and the Microsoft HoloLens.
+
+But OpenXR isn't just a wrapper. It is a sophisticated state machine that manages hardware poses, predictive frame timing, and specialized swapchains that are owned by the XR runtime itself. To use it effectively, we have to rethink how our engine handles its main loop, its memory, and its synchronization.
+
+== The Vulkan 1.4 Advantage
+
+Vulkan 1.4 brings several critical features to the table that are particularly powerful for spatial computing:
+
+* **Timeline Semaphores**: Essential for the complex, cross-process synchronization required between your engine and the XR compositor.
+* **Dynamic Rendering**: Provides a flexible, lightweight rendering path for stereo views, avoiding the rigid state of legacy Render Passes.
+* **Synchronization 2**: Simplifies the ownership transfers and barriers needed for low-latency late latching.
+* **Maintenance Extensions**: Providing better control over memory and resource visibility across hardware boundaries.
+
+== What We Will Build
+
+Throughout this series, we will cover the entire lifecycle of an XR frame:
+
+1.  **The Handshake**: Connecting OpenXR to our Vulkan context using LUID matching and mandatory extensions.
+2.  **Resource Management**: Wrapping runtime-owned images into our RAII-based engine abstractions.
+3.  **The Predictive Loop**: Mastering frame timing to ensure that what the user sees matches exactly where their head is located at the moment of display.
+4.  **Spatial Shaders**: Using Slang to author efficient multiview and foveated rendering shaders.
+5.  **Advanced Sensing**: Ingesting environmental meshes and using ML inference to refine spatial data.
+
+By the end of this tutorial, you won't just have a working XR application; you will have a deep understanding of the architectural patterns required for high-performance spatial computing in the modern Vulkan ecosystem.
+
+Let's get started with the first step: the OpenXR-Vulkan 1.4 Handshake.
+
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Next]

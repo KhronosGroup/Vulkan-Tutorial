@@ -1,0 +1,48 @@
+:pp: {plus}{plus}
+= Per-Pixel Masking: Stable Compositing
+
+Even with a perfect semantic mask, compositing virtual objects with the real world is physically complex. The edges where a virtual asset meets a real-world object often appear "jittery" or suffer from "haloing"—a visual artifact where the background camera feed bleeds into the virtual foreground. To solve this, we use stable **Per-Pixel Masking** and high-fidelity compositing.
+
+== The Concept: The Compositing Equation
+
+In standard rendering, we use simple alpha blending to combine images. In Mixed Reality (**MR**), our "background" is the live camera feed (passthrough). To achieve realistic occlusion, we must apply our semantic mask as a **Gating Function**.
+
+1.  **Hard Occlusion**: A binary decision (0 or 1). While simple, this leads to aliased, jagged edges that shimmer as the user's head moves.
+2.  **Soft Occlusion**: A smooth gradient at the boundaries. By "feathering" the mask, we can blend the virtual and real worlds naturally, hiding the slight imperfections of the ML segmentation pass.
+
+== Implementing Stencil-Based Masking
+
+In our Vulkan engine, we can use the **Stencil Buffer** to perform high-speed masking. This is more efficient than performing complex branching in a fragment shader, as the hardware can discard pixels before they ever reach the shading stage.
+
+[source,cpp]
+----
+// Configuring stencil masking with vulkan-hpp
+vk::StencilOpState stencilOp{
+    .failOp = vk::StencilOp::eKeep,
+    .passOp = vk::StencilOp::eReplace,
+    .depthFailOp = vk::StencilOp::eKeep,
+    .compareOp = vk::CompareOp::eAlways,
+    .compareMask = 0xFF,
+    .writeMask = 0xFF,
+    .reference = 0x1 // Mark real-world occluders with 0x1
+};
+
+// 1. Fill the stencil buffer using the ML segmentation mask
+cmd.setStencilReference(vk::StencilFaceFlagBits::eFrontAndBack, 0x1);
+cmd.draw(6, 1, 0, 0); // Full-screen quad or mesh-based occluder
+
+// 2. Render virtual scene where stencil is NOT 0x1
+cmd.setStencilCompareMask(vk::StencilFaceFlagBits::eFrontAndBack, 0xFF);
+cmd.setStencilReference(vk::StencilFaceFlagBits::eFrontAndBack, 0x1);
+// CompareOp::eNotEqual ensures we only draw on virtual pixels
+----
+
+== Temporal Stability: The Edge Jitter Problem
+
+Because ML masks are generated frame-by-frame, they can slightly flicker due to camera noise or changes in lighting. This creates **Temporal Instability** at the occlusion edges.
+
+To fix this, our engine implements **Temporal Reprojection**. We take the mask from the previous frame, re-project it using the current head pose (from OpenXR's predicted display time), and blend it with the new mask. This ensures that the boundary between reality and virtuality stays rock-steady, which is essential for maintaining user immersion and preventing motion sickness.
+
+By combining semantic understanding with stable per-pixel masking, we create an environment where virtual objects feel physically "locked" into the user's room.
+
+xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/02_ml_driven_segmentation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/04_incorporating_into_the_engine.adoc[Next]

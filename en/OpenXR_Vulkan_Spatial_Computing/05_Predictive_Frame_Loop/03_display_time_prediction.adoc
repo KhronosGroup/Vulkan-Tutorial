@@ -1,0 +1,56 @@
+:pp: {plus}{plus}
+= Display Time Prediction
+
+The key to a stable and immersive spatial experience is aligning our engine's internal state with the future point in time when the user will actually see the frame. This is where `predictedDisplayTime` from `XrFrameState` comes into play. We must use this timestamp for two critical tasks: **Locating the User's Head (the View)** and **Calculating our Simulation (Physics and Animation)**.
+
+== 1. Locating the User (`xrLocateViews`)
+
+When we render our views, we need to know exactly where the user's eyes will be. If we use the "current" head pose, the frame will appear to lag because the head will have moved further by the time the frame is displayed. This is known as **Motion-to-Photon Latency**.
+
+We use `xrLocateViews` to ask the runtime to predict the user's pose for the future `displayTime`.
+
+[source,cpp]
+----
+XrViewLocateInfo viewLocateInfo{XR_TYPE_VIEW_LOCATE_INFO};
+viewLocateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+viewLocateInfo.displayTime = frameState.predictedDisplayTime;
+viewLocateInfo.space = xrAppSpace;
+
+XrViewState viewState{XR_TYPE_VIEW_STATE};
+uint32_t viewCountOutput;
+std::vector<XrView> views(viewCount, {XR_TYPE_VIEW});
+xrLocateViews(xrSession, &viewLocateInfo, &viewState, viewCount, &viewCountOutput, views.data());
+----
+
+The resulting `XrView` array contains the predicted **Pose** (position and orientation) and **FOV** (Field of View) for each eye. Note that FOV can change! Some headsets use dynamic lenses that shift based on the user's focus, so we must update our projection matrices *every frame*.
+
+== 2. Simulation Alignment: Syncing Physics
+
+It's not just the camera that must be predicted; our entire world simulation must be aligned with `predictedDisplayTime`. This includes physics, animations, and particle systems.
+
+If we use a different delta time for our simulation (like a fixed 60Hz update) than for our view prediction (which is tied to the 90Hz display), the result will be a subtle but nauseating disconnect. Objects in the world will appear to "jitter" relative to the user's head movement because they are being updated on a different temporal schedule.
+
+In our engine, we should calculate our simulation's delta time based on the difference between the `predictedDisplayTime` of the current frame and the previous one.
+
+[source,cpp]
+----
+double deltaTime = static_cast<double>(currentPredictedTime - lastPredictedTime) / 1e9; // Convert nanoseconds to seconds
+engine.update(deltaTime);
+----
+
+== The Danger of Clock Drift
+
+A common mistake in XR development is to use `std::chrono::now()` or `glfwGetTime()` to drive simulation. These clocks are decoupled from the XR runtime's heartbeat.
+
+*   **System Clock**: Measures real-world wall time.
+*   **XR Clock**: Measures the display strobes of the headset hardware.
+
+Even if they start at the same time, they will eventually **Drift**. After 30 minutes of gameplay, your physics engine might be 5ms ahead or behind the display's actual refresh cycle. This drift is what causes "random" stutters and hitches that are impossible to debug if you don't use the `predictedDisplayTime` consistently.
+
+By using only the `predictedDisplayTime` provided by the XR runtime, we ensure that every element of our spatial scene—from the smallest particle to the user's own viewpoint—is perfectly synchronized with the hardware's display strobes.
+
+== Next Steps: Minimizing Latency
+
+Now that our frame loop is correctly paced and our simulation is aligned with the future, we have established the foundation for a high-quality spatial experience. However, there is still a small window of latency between the end of our command buffer recording and the absolute final moment before submission. In the next chapter, we will explore **Late Latching** and how **Timeline Semaphores** can help us shave off those final microseconds of "swim."
+
+xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/02_xr_lifecycle.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/04_incorporating_into_the_engine.adoc[Next]

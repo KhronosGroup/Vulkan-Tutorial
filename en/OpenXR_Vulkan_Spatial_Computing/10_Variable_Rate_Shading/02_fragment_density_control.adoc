@@ -1,0 +1,44 @@
+:pp: {plus}{plus}
+= Fragment Density Control and Vulkan 1.4 VRS
+
+In legacy pipelines, reducing shading quality often meant rendering to a lower-resolution buffer and upscaling, which introduced blurring and aliasing artifacts. With Vulkan 1.4, we have a much more elegant solution: **Variable Rate Shading (VRS)**.
+
+== The Concept: Decoupling Rasterization from Shading
+
+To understand VRS, you must distinguish between two parts of the graphics pipeline:
+
+1.  **Rasterization**: The process of determining which pixels are covered by a triangle.
+2.  **Shading**: The process of running a fragment shader to determine the color of those pixels.
+
+In a standard pipeline, they are 1:1. For every pixel covered, you run one fragment shader. With **VRS**, you can run one fragment shader for a *group* of pixels (e.g., a 2x2 or 4x4 block) while still keeping the high-resolution edges and depth data from the rasterizer.
+
+This allows us to maintain **Geometric Sharpness** (no aliasing on object edges) while significantly reducing the **ALU** (Arithmetic Logic Unit) cost of complex lighting and materials in areas where detail isn't needed.
+
+== Shading Rate Images: The Density Map
+
+In a spatial pipeline, we use a **Shading Rate Image**. This is a low-resolution attachment (usually 1/16th the size of the main view) where each "pixel" represents a tile of the screen.
+
+*   **Value 0x0**: 1x1 shading (Full quality).
+*   **Value 0x5**: 2x2 shading (1/4th the cost).
+*   **Value 0xA**: 4x4 shading (1/16th the cost).
+
+[source,cpp]
+----
+// Configuring the shading rate state for a spatial pipeline
+vk::PipelineFragmentShadingRateStateCreateInfoKHR shadingRateState{};
+shadingRateState.fragmentSize = {1, 1}; // Default fallback
+// We "Replace" the pipeline rate with the rate from our density image
+shadingRateState.combinerOps[0] = vk::FragmentShadingRateCombinerOpKHR::eReplace;
+shadingRateState.combinerOps[1] = vk::FragmentShadingRateCombinerOpKHR::eKeep;
+
+vk::GraphicsPipelineCreateInfo pipelineInfo{};
+pipelineInfo.pNext = &shadingRateState;
+----
+
+== Fixed Vignette Shading
+
+Because XR lenses are naturally bluer and more distorted at the edges, we can pre-calculate a "Vignette" map. The center of the lens (the "Sweet Spot") is set to 1x1, while the outer rings are set to 2x2 or 4x4. Since the user rarely looks at the extreme edges of the lens, this is essentially "Free Performance."
+
+When combined with **Multiview**, a single shading rate map can be applied to both eyes simultaneously, saving massive amounts of GPU time without affecting the user's immersion.
+
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/03_gaze_driven_logic.adoc[Next]

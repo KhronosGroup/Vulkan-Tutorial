@@ -1,0 +1,50 @@
+:pp: {plus}{plus}
+= Specialized Fragment Shaders for Synthesis
+
+To turn a 4D lightfield back into a 2D image, we use a process called **Image-Based Rendering (IBR)**. Instead of drawing triangles, we treat our 4D buffer as a dense "cloud" of light rays and selectively pull the ones that would pass through our virtual camera lens.
+
+== The Concept: Reconstructing the Wavefront
+
+To understand synthesis, imagine your virtual camera is looking into the "Light Box" we defined in the previous chapter.
+
+1.  **Ray Tracing**: For every pixel on your screen, you calculate a ray starting at your eye and passing through that pixel.
+2.  **Intersection**: You find where that ray hits the **ST plane** (position) and the **UV plane** (direction) of your lightfield.
+3.  **Synthesis**: You look up the color of the ray at those coordinates in your 4D buffer.
+
+== Quadrilinear Interpolation: The 16-Sample Lookup
+
+Because our lightfield is stored as a discrete grid, the ray we calculate will rarely hit an exact sample point. We must interpolate. In 4D, this requires **Quadrilinear Interpolation**.
+
+*   **Bilinear on ST**: Interpolate between the 4 nearest spatial neighbors.
+*   **Bilinear on UV**: Interpolate between the 4 nearest directional neighbors.
+*   **Result**: To get a single smooth pixel, you must sample **16 different rays** (4 spatial $\times$ 4 directional).
+
+[source,slang]
+----
+// Quadrilinear interpolation logic in Slang
+float4 sampleLightField(float2 st, float2 uv) {
+    // 1. Calculate floor and fractional parts for both planes
+    uint2 st0 = uint2(floor(st));
+    uint2 uv0 = uint2(floor(uv));
+    float2 stF = frac(st);
+    float2 uvF = frac(uv);
+
+    // 2. Perform ST-plane interpolation at the surrounding UV coordinates
+    // fetch() uses the linear index calculation we learned in the last chapter
+    float4 c00 = lerp(lerp(fetch(st0, uv0), fetch(st0 + uint2(1, 0), uv0), stF.x),
+                      lerp(fetch(st0, uint2(0, 1), uv0), fetch(st0 + uint2(1, 1), uv0), stF.x),
+                      stF.y);
+    // ... repeat for the other 3 UV neighbors (c10, c01, c11) ...
+
+    // 3. Perform the final UV-plane interpolation
+    return lerp(lerp(c00, c10, uvF.x), lerp(c01, c11, uvF.x), uvF.y);
+}
+----
+
+== Performance: Coalescing the Rays
+
+Because we are doing 16 lookups per pixel, we must be extremely mindful of **SIMT Coalescing**. If we are not careful with our memory layout, these 16 lookups will scatter across different DRAM pages, causing a "Memory Wall" where the GPU sits idle while waiting for data.
+
+By using the **4D Tiling** we implemented in Chapter 14, we ensure that these 16 samples are geographically close in physical VRAM. This allows the GPU to satisfy all 16 requests with just one or two cache line fetches, keeping our plenoptic synthesis running at high frame rates.
+
+xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/03_ray_traced_synthesis.adoc[Next]

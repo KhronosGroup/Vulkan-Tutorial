@@ -1,0 +1,32 @@
+:pp: {plus}{plus}
+= Mobile Mastery: Conquering the Thermal Wall
+
+Mobile spatial computing, on standalone headsets like the Meta Quest or Vive Focus, is an exercise in extreme efficiency. Unlike a desktop PC where we have hundreds of watts of power, a mobile headset must run its entire engine, tracking system, and display on a power budget of roughly 5–10 watts.
+
+On mobile, the spatial mindset is about **Efficiency**—minimizing every memory access and every pixel calculation to extract maximum performance from the silicon.
+
+== The Concept: Tile-Based Rendering (TBR)
+
+Most mobile GPUs (like those from Qualcomm, Arm, or Imagination) use a **Tile-Based Rendering** architecture. Instead of rendering the whole screen at once, the GPU splits the screen into tiny tiles (e.g., 16x16 or 32x32 pixels). It then processes each tile entirely within high-speed, low-power on-chip memory (**LDS** or **SRAM**) before writing the final result back to main memory.
+
+In mobile spatial computing, **Discarding is Winning**.
+
+1.  **Load Op**: Does the tile need to be cleared (`eClear`) or loaded from VRAM (`eLoad`)?
+2.  **Store Op**: Does the final color need to be written back to VRAM (`eStore`) or discarded (`eDontCare`)?
+
+If you don't need the depth buffer for the next frame, you MUST set its store op to `eDontCare`. This prevents the GPU from wasting battery power moving megabytes of depth data across the bus, which is the most power-hungry operation on a mobile chip.
+
+== Application SpaceWarp (ASW): Synthetic Frames
+
+To maintain a smooth 72Hz or 90Hz experience on a mobile chip, we often use **Application SpaceWarp**. This is a hardware-accelerated technique that allows the engine to render at half-framerate (e.g., 36 FPS) while the XR runtime generates every second frame synthetically.
+
+*   **How it works**: The engine provides **Motion Vectors** and a depth map to the runtime. These tell the compositor how each pixel moved since the last frame.
+*   **The Result**: The GPU only performs heavy shading work for half the frames, allowing for significantly more complex scenes and higher-fidelity spatial logic.
+
+== Efficient Spatial Sync
+
+Mobile headsets use **Unified Memory**, where the CPU and GPU share the same physical RAM. While this simplifies zero-copy hand-offs, it also means they are competing for the same **Memory Bandwidth**.
+
+To master mobile spatial computing, our engine must be highly surgical with its memory access. Every texture sample and every buffer write must be justified. By focusing on tile-local memory and synthetic frame generation, we can deliver high-quality spatial experiences that run for hours on a single battery charge.
+
+xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/02_desktop_high_end.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/04_incorporating_into_the_engine.adoc[Next]

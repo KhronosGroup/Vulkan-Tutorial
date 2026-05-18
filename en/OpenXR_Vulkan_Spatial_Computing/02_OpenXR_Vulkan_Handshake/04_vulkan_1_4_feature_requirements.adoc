@@ -1,0 +1,72 @@
+:pp: {plus}{plus}
+= Vulkan 1.4 Feature Requirements
+
+The final step in our spatial handshake is ensuring that our `VkDevice` is initialized with the correct set of features. While OpenXR can technically run on older Vulkan versions, the **Vulkan 1.4** specification is the "gold standard" for modern spatial computing. It codifies several previously optional extensions into the core API, providing a guaranteed baseline of high-performance tools.
+
+In this section, we'll look at the three mandatory "pillars" of Vulkan 1.4 that our spatial pipeline depends on.
+
+== 1. Timeline Semaphores: The Async Heartbeat
+
+In a standard application, we use binary semaphores to sync the GPU. A binary semaphore is like a single-use "go" signal. In XR, where we have complex dependencies between the CPU simulation, the GPU render, and the XR compositor (which might be in a different process), binary semaphores are too rigid.
+
+**Timeline Semaphores** provide a 64-bit monotonically increasing value. Think of them as a "Global Clock" for your GPU work. This allows us to express complex "happens-before" relationships:
+
+*   **Pacing**: We can signal that "Frame 500 is ready for composition" by simply reaching value `500` on a single timeline.
+*   **Late Latching**: We can tell the GPU to "Wait until value 501 is signaled by the CPU" before starting the final matrix update.
+*   **Cross-Process**: Because they can be exported to OS handles, timeline semaphores allow our engine and the XR runtime to stay perfectly in sync without expensive CPU read-backs.
+
+== 2. Synchronization 2: Mastering Queue Ownership
+
+The original Vulkan synchronization API was notoriously verbose and error-prone. **Synchronization 2** (`VK_KHR_synchronization2`) simplifies this by combining pipeline stages and access masks into a more unified structure (`VkDependencyInfo`).
+
+In XR, this is critical for handling **Queue Ownership Transfers**. Because the XR runtime owns the swapchain images, we must perform a "Release" operation on our queue when we're done rendering, and the runtime performs an "Acquire" on its side. Synchronization 2 makes these hand-offs explicit and readable, significantly reducing the risk of "Race Conditions" between our engine and the headset compositor.
+
+== 3. Dynamic Rendering: Ultimate Flexibility
+
+If you've followed our engine-building journey, you're already intimately familiar with **Dynamic Rendering**. In the context of spatial computing, this isn't just a convenient refactoring—it's an absolute necessity.
+
+*   **Asymmetric Views**: Most headsets use "Canted Displays" where the left and right eye frustums are not parallel. This often requires different viewport and scissor settings for each eye.
+*   **Dynamic Resolution**: To maintain a steady 90Hz, the engine might need to drop the resolution of peripheral views instantly.
+*   **No Rigid State**: By using `vkCmdBeginRendering` directly on our XR swapchain images, we avoid the heavy overhead and rigid state of legacy `VkRenderPass` and `VkFramebuffer` objects.
+
+== Enabling Vulkan 1.4 Features in RAII
+
+Vulkan 1.4 simplifies feature enablement. Instead of deep, nested `pNext` chains, we can use the unified `VkPhysicalDeviceVulkan14Features` (and its predecessors for 1.3 and 1.2) to toggle the core requirements.
+
+[source,cpp]
+----
+// Enabling mandatory features for our spatial pipeline
+vk::PhysicalDeviceVulkan13Features features13;
+features13.dynamicRendering = VK_TRUE;
+features13.synchronization2 = VK_TRUE;
+
+vk::PhysicalDeviceVulkan12Features features12;
+features12.timelineSemaphore = VK_TRUE;
+
+// Chain them together
+features13.pNext = &features12;
+
+vk::DeviceCreateInfo createInfo({},
+                                static_cast<uint32_t>(queueCreateInfos.size()), queueCreateInfos.data(),
+                                0, nullptr, // Layers (deprecated)
+                                static_cast<uint32_t>(deviceExtensions.size()), deviceExtensions.data(),
+                                nullptr); // pEnabledFeatures (use pNext instead)
+
+// Ensure we are explicitly asking for Vulkan 1.4 core features if needed
+// Note: In Vulkan 1.4, many of these are enabled by default if the version is supported,
+// but explicit enablement is still best practice for engine portability.
+createInfo.pNext = &features13;
+
+vk::raii::Device device(physicalDevice, createInfo);
+----
+
+== Summary of the Handshake
+
+We have now successfully:
+1.  Extended our `VulkanContext` to negotiate extensions with OpenXR.
+2.  Aligned our `VkPhysicalDevice` selection using the hardware LUID.
+3.  Enabled the modern Vulkan 1.4 features required for low-latency spatial rendering.
+
+With the handshake complete, we are ready to tackle the most significant architectural change in an XR engine: moving from engine-owned swapchains to **Runtime-Owned Swapchains**.
+
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/03_hardware_alignment_luid.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/05_incorporating_into_the_engine.adoc[Next]

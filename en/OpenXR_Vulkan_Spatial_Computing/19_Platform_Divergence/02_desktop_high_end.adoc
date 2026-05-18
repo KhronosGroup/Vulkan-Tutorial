@@ -1,0 +1,40 @@
+:pp: {plus}{plus}
+= Desktop High-End: Unleashing the GPU
+
+On high-end desktop platforms, our spatial engine is largely unconstrained by battery life or strict thermal limits. This allows us to focus on absolute visual fidelity, utilizing the full power of modern GPUs to drive high-resolution headsets. The goal on desktop is **Saturation**—keeping the GPU's memory bus and compute units as full as possible to deliver the most immersive experience the hardware can achieve.
+
+== The Concept: Direct Mode
+
+In a standard application, your Vulkan windows are managed by the operating system's window manager (like **DWM** on Windows). This adds a layer of latency as the OS composites your window with other desktop elements. For spatial computing, this extra latency is unacceptable.
+
+We use **Direct Mode**. This allows the XR runtime to take exclusive control of the display output, bypassing the OS desktop compositor entirely.
+
+*   **Latency Win**: By removing the OS compositor, we reduce frame delivery time by 1–2 frames, which is critical for **Motion-to-Photon** stability.
+*   **Strobe Synchronization**: Direct mode allows for perfect "display strobing." The headset's backlight flashes in precise sync with the GPU's swap signal, eliminating motion blur during rapid head movements.
+
+== HDR10 and 10-bit Color: Beyond the Screen
+
+Desktop GPUs have the bandwidth to support **High Dynamic Range (HDR)**. In XR, this is essential for physical realism. A virtual sun should be thousands of times brighter than a virtual candle. Without HDR, the engine must "tone-map" these values into the same narrow range, losing the feeling of scale.
+
+To implement this, our `VulkanContext` negotiates a 10-bit color format—such as `VK_FORMAT_A2B10G10R10_UNORM_PACK32`—with the OpenXR runtime. This provides over a billion colors, eliminating "banding" artifacts in dark spatial environments like night scenes or caves.
+
+== Leveraging High PCIe Bandwidth
+
+Because we have a high-speed **PCIe 4.0** or **5.0** link between the CPU and GPU, we can push massive amounts of data per frame without bottlenecking.
+
+*   **Uncompressed LightFields**: We can upload gigabytes of plenoptic data directly to the GPU without stalling the render loop.
+*   **Ray Tracing**: We can afford the high overhead of building **Acceleration Structures** (AS) for complex, high-poly environments every frame, enabling real-time spatial reflections and global illumination.
+
+[source,cpp]
+----
+// Configuring HDR10 for high-end desktop XR with vulkan-hpp
+vk::SwapchainCreateInfoKHR createInfo{
+    .imageFormat = vk::Format::eA2b10g10r10UnormPack32,
+    .imageColorSpace = vk::ColorSpaceKHR::eHdr10St2084EXT,
+    // ... other parameters ...
+};
+----
+
+On the desktop, the spatial mindset is about utilizing every watt and every gigabyte of bandwidth to dissolve the boundary between the user and the virtual world.
+
+xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/19_Platform_Divergence/03_mobile_mastery.adoc[Next]

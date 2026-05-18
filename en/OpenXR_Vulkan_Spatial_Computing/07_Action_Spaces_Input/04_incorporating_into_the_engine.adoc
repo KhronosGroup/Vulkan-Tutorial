@@ -1,0 +1,46 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+OpenXR's Action System requires us to move away from polling raw buttons (like `glfwGetMouseButton`) and toward an abstract, intent-based input system in `engine.cpp`. An example of this implementation can be found in link:../../../attachments/openxr_engine/xr_context.cpp[xr_context.cpp] and link:../../../attachments/openxr_engine/engine.cpp[engine.cpp].
+
+== Mapping Actions in the Engine
+
+In `engine.cpp`, we update our `Update` logic to process OpenXR actions. Instead of checking for a specific mouse button to "ThrowBall", we check for a "Grab" action.
+
+[source,cpp]
+----
+// engine.cpp
+void Engine::Update(XrTime predictedTime) {
+    if (renderer->IsXrMode()) {
+        auto& xrContext = renderer->GetXrContext();
+
+        // 1. Poll OpenXR action states (Grab, Teleport, etc.)
+        xrContext.pollActions();
+
+        if (xrContext.isActionActive("Grab")) {
+            // 2. Retrieve the spatial pose of the controller (Action Space)
+            XrPosef handPose = xrContext.getActionPose("GrabPose");
+
+            // 3. Convert the XR pose into our engine's 4x4 matrix
+            glm::mat4 handMatrix = xrPoseToMatrix(handPose);
+
+            // Spawn the ball at the controller's exact spatial location
+            ThrowBallFromHand(handMatrix);
+        }
+    } else {
+        // Standard desktop mouse input
+        if (platform->GetMouseButton(1)) {
+            ThrowBall(mouseX, mouseY);
+        }
+    }
+
+    // Standard physics/entity update
+    Update(deltaTimeMs);
+}
+----
+
+== Why These Changes?
+
+By decoupling input from physical hardware (like a specific controller's trigger), we make our engine cross-platform out of the box. Whether the user is using an Oculus Touch controller or a Valve Index "knuckle," the engine only sees the "Grab" action and the associated spatial pose, allowing us to focus on the physics of the interaction rather than the nuances of different hardware drivers.
+
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/03_space_manifolds.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/01_introduction.adoc[Next]

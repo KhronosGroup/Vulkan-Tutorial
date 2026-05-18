@@ -1,0 +1,76 @@
+:pp: {plus}{plus}
+= Incorporating ML Inference into the Engine
+
+Integrating **ML Inference** allows our `simple_game_engine` to perform high-level spatial refinement. We implement this by adding a dedicated compute pass to our `Renderer` that utilizes **Cooperative Matrices** for maximum throughput. *This is currently left as an exercise for the reader to implement.*
+
+== Integrating the Inference Pass
+
+In `renderer_rendering.cpp`, we introduce a dedicated step within our `Renderer::render()` loop. This pass must occur after we've ingested the latest sensor data but before we use that data for occlusion or physics.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::executeSpatialInference(vk::raii::CommandBuffer& cmd, uint32_t frameIndex) {
+    if (!xrMode || !mlEnabled) return;
+
+    // 1. Bind the specialized ML compute pipeline
+    // This pipeline is configured with VK_KHR_cooperative_matrix enabled
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *mlInferencePipeline);
+
+    // 2. Bind descriptors for weights, raw sensor data, and refined output
+    cmd.bindDescriptorSets(
+        vk::PipelineBindPoint::eCompute,
+        *mlPipelineLayout,
+        0,
+        *mlDescriptorSets[frameIndex],
+        nullptr
+    );
+
+    // 3. Dispatch the ML kernel
+    // We dispatch in subgroup-sized tiles (e.g., 16x16 fragments)
+    uint32_t groupsX = (inferenceWidth + 15) / 16;
+    uint32_t groupsY = (inferenceHeight + 15) / 16;
+    cmd.dispatch(groupsX, groupsY, 1);
+
+    // 4. Memory Barrier: Ensure ML results are visible to subsequent vertex/fragment stages
+    vk::MemoryBarrier2 refinementBarrier{
+        .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+        .srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eVertexAttributeInput |
+                         vk::PipelineStageFlagBits2::eFragmentShader,
+        .dstAccessMask = vk::AccessFlagBits2::eAttributeRead |
+                         vk::AccessFlagBits2::eShaderRead
+    };
+
+    vk::DependencyInfo dependencyInfo{ .memoryBarrierCount = 1, .pMemoryBarriers = &refinementBarrier };
+    cmd.pipelineBarrier2(dependencyInfo);
+}
+----
+
+== Managing ML Weights in the Engine
+
+Neural network weights are essentially large static arrays. In `resource_manager.cpp`, we treat these as a specialized asset type, loading them from disk into a high-performance `vk::raii::Buffer` with the `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`.
+
+[source,cpp]
+----
+// resource_manager.cpp
+std::shared_ptr<Buffer> ResourceManager::loadMLWeights(const std::string& path) {
+    auto rawWeights = loadBinaryFile(path);
+
+    // Create a staging buffer and then transfer to GPU-local memory
+    // for optimal cooperative matrix loading speed
+    return createGpuLocalBuffer(
+        rawWeights.size(),
+        vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        rawWeights.data()
+    );
+}
+----
+
+== Why These Changes?
+
+By placing the ML inference pass directly within our `Renderer` and using **Vulkan 1.4** synchronization (Synchronization 2), we ensure that our spatial refinement happens at the absolute last microsecond before the data is needed. This minimizes the **Motion-to-Photon** gap. Furthermore, by treating weights as standard engine resources, we can hot-reload different ML models (e.g., switching from a high-performance "Mobile" model to a high-fidelity "Desktop" model) without restarting the engine.
+
+This integration turns our engine from a simple rasterizer into a context-aware spatial platform capable of understanding and reacting to the user's physical environment.
+
+xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/03_refining_spatial_data.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/01_introduction.adoc[Next]

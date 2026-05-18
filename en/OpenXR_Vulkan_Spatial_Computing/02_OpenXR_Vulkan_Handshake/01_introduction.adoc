@@ -1,0 +1,26 @@
+:pp: {plus}{plus}
+= The OpenXR-Vulkan 1.4 Handshake: Introduction
+
+Before we can render a single pixel to an XR headset, we must first establish a "handshake" between our application, the OpenXR runtime, and the Vulkan graphics driver. This is not as simple as creating a standard Vulkan instance and passing it to a library; it requires a coordinated dance of extension negotiation and hardware verification.
+
+In this chapter, we are going to look at the three pillars of a successful spatial handshake:
+
+1.  **System Integration**: How to extend our engine's `VulkanContext` to support the mandatory OpenXR extensions, specifically `XR_KHR_vulkan_enable2`.
+2.  **Hardware Alignment**: Utilizing the Locally Unique Identifier (**LUID**) to ensure that both OpenXR and Vulkan are talking to the exact same physical GPU. This is critical for cross-process memory visibility and performance.
+3.  **Vulkan 1.4 Requirements**: Activating the modern features—like Timeline Semaphores, Dynamic Rendering, and Synchronization 2—that allow our spatial pipeline to operate with minimal latency.
+
+== The Concept of the Handshake
+
+In a standard desktop application, your engine is the boss. It creates the instance, chooses the device, and owns the swapchain. In OpenXR, the relationship is more of a partnership. The **XR Runtime** (the software that drives the headset, like SteamVR or the Oculus service) needs to know exactly how your Vulkan instance is configured so it can safely inject its own compositor layers into your rendering stream.
+
+If you don't perform this handshake correctly, you might find that you can't initialize the XR session, or worse, you'll experience massive performance drops as the hardware is forced to copy images between different GPU memory contexts.
+
+== Vulkan 1.4 benefits in OpenXR Application
+
+*   **Low-latency synchronization** between the CPU simulation and the GPU compositor.
+*   **Single-pass rendering** via multiview.
+*   **Direct-to-display submission** without the overhead of legacy render pass state.
+
+By the end of this chapter, you will have modified your engine's initialization code to be fully spatial-aware, laying the groundwork for the predictive frame loop and runtime-owned swapchains that follow.
+
+xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[Next]

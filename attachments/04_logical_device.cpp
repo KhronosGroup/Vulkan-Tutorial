@@ -146,7 +146,7 @@ class HelloTriangleApplication
 		vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
 		                                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
 		vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(
-            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
+		    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 		vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{.messageSeverity = severityFlags,
 		                                                                      .messageType     = messageTypeFlags,
 		                                                                      .pfnUserCallback = &debugCallback};
@@ -172,10 +172,12 @@ class HelloTriangleApplication
 		                        });
 
 		// Check if the physicalDevice supports the required features
-		auto features =
-		    physicalDevice
-		        .template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		auto features                 = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
+		                                                                     vk::PhysicalDeviceVulkan11Features,
+		                                                                     vk::PhysicalDeviceVulkan13Features,
+		                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
 		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria
@@ -205,11 +207,16 @@ class HelloTriangleApplication
 		auto graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
 
 		// query for Vulkan 1.3 features
-		vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-		    {},                                   // vk::PhysicalDeviceFeatures2
-		    {.dynamicRendering = true},           // vk::PhysicalDeviceVulkan13Features
-		    {.extendedDynamicState = true}        // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
-		};
+		vk::StructureChain<vk::PhysicalDeviceFeatures2,
+		                   vk::PhysicalDeviceVulkan11Features,
+		                   vk::PhysicalDeviceVulkan13Features,
+		                   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+		    featureChain = {
+		        {},                                    // vk::PhysicalDeviceFeatures2
+		        {.shaderDrawParameters = true},        // vk::PhysicalDeviceVulkan11Features
+		        {.dynamicRendering = true},            // vk::PhysicalDeviceVulkan13Features
+		        {.extendedDynamicState = true}         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+		    };
 
 		// create a Device
 		float                     queuePriority = 0.5f;

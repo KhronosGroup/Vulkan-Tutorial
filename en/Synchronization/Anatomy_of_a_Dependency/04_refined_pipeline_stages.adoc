@@ -35,7 +35,7 @@ As we move forward into the more complex parts of this series—like asynchronou
 
 In `Simple Engine`, we apply this precision-first approach in our `Renderer::Render` loop. For example, when transitioning our depth buffer from a "Depth-Only" pass (like our shadow map generation or depth pre-pass) to a "Depth-Test" pass (like our main opaque pass), we use:
 
-[,c++]
+[,cpp]
 ----
 // Depth transition in Renderer::Render
 vk::ImageMemoryBarrier2 depthToRead2{

@@ -15,7 +15,7 @@ The `PhysicsSystem` performs complex simulation tasks like integration and colli
 
 Currently, both systems follow a **sequential, blocking** pattern. For example, the physics simulation is submitted to the GPU, and the CPU immediately stalls at a fence:
 
-[,c++]
+[,cpp]
 ----
 // Sequential Physics Dispatch (Current Engine)
 physicsSystem->Update(deltaTime); // Internally calls SimulatePhysicsOnGPU
@@ -37,7 +37,7 @@ The key to allowing these workloads to overlap is the way we architect our depen
 
 For example, your graphics queue could signal a "Geometry Complete" value on its own timeline. Your compute queue could wait for that value before starting its work, while simultaneously continuing with other tasks that don't depend on the geometry.
 
-[,c++]
+[,cpp]
 ----
 // Compute queue waiting for graphics geometry completion
 auto computeWaitInfo = vk::SemaphoreSubmitInfo{
@@ -57,9 +57,40 @@ computeQueue.submit2(computeSubmit);
 
 == Submitting for Overlap
 
-Simply having multiple queues isn't enough. You also need to submit your work in a way that the hardware can actually parallelize. On most modern hardware, this means submitting your "background" compute work to a dedicated asynchronous compute queue. This queue has its own command processor and can feed tasks to the compute units independently of the main graphics queue.
+Simply having multiple queues isn't enough. You also need to submit your work in a way that the hardware can actually parallelize. On most modern hardware, this means submitting your "background" compute work to a dedicated asynchronous compute queue.
 
-By decoupling the submission of your compute work from your main graphics loop, you allow the driver to schedule them concurrently. If the graphics queue is momentarily stalled (e.g., waiting for the display or a cache flush), the compute queue can step in and keep the hardware busy.
+=== Identifying Dedicated Queues
+
+In Vulkan, queues are grouped into **Queue Families**. To get a truly asynchronous compute queue, you should look for a queue family that supports `vk::QueueFlagBits::eCompute` but NOT `vk::QueueFlagBits::eGraphics`. This ensures the hardware has a dedicated path for compute that doesn't share the same front-end command processor as the graphics unit.
+
+Here is how we identify these dedicated families in our engine:
+
+[,cpp]
+----
+uint32_t computeQueueFamilyIndex = std::numeric_limits<uint32_t>::max();
+auto queueFamilies = physicalDevice.getQueueFamilyProperties();
+
+for (uint32_t i = 0; i < queueFamilies.size(); ++i) {
+    // Look for a family that has compute but NOT graphics for true async
+    if ((queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute) &&
+        !(queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)) {
+        computeQueueFamilyIndex = i;
+        break;
+    }
+}
+
+// Fallback: if no dedicated compute family exists, use any that supports compute
+if (computeQueueFamilyIndex == std::numeric_limits<uint32_t>::max()) {
+    for (uint32_t i = 0; i < queueFamilies.size(); ++i) {
+        if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute) {
+            computeQueueFamilyIndex = i;
+            break;
+        }
+    }
+}
+----
+
+By decoupling the submission of your compute work from your main graphics loop using these dedicated queues, you allow the driver to schedule them concurrently. If the graphics queue is momentarily stalled (e.g., waiting for the display or a cache flush), the compute queue can step in and keep the hardware busy.
 
 In the next section, we'll see a concrete implementation of this pattern: async post-processing.
 

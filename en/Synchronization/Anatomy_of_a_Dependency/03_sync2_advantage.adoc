@@ -11,7 +11,7 @@ In the early days of Vulkan 1.0, defining dependencies was a fragmented and ofte
 
 To appreciate the advantage of Synchronization 2, we have to look at what we're leaving behind. In the legacy Vulkan 1.0 API, a pipeline barrier was a single function call that took three separate arrays of barriers: global, buffer, and image.
 
-[,c++]
+[,cpp]
 ----
 // Legacy Vulkan 1.0 (Still works, but we don't like it)
 vkCmdPipelineBarrier(
@@ -37,7 +37,7 @@ Synchronization 2 solves this by moving the stage masks into the barrier structu
 
 When we unify synchronization, we aren't just cleaning up the syntax. We are grouping the entire "intent" of the dependency in one place. With `vk::DependencyInfo`, each individual `vk::ImageMemoryBarrier2` or `vk::BufferMemoryBarrier2` contains its own `srcStageMask` and `dstStageMask`.
 
-[,c++]
+[,cpp]
 ----
 // Synchronization 2 (The Modern Way)
 vk::ImageMemoryBarrier2 imageBarrier{
@@ -85,7 +85,7 @@ In a real-world engine, synchronization isn't just about single transitions; it'
 
 When rendering reflections, we often need to transition multiple resources at once—for example, a color buffer and a depth buffer. In the legacy API, these would be forced into a "log jam" where both would have to wait for the union of all stages. With Synchronization 2, we can batch them while maintaining their unique requirements.
 
-[,c++]
+[,cpp]
 ----
 void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd) {
     // Transition reflection color to COLOR_ATTACHMENT_OPTIMAL
@@ -130,7 +130,7 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd) {
 
 To see the "win" here, let's look at the legacy alternative for that same `renderReflectionPass` operation. You would have been forced to combine your stage masks at the function level:
 
-[,c++]
+[,cpp]
 ----
 // Legacy Vulkan 1.0 equivalent - The "Log Jam"
 vk::ImageMemoryBarrier legacyToColor{
@@ -174,7 +174,7 @@ While `Simple Engine`'s renderer has been largely modernized to use the `pipelin
 
 If you look into `PhysicsSystem::SimulatePhysicsOnGPU`, you'll see transitions that look like this:
 
-[,c++]
+[,cpp]
 ----
 // Legacy synchronization in PhysicsSystem
 vulkanResources.commandBuffer.pipelineBarrier(

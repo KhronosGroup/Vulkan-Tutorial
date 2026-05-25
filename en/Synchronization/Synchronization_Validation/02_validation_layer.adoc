@@ -5,9 +5,14 @@
 
 The **LunarG Synchronization Validation** layer is not part of the standard `VK_LAYER_KHRONOS_validation` by default on all platforms. In many environments, you must explicitly enable it through the `vk_layer_settings.txt` file or through your engine's `vk::InstanceCreateInfo`.
 
+[TIP]
+====
+A much easier way to manage this during development is using **vkconfig** (LunarG Vulkan Configurator). This GUI tool, included with the Vulkan SDK, allows you to globally enable or disable synchronization validation with a single click, without modifying your source code or project configuration.
+====
+
 To enable it via the instance, you add the `VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT` flag to the `vk::ValidationFeaturesEXT` structure and pass it as the `pNext` of your `vk::InstanceCreateInfo`.
 
-[,c++]
+[,cpp]
 ----
 auto syncValidationFeature = vk::ValidationFeaturesEXT{
     .enabledValidationFeatureCount = 1,

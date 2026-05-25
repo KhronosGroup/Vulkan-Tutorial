@@ -7,7 +7,7 @@ One of the biggest challenges in Vulkan is knowing when it's safe to reuse or de
 
 We maintain a small allocator or freelist for transient resources (command buffers, staging buffers, descriptor sets). Each allocation is tagged with a `retireValue`.
 
-[,c++]
+[,cpp]
 ----
 struct TrackedResource {
     ResourceHandle handle{}; // your wrapper around vk objects
@@ -32,7 +32,7 @@ void gc(vk::raii::Device const& device, vk::raii::Semaphore const& timeline) {
 
 Whenever you submit work that references a resource, tag it with the same value you signal on the timeline for that submission.
 
-[,c++]
+[,cpp]
 ----
 const uint64_t submissionValue = nextSubmitValue++;
 submitCommands(cmd, /*signals*/ submissionValue);

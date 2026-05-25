@@ -11,7 +11,7 @@ With the introduction of **Vulkan 1.4**, this same efficiency is now available i
 
 The implementation involves two parts: a specialized barrier and a specific rendering setup. When you use a local read, you tell the GPU: "I want to read from an attachment, but I promise the read will only occur at the same pixel (x, y) location as the current write." This allows the hardware to keep the data on-tile.
 
-[,c++]
+[,cpp]
 ----
 // 1. Define the Dependency
 auto localReadBarrier = vk::ImageMemoryBarrier2{
@@ -48,7 +48,7 @@ commandBuffer.endRendering();
 
 In your Slang shader, you use the standard input attachment syntax. The Slang compiler will correctly target the SPIR-V instructions required for local read access. This ensures that your shader code remains clean and portable across different hardware.
 
-[,c++]
+[,cpp]
 ----
 // Slang snippet
 [[vk::input_attachment_index(0)]]

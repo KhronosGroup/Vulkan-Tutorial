@@ -13,7 +13,7 @@ Global barriers are not "evil"; they are simply a broad tool. They are excellent
 
 For example, if you are moving from a G-Buffer pass to a complex lighting pass that will read from multiple textures and buffers, a single global barrier might be more efficient than recording ten individual image and buffer barriers. Consolidating into a single global barrier reduces the driver overhead of processing the `vk::DependencyInfo` and can sometimes lead to better hardware utilization if many resources are transitioning between similar stages.
 
-[,c++]
+[,cpp]
 ----
 auto globalBarrier = vk::MemoryBarrier2{
     .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
@@ -37,7 +37,7 @@ Whether you choose global or local barriers, the most important rule for Vulkan 
 
 Avoid calling `pipelineBarrier2` multiple times in a row. Every call to `pipelineBarrier2` has a non-trivial overhead. Instead, collect all your barriers (global, image, and buffer) into a single `vk::DependencyInfo` and submit them in one go.
 
-[,c++]
+[,cpp]
 ----
 std::vector<vk::ImageMemoryBarrier2> imageBarriers = { /* ... */ };
 vk::MemoryBarrier2 globalBarrier = { /* ... */ };

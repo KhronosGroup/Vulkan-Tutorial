@@ -9,7 +9,7 @@ When the sync validation layer finds a hazard, it will emit an error message tha
 
 ----
 VALIDATION [SYNC-HAZARD-READ-AFTER-WRITE] (0x01234567)
-VUID: VUID-vkCmdDraw-None-07888
+VUID: VUID-vkCmdDraw-None-07892
 Message: Write-After-Read (WAR) hazard on Image (0x89abcdef) in VkCommandBuffer (0x12345678).
     - Current Stage: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT
     - Current Access: VK_ACCESS_2_SHADER_READ_BIT

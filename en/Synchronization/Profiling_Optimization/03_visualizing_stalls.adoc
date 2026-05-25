@@ -3,7 +3,7 @@
 
 == Hardware Profilers
 
-The most effective way to optimize your synchronization code is to see what the GPU is actually doing. We use hardware profilers like **NVIDIA Nsight Graphics**, **AMD Radeon GPU Profiler**, or **Intel Graphics Performance Analyzers** to visualize the pipeline.
+The most effective way to optimize your synchronization code is to see what the GPU is actually doing. We use hardware profilers like **NVIDIA Nsight Graphics** or **AMD Radeon GPU Profiler** to visualize the pipeline.
 
 In these tools, you can see a "Timeline" view that shows exactly when each part of the GPU (graphics cores, compute cores, transfer engine) is busy. A **Pipeline Bubble** is a gap in this timeline—a period where the hardware is idle because it's waiting for a dependency that hasn't been reached.
 

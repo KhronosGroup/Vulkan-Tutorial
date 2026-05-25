@@ -11,7 +11,7 @@ With **Dynamic Rendering**, we replace these dependencies with **Synchronization
 
 Imagine you're building a G-Buffer. You have a "Depth-Only" pass to pre-populate the depth buffer, followed by a "Main Pass" that reads from that depth buffer for early-Z testing.
 
-[,c++]
+[,cpp]
 ----
 // 1. Depth Pre-Pass
 commandBuffer.beginRendering(depthPrePassInfo);

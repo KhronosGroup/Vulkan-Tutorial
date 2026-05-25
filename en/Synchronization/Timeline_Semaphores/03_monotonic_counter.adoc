@@ -11,7 +11,7 @@ When you submit a command buffer to a queue, you associate it with a signal oper
 
 Because we can query this value from the CPU at any time using `device.getSemaphoreCounterValue`, we can build much more intelligent engine logic. For example, instead of waiting for a "Render Complete" fence, we can query the timeline and see exactly which stage the GPU is currently working on.
 
-[,c++]
+[,cpp]
 ----
 uint64_t currentValue = device.getSemaphoreCounterValue(*timelineSemaphore);
 if (currentValue >= PassValues::eShadowPassComplete) {

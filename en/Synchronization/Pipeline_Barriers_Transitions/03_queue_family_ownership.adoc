@@ -15,7 +15,7 @@ The transfer happens by recording a pipeline barrier on both queues. Crucially, 
 
 On the queue that currently owns the resource, you record a barrier that "releases" it. The `srcQueueFamilyIndex` is your current queue, and the `dstQueueFamilyIndex` is the queue you are sending it to.
 
-[,c++]
+[,cpp]
 ----
 auto releaseBarrier = vk::ImageMemoryBarrier2{
     .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
@@ -38,7 +38,7 @@ transferCommandBuffer.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCou
 
 On the target queue, you record a barrier that "acquires" the resource. The indices remain the same, but now the `srcStageMask` and `srcAccessMask` are set to `eNone` because those stages happened on a different queue.
 
-[,c++]
+[,cpp]
 ----
 auto acquireBarrier = vk::ImageMemoryBarrier2{
     .srcStageMask = vk::PipelineStageFlagBits2::eNone,
@@ -66,6 +66,11 @@ This handshake is one of the more complex parts of Vulkan synchronization, but i
 == Simple Engine: Resource Handoff
 
 In `Simple Engine`, we avoid the complexity of ownership transfers where possible by using `vk::SharingMode::eConcurrent` when creating our major buffers and images. If the hardware supports it, this allows multiple queue families (like our `transferQueue` and `graphicsQueue`) to access the same memory concurrently without an explicit "Release/Acquire" barrier.
+
+[WARNING]
+====
+While `eConcurrent` is convenient, using it for **images** can result in lower performance on some hardware implementations compared to `eExclusive` with explicit ownership transfers. For buffers, the impact is generally negligible, but for high-performance image handling, the "handshake" is often preferred.
+====
 
 However, even with `eConcurrent`, you still need to synchronize the *execution* of those queues! In `Simple Engine`, we use a dedicated **Transfer Semaphore** to ensure that our graphics queue doesn't start sampling a texture until the transfer queue has finished its work. This is handled during the `Renderer::ProcessPendingMeshUploads` call, ensuring that all background uploads are correctly "visible" to the graphics hardware before the next frame begins.
 

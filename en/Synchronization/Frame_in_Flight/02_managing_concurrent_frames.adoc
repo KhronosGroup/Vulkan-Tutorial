@@ -9,7 +9,7 @@ The purpose of a frame-in-flight system is simple: keep the GPU busy while the C
 
 We'll use a ring of per-frame data (command buffers, descriptor sets, transient buffers). Each frame has an associated timeline value that marks when it's safe to reuse those resources.
 
-[,c++]
+[,cpp]
 ----
 struct FrameContext {
     vk::raii::CommandPool   pool{nullptr};
@@ -28,7 +28,7 @@ uint64_t nextSubmitValue = 1; // monotonically increasing
 
 On each frame, choose the next `FrameContext` in the ring. Before you touch any of its resources, make sure the global timeline has advanced beyond the value at which those resources were last used.
 
-[,c++]
+[,cpp]
 ----
 FrameContext& fc = frames[currentFrameIndex];
 
@@ -73,7 +73,7 @@ fc.retireValue = frameComplete;
 
 To limit latency (e.g., only 2–3 frames in flight), wait for the value that corresponds to "the oldest in-flight frame has finished" before starting a new one. No per-frame fences necessary.
 
-[,c++]
+[,cpp]
 ----
 const uint64_t minAllowedValue = frameCompleteValueFor(currentFrameIndex - (MaxFramesInFlight - 1));
 if (minAllowedValue) {

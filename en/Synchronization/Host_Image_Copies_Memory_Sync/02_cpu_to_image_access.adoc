@@ -11,7 +11,7 @@ This is a major productivity boost. You no longer have to manage staging buffers
 
 To use this feature, you first need to check for support for the `VK_EXT_host_image_copy` extension (now part of Vulkan 1.4). Once confirmed, you can perform a copy like this:
 
-[,c++]
+[,cpp]
 ----
 // 1. Prepare the copy info
 auto copyInfo = vk::MemoryToImageCopyEXT{

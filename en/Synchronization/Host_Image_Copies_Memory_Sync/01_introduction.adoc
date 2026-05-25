@@ -7,6 +7,11 @@ For most of Vulkan's history, if you wanted to move data into an image, you had 
 
 With the arrival of **Vulkan 1.4**, we have a powerful new tool: **Host Image Copies** (`VK_EXT_host_image_copy`). This feature allows the CPU to copy data directly into a GPU-optimal image without recording or submitting a single command buffer. It's the most direct way to move data between CPU and GPU memory.
 
+[NOTE]
+====
+While Host Image Copies were promoted to core in Vulkan 1.4, support for this feature is still **optional**. You must check the `VkPhysicalDeviceHostImageCopyFeaturesEXT` (or the 1.4 equivalent) to ensure your hardware and driver support this direct path.
+====
+
 == The Synchronization Challenge
 
 While Host Image Copies simplify the "how" of moving data, they don't exempt us from the "when." Because we are moving data directly on the host (CPU), we must be extremely careful to ensure that the GPU isn't trying to use that same image while we are writing to it.

@@ -7,7 +7,7 @@ The most immediate benefit of moving to Timeline Semaphores is that you can effe
 
 In the RAII context, this configuration happens through the `vk::SemaphoreTypeCreateInfo` which is passed as the `pNext` of the standard `vk::SemaphoreCreateInfo`.
 
-[,c++]
+[,cpp]
 ----
 auto typeCreateInfo = vk::SemaphoreTypeCreateInfo{
     .semaphoreType = vk::SemaphoreType::eTimeline,
@@ -25,7 +25,7 @@ auto timelineSemaphore = vk::raii::Semaphore(device, createInfo);
 
 Wait operations on the CPU, which used to require a `vk::Fence`, now use the `vk::Device::waitSemaphores` function. This function can wait for multiple semaphores simultaneously and will return as soon as all specified values have been reached.
 
-[,c++]
+[,cpp]
 ----
 auto waitInfo = vk::SemaphoreWaitInfo{
     .semaphoreCount = 1,
@@ -43,7 +43,7 @@ The beauty here is that we can now query the current value of the semaphore at a
 
 GPU-to-GPU synchronization, which used to require binary semaphores, now happens within the `vk::SubmitInfo2` (part of Synchronization 2). You specify the timeline semaphore and the specific value that the queue must wait for before beginning execution.
 
-[,c++]
+[,cpp]
 ----
 auto waitSemaphoreInfo = vk::SemaphoreSubmitInfo{
     .semaphore = *timelineSemaphore,

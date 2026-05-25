@@ -3,7 +3,7 @@
 
 == Introduction
 
-Welcome to the **Synchronization 2** tutorial series! If you've spent any significant time with Vulkan, you've likely encountered the "Sync Wall." It’s that moment when your code runs perfectly on your development machine but flickers on another, or when you realize that your high-performance GPU is spending half its time waiting for a single, overly conservative barrier.
+Welcome to the **Synchronization 2** tutorial series! If you've spent any significant time with Vulkan, you've likely encountered the "Sync Wall." It's that moment when your code runs perfectly on your development machine but flickers on another, or when you realize that your high-performance GPU is spending half its time waiting for a single, overly conservative barrier.
 
 Synchronization is arguably the most challenging part of Vulkan, but it’s also the most powerful. It is the language we use to tell the hardware exactly how data flows through the pipeline. In this series, we are going to move beyond the legacy Vulkan 1.0 synchronization systems—those fragmented bitmasks and binary semaphores—and embrace the modern standard: **Synchronization 2** and **Timeline Semaphores**.
 

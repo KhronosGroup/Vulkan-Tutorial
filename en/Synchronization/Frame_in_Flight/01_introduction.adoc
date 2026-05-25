@@ -5,7 +5,7 @@
 
 In the early days of graphics programming, we often thought of rendering as a linear sequence: the CPU records some commands, the GPU executes them, and then the CPU waits for the GPU to finish before starting the next frame. This is simple, but it’s also incredibly slow. While the GPU is rendering, the CPU is sitting idle, and while the CPU is recording the next frame, the GPU is waiting for work.
 
-To achieve high performance, we need to overlap these two processes. This is what we call **Frame-in-Flight Architecture**. We want to have multiple frames being processed simultaneously—for example, the CPU might be recording frame 3, while the GPU is still rendering frame 2, and the display is currently showing frame 1.
+To achieve high performance, we need to overlap these two processes. This is what we call **Frame-in-Flight Architecture**. We want to have multiple frames being processed simultaneously—for example, the CPU might be recording frame 3, while the GPU is still rendering frame 2, and the display is currently showing frame 1. This concept is introduced in the base tutorial's xref:03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[Frames in flight] chapter, but here we take it to the next level using timeline semaphores.
 
 == The Synchronization Challenge
 

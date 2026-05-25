@@ -15,7 +15,7 @@ The coordination follows a simple three-step process:
 
 The beauty of the **Wait-Before-Signal** pattern we learned in Chapter 4 is that the graphics queue can be submitted *before* the transfer has even finished. As long as the graphics queue waits for the correct timeline value, the hardware will ensure the transfer completes first.
 
-[,c++]
+[,cpp]
 ----
 // Graphics Queue Submission (Wait for Transfer)
 auto waitInfo = vk::SemaphoreSubmitInfo{

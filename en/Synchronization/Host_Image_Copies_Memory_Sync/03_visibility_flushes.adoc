@@ -11,7 +11,7 @@ In the world of **Synchronization 2**, we use `vk::MemoryBarrier2` to express th
 
 The most common case is a **Host-to-Device** dependency. You write some data on the CPU and then want the GPU to read it in a shader. To do this, you use a barrier with `srcStageMask = vk::PipelineStageFlagBits2::eHost` and `dstStageMask` set to the shader stage where the image will be read.
 
-[,c++]
+[,cpp]
 ----
 auto hostToDeviceBarrier = vk::ImageMemoryBarrier2{
     .srcStageMask = vk::PipelineStageFlagBits2::eHost,
@@ -33,7 +33,7 @@ The `eHost` stage mask is a special flag that tells the GPU: "This data was upda
 
 The inverse case is a **Device-to-Host** dependency—for example, when you take a screenshot. You must ensure that the GPU has finished its rendering before the CPU starts the host copy. To do this, you record a barrier with the appropriate GPU stages as the source and `eHost` as the destination.
 
-[,c++]
+[,cpp]
 ----
 auto deviceToHostBarrier = vk::ImageMemoryBarrier2{
     .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,

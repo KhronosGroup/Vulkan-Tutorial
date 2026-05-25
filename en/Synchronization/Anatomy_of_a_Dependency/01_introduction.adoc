@@ -15,7 +15,7 @@ This chapter is designed to move you from "making it work" to "knowing why it wo
 
 *   **The Hardware Perspective**: Understanding why execution barriers alone are not enough to prevent data corruption on modern, multi-cache GPUs.
 *   **Execution vs. Memory Dependencies**: Learning how to distinguish between stopping a stage and ensuring its data is actually readable by the next one.
-*   **The Synchronization 2 Advantage**: Why the new `vk::DependencyInfo` and `vkCmdPipelineBarrier2` are more than just a syntax cleanup—they are a fundamental shift in how we express intent to the driver.
+*   **The Synchronization 2 Advantage**: Why the new `vk::DependencyInfo` and `vk::CmdPipelineBarrier2` are more than just a syntax cleanup—they are a fundamental shift in how we express intent to the driver.
 *   **Surgical Precision with Pipeline Stages**: Mastering `vk::PipelineStageFlagBits2` and `vk::AccessFlagBits2` to target specific hardware units, ensuring maximum GPU occupancy by avoiding unnecessary pipeline bubbles.
 
 By the end of this chapter, you’ll have a clear understanding of the "handshake" that must occur between any two pieces of GPU work. This foundation is crucial for everything that follows, from simple image layout transitions to complex asynchronous compute architectures.

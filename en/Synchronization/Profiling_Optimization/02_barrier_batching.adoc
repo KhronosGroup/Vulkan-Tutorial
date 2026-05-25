@@ -13,7 +13,7 @@ If you have ten different images to transition, and you record ten individual ba
 
 The `vk::DependencyInfo` structure is specifically designed for this. It allows you to provide an array of barriers of each type.
 
-[,c++]
+[,cpp]
 ----
 std::vector<vk::ImageMemoryBarrier2> imageBarriers = { /* ... multiple image transitions ... */ };
 vk::MemoryBarrier2 globalBarrier = { /* ... a broad memory dependency ... */ };

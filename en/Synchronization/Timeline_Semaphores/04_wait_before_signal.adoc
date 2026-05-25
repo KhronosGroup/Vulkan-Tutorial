@@ -11,7 +11,7 @@ Timeline Semaphores introduce the **Wait-Before-Signal** submission pattern. Thi
 
 This pattern works because Vulkan separates the **submission** of work from the **execution** of work. When you call `queue.submit2`, the driver simply adds your commands to the queue's internal buffer. The hardware's command processor then monitors the specified timeline semaphores. It will not begin executing the commands until all the "wait" values have been reached.
 
-[,c++]
+[,cpp]
 ----
 // Submit the "Waiter" first!
 auto waitInfo = vk::SemaphoreSubmitInfo{

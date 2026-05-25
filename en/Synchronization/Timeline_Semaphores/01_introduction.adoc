@@ -19,6 +19,11 @@ This simple change has profound implications for how we architect our engines:
 2.  **Wait-Before-Signal**: One of the most powerful features of Timeline Semaphores is that you can submit work to the GPU that waits for a value that hasn't even been reached yet. This allows us to decouple our submission logic from our execution logic.
 3.  **Better Debugging**: Because the value is a simple integer, we can easily log it, inspect it in a debugger, or even use it to build a visual profiler of our engine's progress.
 
+[NOTE]
+====
+One current limitation to keep in mind: **Window System Integration (WSI)**. As of the current Vulkan specification, swapchain acquire and present operations still require legacy binary semaphores and cannot yet wait on or signal timeline semaphores directly.
+====
+
 In this chapter, we are going to explore how to implement Timeline Semaphores as the "master clock" of our renderer. We'll start by looking at how to replace our legacy fences and binary semaphores, then we'll dive into the implementation of the monotonic counter and the highly efficient wait-before-signal submission pattern.
 
 Let's begin by unifying our synchronization primitives.

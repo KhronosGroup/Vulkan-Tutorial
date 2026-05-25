@@ -17,7 +17,7 @@ The implementation involves two different queues: a **Graphics Queue** for your 
 
 Using `vk::DependencyInfo` and `vk::SubmitInfo2`, this coordination is clear and precise.
 
-[,c++]
+[,cpp]
 ----
 // Compute Submit: wait for frame N graphics to finish, then run post-processing
 auto computeWaitInfo = vk::SemaphoreSubmitInfo{
@@ -46,9 +46,11 @@ computeQueue.submit2(computeSubmit);
 
 == Handling the Present
 
-The final step is the **Present** operation. On the CPU side, you must ensure that you don't present the final image until both the graphics and compute work for that frame are complete. This is usually handled by having the present operation wait for the "Post-Processing Complete" value.
+The final step is the **Present** operation. On the CPU side, you must ensure that you don't present the final image until both the graphics and compute work for that frame are complete.
 
-This pattern ensures that the graphics units are always fed with new work, while the compute units handle the final look of each frame. It's a key strategy for maximizing your engine's frame rate and keeping your GPU occupancy as high as possible.
+Specifically, because the presentation unit (WSI) doesn't yet support timeline semaphores, you must use a **binary semaphore** for the final handshake. Your compute queue signals a binary semaphore upon completion of the post-processing pass. The `vk::PresentInfoKHR` then waits on this binary semaphore before displaying the image to the screen.
+
+This three-way handshake—graphics signals compute, compute signals present—ensures that the graphics units are always fed with new work (from the *next* frame), while the compute units handle the final look of the *current* frame. It's a key strategy for maximizing your engine's frame rate and keeping your GPU occupancy as high as possible.
 
 == Implementing in Simple Engine
 

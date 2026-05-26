@@ -1,0 +1,14 @@
+:pp: {plus}{plus}
+= Tooling & The Production Pipeline
+
+== The Hidden Source of Engine Bugs
+
+There is a category of problem that every graphics programmer encounters eventually, and it is deeply frustrating because the debugging tools point in the wrong direction: an asset bug that looks like a code bug. The character's limb is pointing backward. The normal map is completely wrong. The animation drives the forearm when it should drive the upper arm. The ragdoll collapses immediately upon activation. After hours of stepping through the skinning shader, checking quaternion conventions, and verifying matrix multiplication order, you discover that the Blender export settings were wrong all along—the normals were flipped in the export, or the joint naming convention didn't match what your loader expected.
+
+This chapter is about preventing that class of problem systematically. We will establish a clear production pipeline: a sequence of steps that takes a Blender scene from the artist's workstation to a validated, engine-ready glTF asset, with checkpoints at each stage so that errors are caught as early as possible and in a context that makes them easy to diagnose.
+
+The pipeline has three stages. The first is **authoring**: the Blender-side choices that determine how the asset will export. Rig naming conventions, vertex group assignments, custom property definitions for physics extras, and export settings all fall here. Getting these right means the resulting glTF file will be correct by construction, without requiring special-case handling in the engine loader. The second stage is **validation**: running the exported file through the Khronos glTF-Validator to check for format violations, missing data, and spec non-compliance before the file ever reaches your loader. The third stage is **ground truth establishment**: using a professional-grade glTF viewer to confirm that the asset looks and behaves correctly before concluding that any remaining problems are in the engine code.
+
+This is not glamorous work. But it is the kind of work that separates a professional production pipeline from a perpetual debugging loop.
+
+xref:../Morph_Targets_Facial_Animation/04_conclusion.adoc[Previous: Morph Targets Conclusion] | xref:02_blender_workflow.adoc[Next: Blender-to-Vulkan Workflow]

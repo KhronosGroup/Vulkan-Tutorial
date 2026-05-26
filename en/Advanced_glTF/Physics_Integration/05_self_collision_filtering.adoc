@@ -1,0 +1,152 @@
+:pp: {plus}{plus}
+= Self-Collision Filtering
+
+== Why Characters Explode Without Filtering
+
+When you enable full collision detection between all of a ragdoll's body parts, the simulation becomes unstable almost immediately. The problem is geometric overlap: in a real human body, adjacent body segments share volume. The arm is in contact with the torso. The thigh overlaps slightly with the pelvis at the hip socket. The spine segments interpenetrate. This is fine for visual purposes—the skin mesh hides all of this—but the physics engine doesn't know about the skin. It sees the underlying collision shapes, and if those shapes overlap, the solver interprets the overlap as a penetration that must be resolved with a large separating force.
+
+The result is that adjacent bone bodies push each other apart violently. The arm gets ejected from the torso. The thighs drive the pelvis upward. The spine segments fly apart. The constraints try to pull everything back together, the contacts push everything apart, and the simulation enters a state of permanent internal conflict that produces the classic "exploding ragdoll" artifact.
+
+The solution is to tell the physics engine which pairs of bodies should *not* collide with each other. This is called **collision filtering**. Physics engines implement it using bitmasks: each body belongs to one or more **collision groups**, and each body has a **collision mask** that specifies which groups it is allowed to collide with. Two bodies will only generate collision contacts if the first body's group bit is set in the second body's mask, and vice versa.
+
+== Designing the Bitmask Layout
+
+The art of collision filtering is in choosing a bitmask layout that correctly expresses the collision rules for your ragdoll without requiring you to enumerate every forbidden pair explicitly. A well-designed layout lets you express the rules compactly and extend them easily.
+
+For a humanoid character, a practical layout organizes body parts by anatomical region. Each region becomes a named bit:
+
+[source,cpp]
+----
+// Collision group bits for a humanoid ragdoll
+// Each body part type gets one bit.
+namespace CollisionGroup {
+    constexpr uint32_t WORLD     = (1 << 0); // Static world geometry
+    constexpr uint32_t PROPS     = (1 << 1); // Dynamic world objects (crates, barrels, etc.)
+    constexpr uint32_t TORSO     = (1 << 2); // Chest, spine, pelvis
+    constexpr uint32_t HEAD      = (1 << 3); // Skull and neck
+    constexpr uint32_t ARM_L     = (1 << 4); // Left upper arm and forearm
+    constexpr uint32_t ARM_R     = (1 << 5); // Right upper arm and forearm
+    constexpr uint32_t HAND_L    = (1 << 6); // Left hand and wrist
+    constexpr uint32_t HAND_R    = (1 << 7); // Right hand and wrist
+    constexpr uint32_t LEG_L     = (1 << 8); // Left thigh and shin
+    constexpr uint32_t LEG_R     = (1 << 9); // Right thigh and shin
+    constexpr uint32_t FOOT_L    = (1 << 10); // Left foot and ankle
+    constexpr uint32_t FOOT_R    = (1 << 11); // Right foot and ankle
+}
+----
+
+With this layout, the torso can be assigned to the `TORSO` group, and its collision mask can be set to allow collisions only with `WORLD` and `PROPS`—meaning it will collide with the environment and moveable objects, but not with any of the character's own limbs. The arms similarly collide with the world and props, but not with the torso or with each other.
+
+[source,cpp]
+----
+// Collision masks define what each group can collide WITH.
+namespace CollisionMask {
+    using namespace CollisionGroup;
+
+    // The torso collides with world and props, but NOT with its own arms, legs, or head.
+    // Internal ragdoll self-collision is handled by constraints, not contacts.
+    constexpr uint32_t TORSO = WORLD | PROPS;
+
+    // The head doesn't collide with the neck/torso (they are constrained together),
+    // but can hit the world.
+    constexpr uint32_t HEAD = WORLD | PROPS;
+
+    // Arms collide with world and props. They can also collide with the opposing side
+    // (left arm can interact with right arm if they cross) but not with the torso.
+    constexpr uint32_t ARM_L  = WORLD | PROPS | ARM_R;
+    constexpr uint32_t ARM_R  = WORLD | PROPS | ARM_L;
+    constexpr uint32_t HAND_L = WORLD | PROPS | ARM_R | HAND_R;
+    constexpr uint32_t HAND_R = WORLD | PROPS | ARM_L | HAND_L;
+
+    // Legs collide with world, props, and with each other (they can interact
+    // when the character's legs cross during a fall).
+    constexpr uint32_t LEG_L  = WORLD | PROPS | LEG_R;
+    constexpr uint32_t LEG_R  = WORLD | PROPS | LEG_L;
+    constexpr uint32_t FOOT_L = WORLD | PROPS | LEG_R | FOOT_R;
+    constexpr uint32_t FOOT_R = WORLD | PROPS | LEG_L | FOOT_L;
+}
+----
+
+This design allows left and right limbs to interact with each other—which is correct, since a falling character's arms can and do cross—while preventing adjacent constrained segments from generating destructive contact forces.
+
+== Applying Masks from glTF Extras
+
+Earlier, when we defined our collider extras format, we included `collision_group` and `collision_mask` as string fields. Now we can write a resolver that maps those human-readable strings to the bitmask values:
+
+[source,cpp]
+----
+uint32_t resolve_collision_group(const std::string& group_name)
+{
+    static const std::unordered_map<std::string, uint32_t> group_map = {
+        { "world",   CollisionGroup::WORLD   },
+        { "props",   CollisionGroup::PROPS   },
+        { "torso",   CollisionGroup::TORSO   },
+        { "head",    CollisionGroup::HEAD    },
+        { "arm_l",   CollisionGroup::ARM_L   },
+        { "arm_r",   CollisionGroup::ARM_R   },
+        { "hand_l",  CollisionGroup::HAND_L  },
+        { "hand_r",  CollisionGroup::HAND_R  },
+        { "leg_l",   CollisionGroup::LEG_L   },
+        { "leg_r",   CollisionGroup::LEG_R   },
+        { "foot_l",  CollisionGroup::FOOT_L  },
+        { "foot_r",  CollisionGroup::FOOT_R  },
+    };
+
+    auto it = group_map.find(group_name);
+    return (it != group_map.end()) ? it->second : 0;
+}
+
+// The mask field in extras is a comma-separated list of group names
+// e.g., "world,props,leg_r" => WORLD | PROPS | LEG_R
+uint32_t resolve_collision_mask(const std::string& mask_str)
+{
+    uint32_t mask = 0;
+    std::stringstream ss(mask_str);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        // Trim whitespace
+        token.erase(0, token.find_first_not_of(" \t"));
+        token.erase(token.find_last_not_of(" \t") + 1);
+        mask |= resolve_collision_group(token);
+    }
+    return mask;
+}
+----
+
+When we create a physics body for a bone, we apply these masks:
+
+[source,cpp]
+----
+JPH::BodyCreationSettings settings;
+// ... set shape, mass, pose ...
+settings.mMotionType = JPH::EMotionType::Kinematic;
+
+// Apply collision filtering from the parsed extras
+// settings.mObjectLayer = resolve_collision_layer(node.collider_def.collision_group, node.collider_def.collision_mask);
+
+JPH::BodyID body = physics_world.create_body(settings);
+----
+
+== Filtering Between Characters
+
+The bitmask design above handles self-collision for a single character. But what about multiple characters? If two characters are fighting, you probably want their ragdolls to interact—one character's falling body should be able to knock the other character's body. But you still don't want Character A's arm to collide with Character A's own torso.
+
+The standard technique for multi-character filtering is to add a **character instance layer** on top of the body-part groups. Each character instance gets a unique numeric ID, and the collision mask for Character A's body parts explicitly excludes Character A's own other body parts, while including the corresponding body parts of all other characters.
+
+For small numbers of characters, the simplest approach is to just not worry about it. With proper joint limits, self-collision from adjacent constrained segments is prevented by the constraints themselves—only distant self-collisions (like the arm crossing to the far side of the body) would need explicit filtering, and those are relatively rare. The important filtering is between adjacent segments that are connected by constraints, which we always want to filter out.
+
+For large numbers of characters—a crowd simulation, for example—you will need a more sophisticated filtering system. One common approach is to allocate a block of 8 or 16 bits per character and assign one bit per body region within that block. This allows the broadphase to quickly cull collisions between same-character body parts at the layer level, without requiring per-pair contact filtering.
+
+== Verifying Your Filters
+
+After setting up collision filtering, it is worth taking a few minutes to test it deliberately. The easiest test is to spawn a single character, trigger the ragdoll, and watch it fall. Signs of filtering problems:
+
+If the ragdoll immediately explodes on the first frame, adjacent body parts are generating penetration contacts—you have a filtering gap between constrained neighbors. Check that the groups and masks for adjacent bones (e.g., upper arm and forearm) exclude each other.
+
+If the character's arms pass straight through walls or floors, a mask is too restrictive—the body part is not colliding with WORLD geometry. Check that `WORLD` is included in every body part's collision mask.
+
+If two characters' ragdolls merge together and pass through each other when they fall on top of each other, the mask does not include the opposing character's body part groups. This is expected if you filtered out all character-vs-character collision, but undesirable if you wanted characters to interact.
+
+The debug drawer we will build in Chapter 8 will be invaluable for visualizing collision shapes and their assigned layers, making these issues much easier to diagnose visually.
+
+xref:04_ragdoll_handoff.adoc[Previous: The Ragdoll Handoff] | xref:06_conclusion.adoc[Next: Conclusion]

@@ -1,0 +1,203 @@
+:pp: {plus}{plus}
+= The Ragdoll Handoff
+
+== The Problem with Simply Switching Modes
+
+By the time a character dies, is knocked unconscious, or is hit by a physics impulse, you have a skeleton that is being driven by an animation system. Every frame, the animation system is looking up keyframes, blending them, and depositing the results into the scene graph's joint transforms. The compute shader is then using those joint transforms to skin the mesh. Everything is deterministic, clean, and animator-controlled.
+
+Then something happens—a death event fires, a health counter hits zero, a collision impulse arrives—and you need to hand control of the skeleton over to the physics engine. The physics engine needs to take those joint positions, give each body segment a starting velocity, and then simulate the fall purely from the laws of physics.
+
+The naive approach is to simply set every bone body from kinematic mode to dynamic mode and let the physics engine run. In theory, this should work. In practice, it usually produces a jarring visual artifact: the character snaps to a slightly different pose, or the limbs pop outward from their constrained positions, or the ragdoll appears to explode away from its animated position. This is the **ragdoll handoff problem**, and it is caused by three closely related issues that we need to address explicitly.
+
+The first issue is **pose initialization**. If the physics bodies were being moved kinematically, they should already be at the correct world-space positions—provided you have been using `move_kinematic` correctly as we discussed in the previous section, not teleporting the bodies. But we need to verify that the physics engine's internal state actually matches the scene graph's current state before we flip the mode switch.
+
+The second issue is **velocity initialization**. A character in the middle of a running animation is not stationary. Their arms are swinging, their body is rotating, their center of mass is moving forward. If we switch to ragdoll physics and the starting velocity of every body segment is zero, the ragdoll will immediately produce a wrong result: the character will not continue moving forward, the arms will snap to hang at the sides, and the simulation will "teleport" the character into a state that doesn't match where the animation left off.
+
+The third issue is **constraint resolution**. When we switch from kinematic to dynamic, the constraints between bodies become active in the solver. If the bodies are not positioned such that the constraints are already nearly satisfied, the solver's first frame will produce large corrective forces to pull the bodies into valid positions—which looks like an explosion.
+
+== The State Machine
+
+The cleanest way to manage the handoff is with an explicit state machine for each character's ragdoll. The states we need are:
+
+**ANIMATED**: The animation system is fully in control. All bone bodies are kinematic. The physics engine knows where the bodies are but does not simulate them.
+
+**BLENDED**: A transitional state used when we want to blend from animated to ragdoll over a few frames, rather than switching instantly. The animation system is still running, but we are progressively reducing the influence of the animated pose. This state is optional but produces much better-looking results.
+
+**RAGDOLL**: The physics engine is fully in control. All bone bodies are dynamic. The animation system is still running its logic (so we can blend back out later if needed), but we read from the physics engine's output, not the animation system's output.
+
+[source,cpp]
+----
+enum class RagdollState {
+    ANIMATED,
+    BLENDED,   // Transitional - animation blending out, physics blending in
+    RAGDOLL
+};
+
+struct RagdollController {
+    RagdollState state          = RagdollState::ANIMATED;
+    float        blend_weight   = 0.0f;   // 0 = full animation, 1 = full ragdoll
+    float        blend_duration = 0.15f;  // How many seconds the transition takes
+    float        blend_elapsed  = 0.0f;   // Time spent in BLENDED state
+};
+----
+
+The `blend_weight` is what we passed to the animation system in Chapter 3's cross-fade blending section—it controls how much of the final skeleton pose comes from the animation versus the physics. By linearly increasing it from 0 to 1 over `blend_duration` seconds, we get a smooth visual transition instead of a hard snap.
+
+== Triggering the Handoff
+
+When we want to start a ragdoll transition, we call a function that initializes the transition state and captures the character's current velocity from the animation system:
+
+[source,cpp]
+----
+void begin_ragdoll_transition(
+    RagdollController& controller,
+    std::vector<BoneBody>& bodies,
+    const glm::vec3& character_root_velocity,
+    PhysicsWorld& physics_world)
+{
+    if (controller.state != RagdollState::ANIMATED) return;
+
+    controller.state        = RagdollState::BLENDED;
+    controller.blend_elapsed = 0.0f;
+    controller.blend_weight  = 0.0f;
+
+    // Critical step: set the initial linear velocity of the root body
+    // to match the character's current movement velocity. This prevents
+    // the ragdoll from starting from a dead stop.
+    for (auto& bone_body : bodies) {
+        // For now, give every body the root's velocity.
+        // A more sophisticated system would compute per-bone velocities
+        // from the animation's joint velocities.
+        physics_world.set_linear_velocity(bone_body.physics_body, character_root_velocity);
+
+        // Activate the body: tell the physics engine it will be simulated next frame.
+        // We do NOT switch to dynamic yet — we wait until blend_weight reaches 1.
+        physics_world.activate_body(bone_body.physics_body);
+    }
+}
+----
+
+The velocity initialization is the most important step here. The `character_root_velocity` should come from your character controller—it is the velocity vector the character was moving at when the ragdoll trigger fired. In a typical game, this is the velocity you were applying to the character capsule each frame. Providing this as the initial ragdoll velocity ensures the character continues moving in the same direction after the handoff, rather than collapsing in place.
+
+A more accurate (and more complex) approach is to compute per-bone velocities from the animation's joint velocity data. Many animation systems track the rate of change of each joint, and you can use that to initialize each bone body's angular velocity independently—giving the arms their own swing momentum rather than uniform root velocity. This produces more realistic ragdolls, especially for characters in the middle of vigorous animations, but requires more work to implement correctly.
+
+== The Transition Frame
+
+Each frame while in the BLENDED state, we need to advance the blend weight and, when it reaches 1, complete the mode switch:
+
+[source,cpp]
+----
+void update_ragdoll_controller(
+    RagdollController& controller,
+    std::vector<BoneBody>& bodies,
+    std::vector<Node>& nodes,
+    PhysicsWorld& physics_world,
+    float delta_time)
+{
+    if (controller.state == RagdollState::ANIMATED) {
+        // Sync animation transforms to kinematic physics bodies every frame
+        sync_animation_to_physics(nodes, bodies, physics_world);
+        return;
+    }
+
+    if (controller.state == RagdollState::BLENDED) {
+        controller.blend_elapsed += delta_time;
+        controller.blend_weight   = std::min(controller.blend_elapsed / controller.blend_duration, 1.0f);
+
+        // While blending, keep syncing kinematic bodies so the physics engine
+        // has up-to-date positions if/when it needs to read them
+        sync_animation_to_physics(nodes, bodies, physics_world);
+
+        if (controller.blend_weight >= 1.0f) {
+            // Transition complete: switch all bodies from kinematic to dynamic
+            for (auto& bone_body : bodies) {
+                physics_world.set_motion_type(bone_body.physics_body, JPH::EMotionType::Dynamic);
+            }
+            controller.state = RagdollState::RAGDOLL;
+        }
+        return;
+    }
+
+    if (controller.state == RagdollState::RAGDOLL) {
+        // Read back physics positions into the scene graph
+        sync_physics_to_animation(nodes, bodies, physics_world);
+    }
+}
+----
+
+Notice that we continue syncing the kinematic bodies during the BLENDED phase. This is important: during the blend, the physics engine may still be resolving constraint violations from the pose at the moment the transition began. Keeping the bodies moving in sync prevents the constraints from fighting each other during the transition.
+
+== Reading Physics Results Back into the Scene Graph
+
+Once we are in RAGDOLL state, the physics engine owns the skeleton. Each frame, we need to read the simulated body positions back into our scene graph so that the joint world matrices—and therefore the compute skinning pipeline—reflect the physics output.
+
+[source,cpp]
+----
+void sync_physics_to_animation(
+    std::vector<Node>& nodes,
+    const std::vector<BoneBody>& bodies,
+    PhysicsWorld& physics_world)
+{
+    for (const auto& bone_body : bodies) {
+        Node& node = nodes[bone_body.node_index];
+
+        // Get the physics-simulated world position and orientation
+        PhysicsPose pose = physics_world.get_body_pose(bone_body.physics_body);
+
+        // Reconstruct a world matrix from position + quaternion
+        node.world_matrix = pose.to_matrix();
+
+        // Mark the node as Clean — we just set its world matrix directly,
+        // so the scene graph should not recalculate it from local transforms
+        // this frame.
+        node.status = TransformStatus::Clean;
+    }
+
+    // Nodes that are NOT physics-driven (scene props, non-ragdoll characters)
+    // must still be updated through the normal dirty-flag propagation.
+    // The scene graph's update pass should skip nodes where status is Clean.
+}
+----
+
+There is a subtle problem here that requires care: our scene graph from Chapter 2 calculates world matrices from local transforms and parent matrices, in topological order. But during ragdoll, we are writing world matrices directly—bypassing that entire calculation. We need to ensure the scene graph update loop does not overwrite our physics-derived world matrices by recalculating them from the local transforms.
+
+The `TransformStatus::Clean` status handles this if the scene graph update code is written to skip clean nodes entirely. If your scene graph always recalculates, you need to add an explicit `is_physics_driven` flag that the update loop checks before computing the world matrix.
+
+== The Visual Blend
+
+The `blend_weight` we have been tracking in the controller is what gets passed to the character's animation blending system. When it is 0, the character's pose comes entirely from the animation. When it is 1, it comes entirely from the ragdoll. In between, we use linear interpolation to blend the two:
+
+[source,cpp]
+----
+// After updating physics and animation separately:
+if (controller.state == RagdollState::BLENDED) {
+    for (const auto& bone_body : bodies) {
+        Node& node = nodes[bone_body.node_index];
+
+        // Animated world matrix (from scene graph dirty-flag pass)
+        glm::mat4& anim_matrix = node.world_matrix_animated;
+
+        // Physics world matrix (from sync_physics_to_animation)
+        PhysicsPose pose = physics_world.get_body_pose(bone_body.physics_body);
+        glm::mat4 phys_matrix = glm::translate(glm::mat4(1.0f), pose.position)
+                              * glm::mat4_cast(pose.orientation);
+
+        // Decompose both to TRS, lerp/slerp, recompose
+        glm::vec3 anim_pos = glm::vec3(anim_matrix[3]);
+        glm::quat anim_rot = glm::quat_cast(glm::mat3(anim_matrix));
+        glm::vec3 phys_pos = glm::vec3(phys_matrix[3]);
+        glm::quat phys_rot = glm::quat_cast(glm::mat3(phys_matrix));
+
+        float w = controller.blend_weight;
+        glm::vec3 blended_pos = glm::mix(anim_pos, phys_pos, w);
+        glm::quat blended_rot = glm::slerp(anim_rot, phys_rot, w);
+
+        node.world_matrix = glm::translate(glm::mat4(1.0f), blended_pos)
+                          * glm::mat4_cast(blended_rot);
+    }
+}
+----
+
+The use of `glm::slerp` (Spherical Linear intERPolation) for quaternion blending is essential here. Direct linear interpolation of quaternions does not preserve unit length and produces rotations that slow down in the middle of the blend. SLERP produces smooth, constant-speed rotation transitions that are geometrically correct.
+
+xref:03_constraints_and_joint_limits.adoc[Previous: Constraints & Joint Limits] | xref:05_self_collision_filtering.adoc[Next: Self-Collision Filtering]

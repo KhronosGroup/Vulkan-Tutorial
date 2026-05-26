@@ -1,0 +1,85 @@
+= Advanced glTF: High-Performance Character Pipelines
+
+== Beyond Static Models
+
+The "Building a Simple Engine" series established a solid foundation for Vulkan rendering. It introduced the core mechanics of glTF loading via `tinygltf`, PBR material shaders, and a basic hierarchical scene graph within each `Model`. However, as our engine evolves from rendering static dioramas to complex, interactive worlds, we encounter the limitations of that initial architecture.
+
+In a production-ready engine, a character isn't just a mesh; it's a convergence of multiple high-performance systems. When a character's foot touches uneven terrain, the inverse kinematics (IK) system must adjust the leg's joint rotation. When that same character is struck by a projectile, the animation system must seamlessly hand control over to the physics engine for a ragdoll simulation. This interplay requires an architecture that is significantly more robust and optimized than a basic recursive traversal.
+
+In this tutorial series, we will evolve our engine to handle these advanced character pipelines. We aren't just adding "features" like animation or physics; we are redesigning our core systems to handle the scale, performance, and complexity of modern 3D assets.
+
+== The Technical Roadmap
+
+=== 1. Introduction
+This series is structured around the lifecycle of a modern character, from parsing the glTF file to simulating its physical interaction with the world. We begin with this introduction, establishing the prerequisites and setting up the development environment.
+
+=== 2. The Scene Graph & Transform Hierarchy
+We begin by unifying our scene representation. While our previous engine used a hybrid approach—a flat list of entities containing hierarchical models—we will move to a **unified, global scene graph**. We will also replace the redundant frame-by-frame matrix multiplications with a **Dirty Flag** system and a more data-oriented layout (DOD). This ensures that we only update world-space transforms when absolutely necessary, a critical optimization as scene complexity grows. We'll also explore automated collider setup by parsing **"extras" metadata** from our glTF files, ensuring our physics proxies are perfectly aligned with our visual meshes.
+
+=== 3. Advanced Skeletal & Compute Skinning
+Skeletal animation is the heartbeat of character movement. We will implement high-performance **Compute Skinning**, moving the heavy lifting of vertex deformation from the vertex shader to specialized compute kernels. This approach allows us to "skin once, use everywhere"—storing the results in a shared buffer that can be accessed by the rasterizer, ray-tracing acceleration structures, and even physics queries.
+
+=== 4. Physics Integration: Colliders & Ragdolls
+Physics and animation are often treated as separate entities, but in advanced pipelines, they are deeply intertwined. We'll explore **Bi-directional Syncing**, where animation can drive physics (Kinematic) and physics can take over and drive the skeleton (Ragdoll).
+
+=== 5. Procedural Animation & IK
+Characters feel alive when they react to their environment. We'll implement **Inverse Kinematics (IK)** using algorithms like CCD (Cyclic Coordinate Descent) or FABRIK to ensure feet align with terrain and heads track points of interest. This "procedural layer" sits atop our traditional animation clips, providing the final polish that makes a character feel grounded.
+
+=== 6. Morph Targets & Facial Animation
+For expressive characters, we need more than just bones. We'll implement support for **Morph Targets** (shape keys), allowing for complex facial expressions and localized mesh deformations. We'll leverage modern Vulkan features like **Descriptor Indexing** to handle these displacement buffers without the overhead of per-draw descriptor swaps.
+
+=== 7. Tooling & Production Pipeline
+Code is only half the battle. We'll discuss the "Blender-to-Vulkan" workflow, establishing naming conventions and export settings that ensure our assets "just work" when they hit the engine. We'll also integrate the **Khronos glTF-Validator** into our pipeline to catch asset corruption before it causes mysterious engine bugs.
+
+=== 8. Debugging & Visual Auditing
+Even with a perfect pipeline, things go wrong. We'll build specialized debugging tools to visualize the hidden state of our character systems. This includes deferred line drawers for skeletons and collision shapes, skinning weight heatmaps for identifying "pinched" geometry, and techniques for using RenderDoc to audit the compute skinning output.
+
+== The Advanced Toolkit
+
+Throughout this series, we will upgrade our development toolkit to reflect modern standards:
+
+*   **Slang Shaders**: All of our new shader work—from compute skinning to PBR enhancements—will be written in **Slang**. Slang's modularity and natural alignment features make it far more productive than raw GLSL for complex rendering pipelines.
+*   **Vulkan 1.4**: We will utilize features like **Dynamic Rendering** and **Descriptor Indexing** to simplify our pipeline management and improve performance.
+*   **Jolt Physics**: We have selected **Jolt Physics** as our simulation engine. Its performance-first design and clean C++ API make it the ideal choice for real-time character dynamics and ragdolls.
+
+== Setting Up Your Development Environment
+
+Before we dive into the code, you will need to prepare your development environment with several new tools and libraries.
+
+=== 1. The Slang Shader Compiler
+We will use **Slang** for all compute and graphics shaders in this series.
+
+* **Download**: Grab the latest binary release from the link:https://github.com/shader-slang/slang/releases[Slang GitHub Releases].
+* **Setup**: Ensure the `slangc` executable is in your system PATH.
+* **Vulkan Integration**: Slang will compile our `.slang` files directly to SPIR-V (`.spv`), which can then be loaded using your existing Vulkan shader loading code.
+
+=== 2. Jolt Physics
+Jolt is our recommended physics engine for this series.
+* **Integration**: We recommend using CMake's `FetchContent` to integrate Jolt directly into your project:
+[source,cmake]
+----
+include::FetchContent.cmake
+FetchContent_Declare(
+    Jolt
+    GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(Jolt)
+----
+* **Initialization**: Jolt requires a small amount of boilerplate code (memory management, job system, and layer interfaces) which we will cover in the Physics Integration chapter.
+
+=== 3. Khronos glTF-Validator
+To ensure our custom glTF assets are valid, we will use the official validator.
+* **Installation**: Follow the instructions on the link:https://github.com/KhronosGroup/glTF-Validator[glTF-Validator repository]. It is available as a standalone CLI tool or via NPM.
+
+== Preparing the Starter Project
+
+This series assumes you have a working engine from the "Building a Simple Engine" series. To transition to the Advanced glTF architecture, you should prepare a "Starter Project" that:
+
+1.  **Supports Vulkan 1.4**: Ensure your instance and device creation request the 1.4 API version.
+2.  **Enables Dynamic Rendering**: This series moves away from fixed Render Passes and Framebuffers in favor of `VK_KHR_dynamic_rendering`.
+3.  **Integrates GLM**: We will use GLM extensively for math operations, specifically for quaternion support in skeletal animation.
+
+If you are starting fresh, we recommend refactoring your Simple Engine core to support a global scene graph before proceeding to the next chapter.
+
+xref:../Building_a_Simple_Engine/introduction.adoc[Previous: Building a Simple Engine] | xref:Scene_Graph_Hierarchy/01_introduction.adoc[Next: Scene Graph & Transform Hierarchy]

@@ -1,0 +1,38 @@
+:pp: {plus}{plus}
+= Morph Targets: Summary & What's Next
+
+== What We Built
+
+This chapter completed the deformation pipeline that began in Chapter 3. Skeletal skinning handles the body: large-scale, rotation-driven deformation of limbs, spine, and head. Morph targets handle the face: subtle, non-rigid deformation of skin that slides, wrinkles, and bulges in response to muscle activation.
+
+We started with the glTF file format's approach to morph targets: sparse accessors that store only the vertices that actually change between the base mesh and each expression. Parsing sparse accessors correctly—expanding them into full dense displacement arrays—is the first and most error-prone step, particularly because the index component type can vary between exporters. We wrote a robust `expand_sparse_accessor` function that handles byte, short, and integer index widths and gracefully returns zeros for vertices that are not explicitly listed.
+
+With the displacement data on the CPU, we uploaded each morph target to its own GPU buffer using the staging buffer pattern from earlier chapters. We tagged these buffers with `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` in preparation for the bindless architecture.
+
+The bindless descriptor infrastructure uses `VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT` and `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` to create a descriptor set with a runtime-sized array of storage buffer descriptors. All morph target buffers are registered in this array at load time. At dispatch time, we supply only the indices and weights of the *active* morph targets, avoiding the cost of touching inactive buffers.
+
+The extended compute shader applies morph displacements in the bind pose before the skeletal skinning step, using `NonUniformResourceIndex` to safely index the bindless array with per-thread values. The output is the same shared vertex buffer that the rasterizer, ray tracer, and physics system already consume—morph target support adds no new synchronization requirements to the downstream pipeline.
+
+== Tradeoffs to Keep in Mind
+
+Morph targets are fast to evaluate on modern GPU hardware because they are embarrassingly parallel: each vertex is independent, and the work per vertex is just a few multiply-add operations per active target. The bottleneck is almost always memory bandwidth—fetching the displacement arrays from GPU memory—not arithmetic. This is why the "cull inactive targets" step matters: if you have 60 morph targets but only 8 are nonzero this frame, dispatching with 8 active targets rather than 60 reduces the bandwidth by 7.5x.
+
+The push constant size concern we raised in the previous section deserves a follow-up. For large numbers of simultaneously active morph targets, moving the weight and index data into a small uniform buffer (updated with `vkCmdUpdateBuffer` or a staging copy) is the right call. The performance difference between push constants and a small uniform buffer fetch is negligible for this use case—you will not notice it in a profile—but the robustness benefit of not depending on beyond-minimum push constant sizes is real.
+
+Normal morph targets (displacement vectors for surface normals) were mentioned but not fully implemented in this chapter. If your character has morph targets that significantly change the curvature of the skin—puffing cheeks, wrinkling a brow—you should implement normal morphing alongside position morphing. The shader extension is straightforward: add a second bindless array for normal deltas and accumulate them the same way. Without normal morphing, the lighting on a morphed face will look slightly wrong, particularly under harsh directional lights.
+
+== What Comes Next
+
+In Chapter 7 we step back from the rendering and physics code to examine the **production pipeline**: the workflow from artist's Blender file to a validated, engine-ready glTF asset. We will cover the naming conventions and export settings that make the engine-side code reliable, how to use the Khronos glTF-Validator to catch format errors before they reach your loader, and how to use professional glTF viewers to establish a "ground truth" for materials and animation before you spend hours debugging what turns out to be an export problem.
+
+Understanding the production pipeline is as important as understanding the rendering code—many apparent engine bugs are actually asset bugs, and knowing how to distinguish between them will save you significant debugging time.
+
+== Verification: What to Look For
+
+To verify your morph target implementation:
+
+1.  **Sparse Accessor Expansion**: Verify that vertices with no displacement in a particular morph target correctly remain at their base positions.
+2.  **Bindless Indexing**: Use a GPU debugger (like RenderDoc) to inspect the `morphTargets[]` array. Ensure that the descriptor indices passed in `PushConstants` match the correct buffer slots.
+3.  **Order of Operations**: Ensure that morph displacements are applied **before** skeletal skinning. If they are applied after, facial features will appear to "float" or detach when the head rotates.
+
+xref:03_bindless_morph_buffers.adoc[Previous: Bindless Morph Buffers] | xref:../Tooling_Production_Pipeline/01_introduction.adoc[Next: Tooling & The Production Pipeline]

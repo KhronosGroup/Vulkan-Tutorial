@@ -1,0 +1,349 @@
+:pp: {plus}{plus}
+= The Compute Skinning Pipeline
+
+== Why a Compute Shader?
+
+In a traditional rendering pipeline, the vertex shader runs once per vertex, as the first stage of rasterization. This makes it an obvious candidate for skinning—the vertex shader already has access to each vertex's position and attributes, and it can transform them before the triangle assembly and rasterization stages do their work.
+
+However, the vertex shader has a fundamental constraint: its output is ephemeral. The results of a vertex shader invocation exist only for the duration of that draw call. Once the frame is rendered, those transformed positions are gone. No other system—not the physics engine, not the ray tracer—can read what the vertex shader produced. This is precisely the "pay for it twice" problem we identified in the introduction.
+
+A **Compute Shader** is a general-purpose GPU program that runs outside the rasterization pipeline entirely. It reads from **Shader Storage Buffer Objects (SSBOs)** and writes its results back to other SSBOs. Those output buffers persist on the GPU and can be used by any subsequent pipeline stage or draw call. The compute shader runs once per frame, skins the mesh, and deposits the animated vertex data into a buffer that every downstream consumer can read at no additional cost.
+
+This is the core architectural shift: we go from skinning as a *side effect of rendering* to skinning as a *dedicated, first-class step* in our frame pipeline.
+
+== Buffer Architecture
+
+Before writing a single line of shader code, it is worth designing the buffer layout carefully. A skinned character's compute pipeline requires four key buffers:
+
+**Input Vertex Buffer (Read-Only)**: This stores the mesh vertices in their rest pose—exactly as loaded from the glTF file. It never changes after the initial upload. It contains positions, normals, tangents, texture coordinates, and the joint indices and weights for each vertex.
+
+**Joint Matrix Buffer (Write-Once-Per-Frame)**: This stores the array of pre-computed joint matrices we calculated on the CPU in the previous section. It is uploaded to the GPU at the beginning of each frame, after the animation system and scene graph have been updated. Its contents change every frame.
+
+**Output Vertex Buffer (Write by Compute, Read by Everything Else)**: This is the key buffer. The compute shader writes the animated positions, normals, and tangents here. The rasterizer's draw call uses this as its vertex input. The ray tracer's BLAS update reads from it. The physics system can query it for surface queries.
+
+**Indirect Draw Buffer (Optional but Recommended)**: For complex scenes with many animated characters, you may also want a buffer for GPU-driven indirect draw commands, but that is a more advanced topic we will address in a later chapter.
+
+The C{pp} side of this setup looks like this:
+
+[source,cpp]
+----
+struct SkinComputeResources {
+    // The mesh's original, unchanging rest-pose vertices
+    VkBuffer input_vertex_buffer;
+    VkDeviceMemory input_vertex_memory;
+    uint32_t vertex_count;
+
+    // Updated each frame with the current joint matrices
+    VkBuffer joint_matrix_buffer;
+    VkDeviceMemory joint_matrix_memory;
+    uint32_t joint_count;
+
+    // Written by compute, read by rasterizer/raytracer/physics
+    VkBuffer output_vertex_buffer;
+    VkDeviceMemory output_vertex_memory;
+
+    // Descriptor set referencing all three buffers
+    VkDescriptorSet descriptor_set;
+};
+----
+
+Both the input and output vertex buffers should be created with the `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` flag so the compute shader can read and write them via SSBO bindings. The output buffer additionally needs `VK_BUFFER_USAGE_VERTEX_BUFFER_BIT` so the rasterizer can use it directly as a vertex input source.
+
+[source,cpp]
+----
+// Output buffer usage flags - the key to "skin once, use everywhere"
+VkBufferUsageFlags output_usage =
+    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |    // Compute shader can write to it
+    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT  |    // Rasterizer can read from it
+    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | // Ray tracing BLAS can reference it
+    VK_BUFFER_USAGE_TRANSFER_SRC_BIT;       // Can be read back to CPU if needed
+----
+
+== The Compute Shader
+
+Now we can write the actual skinning shader. We will use **Slang**, the modern GPU shading language that offers C{pp}-like syntax and excellent cross-compilation support.
+
+=== Why Slang?
+While you may be familiar with GLSL from the "Simple Engine," Slang offers several advantages for complex character pipelines:
+* **Natural Alignment**: Slang automatically handles the alignment of structs to match SPIR-V standards, reducing the "padding bugs" common in GLSL SSBOs.
+* **Modern Syntax**: It supports generics, interfaces, and operator overloading, making complex skinning math much cleaner.
+* **C{pp} Compatibility**: Slang's syntax is so close to C{pp} that you can often share struct definitions between your engine and your shaders.
+
+[NOTE]
+====
+To follow this section, you will need the **Slang compiler (`slangc`)**. You can download the latest binaries from the link:https://github.com/shader-slang/slang/releases[Slang GitHub releases page]. Ensure `slangc` is in your system PATH.
+====
+
+=== Compiling and Loading Slang Shaders
+Slang compiles `.slang` files into standard SPIR-V (`.spv`), which your Vulkan engine can load exactly like the GLSL shaders you used previously.
+
+[source,cmake]
+----
+# Example CMake integration for Slang
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/skinning.spv
+    COMMAND slangc ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skinning.slang -target spirv -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/skinning.spv
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skinning.slang
+    COMMENT "Compiling Slang shader to SPIR-V"
+)
+----
+
+To load the shader, use your existing `VkShaderModule` creation code:
+[source,cpp]
+----
+// Load the compiled .spv file
+auto shaderCode = readFile("shaders/skinning.spv");
+VkShaderModuleCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+createInfo.codeSize = shaderCode.size();
+createInfo.pCode = reinterpret_cast<const uint32_t*>(shaderCode.data());
+vkCreateShaderModule(device, &createInfo, nullptr, &skinningShaderModule);
+----
+
+[source,slang]
+----
+// skinning.slang
+
+// The input vertex layout, matching our rest-pose buffer
+struct InputVertex {
+    float3 position;
+    float3 normal;
+    float4 tangent;         // w component stores handedness (-1 or +1)
+    float2 texcoord;
+    uint4  joint_indices;   // Up to 4 bone influences
+    float4 joint_weights;   // Corresponding weights (must sum to 1.0)
+};
+
+// The output vertex layout - a subset of the input (no joint data needed)
+struct OutputVertex {
+    float3 position;
+    float3 normal;
+    float4 tangent;
+    float2 texcoord;
+};
+
+// Shader Storage Buffer bindings
+[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>  input_vertices;
+[[vk::binding(1, 0)]] StructuredBuffer<float4x4>     joint_matrices;
+[[vk::binding(2, 0)]] RWStructuredBuffer<OutputVertex> output_vertices;
+
+// Push constants for per-dispatch data
+struct SkinPushConstants {
+    uint vertex_count;
+};
+[[vk::push_constant]] SkinPushConstants push_constants;
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void main(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+    uint vertex_id = dispatchThreadID.x;
+
+    // Guard: don't process vertices beyond the mesh
+    if (vertex_id >= push_constants.vertex_count) {
+        return;
+    }
+
+    InputVertex v = input_vertices[vertex_id];
+
+    // Build the blended skin matrix from the four joint influences.
+    // This is the core of the Linear Blend Skinning (LBS) equation:
+    // SkinMatrix = sum(weight_i * JointMatrix_i) for i in [0, 3]
+    float4x4 skin_matrix =
+        v.joint_weights.x * joint_matrices[v.joint_indices.x] +
+        v.joint_weights.y * joint_matrices[v.joint_indices.y] +
+        v.joint_weights.z * joint_matrices[v.joint_indices.z] +
+        v.joint_weights.w * joint_matrices[v.joint_indices.w];
+
+    // Transform the position using the full 4x4 skin matrix
+    float4 animated_pos = mul(skin_matrix, float4(v.position, 1.0));
+
+    // Normals and tangents use only the 3x3 rotational portion (no translation).
+    // We extract it directly from the skin matrix.
+    float3x3 skin_rot = float3x3(
+        skin_matrix[0].xyz,
+        skin_matrix[1].xyz,
+        skin_matrix[2].xyz
+    );
+
+    float3 animated_normal  = normalize(mul(skin_rot, v.normal));
+    float3 animated_tangent = normalize(mul(skin_rot, v.tangent.xyz));
+
+    // Write the animated data to the output buffer
+    OutputVertex out_v;
+    out_v.position = animated_pos.xyz;
+    out_v.normal   = animated_normal;
+    out_v.tangent  = float4(animated_tangent, v.tangent.w); // Preserve handedness
+    out_v.texcoord = v.texcoord;  // UV coordinates are not affected by skinning
+
+    output_vertices[vertex_id] = out_v;
+}
+----
+
+The structure of this shader maps directly to the math we built in the previous section. Each thread processes exactly one vertex. It looks up the vertex's four joint matrices, builds the blended skin matrix from them, and applies it to the position, normal, and tangent. The output goes into the shared buffer.
+
+The thread group size of 64 is a common starting point for vertex-processing compute shaders. Modern GPU architectures process threads in groups of 32 or 64 (called a "warp" on NVIDIA and a "wave" on AMD). By aligning our thread group to these hardware boundaries, we avoid wasting processing lanes.
+
+== Compute Pipeline Setup
+
+To run our shader, we need to create a `VkComputePipeline`. This requires defining the descriptor set layout that matches our shader's bindings.
+
+[source,cpp]
+----
+// 1. Create Descriptor Set Layout
+VkDescriptorSetLayoutBinding bindings[3] = {};
+// t0: Input vertices
+bindings[0].binding = 0;
+bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[0].descriptorCount = 1;
+bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+// t1: Joint matrices
+bindings[1].binding = 1;
+bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[1].descriptorCount = 1;
+bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+// u2: Output vertices
+bindings[2].binding = 2;
+bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[2].descriptorCount = 1;
+bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+VkDescriptorSetLayoutCreateInfo layoutInfo{};
+layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+layoutInfo.bindingCount = 3;
+layoutInfo.pBindings = bindings;
+vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &computeLayout);
+
+// 2. Create Pipeline Layout (including push constants)
+VkPushConstantRange pushRange{};
+pushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+pushRange.offset = 0;
+pushRange.size = sizeof(SkinPushConstants);
+
+VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+pipelineLayoutInfo.setLayoutCount = 1;
+pipelineLayoutInfo.pSetLayouts = &computeLayout;
+pipelineLayoutInfo.pushConstantRangeCount = 1;
+pipelineLayoutInfo.pPushConstantRanges = &pushRange;
+vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout);
+
+// 3. Create Compute Pipeline
+VkComputePipelineCreateInfo pipelineInfo{};
+pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+pipelineInfo.layout = pipelineLayout;
+pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+pipelineInfo.stage.module = skinningShaderModule;
+pipelineInfo.stage.pName = "main";
+vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline);
+----
+
+== Dispatching the Compute Shader
+
+On the CPU side, we need to dispatch this shader once per skinned mesh, per frame, with enough thread groups to cover all the vertices.
+
+[source,cpp]
+----
+void dispatch_skinning(
+    VkCommandBuffer cmd,
+    const SkinComputeResources& skin,
+    VkPipeline compute_pipeline,
+    VkPipelineLayout pipeline_layout)
+{
+    // Bind the compute pipeline and its descriptor set
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline);
+    vkCmdBindDescriptorSets(cmd,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        pipeline_layout,
+        0, 1, &skin.descriptor_set,
+        0, nullptr);
+
+    // Upload the vertex count as a push constant
+    SkinPushConstants constants;
+    constants.vertex_count = skin.vertex_count;
+    vkCmdPushConstants(cmd, pipeline_layout,
+        VK_SHADER_STAGE_COMPUTE_BIT, 0,
+        sizeof(SkinPushConstants), &constants);
+
+    // Calculate the number of thread groups needed.
+    // Each group processes 64 vertices; round up to cover all vertices.
+    uint32_t group_count = (skin.vertex_count + 63) / 64;
+    vkCmdDispatch(cmd, group_count, 1, 1);
+}
+----
+
+== Synchronization: The Pipeline Barrier
+
+A critical detail that is easy to miss: after the compute shader writes to the output vertex buffer, we must insert a **pipeline barrier** before any other pipeline stage reads from it. Without this barrier, the GPU might start rasterizing with stale data from the previous frame while the compute shader is still writing the current frame's results.
+
+[source,cpp]
+----
+void insert_skinning_barrier(VkCommandBuffer cmd, VkBuffer output_vertex_buffer)
+{
+    VkBufferMemoryBarrier2 barrier{};
+    barrier.sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+    barrier.buffer        = output_vertex_buffer;
+    barrier.offset        = 0;
+    barrier.size          = VK_WHOLE_SIZE;
+
+    // The compute stage writes to the buffer...
+    barrier.srcStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    barrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+
+    // ...and both the vertex input stage and the ray tracing stage need to read it.
+    barrier.dstStageMask  = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
+                            VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+    barrier.dstAccessMask = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT |
+                            VK_ACCESS_2_SHADER_READ_BIT;
+
+    VkDependencyInfo dep_info{};
+    dep_info.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dep_info.bufferMemoryBarrierCount = 1;
+    dep_info.pBufferMemoryBarriers    = &barrier;
+
+    vkCmdPipelineBarrier2(cmd, &dep_info);
+}
+----
+
+This barrier uses the Vulkan 1.3 `VkPipelineBarrier2` API, which allows us to express the source and destination stages with fine-grained granularity in a single call. The GPU's scheduler will ensure the compute writes complete before any vertex input or ray tracing reads begin.
+
+== The Frame Loop
+
+With all the pieces in place, our per-frame compute skinning loop looks like this:
+
+[source,cpp]
+----
+void frame_update(VkCommandBuffer cmd, Scene& scene)
+{
+    // 1. Update animations (CPU): advance time, sample keyframes
+    scene.animation_system.update(delta_time);
+
+    // 2. Update scene graph (CPU): propagate dirty flags, recalculate world matrices
+    scene.scene_graph.update();
+
+    // 3. Upload joint matrices to GPU (CPU->GPU transfer)
+    for (auto& skinned_mesh : scene.skinned_meshes) {
+        compute_joint_matrices(skinned_mesh.skin, scene.nodes, joint_matrices_staging);
+        upload_joint_matrices(cmd, joint_matrices_staging, skinned_mesh.compute_resources);
+    }
+
+    // 4. Dispatch compute skinning for each skinned mesh
+    for (auto& skinned_mesh : scene.skinned_meshes) {
+        dispatch_skinning(cmd, skinned_mesh.compute_resources,
+            skinned_pipeline, skinned_pipeline_layout);
+    }
+
+    // 5. Insert barrier: compute writes must complete before rasterizer/raytracer reads
+    for (auto& skinned_mesh : scene.skinned_meshes) {
+        insert_skinning_barrier(cmd, skinned_mesh.compute_resources.output_vertex_buffer);
+    }
+
+    // 6. Now rasterize, ray trace, and run physics queries — all reading from the same output buffer
+    render_scene(cmd, scene);
+}
+----
+
+In the next section, we will look in detail at steps 6 and beyond—how the rasterizer, the ray tracing acceleration structure, and the physics system each consume the same output vertex buffer, and what the setup for each of those consumers looks like.
+
+xref:02_skinning_math.adoc[Previous: The Mathematics of Skinning] | xref:04_shared_vertex_buffer.adoc[Next: Skin Once, Use Everywhere]

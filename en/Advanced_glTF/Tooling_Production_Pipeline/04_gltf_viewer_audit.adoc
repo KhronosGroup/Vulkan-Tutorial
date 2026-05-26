@@ -1,0 +1,48 @@
+:pp: {plus}{plus}
+= glTF Viewer Audit: Establishing Ground Truth
+
+== The Purpose of a Ground Truth
+
+After an asset passes validation, you know it is spec-compliant. You do not yet know whether it looks correct. The glTF-Validator tells you that the file is well-formed; it does not tell you whether the normals point the right way, whether the skeleton drives the mesh correctly, or whether the animation clips play as the animator intended. That is what a reference viewer is for.
+
+A **ground truth** is a known-correct rendering of the asset—one produced by a mature, thoroughly tested implementation of the glTF specification—that you can compare against your engine's output. When the two match, any subsequent discrepancy is almost certainly in your engine code. When they differ, you have evidence that the discrepancy originates in the asset or in your engine's interpretation of the spec, not in some mysterious graphics API behavior.
+
+The discipline of establishing ground truth before debugging engine code is high-leverage. Without it, every visual artifact is ambiguous: it might be a shader bug, a Vulkan API misuse, a wrong matrix, or an asset problem. With a ground truth reference, you can immediately classify the artifact. If the reference viewer shows the same problem, it's an asset problem—fix the blend file. If the reference viewer looks correct but your engine doesn't, it's an engine problem—debug the code. This classification alone can save hours.
+
+== Recommended Viewers
+
+Several mature, high-quality glTF viewers are freely available. For our purposes, we recommend two:
+
+**Khronos glTF Sample Viewer** (https://github.khronos.org/glTF-Sample-Viewer-Release). This is the reference implementation from the Khronos Group itself—the same organization that maintains the glTF specification. It is built on WebGL and runs in any modern browser, which makes it instantly accessible without installation. It implements the full glTF PBR material model, all animation interpolation modes (linear, step, cubic spline), skinning, and morph targets. Because it is the reference implementation, it is the highest-authority viewer for questions about spec compliance. If your asset looks wrong here, the problem is definitively in the asset.
+
+**Babylon.js Sandbox** (https://sandbox.babylonjs.com). This is a mature commercial-grade implementation with good support for all glTF features and a well-maintained UI that makes it easy to isolate and inspect individual animations, bones, and morph targets. Its node inspector allows you to examine the scene graph hierarchy, inspect bone transforms at each animation frame, and verify that morph target weights are being driven correctly. For debugging skeletal animation issues specifically, this is often more useful than the Khronos viewer.
+
+Both viewers accept `.glb` files via drag-and-drop, which makes the audit workflow fast: export from Blender, drag onto the viewer, and within seconds you have a reference rendering.
+
+== What to Look For in the Viewer
+
+A systematic audit should check the following, in order:
+
+**Rest pose.** Open the file and immediately pause any animation. The character should be in the T-pose or A-pose that was established as the bind pose in Blender. If the character is deformed in rest pose—limbs bent, mesh pulled toward wrong bones—the skinning weights or inverse bind matrices are incorrect at the source.
+
+**Materials.** Confirm that all materials render with correct colors, roughness, metalness, and normal maps. Pay particular attention to whether normal maps produce convex or concave results in the right places—a flipped normal map green channel is a common export error that appears as inverted shading on fine surface detail.
+
+**Animation playback.** Play each animation clip in the viewer and confirm that it matches the artist's intent. Watch for bones that drive the wrong mesh region, animations that play at the wrong speed (timestamp scaling issues), and clips that snap or jump rather than interpolating smoothly. If any clip uses cubic spline interpolation, confirm that the tangents produce a smooth curve—a common error is exporting tangents with wrong scaling that produces oscillation artifacts in the middle of a clip.
+
+**Morph targets.** In the viewer's material or animation inspector, manually drive each morph target weight from 0 to 1 and confirm that the face deforms as expected. If a morph target appears to have no effect, the displacement accessor may have been exported as all zeros, or the target may have been assigned to the wrong mesh primitive. If a morph target produces extreme deformation, the displacement vectors may be in the wrong coordinate space (a scale or axis convention issue).
+
+**Skeleton hierarchy.** In viewers that support bone inspection (like Babylon.js Sandbox), expand the scene graph and verify that the parent-child relationships match the Blender rig hierarchy. Confirm that leaf bones (if any were accidentally exported) are not being treated as significant joints.
+
+== From Viewer to Engine: What to Do When They Differ
+
+When your engine rendering differs from the viewer reference, the debugging process becomes structured:
+
+If the **materials** differ: check your PBR shader against the glTF spec's BRDF equations. The most common differences are the roughness-to-perceptual-roughness conversion (glTF uses perceptual roughness, some PBR implementations use linear roughness) and the metalness workflow (glTF always uses metalness/roughness, never specular/glossiness).
+
+If the **skeleton** is wrong: compare the joint world matrices your engine computes at rest pose against what the viewer shows. Export your engine's computed matrices as a debug overlay and compare them joint by joint. The most common causes are wrong matrix multiplication order (`parent * local` vs `local * parent`) and wrong application of the inverse bind matrix (`joint_matrix = global_joint_transform * inverse_bind_matrix`, where global_joint_transform is computed by traversing the scene graph from root to joint).
+
+If **morph targets** are wrong: verify the expand_sparse_accessor implementation by comparing the expanded data against the raw glTF JSON values. A single off-by-one error in the sparse index scatter step will shift every displacement by one vertex, producing a characteristic "swimming" artifact where the face deforms in the wrong region.
+
+If **animations** are wrong: compare the sampler input timestamps from the glTF file against the timestamps your engine is using for interpolation. If the file stores timestamps in seconds and your engine interprets them as milliseconds (or vice versa), every animation will play at 1/1000 speed or 1000x speed. Also verify that your cubic spline interpolation formula matches the glTF spec exactly—the spec uses the Hermite basis with the tangent vectors pre-scaled by the time interval, which is different from some textbook presentations.
+
+xref:03_validation.adoc[Previous: Validation] | xref:05_conclusion.adoc[Next: Conclusion]

@@ -1,0 +1,112 @@
+:pp: {plus}{plus}
+= Blender-to-Vulkan Workflow
+
+== Naming Conventions: The Unwritten Contract
+
+The most consistent source of confusion between artists and engine programmers is naming. An engine loader that looks for a bone named `"Spine1"` to attach an IK chain will silently fail if the rig uses `"spine_1"`, `"Spine_01"`, or `"spine.001"` (Blender's default naming when you duplicate a bone). This is not a bug in the loader or in the rig—it is a breakdown in the naming contract between the two.
+
+Establishing naming conventions before the first character is built, writing them down, and enforcing them consistently is one of the highest-leverage investments a small team can make. The conventions don't need to be elaborate—they just need to be agreed upon and followed.
+
+For skeleton joints, the standard that works well in practice is: all lowercase, words separated by underscores, side indicated by a `_l` or `_r` suffix (left and right respectively), and a consistent hierarchy naming pattern. A humanoid spine chain under this convention would be `hips`, `spine`, `spine_upper`, `chest`, `neck`, `head`. A leg chain would be `thigh_l`, `shin_l`, `foot_l`, `toes_l`. This is the convention used by Blender's built-in Rigify system and by Mixamo, which makes it compatible with a large body of existing animation content.
+
+For your engine's benefit, the loader code should never hardcode joint names—it should discover them from the glTF file or from a small configuration file that maps semantic names to glTF names. This allows different assets to use different naming conventions without engine code changes. However, the extras-based physics and constraint metadata we defined in Chapter 2 uses `"parent_bone"` as a string reference to joint names, so those must match the exported joint names exactly.
+
+== Vertex Groups and Skinning Weights
+
+In Blender, skeletal skinning is defined through **vertex groups**: named collections of vertices where each vertex has a weight value (between 0 and 1) indicating how much that group's bone influences it. Blender exports vertex group weights as the `JOINTS` and `WEIGHTS` accessors in the glTF file.
+
+Several Blender-side issues can corrupt the skinning data on export:
+
+**Unnormalized weights.** If the sum of a vertex's bone weights is not 1.0, the skinning math produces incorrect results—the vertex will shrink or expand as it moves. Blender's Weight Paint mode has a normalize option; use it before exporting. The glTF specification does not require normalized weights, but your skinning shader almost certainly computes the blend matrix as `sum(weight_i * joint_matrix_i)`, which assumes normalization.
+
+**More than four influences per vertex.** glTF's standard skinning (`JOINTS_0`/`WEIGHTS_0`) supports exactly four bone influences per vertex. Blender rigs frequently produce more than four influences when automatic weight painting is used—particularly near joint intersections like the armpit or hip crease. Blender's Limit Total option in the Weight Paint tools reduces each vertex to at most N influences; set N to 4 before exporting and re-normalize afterwards.
+
+**Zero-weight vertex groups.** If a vertex group exists but a vertex has zero weight in it, Blender may still include that group as one of the four influences, wasting a slot that could be used for a meaningful influence. Clean this up with Blender's Clean Weights option.
+
+**Rest pose mismatch.** The glTF export captures the rig in its current pose at export time as the bind pose. If the rig has been posed (not in rest pose) when you export, all the inverse bind matrices will be wrong, and the character will appear deformed in the base T-pose. Always ensure the armature is in rest position (`Pose mode → Pose → Apply Pose as Rest Pose` if needed, then export) before exporting for the first time, and make it a workflow rule to export only from rest pose.
+
+== Custom Properties for Physics Extras
+
+In Chapter 2 we described how physics collider and constraint definitions are stored in glTF "extras" JSON and parsed by the engine at load time. On the Blender side, these extras originate from Blender's **Custom Properties** panel, available on bones in Pose mode (Properties → Bone → Custom Properties).
+
+The critical detail is the data format. Blender exports custom properties as raw JSON values in the extras field. A float property becomes a JSON number. A string property becomes a JSON string. Modern Blender glTF exporters handle dictionary properties directly, allowing you to create complex, nested JSON structures in the glTF `extras` field without manual string encoding.
+
+The cleanest approach for physics extras is a Python script run from Blender's Script Editor. The script iterates over all bones in the armature and sets custom properties programmatically based on a configuration dictionary:
+
+[source,python]
+----
+import bpy, json
+
+# Configuration: bone name -> physics settings
+physics_config = {
+    "shin_l": {
+        "physics": {
+            "collider": "capsule",
+            "radius": 0.05,
+            "half_height": 0.18,
+            "mass": 3.0,
+            "constraint": {
+                "type": "hinge",
+                "hinge_axis": [0, 0, 1],
+                "limit_min_deg": -140,
+                "limit_max_deg": 0,
+                "parent_bone": "thigh_l"
+            },
+            "collision_group": "leg",
+            "collision_mask": "world,props"
+        }
+    },
+    # ... more bones
+}
+
+armature = bpy.data.objects["Armature"]
+bpy.context.view_layer.objects.active = armature
+bpy.ops.object.mode_set(mode='POSE')
+
+for bone_name, config in physics_config.items():
+    if bone_name in armature.pose.bones:
+        bone = armature.pose.bones[bone_name]
+        for key, value in config.items():
+            # Modern Blender glTF exporters handle dicts directly,
+            # ensuring 'extras' contains a proper JSON object.
+            bone[key] = value
+
+bpy.ops.object.mode_set(mode='OBJECT')
+print("Physics properties applied.")
+----
+
+This script produces the nested JSON structure that the `parse_collider_extras` and `parse_constraint_def` functions from Chapter 2 expect. Modern Blender ensures that these dictionary properties are exported as proper JSON objects in the glTF `extras` field, matching the C{pp} parsing logic we implemented using `tinygltf`. Store this script alongside the blend file and run it after any rig changes. Version-controlling the script together with the blend file ensures that physics parameters are reproducible and tracked.
+
+== glTF Export Checklist
+
+When exporting from Blender, use the following settings in the `Export glTF 2.0` dialog to ensure your character data arrives correctly in the engine:
+
+*   **Format**: `glTF Binary (.glb)`
+*   **Include**:
+    *   [x] `Selected Objects` (Ensure only Mesh and Armature are selected)
+    *   [x] `Custom Properties` (**Critical**: This is where your physics metadata lives)
+*   **Transform**:
+    *   [x] `+Y Up` (Standard glTF convention)
+*   **Data -> Mesh**:
+    *   [x] `UVs`, `Normals`, `Tangents` (Required for PBR and skinning)
+    *   [x] `Vertex Weights` (Required for skeletal animation)
+    *   [x] `Shape Keys` (Required for morph targets)
+*   **Data -> Armature**:
+    *   [x] `Use Rest Position Armature`
+    *   [ ] `Export Deformation Bones Only` (Keep this **off** if you have non-deforming control bones that IK needs to reference)
+    *   [ ] `Add Leaf Bones` (**Off**: avoids extra bones at chain tips)
+*   **Animation**:
+    *   [x] `Animation` (Enable to export clips)
+    *   [x] `Shape Key Animation` (Required if your facial expressions are keyed)
+
+== Morph Target (Shape Key) Workflow
+
+Morph targets in glTF (called **Shape Keys** in Blender) allow for complex deformations like facial expressions that skeletal animation alone cannot handle.
+
+1.  **Creation**: Create Shape Keys in the `Mesh Data` properties panel. The first key is always the `Basis` (the rest pose). Additional keys define displacements from that basis.
+2.  **Naming**: Give your shape keys semantic names (e.g., `blink_l`, `smile`, `mouth_open`). These names will be exported in the glTF `extras.targetNames` field, allowing your engine to address them by name.
+3.  **Range**: Ensure your shape keys are designed to be additive. If a vertex is moved by both a `smile` morph and a `blink` morph, the engine will sum their displacements.
+4.  **Export**: As noted in the checklist, ensure the **Shape Keys** and **Shape Key Animation** options are enabled in the glTF exporter.
+5.  **Validation**: After exporting, run your `.glb` through the **glTF-Validator**. It will check that your shape keys use **Sparse Accessors** where appropriate, which is a critical optimization for complex facial rigs.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_validation.adoc[Next: Validation]

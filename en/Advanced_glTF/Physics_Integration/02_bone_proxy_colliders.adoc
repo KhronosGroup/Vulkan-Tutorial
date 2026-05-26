@@ -1,0 +1,208 @@
+:pp: {plus}{plus}
+= Bone Proxy Colliders
+
+== Why Not Use the Real Mesh?
+
+The most intuitive approach to character physics collision is to use the actual mesh surface as the collision geometry. After all, the compute shader already produces an animated vertex buffer—why not hand that directly to the physics engine and let it work with the real shape?
+
+The answer is performance and stability. A physics engine's collision detection system works best with simple, convex shapes. The moment you give it a concave mesh—which is what almost every character body part is—the engine must switch to a much more expensive decomposition algorithm to handle the concavity correctly. A typical humanoid character mesh has tens of thousands of vertices. Running full mesh-vs-mesh collision detection for even a small crowd of characters would make your frame budget disappear instantly.
+
+More subtly, complex collision shapes produce more contact points per frame, which places a larger burden on the constraint solver. A physics constraint solver works by iteratively resolving all of the contact forces and joint constraints in a scene until it finds a configuration that violates none of them. More contacts mean more iterations, and more iterations mean more time—often with diminishing returns, since the extra precision of the complex shapes rarely produces visible improvements in gameplay.
+
+The solution the industry settled on decades ago is **proxy colliders**: simple shapes that are "close enough" to the bone's volume to produce believable collisions, but simple enough that the physics engine can process them at the speed required for real-time simulation. The word "proxy" is deliberate—these shapes are stand-ins for the real geometry, not representations of it.
+
+== Choosing the Right Shape
+
+For humanoid characters, two shapes cover the vast majority of cases: the **capsule** and the **box**.
+
+A capsule is a cylinder with hemispherical caps. It is the ideal shape for limbs because it is rotationally symmetric, smooth (which prevents tunneling artifacts at joints), and requires only two parameters to define: a half-height and a radius. The physics engine can perform capsule-vs-capsule collision detection extremely efficiently. Long bones—the humerus (upper arm), ulna/radius (forearm), femur (thigh), tibia (shin)—are all well-approximated by capsules.
+
+A box is better suited for the torso and pelvis, which are roughly rectangular and benefit from having distinct width, height, and depth dimensions. Boxes can also represent the skull reasonably well. They are slightly more expensive than capsules, but still vastly cheaper than convex mesh colliders.
+
+For hands and feet, you have a choice. A single capsule per hand (representing the palm and fingers as a unified blob) is the cheapest option and is fine for most games. If you need more precise hand interaction—for a game where characters grip objects, for example—you can use a small box for the palm and individual small capsules for each finger, but you should profile this carefully.
+
+== Defining Collider Properties in glTF Extras
+
+In Chapter 2 we introduced the concept of glTF "extras"—the arbitrary JSON metadata that can be attached to any node in a glTF file. This is the right place to store your collider definitions. By embedding the collider parameters in the glTF asset, you keep the physics setup co-located with the skeleton data, and you give artists a way to tune the shapes directly in Blender without touching engine code.
+
+A typical collider extra for a forearm bone might look like this in your Blender custom properties:
+
+[source,json]
+----
+{
+  "physics": {
+    "collider": "capsule",
+    "radius": 0.045,
+    "half_height": 0.13,
+    "mass": 1.2,
+    "collision_group": "arm",
+    "collision_mask": "world,props"
+  }
+}
+----
+
+The `collider` field specifies the shape type. The `radius` and `half_height` define the capsule's dimensions in the bone's local coordinate space. The `mass` gives the physics engine the weight of this body segment (important for realistic ragdoll behavior—a forearm should weigh significantly less than a torso). The `collision_group` and `collision_mask` fields we will use for self-collision filtering in a later section.
+
+On the C{pp} side, we extend the node parsing code from Chapter 2 to also extract physics metadata:
+
+[source,cpp]
+----
+struct ColliderDef {
+    enum class Shape { CAPSULE, BOX, NONE };
+    Shape shape     = Shape::NONE;
+    float radius    = 0.0f;
+    float half_height = 0.0f;
+    glm::vec3 box_half_extents = {};
+    float mass      = 1.0f;
+    std::string collision_group;
+    std::string collision_mask;
+};
+
+ColliderDef parse_collider_extras(const tinygltf::Value& extras)
+{
+    ColliderDef def;
+    if (!extras.Has("physics")) return def;
+
+    const auto& phys = extras.Get("physics");
+    if (!phys.Has("collider")) return def;
+
+    const std::string shape_str = phys.Get("collider").Get<std::string>();
+    if      (shape_str == "capsule") def.shape = ColliderDef::Shape::CAPSULE;
+    else if (shape_str == "box")     def.shape = ColliderDef::Shape::BOX;
+    else                             return def; // unknown shape, skip
+
+    if (phys.Has("radius"))       def.radius       = static_cast<float>(phys.Get("radius").GetNumberAsDouble());
+    if (phys.Has("half_height"))  def.half_height  = static_cast<float>(phys.Get("half_height").GetNumberAsDouble());
+    if (phys.Has("mass"))         def.mass         = static_cast<float>(phys.Get("mass").GetNumberAsDouble());
+
+    if (phys.Has("box_half_extents")) {
+        const auto& ext = phys.Get("box_half_extents");
+        def.box_half_extents = {
+            static_cast<float>(ext.Get(0).GetNumberAsDouble()),
+            static_cast<float>(ext.Get(1).GetNumberAsDouble()),
+            static_cast<float>(ext.Get(2).GetNumberAsDouble())
+        };
+    }
+
+    if (phys.Has("collision_group")) def.collision_group = phys.Get("collision_group").Get<std::string>();
+    if (phys.Has("collision_mask"))  def.collision_mask  = phys.Get("collision_mask").Get<std::string>();
+
+    return def;
+}
+----
+
+Notice that we return early with a default `NONE` shape if the extras don't contain the data we expect. This graceful degradation is important: bones without physics metadata should simply have no collider, rather than crashing the loader.
+
+== Creating the Physics Bodies
+
+With the collider definitions parsed, we can create the actual physics bodies. Each bone with a collider definition needs a **rigid body**: a physics object that has a position, orientation, mass, and collision shape, and that participates in the physics simulation.
+
+During the animation phase, we drive these rigid bodies from the scene graph (making them **kinematic**—they follow our transforms rather than being simulated). During the ragdoll phase, we flip them to **dynamic**—they become simulated objects that produce transforms for us to read back. We will handle that state switch in the ragdoll handoff section; for now, we create them all as kinematic.
+
+[source,cpp]
+----
+struct BoneBody {
+    uint32_t    node_index;      // Index into our scene graph Node array
+    JPH::BodyID physics_body;    // Jolt Physics body ID
+    ColliderDef collider_def;    // The parameters we parsed from extras
+};
+
+std::vector<BoneBody> create_bone_bodies(
+    const std::vector<Node>& nodes,
+    const Skin& skin,
+    PhysicsWorld& physics_world)
+{
+    std::vector<BoneBody> bodies;
+
+    for (uint32_t joint_idx = 0; joint_idx < skin.joints.size(); ++joint_idx) {
+        uint32_t node_index = skin.joints[joint_idx];
+        const Node& node    = nodes[node_index];
+
+        if (node.collider_def.shape == ColliderDef::Shape::NONE) continue;
+
+        // Create the collision shape from the parsed definition using Jolt
+        JPH::Ref<JPH::Shape> shape;
+        if (node.collider_def.shape == ColliderDef::Shape::CAPSULE) {
+            shape = new JPH::CapsuleShape(
+                node.collider_def.half_height,
+                node.collider_def.radius);
+        } else if (node.collider_def.shape == ColliderDef::Shape::BOX) {
+            shape = new JPH::BoxShape(JPH::Vec3(
+                node.collider_def.box_half_extents.x,
+                node.collider_def.box_half_extents.y,
+                node.collider_def.box_half_extents.z));
+        }
+
+        if (!shape) continue;
+
+        // Create the rigid body at the bone's current world position.
+        // We start it as KINEMATIC - it will be driven by the animation system.
+        JPH::BodyCreationSettings settings;
+        settings.SetShape(shape);
+        settings.mMassPropertiesOverride.mMass = node.collider_def.mass;
+        settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+
+        PhysicsPose pose = decompose_to_pose(node.world_matrix);
+        settings.mPosition = JPH::Vec3(pose.position.x, pose.position.y, pose.position.z);
+        settings.mRotation = JPH::Quat(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w);
+        settings.mMotionType = JPH::EMotionType::Kinematic;
+
+        JPH::BodyID body = physics_world.create_body(settings);
+
+        bodies.push_back({ node_index, body, node.collider_def });
+    }
+
+    return bodies;
+}
+----
+
+The `decompose_to_pose` function is worth examining briefly. Physics engines typically represent a body's state as a position and a quaternion, not as a 4x4 matrix. We need to decompose the scene graph's matrix representation into these components:
+
+[source,cpp]
+----
+PhysicsPose decompose_to_pose(const glm::mat4& world_matrix)
+{
+    PhysicsPose pose;
+    // Extract translation directly from the last column
+    pose.position = glm::vec3(world_matrix[3]);
+
+    // Extract rotation by normalizing the 3x3 basis vectors to remove scale,
+    // then constructing a quaternion from the pure rotation matrix.
+    glm::mat3 rot_scale = glm::mat3(world_matrix);
+    glm::mat3 rotation;
+    rotation[0] = glm::normalize(rot_scale[0]);
+    rotation[1] = glm::normalize(rot_scale[1]);
+    rotation[2] = glm::normalize(rot_scale[2]);
+    pose.orientation = glm::quat_cast(rotation);
+
+    return pose;
+}
+----
+
+== Updating Kinematic Bodies Each Frame
+
+Every frame, while the character is animated (not ragdolling), we need to update each bone's physics body to match the scene graph's current world matrix. This is the "Animation to Physics" direction of the bi-directional link we discussed in Chapter 2.
+
+[source,cpp]
+----
+void sync_animation_to_physics(
+    const std::vector<Node>& nodes,
+    std::vector<BoneBody>& bodies,
+    PhysicsWorld& physics_world)
+{
+    for (auto& bone_body : bodies) {
+        const Node& node = nodes[bone_body.node_index];
+        PhysicsPose pose = decompose_to_pose(node.world_matrix);
+
+        // Move the kinematic body to the animated position.
+        // The physics engine will compute the velocity automatically,
+        // based on how far it moved since last frame. This velocity
+        // becomes critical during the ragdoll handoff.
+        physics_world.move_kinematic(bone_body.physics_body, pose);
+    }
+}
+----
+
+There is a subtle but important reason to use `move_kinematic` rather than simply teleporting the body to the new position: most physics engines use the delta between the previous and current position to estimate the body's velocity. When we later flip the body to dynamic mode for the ragdoll, the physics engine needs a realistic initial velocity so the ragdoll doesn't start from a dead stop. If we had been teleporting the body rather than moving it continuously, that velocity estimate would be wrong, and the ragdoll handoff would look wrong.
+
+xref:01_introduction.adoc[Previous: Introduction] | xref:03_constraints_and_joint_limits.adoc[Next: Constraints & Joint Limits]

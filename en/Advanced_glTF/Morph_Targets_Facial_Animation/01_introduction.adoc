@@ -1,0 +1,40 @@
+:pp: {plus}{plus}
+= Morph Targets & Facial Animation
+
+== A Different Kind of Deformation
+
+Every technique we have covered so far—scene graphs, compute skinning, ragdolls, IK—has been built on the same foundation: a skeleton of joints, each with a transform, driving the deformation of a mesh. Skeletal animation is powerful and efficient for bodies, limbs, and any mesh region whose deformation is roughly rotational in nature. But it has an Achilles heel, and that heel is the face.
+
+A human face deforms in ways that are fundamentally different from a limb. The skin around the mouth doesn't rotate like a knee bends—it slides, bulges, compresses, and stretches in complex patterns driven by dozens of independent muscles pulling in partially conflicting directions. Capturing all of this with joints requires an impractical number of them (professional facial rigs in film production can have hundreds of joints just for the face), and even then the interpolation between poses can produce artifacts because spherical linear interpolation of joint rotations is not the same as the linear blending of skin displacement.
+
+The industry's solution for facial animation is **morph targets**, which are also called **blend shapes** or **shape keys** depending on which software package you are using. The idea is straightforward: instead of animating joint rotations, you store multiple complete sets of vertex positions representing different facial expressions. A "smile" morph target stores the positions of every face vertex in the smiled configuration. A "brow raise" morph target stores them in the raised-brow configuration. At runtime, you blend linearly between the base mesh and one or more morph targets by weighting each target's contribution. If the smile weight is 0.7, every vertex moves 70% of the way from its rest position to its smile position. If both a smile (weight 0.5) and a brow raise (weight 0.8) are active simultaneously, the displacements are added and the vertex moves to the combined position.
+
+This is the **Linear Blend Shapes** model, and it is what glTF calls its `WEIGHTS` animation channel.
+
+== What glTF Stores for Morph Targets
+
+The glTF specification stores morph targets as a list of accessors, one per target, each containing per-vertex displacement vectors. Specifically, for a mesh primitive with `N` vertices and `K` morph targets, the glTF file contains:
+
+- The base vertex buffer: N entries with positions, normals, tangents, and texture coordinates.
+- K additional "sparse" or dense accessor arrays, each containing N position displacement vectors (the difference between the morph target position and the base position for each vertex).
+- Optionally, K additional normal displacement arrays and K additional tangent displacement arrays, for morph targets that change the surface curvature (like puffing cheeks).
+
+The animation system drives a set of `K` weights, one per morph target, in the range [0, 1]. The final vertex position is:
+
+`final_position = base_position + sum(weight[i] * displacement[i])` for all K targets.
+
+This is linear blending, and it has the same virtue that skeletal linear blend skinning has: it is trivially GPU-parallelizable. Every vertex is independent, and every displacement is just a vector addition and scalar multiply.
+
+== The Memory Challenge
+
+Morph targets have one serious problem: memory. If you have a face mesh with 50,000 vertices and 50 morph targets (a reasonable number for a photorealistic character with full FACS—Facial Action Coding System—coverage), you have 50 × 50,000 = 2,500,000 displacement vectors. At 12 bytes per 3D float vector, that is 30 megabytes of displacement data for a single character's face. For normal displacements, double that to 60 MB. For a game with multiple speaking characters simultaneously, this adds up rapidly.
+
+The approach we will use is **bindless** morph target buffers combined with **sparse activation**: rather than loading all morph target data for all characters into GPU-resident buffers unconditionally, we only promote the data for *currently active* morph targets and use Vulkan 1.4's descriptor indexing to access any of them from a single shader. This is the same design philosophy as bindless texture atlases for materials—instead of binding a descriptor per resource, we bind a large array of descriptors once and index into it with a push constant or uniform value.
+
+== What This Chapter Covers
+
+We will implement the full morph target pipeline in three stages. First, we parse and upload the morph target displacement data from glTF—this requires special handling of glTF's sparse accessor format, which stores only the vertices that actually change (a significant optimization for morph targets like "blink" where only eyelid vertices differ from the base). Second, we build the bindless Vulkan descriptor infrastructure—a large buffer array that the skinning compute shader can index at will. Third, we extend the compute skinning shader from Chapter 3 to apply morph displacements before the skeletal skinning step, producing a final vertex buffer that reflects both the facial expression and the body pose simultaneously.
+
+We will also briefly discuss the relationship between morph targets and skeletal rigs in production. Professional characters typically use both: a coarse joint rig for the head and jaw (to handle large-scale deformation like opening the mouth), and a dense morph target layer for the fine-grained surface detail (lip sync, nostril flare, brow wrinkles). Understanding how these two layers cooperate will help you make the right tradeoffs for your character pipeline.
+
+xref:../Procedural_Animation_IK/07_conclusion.adoc[Previous: Procedural Animation Conclusion] | xref:02_shape_key_ingestion.adoc[Next: Shape Key Ingestion]

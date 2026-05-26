@@ -1,0 +1,30 @@
+:pp: {plus}{plus}
+= Procedural Animation & Inverse Kinematics
+
+== The Limits of Keyframe Animation
+
+Everything we have built so far—the scene graph, the compute skinning pipeline, the physics ragdoll system—has been in service of playing back and blending animations that an artist created in Blender. Keyframe animation is a powerful tool, and for the majority of a character's movement it is exactly the right approach. An artist can spend hours perfecting a walk cycle, a combat strike, or an idle breathing animation, and the investment shows.
+
+But keyframe animation has a fundamental limitation: it was authored for a specific environment. A walk cycle assumes flat ground. A hand-reaching animation assumes the object being reached for is exactly where the animator placed it. A death animation assumes the character falls on an open, featureless floor. The real world—or the real game world—is none of those things.
+
+A character crossing a rocky hillside needs each foot to land precisely on the surface it encounters, not float half a meter above the ground or clip into a slope. A character reaching for a dynamically placed pickup needs their hand to arrive at the actual object position, which changes every frame. A soldier diving behind cover needs their head to track the enemy even while their body is committed to a pre-authored crouch animation. A character running at full speed around a sharp corner should lean into the turn, not stand rigidly upright as if skating on rails.
+
+These problems cannot be solved by making more keyframe animations. There are infinitely many terrain configurations, object positions, and dynamic scenarios. The solution is **procedural animation**: the real-time, mathematical computation of joint transforms that are not authored by an artist but are instead computed by the engine in response to the current world state.
+
+== What Procedural Animation Is and Isn't
+
+It is worth being precise about what we mean by procedural animation, because the term is used loosely in the industry. In this chapter, we mean the runtime modification of a skeleton's joint transforms using algorithms that respond to the current state of the scene. We are not talking about procedural content generation, particle systems, or anything that generates geometry. We are talking about computing joint rotations.
+
+Procedural animation is typically layered *on top of* keyframe animation, not used instead of it. The base pose comes from the animator's clips; the procedural layer adjusts specific joints to respond to the environment. This is an additive process: the keyframe system provides a biologically plausible base motion, and the procedural layer makes small, targeted corrections that the artist couldn't anticipate.
+
+The central technique for positional correction is **Inverse Kinematics**, abbreviated IK. Standard keyframe animation works *forward kinematically*: you set joint rotations, and the end effector (the hand, the foot) ends up wherever the math puts it. IK works in reverse: you specify where the end effector *must* be, and the algorithm computes the joint rotations required to put it there. This is not a trivial inversion—for a chain with multiple joints, there are typically infinitely many valid solutions, and the algorithm must pick the one that looks most natural.
+
+We will cover two IK algorithms in depth: **Cyclic Coordinate Descent (CCD)** and **FABRIK** (Forward And Backward Reaching IK). Both are practical, real-time algorithms that are widely used in game engines. We will also cover the two most common applications: foot placement on uneven terrain and look-at controllers for head tracking. Finally, we will implement physics-driven procedural lean, which derives character body tilt from the physics simulation's velocity data.
+
+== How This Chapter Fits the Rest of the Series
+
+This chapter assumes you have a functioning scene graph (Chapter 2) with properly propagated world matrices, and that you understand the animation blending system (Chapter 3). The IK algorithms we implement will read joint world matrices from the scene graph and write corrected joint local transforms back into it, triggering the dirty flag propagation system to update all descendant nodes.
+
+The ragdoll system from Chapter 4 is also relevant here, particularly in the foot placement section. When a character is standing on uneven terrain, the foot IK system must not fight the physics system—they must cooperate. We will discuss the hierarchy of control and how to ensure that IK corrections and physics feedback reinforce rather than contradict each other.
+
+xref:../Physics_Integration/06_conclusion.adoc[Previous: Physics Integration Conclusion] | xref:02_ccd_ik.adoc[Next: Cyclic Coordinate Descent IK]

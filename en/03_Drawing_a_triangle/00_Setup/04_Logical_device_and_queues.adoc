@@ -94,11 +94,16 @@ The C++ Vulkan API provides a helper template called `vk::StructureChain` that m
 [,c++]
 ----
 // Create a chain of feature structures
-vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-    {},                               // vk::PhysicalDeviceFeatures2 (empty for now)
-    {.dynamicRendering = true },      // Enable dynamic rendering from Vulkan 1.3
-    {.extendedDynamicState = true }   // Enable extended dynamic state from the extension
-};
+vk::StructureChain<vk::PhysicalDeviceFeatures2,
+                   vk::PhysicalDeviceVulkan11Features,
+                   vk::PhysicalDeviceVulkan13Features,
+                   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+    featureChain = {
+        {},                                    // vk::PhysicalDeviceFeatures2 (empty for now)
+        {.shaderDrawParameters = true},        // Enable shader draw parameters from Vulkan 1.1
+        {.dynamicRendering = true},            // Enable dynamic rendering from Vulkan 1.3
+        {.extendedDynamicState = true}         // Enable extended dynamic state from the extension
+    };
 ----
 
 Here's what's happening in this code:
@@ -106,8 +111,9 @@ Here's what's happening in this code:
 1. We create a `vk::StructureChain` with three different feature structures.
 2. For each structure in the chain, we provide an initializer:
    - The first structure (`vk::PhysicalDeviceFeatures2`) is left empty with `{}`
-   - In the second structure, we enable the `dynamicRendering` feature from Vulkan 1.3
-   - In the third structure, we enable the `extendedDynamicState` feature from an extension
+   - In the second structure, we enable the `shaderDrawParameters` feature from Vulkan 1.1
+   - In the third structure, we enable the `dynamicRendering` feature from Vulkan 1.3
+   - In the fourth structure, we enable the `extendedDynamicState` feature from an extension
 
 The `vk::StructureChain` template automatically connects these structures together by setting up the `pNext` pointers between them. This saves us from having to manually link each structure to the next one.
 

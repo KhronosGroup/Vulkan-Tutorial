@@ -5,7 +5,7 @@
 == Introduction
 
 The descriptor set layout from the previous chapter describes the type of descriptors that can be bound.
-In this chapter we're going to create a descriptor set for each `VkBuffer` resource to bind it to the uniform buffer descriptor.
+In this chapter we're going to create a descriptor set for each `vk::raii::Buffer` resource to bind it to the uniform buffer descriptor.
 
 == Descriptor pool
 
@@ -15,7 +15,8 @@ We'll write a new function `createDescriptorPool` to set it up.
 
 [,c++]
 ----
-void initVulkan() {
+void initVulkan()
+{
     ...
     createUniformBuffers();
     createDescriptorPool();
@@ -24,31 +25,30 @@ void initVulkan() {
 
 ...
 
-void createDescriptorPool() {
-
+void createDescriptorPool()
+{
 }
 ----
 
-We first need to describe which descriptor types our descriptor sets are going to contain and how many of them, using `VkDescriptorPoolSize` structures.
+We first need to describe which descriptor types our descriptor sets are going to contain and how many of them, using `vk::DescriptorPoolSize` structures.
 
 [,c++]
 ----
-vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT);
+vk::DescriptorPoolSize poolSize{ .type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT);
 ----
 
 We will allocate one of these descriptors for every frame.
-This pool size structure is referenced by the main `VkDescriptorPoolCreateInfo`:
+This pool size structure is referenced by the main `vk::DescriptorPoolCreateInfo`:
 
 [,c++]
 ----
 vk::DescriptorPoolCreateInfo poolInfo{ .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, .maxSets = MAX_FRAMES_IN_FLIGHT, .poolSizeCount = 1, .pPoolSizes = &poolSize };
 ----
 
-Aside from the maximum number of individual descriptors that are available, we also need to specify the maximum number of descriptor sets that may be allocated:
+Aside from the maximum number of individual descriptors that are available, we also need to specify the maximum number of descriptor sets that may be allocated.
 
-The structure has an optional flag similar to command pools that determines if individual descriptor sets can be freed or not: `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`.
-We're not going to touch the descriptor set after creating it, so we don't need this flag.
-You can leave `flags` to its default value of `0`.
+The structure has an optional flag similar to command pools that determines if individual descriptor sets can be freed or not.
+As the `vk::raii::DescriptorSets` destroy the underlying `VkDescriptorSet` on destruction we need to set it to `vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet` to allow that.
 
 [,c++]
 ----
@@ -59,7 +59,7 @@ vk::raii::DescriptorPool descriptorPool = nullptr;
 descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
 ----
 
-Add a new class member to store the handle of the descriptor pool and call `vkCreateDescriptorPool` to create it.
+Add a new class member to store the handle of the descriptor pool and call the `vk::raii::DescriptorPool` constructor to create it.
 
 == Descriptor set
 
@@ -68,7 +68,8 @@ Add a `createDescriptorSets` function for that purpose:
 
 [,c++]
 ----
-void initVulkan() {
+void initVulkan()
+{
     ...
     createDescriptorPool();
     createDescriptorSets();
@@ -77,33 +78,34 @@ void initVulkan() {
 
 ...
 
-void createDescriptorSets() {
-
+void createDescriptorSets()
+{
 }
 ----
 
-A descriptor set allocation is described with a `VkDescriptorSetAllocateInfo` struct.
+A descriptor set allocation is described with a `vk::DescriptorSetAllocateInfo` struct.
 You need to specify the descriptor pool to allocate from, the number of descriptor sets to allocate, and the descriptor set layout to base them on:
 
 [,c++]
 ----
 std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
-vk::DescriptorSetAllocateInfo allocInfo{ .descriptorPool = descriptorPool, .descriptorSetCount = static_cast<uint32_t>(layouts.size()), .pSetLayouts = layouts.data() };
+vk::DescriptorSetAllocateInfo        allocInfo{.descriptorPool     = descriptorPool,
+                                               .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+                                               .pSetLayouts        = layouts.data()};
 ----
 
 In our case, we will create one descriptor set for each frame in flight, all with the same layout.
 Unfortunately, we do need all the copies of the layout because the next function expects an array matching the number of sets.
 
-Add a class member to hold the descriptor set handles and allocate them with `vkAllocateDescriptorSets`:
+Add a class member to hold the descriptor set handles and allocate them with `vk::raii::Device::allocateDescriptorSets`:
 
 [,c++]
 ----
-vk::raii::DescriptorPool descriptorPool = nullptr;
+vk::raii::DescriptorPool             descriptorPool = nullptr;
 std::vector<vk::raii::DescriptorSet> descriptorSets;
 
 ...
 
-descriptorSets.clear();
 descriptorSets = device.allocateDescriptorSets(allocInfo);
 ----
 
@@ -112,27 +114,34 @@ We'll now add a loop to populate every descriptor:
 
 [,c++]
 ----
-for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-
+for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+{
 }
 ----
 
-Descriptors that refer to buffers, like our uniform buffer descriptor, are configured with a `VkDescriptorBufferInfo` struct.
+Descriptors that refer to buffers, like our uniform buffer descriptor, are configured with a `vk::DescriptorBufferInfo` struct.
 This structure specifies the buffer and the region within it that contains the data for the descriptor.
 
 [,c++]
 ----
-for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+{
     vk::DescriptorBufferInfo bufferInfo{ .buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject) };
 }
 ----
 
-If you're overwriting the whole buffer, like we are in this case, then it is also possible to use the `VK_WHOLE_SIZE` value for the range.
-The configuration of descriptors is updated using the `vkUpdateDescriptorSets` function, which takes an array of `VkWriteDescriptorSet` structs as parameter.
+If you're overwriting the whole buffer, like we are in this case, then it is also possible to use the `vk::WholeSize` value for the range.
+The configuration of descriptors is updated using the `vk::raii::Device::updateDescriptorSets` function, which takes an array of `vk::WriteDescriptorSet` structs as parameter.
 
 [,c++]
 ----
-vk::WriteDescriptorSet descriptorWrite{ .dstSet = descriptorSets[i], .dstBinding = 0, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo };
+vk::DescriptorBufferInfo bufferInfo{.buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject)};
+vk::WriteDescriptorSet   descriptorWrite{.dstSet          = descriptorSets[i],
+                                         .dstBinding      = 0,
+                                         .dstArrayElement = 0,
+                                         .descriptorCount = 1,
+                                         .descriptorType  = vk::DescriptorType::eUniformBuffer,
+                                         .pBufferInfo     = &bufferInfo};
 ----
 
 The first two fields specify the descriptor set to update and the binding.
@@ -146,46 +155,52 @@ The `descriptorCount` field specifies how many array elements you want to update
 
 The last field references an array with `descriptorCount` structs that actually configure the descriptors.
 It depends on the type of descriptor which one of the three you actually need to use.
-The `pBufferInfo` field is used for descriptors that refer to buffer data, `pImageInfo` is used for descriptors that refer to image data, and `pTexelBufferView` is used for descriptors that refer to buffer views.
-Our descriptor is based on buffers, so we're using `pBufferInfo`.
+The `pBufferInfo` field is used for descriptors that refer to buffer data. There are additional elements in this struct, that are not
+used in this sample: `pImageInfo` is used for descriptors that refer to image data, and `pTexelBufferView` is used for descriptors that refer to buffer views.
+Our descriptor is based on buffers, so we're just using `pBufferInfo`.
 
 [,c++]
 ----
 device.updateDescriptorSets(descriptorWrite, {});
 ----
 
-The updates are applied using `vkUpdateDescriptorSets`.
-It accepts two kinds of arrays as parameters: an array of `VkWriteDescriptorSet` and an array of `VkCopyDescriptorSet`.
+The updates are applied using `vk::raii::Device::updateDescriptorSets`.
+It accepts two arrays as parameters: an array of `vk::WriteDescriptorSet` and an array of `vk::CopyDescriptorSet`.
 The latter can be used to copy descriptors to each other, as its name implies.
 
 == Using descriptor sets
 
-We now need to update the `recordCommandBuffer` function to actually bind the right descriptor set for each frame to the descriptors in the shader with `vkCmdBindDescriptorSets`.
-This needs to be done before the `vkCmdDrawIndexed` call:
+We now need to update the `recordCommandBuffer` function to actually bind the right descriptor set for each frame to the descriptors in the shader with `vk::raii::CommandBuffer::bindDescriptorSets`.
+This needs to be done before the `vk::raii::CommandBuffer::drawIndexed` call:
 
 [,c++]
 ----
 commandBuffers[frameIndex].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[frameIndex], nullptr);
-commandBuffers[frameIndex].drawIndexed(indices.size(), 1, 0, 0, 0);
+commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 ----
 
 Unlike vertex and index buffers, descriptor sets are not unique to graphics pipelines.
 Therefore, we need to specify if we want to bind descriptor sets to the graphics or compute pipeline.
 The next parameter is the layout that the descriptors are based on.
-The next three parameters specify the index of the first descriptor set, the number of sets to bind, and the array of sets to bind.
+The next two parameters specify the index of the first descriptor set, and the array of sets to bind.
 We'll get back to this in a moment.
-The last two parameters specify an array of offsets that are used for dynamic descriptors.
+The last parameter specifies an array of offsets that are used for dynamic descriptors.
 We'll look at these in a future chapter.
 
 If you run your program now, then you'll notice that unfortunately nothing is visible.
 The problem is that because of the Y-flip we did in the projection matrix, the vertices are now being drawn in counter-clockwise order instead of clockwise order.
 This causes backface culling to kick in and prevents any geometry from being drawn.
-Go to the `createGraphicsPipeline` function and modify the `frontFace` in `VkPipelineRasterizationStateCreateInfo` to correct this:
+Go to the `createGraphicsPipeline` function and modify the `frontFace` in `vk::PipelineRasterizationStateCreateInfo` to correct this:
 
 [,c++]
 ----
- vk::PipelineRasterizationStateCreateInfo rasterizer({}, vk::False, vk::False, vk::PolygonMode::eFill,
-        vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise, vk::False, 0.0f, 0.0f, 1.0f, 1.0f);
+vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable        = vk::False,
+                                                    .rasterizerDiscardEnable = vk::False,
+                                                    .polygonMode             = vk::PolygonMode::eFill,
+                                                    .cullMode                = vk::CullModeFlagBits::eBack,
+                                                    .frontFace               = vk::FrontFace::eCounterClockwise,
+                                                    .depthBiasEnable         = vk::False,
+                                                    .lineWidth               = 1.0f};
 ----
 
 Run your program again, and you should now see the following:
@@ -202,13 +217,15 @@ It seems obvious enough to simply use the same types in both:
 
 [,c++]
 ----
-struct UniformBufferObject {
+struct UniformBufferObject
+{
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
 };
 
-struct UniformBuffer {
+struct UniformBuffer
+{
     float4x4 model;
     float4x4 view;
     float4x4 proj;
@@ -221,7 +238,8 @@ For example, try modifying the struct and shader to look like this:
 
 [,c++]
 ----
-struct UniformBufferObject {
+struct UniformBufferObject
+{
     glm::vec2 foo;
     glm::mat4 model;
     glm::mat4 view;
@@ -260,7 +278,8 @@ To fix this problem we can use the https://en.cppreference.com/w/cpp/language/al
 
 [,c++]
 ----
-struct UniformBufferObject {
+struct UniformBufferObject
+{
     glm::vec2 foo;
     alignas(16) glm::mat4 model;
     glm::mat4 view;
@@ -287,11 +306,13 @@ Consider the following definition in the C{pp} code:
 
 [,c++]
 ----
-struct Foo {
+struct Foo
+{
     glm::vec2 v;
 };
 
-struct UniformBufferObject {
+struct UniformBufferObject
+{
     Foo f1;
     Foo f2;
 };
@@ -301,11 +322,13 @@ And the following shader definition:
 
 [,c++]
 ----
-struct Foo {
+struct Foo
+{
     vec2 v;
 };
 
-struct UniformBuffer {
+struct UniformBuffer
+{
     Foo f1;
     Foo f2;
 };
@@ -317,7 +340,8 @@ In this case, you must specify the alignment yourself:
 
 [,c++]
 ----
-struct UniformBufferObject {
+struct UniformBufferObject
+{
     Foo f1;
     alignas(16) Foo f2;
 };
@@ -328,7 +352,8 @@ That way you won't be caught off guard by the strange symptoms of alignment erro
 
 [,c++]
 ----
-struct UniformBufferObject {
+struct UniformBufferObject
+{
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
@@ -345,7 +370,8 @@ Shaders can then reference specific descriptor sets like this:
 
 [,c++]
 ----
-struct UniformBuffer {
+struct UniformBuffer
+{
 };
 ConstantBuffer<UniformBuffer> ubo;
 ----

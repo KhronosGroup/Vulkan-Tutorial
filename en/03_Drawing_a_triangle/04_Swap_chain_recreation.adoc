@@ -15,7 +15,8 @@ Create a new `recreateSwapChain` function that calls `createSwapChain` and all t
 
 [,c++]
 ----
-void recreateSwapChain() {
+void recreateSwapChain()
+{
     device.waitIdle();
 
     createSwapChain();
@@ -23,7 +24,7 @@ void recreateSwapChain() {
 }
 ----
 
-We first call `vkDeviceWaitIdle`, because just like in the last chapter, we shouldn't touch resources that may still be in use.
+We first call `vk::raii::Device::waitIdle`, because just like in the last chapter, we shouldn't touch resources that may still be in use.
 Obviously, we'll have to recreate  the swap chain itself.
 The image views need to be recreated because they are based directly on the swap chain images.
 
@@ -32,11 +33,12 @@ Let's call it `cleanupSwapChain`:
 
 [,c++]
 ----
-void cleanupSwapChain() {
-
+void cleanupSwapChain()
+{
 }
 
-void recreateSwapChain() {
+void recreateSwapChain()
+{
     device.waitIdle();
 
     cleanupSwapChain();
@@ -55,12 +57,14 @@ We'll move the cleanup code of all objects that are recreated as part of a swap 
 
 [,c++]
 ----
-void cleanupSwapChain() {
+void cleanupSwapChain()
+{
     swapChainImageViews.clear();
     swapChain = nullptr;
 }
 
-void cleanup() {
+void cleanup()
+{
     cleanupSwapChain();
 
     glfwDestroyWindow(window);
@@ -73,7 +77,7 @@ Note that in `chooseSwapExtent` we already query the new window resolution to ma
 That's all it takes to recreate the swap chain!
 However, the disadvantage of this approach is that we need to stop all renderings before creating the new swap chain.
 It is possible to create a new swap chain while drawing commands on an image from the old swap chain are still in-flight.
-You need to pass the previous swap chain to the `oldSwapchain` field in the `VkSwapchainCreateInfoKHR` struct and destroy the old swap chain as soon as you've finished using it.
+You need to pass the previous swap chain to the `oldSwapchain` field in the `vk::SwapchainCreateInfoKHR` struct and destroy the old swap chain as soon as you've finished using it.
 
 == Suboptimal or out-of-date swap chain
 
@@ -120,8 +124,6 @@ else
   // There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
   assert(result == vk::Result::eSuccess);
 }
-
-frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 ----
 
 The `vk::raii::Queue::presentKHR` function returns the same values with the same meaning.
@@ -135,9 +137,8 @@ const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
                                         .pSwapchains        = &*swapChain,
                                         .pImageIndices      = &imageIndex};
 result = queue.presentKHR(presentInfoKHR);
-if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
+if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR))
 {
-  framebufferResized = false;
   recreateSwapChain();
 }
 else
@@ -176,7 +177,7 @@ if (result == vk::Result::eErrorOutOfDateKHR)
     recreateSwapChain();
     return;
 }
-else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
 {
     assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
     throw std::runtime_error("failed to acquire swap chain image!");
@@ -194,8 +195,6 @@ First, add a new member variable that flags that a resize has happened:
 
 [,c++]
 ----
-std::vector<vk::raii::Fence> inFlightFences;
-
 bool framebufferResized = false;
 ----
 
@@ -203,7 +202,8 @@ The `drawFrame` function should then be modified to also check for this flag:
 
 [,c++]
 ----
-if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized) {
+if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
+{
     framebufferResized = false;
     recreateSwapChain();
 }
@@ -218,7 +218,8 @@ Now, to actually detect resizes, we can use the `glfwSetFramebufferSizeCallback`
 
 [,c++]
 ----
-void initWindow() {
+void initWindow()
+{
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -227,8 +228,8 @@ void initWindow() {
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
 
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
 }
 ----
 
@@ -247,7 +248,8 @@ This value can now be retrieved from within the callback with `glfwGetWindowUser
 
 [,c++]
 ----
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
     auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
 }

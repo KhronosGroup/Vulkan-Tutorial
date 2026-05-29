@@ -43,4 +43,4 @@ In this chapter, we will lay the foundational "plumbing" for our advanced charac
 
 Let's begin by expanding our engine's core and building a scene graph that is ready for the rigors of modern character animation.
 
-xref:Advanced_glTF/introduction.adoc[Previous: Advanced glTF Introduction] | xref:Advanced_glTF/Scene_Graph_Heiarchy/02_engine_expansion.adoc[Next: The Engine Expansion]
+xref:Advanced_glTF/introduction.adoc[Previous: Advanced glTF Introduction] | xref:Advanced_glTF/Scene_Graph_Hierarchy/02_engine_expansion.adoc[Next: The Engine Expansion]

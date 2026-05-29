@@ -34,7 +34,7 @@ We first need to describe which descriptor types our descriptor sets are going t
 
 [,c++]
 ----
-vk::DescriptorPoolSize poolSize{ .type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT);
+vk::DescriptorPoolSize poolSize{ .type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT };
 ----
 
 We will allocate one of these descriptors for every frame.

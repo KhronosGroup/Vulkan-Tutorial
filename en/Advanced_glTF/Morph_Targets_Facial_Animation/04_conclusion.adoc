@@ -35,4 +35,4 @@ To verify your morph target implementation:
 2.  **Bindless Indexing**: Use a GPU debugger (like RenderDoc) to inspect the `morphTargets[]` array. Ensure that the descriptor indices passed in `PushConstants` match the correct buffer slots.
 3.  **Order of Operations**: Ensure that morph displacements are applied **before** skeletal skinning. If they are applied after, facial features will appear to "float" or detach when the head rotates.
 
-xref:03_bindless_morph_buffers.adoc[Previous: Bindless Morph Buffers] | xref:../Tooling_Production_Pipeline/01_introduction.adoc[Next: Tooling & The Production Pipeline]
+xref:Advanced_glTF/Morph_Targets_Facial_Animation/03_bindless_morph_buffers.adoc[Previous: Bindless Morph Buffers] | xref:Advanced_glTF/Tooling_Production_Pipeline/01_introduction.adoc[Next: Tooling & The Production Pipeline]

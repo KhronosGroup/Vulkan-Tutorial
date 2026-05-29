@@ -109,4 +109,4 @@ Morph targets in glTF (called **Shape Keys** in Blender) allow for complex defor
 4.  **Export**: As noted in the checklist, ensure the **Shape Keys** and **Shape Key Animation** options are enabled in the glTF exporter.
 5.  **Validation**: After exporting, run your `.glb` through the **glTF-Validator**. It will check that your shape keys use **Sparse Accessors** where appropriate, which is a critical optimization for complex facial rigs.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_validation.adoc[Next: Validation]
+xref:Advanced_glTF/Tooling_Production_Pipeline/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Tooling_Production_Pipeline/03_validation.adoc[Next: Validation]

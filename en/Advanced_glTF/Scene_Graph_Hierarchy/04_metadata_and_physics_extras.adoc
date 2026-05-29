@@ -63,4 +63,4 @@ By leveraging glTF "extras," we've moved the responsibility of scene configurati
 
 With our Scene Graph unified and our asset pipeline automated, we are ready to tackle the core of character movement: **Advanced Skeletal & Compute Skinning**. In the next chapter, we'll move the heavy lifting of vertex deformation into Vulkan Compute shaders, enabling characters that are as performant as they are expressive.
 
-xref:03_physics_syncing.adoc[Previous: Physics Syncing] | xref:05_conclusion.adoc[Next: Conclusion]
+xref:Advanced_glTF/Scene_Graph_Heiarchy/03_physics_syncing.adoc[Previous: Physics Syncing] | xref:Advanced_glTF/Scene_Graph_Heiarchy/05_conclusion.adoc[Next: Conclusion]

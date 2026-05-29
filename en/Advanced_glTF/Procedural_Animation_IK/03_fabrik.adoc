@@ -166,4 +166,4 @@ For **spines and longer chains**, FABRIK is strongly preferred. CCD applied to a
 
 Many production engines use both: CCD for limb IK and FABRIK for spines and special cases. There is no reason you cannot do the same—the two algorithms have the same interface from the scene graph's perspective.
 
-xref:02_ccd_ik.adoc[Previous: Cyclic Coordinate Descent IK] | xref:04_foot_placement.adoc[Next: Foot Placement on Uneven Terrain]
+xref:Advanced_glTF/Procedural_Animation_IK/02_ccd_ik.adoc[Previous: Cyclic Coordinate Descent IK] | xref:Advanced_glTF/Procedural_Animation_IK/04_foot_placement.adoc[Next: Foot Placement on Uneven Terrain]

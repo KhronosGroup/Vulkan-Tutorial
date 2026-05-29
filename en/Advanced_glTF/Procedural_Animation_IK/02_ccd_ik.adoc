@@ -152,4 +152,4 @@ CCD's main weakness is a visual artifact known as **end-effector bias**: because
 
 The algorithm we will look at next, FABRIK, addresses this weakness with a different strategy.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_fabrik.adoc[Next: FABRIK]
+xref:Advanced_glTF/Procedural_Animation_IK/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Procedural_Animation_IK/03_fabrik.adoc[Next: FABRIK]

@@ -174,4 +174,4 @@ vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
 
 This allows you to audit your assets live in the engine, which is far more effective than relying on static analysis in a 3D tool.
 
-xref:02_debug_drawers.adoc[Previous: Debug Drawers] | xref:04_renderdoc_analysis.adoc[Next: RenderDoc Analysis]
+xref:Advanced_glTF/Debugging_Visual_Auditing/02_debug_drawers.adoc[Previous: Debug Drawers] | xref:Advanced_glTF/Debugging_Visual_Auditing/04_renderdoc_analysis.adoc[Next: RenderDoc Analysis]

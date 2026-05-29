@@ -36,4 +36,4 @@ To verify your physics integration:
 2.  **Ragdoll Handoff**: When triggering a ragdoll, the character should not "pop" or "snap" to a new pose. The transition should be smooth, with the character's momentum preserved.
 3.  **Self-Collision**: Ensure that character limbs do not collide with each other during movement. If limbs are "pushing" each other apart, check your collision filtering bitmasks.
 
-xref:05_self_collision_filtering.adoc[Previous: Self-Collision Filtering] | xref:../Procedural_Animation_IK/01_introduction.adoc[Next Chapter: Procedural Animation & IK]
+xref:Advanced_glTF/Physics_Integration/05_self_collision_filtering.adoc[Previous: Self-Collision Filtering] | xref:Advanced_glTF/Procedural_Animation_IK/01_introduction.adoc[Next Chapter: Procedural Animation & IK]

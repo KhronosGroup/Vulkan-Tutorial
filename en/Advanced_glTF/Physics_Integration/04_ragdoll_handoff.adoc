@@ -200,4 +200,4 @@ if (controller.state == RagdollState::BLENDED) {
 
 The use of `glm::slerp` (Spherical Linear intERPolation) for quaternion blending is essential here. Direct linear interpolation of quaternions does not preserve unit length and produces rotations that slow down in the middle of the blend. SLERP produces smooth, constant-speed rotation transitions that are geometrically correct.
 
-xref:03_constraints_and_joint_limits.adoc[Previous: Constraints & Joint Limits] | xref:05_self_collision_filtering.adoc[Next: Self-Collision Filtering]
+xref:Advanced_glTF/Physics_Integration/03_constraints_and_joint_limits.adoc[Previous: Constraints & Joint Limits] | xref:Advanced_glTF/Physics_Integration/05_self_collision_filtering.adoc[Next: Self-Collision Filtering]

@@ -64,4 +64,4 @@ To verify your compute skinning implementation:
 2.  **Pipeline Barrier**: If you see "jittering" or flickering geometry, check that your `VkPipelineBarrier2` is correctly placed between the compute dispatch and the draw call.
 3.  **Normal/Tangent Quality**: If your lighting looks wrong on an animated character (e.g., seams appear at joints), verify that you are correctly normalizing the animated normals and tangents in the Slang shader.
 
-xref:05_interpolation_blending.adoc[Previous: Interpolation & Blending] | xref:../Physics_Integration/01_introduction.adoc[Next Chapter: Physics Integration]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/05_interpolation_blending.adoc[Previous: Interpolation & Blending] | xref:Advanced_glTF/Physics_Integration/01_introduction.adoc[Next Chapter: Physics Integration]

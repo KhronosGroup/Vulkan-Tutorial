@@ -38,4 +38,4 @@ To verify your IK implementation:
 2.  **Stability**: Test your IK solver with targets that are out of reach. The chain should extend fully toward the target without jittering or spinning wildly.
 3.  **Pelvis Adjustment**: Ensure the character's hips lower correctly when standing on a steep slope. If they do not, the legs will appear over-extended or "stiff."
 
-xref:06_physics_driven_lean.adoc[Previous: Physics-Driven Lean] | xref:../Morph_Targets_Facial_Animation/01_introduction.adoc[Next: Morph Targets & Facial Animation]
+xref:Advanced_glTF/Procedural_Animation_IK/06_physics_driven_lean.adoc[Previous: Physics-Driven Lean] | xref:Advanced_glTF/Morph_Targets_Facial_Animation/01_introduction.adoc[Next: Morph Targets & Facial Animation]

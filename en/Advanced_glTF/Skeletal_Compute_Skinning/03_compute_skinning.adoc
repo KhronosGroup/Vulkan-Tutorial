@@ -346,4 +346,4 @@ void frame_update(VkCommandBuffer cmd, Scene& scene)
 
 In the next section, we will look in detail at steps 6 and beyond—how the rasterizer, the ray tracing acceleration structure, and the physics system each consume the same output vertex buffer, and what the setup for each of those consumers looks like.
 
-xref:02_skinning_math.adoc[Previous: The Mathematics of Skinning] | xref:04_shared_vertex_buffer.adoc[Next: Skin Once, Use Everywhere]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/02_skinning_math.adoc[Previous: The Mathematics of Skinning] | xref:Advanced_glTF/Skeletal_Compute_Skinning/04_shared_vertex_buffer.adoc[Next: Skin Once, Use Everywhere]

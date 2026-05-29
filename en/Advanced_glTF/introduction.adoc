@@ -82,4 +82,4 @@ This series assumes you have a working engine from the "Building a Simple Engine
 
 If you are starting fresh, we recommend refactoring your Simple Engine core to support a global scene graph before proceeding to the next chapter.
 
-xref:../Building_a_Simple_Engine/introduction.adoc[Previous: Building a Simple Engine] | xref:Scene_Graph_Hierarchy/01_introduction.adoc[Next: Scene Graph & Transform Hierarchy]
+xref:Building_a_Simple_Engine/introduction.adoc[Previous: Building a Simple Engine] | xref:Advanced_glTF/Scene_Graph_Hierarchy/01_introduction.adoc[Next: Scene Graph & Transform Hierarchy]

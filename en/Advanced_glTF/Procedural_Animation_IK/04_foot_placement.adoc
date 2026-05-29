@@ -172,4 +172,4 @@ glm::vec3 blended_target = glm::mix(
 
 This makes the foot placement system a layer that enhances the base animation rather than overriding it. When the foot is planted, IK brings it to precise contact with the terrain. When the foot is in the air, IK gracefully fades out, letting the animation play undisturbed.
 
-xref:03_fabrik.adoc[Previous: FABRIK] | xref:05_look_at.adoc[Next: Look-At Controllers]
+xref:Advanced_glTF/Procedural_Animation_IK/03_fabrik.adoc[Previous: FABRIK] | xref:Advanced_glTF/Procedural_Animation_IK/05_look_at.adoc[Next: Look-At Controllers]

@@ -303,4 +303,4 @@ With cross-fade blending, we can transition smoothly between any two animation c
 
 These two systems—interpolation quality and blending—are what separate animation that merely "works" from animation that *feels alive*.
 
-xref:04_shared_vertex_buffer.adoc[Previous: Skin Once, Use Everywhere] | xref:06_conclusion.adoc[Next: Chapter Conclusion]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/04_shared_vertex_buffer.adoc[Previous: Skin Once, Use Everywhere] | xref:Advanced_glTF/Skeletal_Compute_Skinning/06_conclusion.adoc[Next: Chapter Conclusion]

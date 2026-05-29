@@ -170,4 +170,4 @@ public:
 };
 ----
 
-xref:../Skeletal_Compute_Skinning/06_conclusion.adoc[Previous: Compute Skinning Conclusion] | xref:02_bone_proxy_colliders.adoc[Next: Bone Proxy Colliders]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/06_conclusion.adoc[Previous: Compute Skinning Conclusion] | xref:Advanced_glTF/Physics_Integration/02_bone_proxy_colliders.adoc[Next: Bone Proxy Colliders]

@@ -283,4 +283,4 @@ The rule is: **apply morphs in the bind pose, then apply skeletal skinning.** Th
 
 Getting this wrong—applying morph targets after skeletal skinning, or in world space rather than bind space—produces smearing artifacts where facial geometry stretches or fails to follow the jaw bone.
 
-xref:02_shape_key_ingestion.adoc[Previous: Shape Key Ingestion] | xref:04_conclusion.adoc[Next: Conclusion]
+xref:Advanced_glTF/Morph_Targets_Facial_Animation/02_shape_key_ingestion.adoc[Previous: Shape Key Ingestion] | xref:Advanced_glTF/Morph_Targets_Facial_Animation/04_conclusion.adoc[Next: Conclusion]

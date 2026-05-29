@@ -11,4 +11,4 @@ The techniques in this chapter are about making invisible state visible. The phy
 
 We will implement tools to address each of these blind spots. Debug drawers render wireframe geometry that overlays the character with a visualization of the skeleton, collision shapes, and physics constraints. Skinning heatmaps render the mesh with vertex colors derived from bone influence weights, making incorrect or extreme weight painting immediately visible. RenderDoc capture and analysis lets you freeze a frame and examine the post-skinning output buffer directly, verifying vertex positions and normals at the GPU level.
 
-xref:../Tooling_Production_Pipeline/05_conclusion.adoc[Previous: Tooling Conclusion] | xref:02_debug_drawers.adoc[Next: Debug Drawers]
+xref:Advanced_glTF/Tooling_Production_Pipeline/05_conclusion.adoc[Previous: Tooling Conclusion] | xref:Advanced_glTF/Debugging_Visual_Auditing/02_debug_drawers.adoc[Next: Debug Drawers]

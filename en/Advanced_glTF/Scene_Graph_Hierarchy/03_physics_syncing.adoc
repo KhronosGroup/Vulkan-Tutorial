@@ -139,4 +139,4 @@ By implementing bi-directional syncing, we've bridged the gap between the aesthe
 
 In the next section, we'll see how to automate the setup of these colliders. Instead of manually configuring capsules for every bone in code, we will leverage glTF "extras" and custom metadata to build our physics proxies directly from the artist's source file.
 
-xref:02_engine_expansion.adoc[Previous: The Engine Expansion] | xref:04_metadata_and_physics_extras.adoc[Next: Metadata & Physics Extras]
+xref:Advanced_glTF/Scene_Graph_Heiarchy/02_engine_expansion.adoc[Previous: The Engine Expansion] | xref:Advanced_glTF/Scene_Graph_Heiarchy/04_metadata_and_physics_extras.adoc[Next: Metadata & Physics Extras]

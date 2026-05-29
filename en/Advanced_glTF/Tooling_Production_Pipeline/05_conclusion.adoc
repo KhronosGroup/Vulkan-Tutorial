@@ -29,4 +29,4 @@ To verify your production pipeline:
 2.  **Naming Consistency**: Check that your physics metadata `"parent_bone"` strings match the actual node names in the glTF JSON.
 3.  **Export Settings**: Verify that **Custom Properties**, **Shape Keys**, and **Vertex Weights** are all included in your exported file by inspecting it in a third-party viewer like the Babylon.js sandbox.
 
-xref:04_gltf_viewer_audit.adoc[Previous: glTF Viewer Audit] | xref:../Debugging_Visual_Auditing/01_introduction.adoc[Next: Debugging & Visual Auditing]
+xref:Advanced_glTF/Tooling_Production_Pipeline/04_gltf_viewer_audit.adoc[Previous: glTF Viewer Audit] | xref:Advanced_glTF/Debugging_Visual_Auditing/01_introduction.adoc[Next: Debugging & Visual Auditing]

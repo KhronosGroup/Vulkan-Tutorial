@@ -217,4 +217,4 @@ Every part of the rendering and simulation stack reads from a single, authoritat
 
 In the next section, we turn our attention to the quality of the animation itself. We have been assuming linear keyframe interpolation, which is simple but produces robotic, mechanical movement. We will implement cubic spline interpolation for smooth, natural curves, and add the ability to blend between multiple animation clips—including the critical transition from animation to physics-driven ragdoll.
 
-xref:03_compute_skinning.adoc[Previous: The Compute Skinning Pipeline] | xref:05_interpolation_blending.adoc[Next: Interpolation & Blending]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/03_compute_skinning.adoc[Previous: The Compute Skinning Pipeline] | xref:Advanced_glTF/Skeletal_Compute_Skinning/05_interpolation_blending.adoc[Next: Interpolation & Blending]

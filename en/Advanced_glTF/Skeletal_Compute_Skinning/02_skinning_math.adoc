@@ -114,4 +114,4 @@ Tangents are transformed using the same approach as normals—the 3x3 rotation p
 
 With this mathematical foundation in place, we now have everything we need to write the compute shader. We know what inputs are required (rest positions, normals, tangents, joint indices, weights, and pre-computed joint matrices), we know what computation to perform, and we know what outputs to produce (animated positions, normals, and tangents in a new buffer that everyone else can read from).
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_compute_skinning.adoc[Next: The Compute Skinning Pipeline]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Skeletal_Compute_Skinning/03_compute_skinning.adoc[Next: The Compute Skinning Pipeline]

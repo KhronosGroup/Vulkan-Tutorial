@@ -83,4 +83,4 @@ This is most useful when you have a specific suspicious vertex—one whose posit
 
 The shader debugger is slower to launch and use than simply examining buffer contents, but for subtle numerical errors—wrong sign in a matrix element, wrong axis in a quaternion-to-matrix conversion—it provides the most direct diagnostic path.
 
-xref:03_skinning_heatmaps.adoc[Previous: Skinning Heatmaps] | xref:05_conclusion.adoc[Next: Conclusion]
+xref:Advanced_glTF/Debugging_Visual_Auditing/03_skinning_heatmaps.adoc[Previous: Skinning Heatmaps] | xref:Advanced_glTF/Debugging_Visual_Auditing/05_conclusion.adoc[Next: Conclusion]

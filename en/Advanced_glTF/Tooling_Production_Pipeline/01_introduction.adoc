@@ -11,4 +11,4 @@ The pipeline has three stages. The first is **authoring**: the Blender-side choi
 
 This is not glamorous work. But it is the kind of work that separates a professional production pipeline from a perpetual debugging loop.
 
-xref:../Morph_Targets_Facial_Animation/04_conclusion.adoc[Previous: Morph Targets Conclusion] | xref:02_blender_workflow.adoc[Next: Blender-to-Vulkan Workflow]
+xref:Advanced_glTF/Morph_Targets_Facial_Animation/04_conclusion.adoc[Previous: Morph Targets Conclusion] | xref:Advanced_glTF/Tooling_Production_Pipeline/02_blender_workflow.adoc[Next: Blender-to-Vulkan Workflow]

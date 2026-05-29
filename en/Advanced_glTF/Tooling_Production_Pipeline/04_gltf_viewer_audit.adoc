@@ -45,4 +45,4 @@ If **morph targets** are wrong: verify the expand_sparse_accessor implementation
 
 If **animations** are wrong: compare the sampler input timestamps from the glTF file against the timestamps your engine is using for interpolation. If the file stores timestamps in seconds and your engine interprets them as milliseconds (or vice versa), every animation will play at 1/1000 speed or 1000x speed. Also verify that your cubic spline interpolation formula matches the glTF spec exactly—the spec uses the Hermite basis with the tangent vectors pre-scaled by the time interval, which is different from some textbook presentations.
 
-xref:03_validation.adoc[Previous: Validation] | xref:05_conclusion.adoc[Next: Conclusion]
+xref:Advanced_glTF/Tooling_Production_Pipeline/03_validation.adoc[Previous: Validation] | xref:Advanced_glTF/Tooling_Production_Pipeline/05_conclusion.adoc[Next: Conclusion]

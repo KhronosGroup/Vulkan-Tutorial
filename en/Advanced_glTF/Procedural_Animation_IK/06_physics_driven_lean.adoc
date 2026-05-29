@@ -160,4 +160,4 @@ The key is the **order of application**. Procedural corrections to the scene gra
 
 Performing multiple world matrix propagation passes each frame may seem expensive. In practice, for a humanoid character with a skeleton of ~60 joints, each propagation pass is a handful of matrix multiplications per joint—easily done in microseconds. The total cost is negligible compared to the draw calls and compute dispatches that follow.
 
-xref:05_look_at.adoc[Previous: Look-At Controllers] | xref:07_conclusion.adoc[Next: Conclusion]
+xref:Advanced_glTF/Procedural_Animation_IK/05_look_at.adoc[Previous: Look-At Controllers] | xref:Advanced_glTF/Procedural_Animation_IK/07_conclusion.adoc[Next: Conclusion]

@@ -87,4 +87,4 @@ This ensures that any `.glb` asset in the `assets/` directory was produced by th
 
 For Python-based pipelines, the validator can also be invoked programmatically. The `gltf_validator` package exposes a library API that returns structured result objects, which you can inspect to implement custom policies (for example, treating certain info-level messages as errors in your project).
 
-xref:02_blender_workflow.adoc[Previous: Blender Workflow] | xref:04_gltf_viewer_audit.adoc[Next: glTF Viewer Audit]
+xref:Advanced_glTF/Tooling_Production_Pipeline/02_blender_workflow.adoc[Previous: Blender Workflow] | xref:Advanced_glTF/Tooling_Production_Pipeline/04_gltf_viewer_audit.adoc[Next: glTF Viewer Audit]

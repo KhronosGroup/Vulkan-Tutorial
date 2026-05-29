@@ -35,4 +35,4 @@ Third, we will wire up the output buffer as a shared resource. We will show how 
 
 Finally, we will tackle the more sophisticated aspects of animation: **cubic spline interpolation** for smooth, natural movement, and **cross-fade blending** for transitioning between animation clips—including the critical case of blending from a scripted animation into a physics-driven ragdoll.
 
-xref:02_skinning_math.adoc[Next: The Mathematics of Skinning]
+xref:Advanced_glTF/Skeletal_Compute_Skinning/02_skinning_math.adoc[Next: The Mathematics of Skinning]

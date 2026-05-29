@@ -195,4 +195,4 @@ void update_look_at_target(
 
 The `speed` parameter controls the "stiffness" of the head tracking. A speed of 3 produces slow, languid tracking suitable for a character casually watching something in the distance. A speed of 12 produces snappy tracking suitable for an alert soldier scanning for threats. Varying the speed based on the character's state—calm versus alert—adds a subtle layer of expressiveness that pays dividends in cutscenes.
 
-xref:04_foot_placement.adoc[Previous: Foot Placement on Uneven Terrain] | xref:06_physics_driven_lean.adoc[Next: Physics-Driven Lean]
+xref:Advanced_glTF/Procedural_Animation_IK/04_foot_placement.adoc[Previous: Foot Placement on Uneven Terrain] | xref:Advanced_glTF/Procedural_Animation_IK/06_physics_driven_lean.adoc[Next: Physics-Driven Lean]

@@ -205,4 +205,4 @@ void sync_animation_to_physics(
 
 There is a subtle but important reason to use `move_kinematic` rather than simply teleporting the body to the new position: most physics engines use the delta between the previous and current position to estimate the body's velocity. When we later flip the body to dynamic mode for the ragdoll, the physics engine needs a realistic initial velocity so the ragdoll doesn't start from a dead stop. If we had been teleporting the body rather than moving it continuously, that velocity estimate would be wrong, and the ragdoll handoff would look wrong.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_constraints_and_joint_limits.adoc[Next: Constraints & Joint Limits]
+xref:Advanced_glTF/Physics_Integration/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Physics_Integration/03_constraints_and_joint_limits.adoc[Next: Constraints & Joint Limits]

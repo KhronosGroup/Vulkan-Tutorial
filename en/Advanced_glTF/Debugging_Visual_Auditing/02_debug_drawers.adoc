@@ -327,4 +327,4 @@ void draw_constraints(
 
 When the ragdoll handoff from Chapter 4 goes wrong and bodies explode apart, these overlays will immediately show you whether the problem is the constraints failing to hold (the capsules are no longer touching, and the connecting lines are very long) or the bodies being in the wrong initial position (the capsules are offset from the rendered mesh).
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_skinning_heatmaps.adoc[Next: Skinning Heatmaps]
+xref:Advanced_glTF/Debugging_Visual_Auditing/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Debugging_Visual_Auditing/03_skinning_heatmaps.adoc[Next: Skinning Heatmaps]

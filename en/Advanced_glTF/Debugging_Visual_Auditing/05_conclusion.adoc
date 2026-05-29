@@ -33,4 +33,4 @@ To verify your debugging tools:
 2.  **Coordinate Space**: Verify that your debug lines appear in world space. A common error is passing local-space coordinates to the drawer, which will result in debug geometry following the character incorrectly.
 3.  **RenderDoc Inspection**: Use the **Buffer Viewer** in RenderDoc to inspect your compute skinning output buffer. If the values in the buffer match your expectations but the character is not rendering correctly, the problem is likely in your vertex input description or graphics pipeline state.
 
-xref:04_renderdoc_analysis.adoc[Previous: RenderDoc Analysis]
+xref:Advanced_glTF/Debugging_Visual_Auditing/04_renderdoc_analysis.adoc[Previous: RenderDoc Analysis]

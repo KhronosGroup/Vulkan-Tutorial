@@ -22,4 +22,4 @@ To verify your Scene Graph implementation:
 2.  **Dirty Flag Propagation**: Set a breakpoint in `update_transforms()`. Ensure that `WorldDirty` is correctly set on all children when a parent is modified.
 3.  **Matrix Correctness**: Compare your `world_matrix` results against a known good source (like the glTF-Validator's node transforms) for a simple two-node hierarchy.
 
-xref:04_metadata_and_physics_extras.adoc[Previous: Metadata & Physics Extras] | xref:../Skeletal_Compute_Skinning/01_introduction.adoc[Next: Skeletal & Compute Skinning Introduction]
+xref:Advanced_glTF/Scene_Graph_Heiarchy/04_metadata_and_physics_extras.adoc[Previous: Metadata & Physics Extras] | xref:Advanced_glTF/Skeletal_Compute_Skinning/01_introduction.adoc[Next: Skeletal & Compute Skinning Introduction]

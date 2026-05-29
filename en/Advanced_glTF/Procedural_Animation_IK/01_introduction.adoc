@@ -27,4 +27,4 @@ This chapter assumes you have a functioning scene graph (Chapter 2) with properl
 
 The ragdoll system from Chapter 4 is also relevant here, particularly in the foot placement section. When a character is standing on uneven terrain, the foot IK system must not fight the physics system—they must cooperate. We will discuss the hierarchy of control and how to ensure that IK corrections and physics feedback reinforce rather than contradict each other.
 
-xref:../Physics_Integration/06_conclusion.adoc[Previous: Physics Integration Conclusion] | xref:02_ccd_ik.adoc[Next: Cyclic Coordinate Descent IK]
+xref:Advanced_glTF/Physics_Integration/06_conclusion.adoc[Previous: Physics Integration Conclusion] | xref:Advanced_glTF/Procedural_Animation_IK/02_ccd_ik.adoc[Next: Cyclic Coordinate Descent IK]

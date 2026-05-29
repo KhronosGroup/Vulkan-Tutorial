@@ -223,4 +223,4 @@ struct MorphWeightBlock {
 
 Having the weights in a simple flat array makes the compute shader straightforward: for each vertex, iterate over `active_count` morph targets, read the weight and the displacement, add the weighted displacement to the base position. We will write this shader code in the next section.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_bindless_morph_buffers.adoc[Next: Bindless Morph Buffers]
+xref:Advanced_glTF/Morph_Targets_Facial_Animation/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Morph_Targets_Facial_Animation/03_bindless_morph_buffers.adoc[Next: Bindless Morph Buffers]

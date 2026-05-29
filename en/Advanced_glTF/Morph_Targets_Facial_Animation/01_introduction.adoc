@@ -37,4 +37,4 @@ We will implement the full morph target pipeline in three stages. First, we pars
 
 We will also briefly discuss the relationship between morph targets and skeletal rigs in production. Professional characters typically use both: a coarse joint rig for the head and jaw (to handle large-scale deformation like opening the mouth), and a dense morph target layer for the fine-grained surface detail (lip sync, nostril flare, brow wrinkles). Understanding how these two layers cooperate will help you make the right tradeoffs for your character pipeline.
 
-xref:../Procedural_Animation_IK/07_conclusion.adoc[Previous: Procedural Animation Conclusion] | xref:02_shape_key_ingestion.adoc[Next: Shape Key Ingestion]
+xref:Advanced_glTF/Procedural_Animation_IK/07_conclusion.adoc[Previous: Procedural Animation Conclusion] | xref:Advanced_glTF/Morph_Targets_Facial_Animation/02_shape_key_ingestion.adoc[Next: Shape Key Ingestion]

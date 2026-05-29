@@ -185,4 +185,4 @@ The spine is the most complex case. In reality it is a series of small joints, e
 
 These values are a starting point, not a specification. You will need to tune them for your specific art style and gameplay feel. A stylized action game may want exaggerated ranges. A realistic simulation may need tighter limits derived from biomechanical measurement. The right answer is the one that feels right to play.
 
-xref:02_bone_proxy_colliders.adoc[Previous: Bone Proxy Colliders] | xref:04_ragdoll_handoff.adoc[Next: The Ragdoll Handoff]
+xref:Advanced_glTF/Physics_Integration/02_bone_proxy_colliders.adoc[Previous: Bone Proxy Colliders] | xref:Advanced_glTF/Physics_Integration/04_ragdoll_handoff.adoc[Next: The Ragdoll Handoff]

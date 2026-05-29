@@ -211,4 +211,4 @@ If you are coming from the "Building a Simple Engine" series, you likely have a 
 
 By making these changes, you move from a collection of independent objects to a cohesive world where every element can react to its parents, setting the stage for complex character interactions.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_physics_syncing.adoc[Next: Physics Syncing]
+xref:Advanced_glTF/Scene_Graph_Heiarchy/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Scene_Graph_Heiarchy/03_physics_syncing.adoc[Next: Physics Syncing]

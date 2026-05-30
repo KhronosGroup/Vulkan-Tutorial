@@ -795,23 +795,7 @@ void Renderer::addSupportedOptionalExtensions() {
       avail.insert(e.extensionName);
     }
 
-    // First, handle dependency: VK_EXT_attachment_feedback_loop_dynamic_state requires VK_EXT_attachment_feedback_loop_layout
-    const char* dynState = VK_EXT_ATTACHMENT_FEEDBACK_LOOP_DYNAMIC_STATE_EXTENSION_NAME;
-    const char* layoutReq = "VK_EXT_attachment_feedback_loop_layout";
-    bool dynSupported = avail.contains(dynState);
-    bool layoutSupported = avail.contains(layoutReq);
     for (const auto& optionalExt : optionalDeviceExtensions) {
-      if (std::strcmp(optionalExt, dynState) == 0) {
-        if (dynSupported && layoutSupported) {
-          deviceExtensions.push_back(dynState);
-          deviceExtensions.push_back(layoutReq);
-          std::cout << "Adding optional extension: " << dynState << std::endl;
-          std::cout << "Adding required-by-optional extension: " << layoutReq << std::endl;
-        } else if (dynSupported && !layoutSupported) {
-          std::cout << "Skipping extension due to missing dependency: " << dynState << " requires " << layoutReq << std::endl;
-        }
-        continue; // handled
-      }
       if (avail.contains(optionalExt)) {
         deviceExtensions.push_back(optionalExt);
         std::cout << "Adding optional extension: " << optionalExt << std::endl;

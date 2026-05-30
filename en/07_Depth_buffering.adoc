@@ -129,20 +129,21 @@ We need to configure it to use the Vulkan range of `0.0` to `1.0` using the `GLM
 A depth attachment is based on an image, just like the color attachment.
 The difference is that the swap chain will not automatically create depth images for us.
 We only need a single depth image, because only one draw operation is running at once.
-The depth image will again require the trifecta of resources: image, memory and image view.
+The depth image will again require the triplet of resources: image, memory and image view.
 
 [,c++]
 ----
-vk::raii::Image depthImage = nullptr;
+vk::raii::Image        depthImage       = nullptr;
 vk::raii::DeviceMemory depthImageMemory = nullptr;
-vk::raii::ImageView depthImageView = nullptr;
+vk::raii::ImageView    depthImageView   = nullptr;
 ----
 
 Create a new function `createDepthResources` to set up these resources:
 
 [,c++]
 ----
-void initVulkan() {
+void initVulkan()
+{
     ...
     createCommandPool();
     createDepthResources();
@@ -152,8 +153,8 @@ void initVulkan() {
 
 ...
 
-void createDepthResources() {
-
+void createDepthResources()
+{
 }
 ----
 
@@ -178,8 +179,8 @@ We're going to write a function `findSupportedFormat` that takes a list of candi
 
 [,c++]
 ----
-vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features) {
-
+vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features)
+{
 }
 ----
 
@@ -203,10 +204,9 @@ Only the first two are relevant here, and the one we check depends on the `tilin
 
 [,c++]
 ----
-if (tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & features) == features) {
-    return format;
-}
-if (tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & features) == features) {
+if (((tiling == vk::ImageTiling::eLinear) && ((props.linearTilingFeatures & features) == features)) ||
+    ((tiling == vk::ImageTiling::eOptimal) && ((props.optimalTilingFeatures & features) == features)))
+{
     return format;
 }
 ----
@@ -219,11 +219,10 @@ vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::Im
     for (const auto format : candidates) {
         vk::FormatProperties props = physicalDevice.getFormatProperties(format);
 
-        if (tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & features) == features) {
-            return format;
-        }
-        if (tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & features) == features) {
-            return format;
+        if (((tiling == vk::ImageTiling::eLinear) && ((props.linearTilingFeatures & features) == features)) ||
+            ((tiling == vk::ImageTiling::eOptimal) && ((props.optimalTilingFeatures & features) == features)))
+        {
+          return format;
         }
     }
 
@@ -235,26 +234,18 @@ We'll use this function now to create a `findDepthFormat` helper function to sel
 
 [,c++]
 ----
-vk::Format findDepthFormat() {
-   return findSupportedFormat(
-        {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
-            vk::ImageTiling::eOptimal,
-            vk::FormatFeatureFlagBits::eDepthStencilAttachment
-        );
+vk::Format findDepthFormat()
+{
+    return findSupportedFormat({vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
+                               vk::ImageTiling::eOptimal,
+                               vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 }
 ----
 
 Make sure to use the `vk::FormatFeatureFlagBits` instead of `vk::ImageUsageFlagBits` in this case.
 All of these candidate formats contain a depth component, but the latter two also contain a stencil component.
 We won't be using that yet, but we do need to take that into account when performing layout transitions on images with these formats.
-Add a simple helper function that tells us if the chosen depth format contains a stencil component:
-
-[,c++]
-----
-bool hasStencilComponent(vk::Format format) {
-    return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
-}
-----
+There are simple helper functions like `vk::hasDepthComponent` or `vk::hasStencilComponent` available in the `vulkan/vulkan_format_traits.hpp` header.
 
 Call the function to find a depth format from `createDepthResources`:
 
@@ -267,19 +258,20 @@ We now have all the required information to invoke our `createImage` and `create
 
 [,c++]
 ----
-createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage, depthImageMemory);
-depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+std::tie(depthImage, depthImageMemory) = createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
+depthImageView                         = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
 ----
 
 However, the `createImageView` function currently assumes that the subresource is always the `vk::ImageAspectFlagBits::eColor`, so we will need to turn that field into a parameter:
 
 [,c++]
 ----
-vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
+vk::raii::ImageView createImageView(vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags)
+{
     ...
-    vk::ImageViewCreateInfo viewInfo{
-                ...
-                .subresourceRange = {aspectFlags, 0, 1, 0, 1}};
+		vk::ImageViewCreateInfo viewInfo{
+        ...
+		    .subresourceRange = {.aspectMask = aspectFlags, ...}};
     ...
 }
 ----
@@ -288,11 +280,11 @@ Update all calls to this function to use the right aspect:
 
 [,c++]
 ----
-swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, vk::ImageAspectFlagBits::eColor);
+swapChainImageViews.emplace_back(createImageView(image, swapChainSurfaceFormat.format, vk::ImageAspectFlagBits::eColor));
 ...
 depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
 ...
-textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
 ----
 
 That's it for creating the depth image.
@@ -342,7 +334,7 @@ vk::RenderingInfo renderingInfo = {
 
 === Explicitly transitioning the depth image
 
-Just like the color attachment, the depth attachment needs to be in the correct layout for the intended use case. For this we need to issue an additional barriers to ensure that the depth image can be used as a depth attachment during rendering.
+Just like the color attachment, the depth attachment needs to be in the correct layout for the intended use case. For this we need to issue an additional barrier to ensure that the depth image can be used as a depth attachment during rendering.
 The depth image is first accessed in the early fragment test pipeline stage and because we have a load operation that _clears_, we should specify the access mask for writes.
 
 As we now deal with an additional image type (depth), first add a new argument to the `transition_image_layout` function for the image aspect:
@@ -369,11 +361,12 @@ Now add new image layout transition at the start of the command buffer in `recor
 [,c++]
 ----
 commandBuffers[currentFrame].begin({});
-// Transition for the color attachment
+// Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
 transition_image_layout(
     ...
     vk::ImageAspectFlagBits::eColor);
-// New transition for the depth image
+    
+// Transition depth image to depth attachment optimal layout
 transition_image_layout(
     *depthImage,
     vk::ImageLayout::eUndefined,
@@ -401,7 +394,7 @@ transition_image_layout(
 == Depth and stencil state
 
 The depth attachment is ready to be used now, but depth testing still needs to be enabled in the graphics pipeline.
-It is configured through the `PipelineDepthStencilStateCreateInfo` struct:
+It is configured through the `vk::PipelineDepthStencilStateCreateInfo` struct:
 
 [,c++]
 ----
@@ -423,7 +416,7 @@ The `depthBoundsTestEnable`, `minDepthBounds` and `maxDepthBounds` fields are us
 Basically, this allows you to only keep fragments that fall within the specified depth range.
 We won't be using this functionality.
 
-The last three fields configure stencil buffer operations, which we also won't be using in this tutorial.
+The `stencilTestEnable`, `front`, and `back` fields configure stencil buffer operations, which we also won't be using in this tutorial.
 If you want to use these operations, then you will have to make sure that the format of the depth/stencil image contains a stencil component.
 
 A depth stencil state must always be specified if the dynamic rendering setup contains a depth stencil attachment:
@@ -434,9 +427,9 @@ Update the `pipelineCreateInfoChain` structure chain to reference the depth sten
 ----
 vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
     {.stageCount          = 2,
-        ...
-        .pDepthStencilState  = &depthStencil,
-        ...
+     ...
+     .pDepthStencilState  = &depthStencil,
+     ...},
     {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format, .depthAttachmentFormat = depthFormat}};
 ----
 
@@ -451,12 +444,14 @@ Extend the `recreateSwapChain` function to recreate the depth resources in that 
 
 [,c++]
 ----
-void recreateSwapChain() {
+void recreateSwapChain()
+{
     int width = 0, height = 0;
-    while (width == 0 || height == 0) {
+		while (width == 0 || height == 0)
+		{
         glfwGetFramebufferSize(window, &width, &height);
         glfwWaitEvents();
-    }
+		}
 
     device.waitIdle(device);
 

@@ -80,6 +80,7 @@ FetchContent_Declare(
     SOURCE_SUBDIR  Build)
 set(DOUBLE_PRECISION       OFF CACHE BOOL "" FORCE)
 set(GENERATE_DEBUG_SYMBOLS ON  CACHE BOOL "" FORCE)
+set(PROFILE_ENABLED        ON  CACHE BOOL "" FORCE)
 if(MSVC)
     set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 endif()
@@ -249,7 +250,17 @@ if(MSVC)
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     target_compile_options(SimpleEngineLib PUBLIC
         /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
+    # Force use of the advanced renderer header to avoid shadowing issues with simple_engine/renderer.h
+    target_compile_options(SimpleEngineLib PRIVATE /FI"${CMAKE_CURRENT_SOURCE_DIR}/renderer.h")
     target_link_libraries(SimpleEngineLib PUBLIC Dbghelp)
+
+    # Enable Link Time Code Generation to match Jolt and resolve potential LTO mismatches
+    set_target_properties(SimpleEngineLib PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_target_properties(AdvancedGLTF PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+
+    # Jolt configuration consistency
+    target_compile_definitions(SimpleEngineLib PUBLIC JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
+    target_compile_definitions(AdvancedGLTF PRIVATE JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
 elseif(WIN32)
     target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)

@@ -241,13 +241,14 @@ target_link_libraries(SimpleEngineLib PRIVATE
     OpenAL::OpenAL)
 
 if(MSVC)
-    target_compile_definitions(SimpleEngineLib PRIVATE
+    # NOMINMAX needs to inherit so MSVC doesn't have problems with min / max being a MSVC macro.
+    target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     target_compile_options(SimpleEngineLib PRIVATE
         /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
     target_link_libraries(SimpleEngineLib PRIVATE Dbghelp)
 elseif(WIN32)
-    target_compile_definitions(SimpleEngineLib PRIVATE
+    target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 endif()
 

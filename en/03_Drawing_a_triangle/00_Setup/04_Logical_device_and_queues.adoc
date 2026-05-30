@@ -174,7 +174,7 @@ As mentioned earlier, we need several device-specific extensions for our applica
 
 [,c++]
 ----
-device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+device = vk::raii::Device(physicalDevice, deviceCreateInfo);
 ----
 
 The parameters are the physical device to interface with, and the usage
@@ -192,7 +192,7 @@ First, add a class member to store a handle to the graphics queue:
 
 [,c++]
 ----
-vk::raii::Queue graphicsQueue;
+vk::raii::Queue graphicsQueue = nullptr;;
 ----
 
 Device queues are implicitly cleaned up when the device is destroyed, so we
@@ -205,7 +205,7 @@ use queue index `0`.
 
 [,c++]
 ----
-graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
+graphicsQueue = vk::raii::Queue(device, graphicsIndex, 0);
 ----
 
 With the logical device and queue handles, we can now actually start using the

@@ -251,7 +251,7 @@ if(MSVC)
     target_compile_options(SimpleEngineLib PUBLIC
         /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
     # Force use of the advanced renderer header to avoid shadowing issues with simple_engine/renderer.h
-    target_compile_options(SimpleEngineLib PRIVATE /FI"${CMAKE_CURRENT_SOURCE_DIR}/renderer.h")
+    target_compile_options(SimpleEngineLib PRIVATE /FI "${CMAKE_CURRENT_SOURCE_DIR}/renderer.h")
     target_link_libraries(SimpleEngineLib PUBLIC Dbghelp)
 
     # Enable Link Time Code Generation to match Jolt and resolve potential LTO mismatches

@@ -87,7 +87,7 @@ else()
   FetchContent_Declare(
     ktx
     GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software.git
-    GIT_TAG v4.3.1  # Use a specific tag for stability
+    GIT_TAG v4.4.2  # Use a specific tag for stability
   )
 
   # Set options to minimize build time and dependencies

@@ -386,7 +386,7 @@ class HelloTriangleApplication
 	};
 
 	// Required device extensions
-	const std::vector<const char *> deviceExtensions = {
+	const std::vector<const char *> requiredDeviceExtensions = {
 	    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
 	// Initialize Vulkan
@@ -432,7 +432,7 @@ class HelloTriangleApplication
 		    .apiVersion         = VK_API_VERSION_1_3};
 
 		// Get required extensions
-		std::vector<const char *> extensions = getRequiredExtensions();
+		std::vector<const char *> extensions = getRequiredInstanceExtensions();
 
 		// Create instance
 		vk::InstanceCreateInfo createInfo{
@@ -482,44 +482,41 @@ class HelloTriangleApplication
 		surface = vk::raii::SurfaceKHR(instance, _surface);
 	}
 
-	// Pick physical device
+	bool isDeviceSuitable(vk::raii::PhysicalDevice const &physicalDevice)
+	{
+		// Check if the physicalDevice supports the Vulkan 1.3 API version
+		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+		// Check if any of the queue families support graphics operations
+		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+		bool supportsGraphics = std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+
+		// Check if all required physicalDevice extensions are available
+		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+		bool supportsAllRequiredExtensions =
+		    std::ranges::all_of(requiredDeviceExtensions,
+		                        [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
+			                        return std::ranges::any_of(availableDeviceExtensions,
+			                                                   [requiredDeviceExtension](auto const &availableDeviceExtension) { return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0; });
+		                        });
+
+		// Return true if the physicalDevice meets all the criteria
+		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions;
+	}
+
 	void pickPhysicalDevice()
 	{
-		std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-		const auto                            devIter = std::ranges::find_if(
-            devices,
-            [&](auto const &device) {
-                // Check if any of the queue families support graphics operations
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool supportsGraphics =
-                    std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
-
-                // Check if all required device extensions are available
-                auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
-                bool supportsAllRequiredExtensions =
-                    std::ranges::all_of(deviceExtensions,
-			                                                       [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
-                                            return std::ranges::any_of(availableDeviceExtensions,
-				                                                                                  [requiredDeviceExtension](auto const &availableDeviceExtension) {
-                                                                           return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0;
-                                                                       });
-                                        });
-
-                return supportsGraphics && supportsAllRequiredExtensions;
-            });
-
-		if (devIter != devices.end())
+		std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+		auto const                            devIter         = std::ranges::find_if(physicalDevices, [&](auto const &physicalDevice) { return isDeviceSuitable(physicalDevice); });
+		if (devIter == physicalDevices.end())
 		{
-			physicalDevice = *devIter;
+			throw std::runtime_error("failed to find a suitable GPU!");
+		}
+		physicalDevice = *devIter;
 
-			// Print device information
-			vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-			LOGI("Selected GPU: %s", deviceProperties.deviceName.data());
-		}
-		else
-		{
-			throw std::runtime_error("Failed to find a suitable GPU");
-		}
+		// Print device information
+		vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
+		LOGI("Selected GPU: %s", deviceProperties.deviceName.data());
 	}
 
 	// Check feature support
@@ -609,8 +606,8 @@ class HelloTriangleApplication
 			    .pNext                   = &features2,
 			    .queueCreateInfoCount    = 1,
 			    .pQueueCreateInfos       = &deviceQueueCreateInfo,
-			    .enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size()),
-			    .ppEnabledExtensionNames = deviceExtensions.data()};
+			    .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+			    .ppEnabledExtensionNames = requiredDeviceExtensions.data()};
 
 			// Create the device with the vk::DeviceCreateInfo
 			device = vk::raii::Device(physicalDevice, vkDeviceCreateInfo);
@@ -625,8 +622,8 @@ class HelloTriangleApplication
 			vk::DeviceCreateInfo createInfo{
 			    .queueCreateInfoCount    = 1,
 			    .pQueueCreateInfos       = &deviceQueueCreateInfo,
-			    .enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size()),
-			    .ppEnabledExtensionNames = deviceExtensions.data(),
+			    .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+			    .ppEnabledExtensionNames = requiredDeviceExtensions.data(),
 			    .pEnabledFeatures        = &deviceFeatures};
 
 			device = vk::raii::Device(physicalDevice, createInfo);
@@ -638,20 +635,27 @@ class HelloTriangleApplication
 	// Create swap chain
 	void createSwapChain()
 	{
-		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
-		swapChainExtent                          = chooseSwapExtent(swapChainSupport.capabilities);
-		swapChainSurfaceFormat                   = chooseSwapSurfaceFormat(swapChainSupport.formats);
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
+		swapChainExtent                                = chooseSwapExtent(surfaceCapabilities);
+		uint32_t minImageCount                         = chooseSwapMinImageCount(surfaceCapabilities);
+
+		std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
+		swapChainSurfaceFormat                             = chooseSwapSurfaceFormat(availableFormats);
+
+		std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR(*surface);
+		vk::PresentModeKHR              presentMode           = chooseSwapPresentMode(availablePresentModes);
+
 		vk::SwapchainCreateInfoKHR swapChainCreateInfo{.surface          = *surface,
-		                                               .minImageCount    = chooseSwapMinImageCount(swapChainSupport.capabilities),
+		                                               .minImageCount    = minImageCount,
 		                                               .imageFormat      = swapChainSurfaceFormat.format,
 		                                               .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
 		                                               .imageExtent      = swapChainExtent,
 		                                               .imageArrayLayers = 1,
 		                                               .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
 		                                               .imageSharingMode = vk::SharingMode::eExclusive,
-		                                               .preTransform     = swapChainSupport.capabilities.currentTransform,
+		                                               .preTransform     = surfaceCapabilities.currentTransform,
 		                                               .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-		                                               .presentMode      = chooseSwapPresentMode(swapChainSupport.presentModes),
+		                                               .presentMode      = presentMode,
 		                                               .clipped          = true};
 
 		swapChain       = device.createSwapchainKHR(swapChainCreateInfo);
@@ -1414,7 +1418,7 @@ class HelloTriangleApplication
 	}
 
 	// Get required extensions
-	std::vector<const char *> getRequiredExtensions()
+	std::vector<const char *> getRequiredInstanceExtensions()
 	{
 #if PLATFORM_ANDROID
 		// Android requires these extensions
@@ -1471,7 +1475,7 @@ class HelloTriangleApplication
 	}
 
 	// Choose swap present mode
-	vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR> &availablePresentModes)
+	static vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes)
 	{
 		assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
 		return std::ranges::any_of(availablePresentModes,
@@ -1481,9 +1485,9 @@ class HelloTriangleApplication
 	}
 
 	// Choose swap extent
-	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities)
+	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
 	{
-		if (capabilities.currentExtent.width != 0xFFFFFFFF)
+		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 		{
 			return capabilities.currentExtent;
 		}

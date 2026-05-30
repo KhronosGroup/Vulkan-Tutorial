@@ -314,7 +314,7 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
     .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
     .srcAccessMask = {},
     .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-    .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+    .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead,
     .oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
     .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -327,7 +327,7 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
     .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
     .srcAccessMask = {},
     .dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
-    .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+    .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead,
     .oldLayout = vk::ImageLayout::eUndefined,
     .newLayout = vk::ImageLayout::eDepthAttachmentOptimal,
     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1924,7 +1924,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       swapchainToColor.srcStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe;
       swapchainToColor.srcAccessMask = vk::AccessFlagBits2::eNone;
       swapchainToColor.dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
-      swapchainToColor.dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite;
+      swapchainToColor.dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead;
       swapchainToColor.oldLayout = (imageIndex < swapChainImageLayouts.size()) ? swapChainImageLayouts[imageIndex] : vk::ImageLayout::eUndefined;
       swapchainToColor.newLayout = vk::ImageLayout::eColorAttachmentOptimal;
       swapchainToColor.image = swapChainImages[imageIndex];
@@ -2362,7 +2362,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       .srcStageMask = oscSrcStage,
       .srcAccessMask = oscSrcAccess,
       .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-      .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+      .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead,
       .oldLayout = oscOldLayout,
       .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -2471,7 +2471,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         .srcStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe,
         .srcAccessMask = vk::AccessFlagBits2::eNone,
         .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead,
         .oldLayout = vk::ImageLayout::eUndefined,
         .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -2620,7 +2620,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       .srcStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe,
       .srcAccessMask = vk::AccessFlagBits2::eNone,
       .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-      .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+      .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead,
       .oldLayout = (imageIndex < swapChainImageLayouts.size()) ? swapChainImageLayouts[imageIndex] : vk::ImageLayout::eUndefined,
       .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,

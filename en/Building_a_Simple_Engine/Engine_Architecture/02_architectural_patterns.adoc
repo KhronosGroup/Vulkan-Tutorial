@@ -19,6 +19,7 @@ Layered architecture divides the system into distinct layers, each with a specif
 image::../../../images/layered_architecture_diagram.png[Layered Architecture Diagram, width=400, alt="Layered Architecture Diagram showing different layers of a rendering engine"]
 
 *Key Benefits:*
+
 * Clear separation of concerns
 * Easier to understand and maintain
 * Can replace or modify individual layers without affecting others
@@ -32,6 +33,7 @@ Data-Oriented Design (DOD) focuses on organizing data for efficient processing r
 image::../../../images/data_oriented_design_diagram.svg[Data-Oriented Design Diagram, width=400]
 
 *Key Benefits:*
+
 * Better cache utilization
 * More efficient memory usage
 * Easier to parallelize
@@ -45,6 +47,7 @@ The Service Locator pattern provides a global point of access to services withou
 image::../../../images/service_locator_pattern_diagram.svg[Service Locator Pattern Diagram, width=400]
 
 *Key Benefits:*
+
 * Decouples service consumers from service providers
 * Allows for easy service replacement
 * Facilitates testing with mock services

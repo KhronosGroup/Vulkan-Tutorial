@@ -213,20 +213,16 @@ add_chapter (16_frames_in_flight
 add_chapter (17_swap_chain_recreation
   SHADER 09_shader_base)
 
-add_chapter (18_vertex_input
-  SHADER 18_shader_vertexbuffer
-  LIBS glm::glm)
-
 add_chapter (19_vertex_buffer
-  SHADER 18_shader_vertexbuffer
+  SHADER 19_shader_vertexbuffer
   LIBS glm::glm)
 
 add_chapter (20_staging_buffer
-  SHADER 18_shader_vertexbuffer
+  SHADER 19_shader_vertexbuffer
   LIBS glm::glm)
 
 add_chapter (21_index_buffer
-  SHADER 18_shader_vertexbuffer
+  SHADER 19_shader_vertexbuffer
   LIBS glm::glm)
 
 add_chapter (22_descriptor_layout

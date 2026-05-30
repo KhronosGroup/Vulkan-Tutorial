@@ -43,14 +43,13 @@ std::vector<vk::raii::Fence> inFlightFences;
 
 Then we need to create multiple command buffers.
 Rename `createCommandBuffer` to `createCommandBuffers`.
-Next we need to resize the command buffers vector to the size of `MAX_FRAMES_IN_FLIGHT`, alter the `VkCommandBufferAllocateInfo` to contain that many command buffers, and then change the destination to our vector of command buffers:
+Next we need to resize the command buffers vector to the size of `MAX_FRAMES_IN_FLIGHT`, alter the `vk::CommandBufferAllocateInfo` to contain that many command buffers, and then change the destination to our vector of command buffers:
 
 [,c++]
 ----
-void createCommandBuffers() {
-    commandBuffers.clear();
-    vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary,
-                                           .commandBufferCount = MAX_FRAMES_IN_FLIGHT };
+void createCommandBuffers()
+{
+		vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = MAX_FRAMES_IN_FLIGHT};
     commandBuffers = vk::raii::CommandBuffers( device, allocInfo );
 }
 ----
@@ -59,7 +58,8 @@ The `createSyncObjects` function should be changed to create all the objects:
 
 [,c++]
 ----
-void createSyncObjects() {
+void createSyncObjects()
+{
 		assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
 
 		for (size_t i = 0; i < swapChainImages.size(); i++)
@@ -80,7 +80,7 @@ We will use a frame index for that purpose:
 
 [,c++]
 ----
-uint32_t frameIndex 0;
+uint32_t frameIndex = 0;
 ----
 
 The `drawFrame` function can now be modified to use the right objects:
@@ -133,7 +133,7 @@ be known with a fence whether the semaphore is ready for re-use.
 We've now implemented all the necessary synchronization to ensure that there
 are no more than `MAX_FRAMES_IN_FLIGHT` frames of work enqueued and that
 these frames are not stepping over each other.
-Note that it is fine for other parts of the code, like the final cleanup, to rely on more rough synchronization like `vkDeviceWaitIdle`.
+Note that it is fine for other parts of the code, like the final cleanup, to rely on more rough synchronization like `vk::raii::Device::waitIdle`.
 You should decide on which approach to use based on performance requirements.
 
 Additionally, we could use timeline semaphores instead of the binary

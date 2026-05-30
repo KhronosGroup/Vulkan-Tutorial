@@ -256,11 +256,9 @@ if(MSVC)
 
     # Enable Link Time Code Generation to match Jolt and resolve potential LTO mismatches
     set_target_properties(SimpleEngineLib PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-    set_target_properties(AdvancedGLTF PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 
     # Jolt configuration consistency
     target_compile_definitions(SimpleEngineLib PUBLIC JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
-    target_compile_definitions(AdvancedGLTF PRIVATE JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
 elseif(WIN32)
     target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
@@ -283,6 +281,11 @@ target_link_libraries(AdvancedGLTF PRIVATE
     SimpleEngineLib
     Jolt
     glm::glm)
+
+if(MSVC)
+    set_target_properties(AdvancedGLTF PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    target_compile_definitions(AdvancedGLTF PRIVATE JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
+endif()
 
 # Ensure all shaders (from simple_engine and local) are in the executable's shader directory.
 add_dependencies(AdvancedGLTF advanced_gltf_shaders)

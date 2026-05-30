@@ -115,6 +115,12 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     // Physics system via constructor (GPU enabled)
     physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
 
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // OMM integration via constructor
+    ommIntegration = std::make_unique<OmmIntegration>();
+    ommIntegration->init(*renderer, *modelLoader);
+#endif
+
     // ImGui via constructor, then connect audio system
     imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
     imguiSystem->SetAudioSystem(audioSystem.get());
@@ -204,6 +210,9 @@ void Engine::Cleanup() {
 
     // Clean up subsystems in reverse order of creation
     imguiSystem.reset();
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    ommIntegration.reset();
+#endif
     physicsSystem.reset();
     audioSystem.reset();
     modelLoader.reset();
@@ -356,6 +365,12 @@ const AudioSystem* Engine::GetAudioSystem() const {
 PhysicsSystem* Engine::GetPhysicsSystem() {
   return physicsSystem.get();
 }
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+OmmIntegration* Engine::GetOmmIntegration() {
+  return ommIntegration.get();
+}
+#endif
 
 const ImGuiSystem* Engine::GetImGuiSystem() const {
   return imguiSystem.get();
@@ -999,6 +1014,12 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
 
     // Physics system via constructor (GPU enabled)
     physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // OMM integration via constructor
+    ommIntegration = std::make_unique<OmmIntegration>();
+    ommIntegration->init(*renderer, *modelLoader);
+#endif
 
     // ImGui via constructor, then connect audio system
     imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);

@@ -2215,6 +2215,14 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       ImGui::SliderFloat("Gamma", &gamma, 1.6f, 2.6f, "%.2f");
     }
     ImGui::End();
+
+    // Invoke any registered Course module / plugin ImGui panel
+    {
+      std::lock_guard<std::mutex> lock(imguiPanelCallbackMutex);
+      if (imguiPanelCallback) {
+        imguiPanelCallback(this);
+      }
+    }
   }
 
   // Rasterization rendering: only execute if ray query did not render this frame.

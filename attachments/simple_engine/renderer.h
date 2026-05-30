@@ -402,11 +402,25 @@ class Renderer {
       };
       std::lock_guard<std::mutex> lock(queueMutex);
       // Prefer compute queue when available; otherwise, fall back to graphics queue to avoid crashes
-      if (*computeQueue) {
+      if (*computeQueue != VK_NULL_HANDLE) {
         computeQueue.submit(submitInfo, fence);
       } else {
         graphicsQueue.submit(submitInfo, fence);
       }
+    }
+
+    /**
+     * @brief Submit a command buffer to the graphics queue with proper synchronization.
+     * @param commandBuffer The command buffer to submit.
+     * @param fence The fence to signal when the operation completes.
+     */
+    void SubmitToGraphicsQueue(vk::CommandBuffer commandBuffer, vk::Fence fence) const {
+      vk::SubmitInfo submitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBuffer
+      };
+      std::lock_guard<std::mutex> lock(queueMutex);
+      graphicsQueue.submit(submitInfo, fence);
     }
 
     /**
@@ -433,14 +447,14 @@ class Renderer {
 	 * @param texturePath The path to the texture file.
 	 * @return True if the texture was loaded successfully, false otherwise.
 	 */
-    bool LoadTexture(const std::string& texturePath);
+    bool LoadTexture(const std::string& texturePath, bool cachePixels = false);
 
     // Asynchronous texture loading APIs (thread-pool backed).
     // The 'critical' flag is used to front-load important textures (e.g.,
     // baseColor/albedo) so the scene looks mostly correct before the loading
     // screen disappears. Non-critical textures (normals, MR, AO, emissive)
     // can stream in after geometry is visible.
-    std::future<bool> LoadTextureAsync(const std::string& texturePath, bool critical = false);
+    std::future<bool> LoadTextureAsync(const std::string& texturePath, bool critical = false, bool cachePixels = false);
 
     /**
 	 * @brief Load a texture from raw image data in memory.
@@ -455,7 +469,8 @@ class Renderer {
                                const unsigned char* imageData,
                                int width,
                                int height,
-                               int channels);
+                               int channels,
+                               bool cachePixels = false);
 
     // Asynchronous upload from memory (RGBA/RGB/other). Safe for concurrent calls.
     std::future<bool> LoadTextureFromMemoryAsync(const std::string& textureId,
@@ -463,7 +478,8 @@ class Renderer {
                                                  int width,
                                                  int height,
                                                  int channels,
-                                                 bool critical = false);
+                                                 bool critical = false,
+                                                 bool cachePixels = false);
 
     // Progress query for UI
     uint32_t GetTextureTasksScheduled() const {
@@ -782,6 +798,120 @@ class Renderer {
     }
     bool GetAccelerationStructureEnabled() const {
       return accelerationStructureEnabled;
+    }
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    bool GetOpacityMicromapEnabled() const {
+      return opacityMicromapEnabled;
+    }
+#else
+    bool GetOpacityEnabled() const { return false; }
+#endif
+    // Get physical device (needed by Course modules for extension querying)
+    const vk::raii::PhysicalDevice& GetPhysicalDevice() const {
+      return physicalDevice;
+    }
+    // Get command pool (needed by Course modules for one-shot command buffers)
+    const vk::raii::CommandPool& GetCommandPool() const {
+      return commandPool;
+    }
+    // Get graphics queue (needed by Course modules for submissions)
+    vk::Queue GetGraphicsQueue() const {
+      std::lock_guard<std::mutex> lock(queueMutex);
+      return *graphicsQueue;
+    }
+    // Get graphics queue family index (needed by Course modules for command pool creation)
+    uint32_t GetGraphicsQueueFamilyIndex() const {
+      return queueFamilyIndices.graphicsFamily.value();
+    }
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // ── Course module helpers ─────────────────────────────────────────────────
+    // Store CPU-side pixel data for an alpha-masked texture so that Course
+    // modules (e.g. OpacityMicromapBuilder) can classify micro-triangles
+    // without re-loading from disk.  No-op if the ID is already cached.
+    void StoreRawTexturePixels(const std::string& id,
+                               const uint8_t*     pixels,
+                               uint32_t           width,
+                               uint32_t           height,
+                               uint32_t           channels) {
+      const std::string resolved = ResolveTextureId(id);
+      std::unique_lock<std::shared_mutex> lk(rawPixelCacheMutex);
+      if (rawPixelCache.count(resolved)) return; // already stored
+      auto& entry    = rawPixelCache[resolved];
+      entry.width    = width;
+      entry.height   = height;
+      entry.channels = channels;
+      entry.pixels.assign(pixels, pixels + static_cast<size_t>(width) * height * channels);
+    }
+
+    // Retrieve previously-stored CPU pixel data.  Returns nullptr when not cached.
+    const uint8_t* GetRawTexturePixels(const std::string& id,
+                                       uint32_t* outWidth,
+                                       uint32_t* outHeight,
+                                       uint32_t* outChannels) const {
+      const std::string resolved = ResolveTextureId(id);
+      std::shared_lock<std::shared_mutex> lk(rawPixelCacheMutex);
+      auto it = rawPixelCache.find(resolved);
+      if (it == rawPixelCache.end()) return nullptr;
+      if (outWidth)    *outWidth    = it->second.width;
+      if (outHeight)   *outHeight   = it->second.height;
+      if (outChannels) *outChannels = it->second.channels;
+      return it->second.pixels.data();
+    }
+
+    // Clear the raw pixel cache (call on scene unload to free memory).
+    void ClearRawPixelCache() {
+      std::unique_lock<std::shared_mutex> lk(rawPixelCacheMutex);
+      rawPixelCache.clear();
+    }
+#endif
+
+    // Return a snapshot of all MeshComponent pointers that have GPU resources.
+    // Used by Course modules to iterate meshes without coupling to internal maps.
+    std::vector<const MeshComponent*> GetRegisteredMeshes() const {
+      std::vector<const MeshComponent*> out;
+      out.reserve(meshResources.size());
+      for (const auto& kv : meshResources) {
+        if (kv.first) out.push_back(kv.first);
+      }
+      return out;
+    }
+    // Get memory pool (needed by Course modules for GPU allocations)
+    MemoryPool& GetMemoryPool() const {
+      return *memoryPool;
+    }
+
+    // -------------------------------------------------------------------------
+    // ImGui panel extension point (Course modules / plugins)
+    // Register a callback that will be invoked inside the "Renderer" ImGui window
+    // immediately after the built-in controls, once per frame.
+    // The callback receives a pointer to this Renderer for state queries.
+    // Call with nullptr to unregister.
+    // -------------------------------------------------------------------------
+    using ImGuiPanelCallback = std::function<void(Renderer*)>;
+    using MicromapProviderCallback = std::function<void*(const MeshComponent*)>;
+    void RegisterImGuiPanel(ImGuiPanelCallback cb) {
+      std::lock_guard<std::mutex> lock(imguiPanelCallbackMutex);
+      imguiPanelCallback = std::move(cb);
+    }
+    void RegisterMicromapProvider(MicromapProviderCallback cb) {
+      std::lock_guard<std::mutex> lock(micromapProviderMutex);
+      micromapProvider = std::move(cb);
+    }
+    void* GetMicromapPNext(const MeshComponent* mesh) const {
+      std::lock_guard<std::mutex> lock(micromapProviderMutex);
+      return micromapProvider ? micromapProvider(mesh) : nullptr;
+    }
+    void UnregisterImGuiPanel() {
+      std::lock_guard<std::mutex> lock(imguiPanelCallbackMutex);
+      imguiPanelCallback = nullptr;
+    }
+
+    // --- Thread pool & Watchdog access for course modules ---
+    ThreadPool* GetThreadPool() const { return threadPool.get(); }
+    void KickWatchdog(const char* label = nullptr) {
+      lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+      if (label) watchdogProgressLabel.store(label);
     }
 
     // Ray Query static-only mode (disable animation/physics updates and TLAS refits to render a static opaque scene)
@@ -1389,6 +1519,7 @@ class Renderer {
       int width = 0;
       int height = 0;
       int channels = 0;
+      bool cachePixels = false;
     };
 
     std::mutex pendingTextureJobsMutex;
@@ -1562,7 +1693,7 @@ class Renderer {
     };
 
     // Optional device extensions
-    const std::vector<const char *> optionalDeviceExtensions = {
+    std::vector<const char *> optionalDeviceExtensions = {
       VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
       VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
       VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
@@ -1593,6 +1724,9 @@ class Renderer {
     bool shaderTileImageEnabled = false;
     bool rayQueryEnabled = false;
     bool accelerationStructureEnabled = false;
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    bool opacityMicromapEnabled = false; // VK_EXT_opacity_micromap (Course: Opacity Micromaps)
+#endif
 
     // When true and current render mode is RayQuery, the engine renders a static opaque scene:
     // - Animation/physics updates are suppressed by the Engine (input/Update hook)
@@ -1688,6 +1822,26 @@ class Renderer {
     bool enableRayQueryReflections = true; // UI toggle to enable reflections in ray query mode
     bool enableRayQueryTransparency = true; // UI toggle to enable transparency/refraction in ray query mode
 
+    // ImGui panel extension callbacks (Course modules / plugins)
+    ImGuiPanelCallback imguiPanelCallback;
+    MicromapProviderCallback micromapProvider;
+    mutable std::mutex micromapProviderMutex;
+    mutable std::mutex imguiPanelCallbackMutex;
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // Raw CPU pixel cache for alpha-masked textures (Course: Opacity Micromaps).
+    // Populated by StoreRawTexturePixels(); consumed by GetRawTexturePixels().
+    // Keyed by resolved texture ID; cleared by reset / scene reload.
+    struct RawPixelEntry {
+      std::vector<uint8_t> pixels;
+      uint32_t width    = 0;
+      uint32_t height   = 0;
+      uint32_t channels = 0;
+    };
+    std::unordered_map<std::string, RawPixelEntry> rawPixelCache;
+    mutable std::shared_mutex rawPixelCacheMutex;
+#endif
+
     // === Watchdog system to detect application hangs ===
     // Atomic timestamp updated every frame - watchdog thread checks if stale
     std::atomic<std::chrono::steady_clock::time_point> lastFrameUpdateTime;
@@ -1766,7 +1920,7 @@ class Renderer {
     // Shadow mapping methods
     bool createComputeCommandPool();
     bool createDepthResources();
-    bool createTextureImage(const std::string& texturePath, TextureResources& resources);
+    bool createTextureImage(const std::string& texturePath, TextureResources& resources, bool cachePixels = false);
     bool createTextureImageView(TextureResources& resources);
     bool createTextureSampler(TextureResources& resources);
     bool createDefaultTextureResources();

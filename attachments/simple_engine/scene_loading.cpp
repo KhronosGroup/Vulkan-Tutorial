@@ -567,6 +567,13 @@ bool LoadGLTFModel(Engine* engine,
   // Request acceleration structure build at next safe frame point
   // Don't build here in background thread to avoid threading issues with command pools
   if (renderer->GetRayQueryEnabled() && renderer->GetAccelerationStructureEnabled()) {
+    // Build Opacity Micromaps before building the acceleration structures
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    if (auto* omm = engine->GetOmmIntegration()) {
+      omm->buildMicromaps();
+    }
+#endif
+
     renderer->SetLoadingPhase(Renderer::LoadingPhase::AccelerationStructures);
     renderer->SetLoadingPhaseProgress(0.0f);
     std::cout << "Requesting acceleration structure build for loaded scene..." << std::endl;

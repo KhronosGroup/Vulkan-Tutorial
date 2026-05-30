@@ -1,0 +1,69 @@
+= Building Opacity Micromaps in the Simple Engine
+
+== The Conceptual Architecture
+
+Understanding the hardware is one thing; seeing how that understanding translates into code is another. This chapter walks through the engine's Opacity Micromap implementation at a conceptual level. The full source is available in the `Courses/` folder alongside this curriculum, and we will point you to specific files throughout. The goal here is to understand the shape of the implementation: what happens when, why each step is necessary, and how the pieces connect.
+
+The implementation is organized around a single class, `OpacityMicromapBuilder`, defined in `opacity_micromap_builder.h` and implemented in `opacity_micromap_builder.cpp`. This class is responsible for the entire micromap lifecycle: checking hardware support, building the micromaps from mesh and texture data, managing their GPU memory, and providing them to the BLAS build process.
+
+== Phase Zero: Checking for Support
+
+Before any micromap work can begin, the engine must verify that the current GPU and driver support `VK_EXT_opacity_micromap`. This extension is relatively recent and is not universally available. The `OpacityMicromapBuilder` checks for the extension during device initialization and sets an internal flag. If the extension is absent, every subsequent call to the builder is a no-op — the engine proceeds with normal alpha testing, exactly as it did before micromaps were introduced.
+
+This graceful fallback is not optional; it is a hard requirement for any shipping application. Content must look correct regardless of whether OMMs are active. Because OMMs do not change the visual result (the any-hit shader remains the fallback for Unknown micro-triangles, and the shader's behavior is unchanged), disabling OMMs leaves the rendering visually identical while simply reverting to the higher per-frame cost. The fallback path requires no special code path in the shaders.
+
+The extension also requires that `VK_KHR_acceleration_structure` is enabled (which it already must be for any ray-traced rendering) and `VK_KHR_synchronization2` for the build commands. These dependencies are checked alongside the main extension.
+
+== Phase One: Analysis
+
+When a mesh is submitted to the engine for loading, the `OpacityMicromapBuilder` inspects the mesh's material list. For each submesh, it examines the material properties and asks: is this an alpha-tested material? Specifically, does it have an alpha-mask texture and is it flagged to use alpha cutoff rather than full transparency blending?
+
+If the answer is yes, the submesh is a candidate for micromap generation. The builder records which submeshes need micromaps and determines the appropriate subdivision level for each one. The subdivision level choice is currently based on a simple heuristic: the builder examines the texture dimensions and the ratio of the mesh's triangle count to its surface area. Finely detailed textures on smaller triangles benefit from higher subdivision, while large triangles with simple alpha patterns can use lower levels. A configuration file in the `Courses/` folder documents the heuristic and how to override it per-material.
+
+The analysis phase is fast and happens on the CPU as part of normal mesh loading. Its output is a per-submesh descriptor that the next phase consumes.
+
+== Phase Two: Classification
+
+Classification is where the substantive work happens. For each alpha-tested submesh, and for each triangle in that submesh, the builder iterates over the micro-triangles at the chosen subdivision level. For each micro-triangle, it computes the barycentric coordinates of the micro-triangle's centroid within the original triangle. From those coordinates, it interpolates the triangle's UV coordinates to find the centroid's position in texture space. It then samples the CPU-side alpha texture at that UV position.
+
+The sampling here is deliberately simple: a bilinear sample at the centroid, optionally averaged with several nearby jittered samples to reduce aliasing artifacts at the boundary. If the sampled alpha is above an upper threshold (typically 0.9), the micro-triangle is classified Opaque. Below a lower threshold (typically 0.1), it is Transparent. Between the thresholds, it is Unknown.
+
+The classification results are packed into a compact array — 2 bits per micro-triangle — which forms the raw input for the GPU micromap build. For large meshes, this classification step can take noticeable time, which is why it is typically performed as part of an offline pre-process for shipping content rather than at application startup. The engine supports both modes: online classification during load (for development) and loading pre-classified micromap data from a binary file (for production).
+
+It is worth pausing to appreciate the asymmetry here. The classification step runs once. The benefit accumulates over every frame the application renders. For a shipping game or visualization application, the payoff ratio is enormous.
+
+== Phase Three: GPU Construction
+
+Once the classification data is ready on the CPU, it is uploaded to a staging buffer and transferred to GPU-local memory. The builder then fills in a `VkMicromapBuildInfoEXT` structure, specifying the format, usage flags, per-triangle format descriptors, the input data buffer, and a scratch buffer for the build operation. It then calls `vkBuildMicromapsEXT`, which performs the actual acceleration-structure-style build of the micromap on the GPU.
+
+The resulting `VkMicromapEXT` handle is stored alongside the submesh's existing BLAS geometry descriptor. This handle is a first-class Vulkan object with the usual lifecycle requirements: it must be created before the BLAS that references it is built, and it must not be destroyed while the BLAS is alive.
+
+A detail worth noting: `vkBuildMicromapsEXT` is a command recorded into a command buffer and submitted to the GPU queue, just like `vkBuildAccelerationStructuresKHR`. The micromap data is not computed on the CPU and pushed to the GPU as a plain buffer — the build step performs its own internal compaction and layout transformation to pack the data into the traversal hardware's native format. The engine uses a single transfer and compute queue submission to build all micromaps for a newly loaded mesh, then signals a semaphore before proceeding to the BLAS build.
+
+== Connecting the Micromap to the BLAS
+
+The `VkMicromapEXT` object by itself does nothing. It becomes effective only when it is attached to a BLAS geometry description before the BLAS is built or updated. This attachment happens through the `VkAccelerationStructureTrianglesOpacityMicromapEXT` structure, which is added to the `pNext` chain of the `VkAccelerationStructureGeometryTrianglesDataKHR` for the relevant submesh.
+
+This chaining is the literal link between the human-readable concept ("this leaf mesh has a micromap") and the hardware-visible result ("this BLAS contains micromap data in its internal representation"). Once the BLAS is built with this chain in place, all subsequent traversal queries against that BLAS automatically consult the micromap.
+
+The BLAS must be rebuilt after micromaps are attached. If the mesh is static — as foliage usually is — this is a one-time cost. If the mesh deforms (unusual for micromap use cases but possible), the micromap must be rebuilt and the BLAS must be updated accordingly. The `OpacityMicromapBuilder` tracks which BLASes have attached micromaps and flags them for rebuild if their micromap data changes.
+
+== The Shadow Shader Needs No Changes
+
+Here is the elegant part. After all of this infrastructure work — the analysis, the classification, the GPU build, the BLAS attachment — the shadow shader itself requires not a single line of modification.
+
+The shader uses `rayQueryEXT` (the ray query extension, already in use for our shadow system). It calls `rayQueryInitializeEXT`, `rayQueryProceedEXT`, and the standard query functions. The micromap is transparent to the shader: the traversal hardware handles Opaque and Transparent micro-triangles before the shader layer is involved, and Unknown micro-triangles still invoke the any-hit shader through the same mechanism as before. The shader never learns whether a given intersection was resolved by the micromap or by the any-hit path.
+
+Students should open `opacity_micromap_builder.cpp` in the `Courses/` folder to see the full implementation of the three phases, and look at the engine's main initialization sequence in `simple_engine.cpp` to see where `OpacityMicromapBuilder::buildForScene()` is called. The integration is deliberately minimal — the builder is a self-contained utility that plugs into the existing scene loading pipeline without restructuring it.
+
+== Memory and Object Lifetime
+
+Every `VkMicromapEXT` created by the builder is stored in a vector of owned handles. The builder provides a `releaseAll()` method that destroys all micromaps and frees their device memory. This is called when the scene is unloaded or when the engine shuts down.
+
+The ordering requirement is strict: BLASes must be destroyed before their referenced micromaps. The engine's teardown sequence respects this order, destroying all acceleration structures before calling `releaseAll()`. If you modify the engine's shutdown sequence, preserve this ordering.
+
+For very large scenes with many distinct mesh types, micromap memory can add up. The `OpacityMicromapBuilder` includes a method to query the total micromap memory footprint, which can be used to implement a budget-based policy: if micromap memory exceeds a threshold, lower-priority submeshes (those with fewer shadow-casting triangles in view) can be built at lower subdivision levels or skipped entirely.
+
+'''
+
+xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/04_hardware_traversal_with_omm.adoc[Previous: Inside the Traversal: How the GPU Uses Your Micromap] | xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/06_results_guidance_and_tradeoffs.adoc[Next: Seeing the Difference and Knowing When to Use It]

@@ -113,7 +113,7 @@ static vk::Format CoerceFormatSRGB(vk::Format fmt, bool wantSRGB) {
 }
 
 // Create texture image
-bool Renderer::createTextureImage(const std::string& texturePath_, TextureResources& resources) {
+bool Renderer::createTextureImage(const std::string& texturePath_, TextureResources& resources, bool cachePixels) {
   try {
     ensureThreadLocalVulkanInit();
     const std::string textureId = ResolveTextureId(texturePath_);
@@ -273,6 +273,37 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
 
       // Check if the texture needs BasisU transcoding; prefer GPU-compressed targets to save VRAM
       wasTranscoded = ktxTexture2_NeedsTranscoding(ktxTex);
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // --- Course: Opacity Micromaps ---
+      // If requested, cache the raw CPU pixels for the OMM builder.
+      if (cachePixels) {
+        if (wasTranscoded) {
+          // BasisU must be transcoded to a readable format (RGBA32) for the CPU cache.
+          // Since transcoding is destructive, we use a temporary texture object for the cache.
+          ktxTexture2* cacheKtx = nullptr;
+          if (ktxTexture2_CreateFromNamedFile(resolvedPath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &cacheKtx) == KTX_SUCCESS) {
+            if (ktxTexture2_TranscodeBasis(cacheKtx, KTX_TTF_RGBA32, 0) == KTX_SUCCESS) {
+              ktx_size_t offset = 0;
+              ktxTexture_GetImageOffset(reinterpret_cast<ktxTexture*>(cacheKtx), 0, 0, 0, &offset);
+              const uint8_t* pData = ktxTexture_GetData(reinterpret_cast<ktxTexture*>(cacheKtx)) + offset;
+              StoreRawTexturePixels(textureId, pData, cacheKtx->baseWidth, cacheKtx->baseHeight, 4);
+            }
+            ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(cacheKtx));
+          }
+        } else {
+          // Already transcoded or not BasisU; check if it's a raw format we can use directly (RGBA8)
+          if (ktxTex->vkFormat == static_cast<uint32_t>(vk::Format::eR8G8B8A8Unorm) ||
+              ktxTex->vkFormat == static_cast<uint32_t>(vk::Format::eR8G8B8A8Srgb)) {
+            ktx_size_t offset = 0;
+            ktxTexture_GetImageOffset(reinterpret_cast<ktxTexture*>(ktxTex), 0, 0, 0, &offset);
+            const uint8_t* pData = ktxTexture_GetData(reinterpret_cast<ktxTexture*>(ktxTex)) + offset;
+            StoreRawTexturePixels(textureId, pData, ktxTex->baseWidth, ktxTex->baseHeight, 4);
+          }
+        }
+      }
+#endif
+
       if (wasTranscoded) {
         // Select a compressed target supported by the device (prefer BC7 RGBA, then BC3 RGBA, then BC1 RGB)
         auto supportsFormat = [&](vk::Format f) {
@@ -674,7 +705,7 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
 }
 
 // Load texture from file (public wrapper for createTextureImage)
-bool Renderer::LoadTexture(const std::string& texturePath) {
+bool Renderer::LoadTexture(const std::string& texturePath, bool cachePixels) {
   ensureThreadLocalVulkanInit();
   if (texturePath.empty()) {
     std::cerr << "LoadTexture: Empty texture path provided" << std::endl;
@@ -689,8 +720,17 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
     std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
     auto it = textureResources.find(resolvedId);
     if (it != textureResources.end()) {
-      // Texture already loaded
+      // Texture already loaded.
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // If we need to cache pixels but they aren't cached yet, don't return early.
+      if (cachePixels && GetRawTexturePixels(resolvedId, nullptr, nullptr, nullptr) == nullptr) {
+        // Continue to createTextureImage which will handle caching.
+      } else {
+        return true;
+      }
+#else
       return true;
+#endif
     }
   }
 
@@ -700,7 +740,7 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
   // Use existing createTextureImage method (it inserts into textureResources on success) if it's a KTX2 path; otherwise fall back to memory path below
   bool success = false;
   if (resolvedId.ends_with(".ktx2")) {
-    success = createTextureImage(resolvedId, tempResources);
+    success = createTextureImage(resolvedId, tempResources, cachePixels);
     if (success)
       return true;
     // Fall through to raw-memory path if KTX load failed
@@ -751,10 +791,11 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
                                      const unsigned char* imageData,
                                      int width,
                                      int height,
-                                     int channels) {
+                                     int channels,
+                                     bool cachePixels) {
   ensureThreadLocalVulkanInit();
   const std::string resolvedId = ResolveTextureId(textureId);
-  std::cout << "[LoadTextureFromMemory] start id=" << textureId << " -> resolved=" << resolvedId << " size=" << width << "x" << height << " ch=" << channels << std::endl;
+  std::cout << "[LoadTextureFromMemory] start id=" << textureId << " -> resolved=" << resolvedId << " size=" << width << "x" << height << " ch=" << channels << " cache=" << cachePixels << std::endl;
   if (resolvedId.empty() || !imageData || width <= 0 || height <= 0 || channels <= 0) {
     std::cerr << "LoadTextureFromMemory: Invalid parameters" << std::endl;
     return false;
@@ -765,8 +806,17 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
     std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
     auto it = textureResources.find(resolvedId);
     if (it != textureResources.end()) {
-      // Texture already loaded
+      // Texture already loaded.
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // If we need to cache pixels but they aren't cached yet, don't return early.
+      if (cachePixels && GetRawTexturePixels(resolvedId, nullptr, nullptr, nullptr) == nullptr) {
+        // Continue to load logic below to cache pixels.
+      } else {
+        return true;
+      }
+#else
       return true;
+#endif
     }
   }
 
@@ -855,6 +905,13 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
         break;
       }
     }
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // --- Course: Opacity Micromaps ---
+    if (cachePixels) {
+      StoreRawTexturePixels(resolvedId, stagingData, width, height, 4);
+    }
+#endif
 
     stagingBufferMemory.unmapMemory();
 
@@ -2973,7 +3030,7 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
 }
 
 // Asynchronous texture loading implementations using ThreadPool
-std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical) {
+std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical, bool cachePixels) {
   if (texturePath.empty()) {
     return std::async(std::launch::deferred, [] { return false; });
   }
@@ -2983,11 +3040,12 @@ std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, boo
   // validation.
   textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
   uploadJobsTotal.fetch_add(1, std::memory_order_relaxed);
-  auto task = [this, texturePath, critical]() {
+  auto task = [this, texturePath, critical, cachePixels]() {
     PendingTextureJob job;
     job.type = PendingTextureJob::Type::FromFile;
     job.priority = critical ? PendingTextureJob::Priority::Critical : PendingTextureJob::Priority::NonCritical;
-    job.idOrPath = texturePath; {
+    job.idOrPath = texturePath;
+    job.cachePixels = cachePixels; {
       std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
       pendingTextureJobs.emplace_back(std::move(job));
     }
@@ -3011,7 +3069,8 @@ std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textur
                                                        int width,
                                                        int height,
                                                        int channels,
-                                                       bool critical) {
+                                                       bool critical,
+                                                       bool cachePixels) {
   if (!imageData || textureId.empty() || width <= 0 || height <= 0 || channels <= 0) {
     return std::async(std::launch::deferred, [] { return false; });
   }
@@ -3022,11 +3081,16 @@ std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textur
 
   textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
   uploadJobsTotal.fetch_add(1, std::memory_order_relaxed);
-  auto task = [this, textureId, data = std::move(dataCopy), width, height, channels, critical]() mutable {
+  auto task = [this, textureId, data = std::move(dataCopy), width, height, channels, critical, cachePixels]() mutable {
     PendingTextureJob job;
     job.type = PendingTextureJob::Type::FromMemory;
     job.priority = critical ? PendingTextureJob::Priority::Critical : PendingTextureJob::Priority::NonCritical;
-    job.idOrPath = textureId; {
+    job.idOrPath = textureId;
+    job.data = std::move(data);
+    job.width = width;
+    job.height = height;
+    job.channels = channels;
+    job.cachePixels = cachePixels; {
       std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
       pendingTextureJobs.emplace_back(std::move(job));
     }
@@ -3337,7 +3401,7 @@ void Renderer::StartUploadsWorker(size_t workerCount) {
         for (auto& job : batch) {
           try {
             if (job.type == PendingTextureJob::Type::FromFile) {
-              (void) LoadTexture(job.idOrPath);
+              (void) LoadTexture(job.idOrPath, job.cachePixels);
               OnTextureUploaded(job.idOrPath);
               if (job.priority == PendingTextureJob::Priority::Critical) {
                 criticalJobsOutstanding.fetch_sub(1, std::memory_order_relaxed);
@@ -3803,7 +3867,7 @@ void Renderer::ProcessPendingTextureJobs(uint32_t maxJobs,
       switch (job.type) {
         case PendingTextureJob::Type::FromFile:
           // LoadTexture will resolve aliases and perform full GPU upload
-          LoadTexture(job.idOrPath);
+          LoadTexture(job.idOrPath, job.cachePixels);
           break;
         case PendingTextureJob::Type::FromMemory:
           // LoadTextureFromMemory will create GPU resources for this ID
@@ -3811,7 +3875,8 @@ void Renderer::ProcessPendingTextureJobs(uint32_t maxJobs,
                                 job.data.data(),
                                 job.width,
                                 job.height,
-                                job.channels);
+                                job.channels,
+                                job.cachePixels);
           break;
       }
       // Refresh descriptors for entities that use this texture so

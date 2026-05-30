@@ -1,0 +1,53 @@
+= What Your GPU Is Actually Doing
+
+== A Filing Cabinet That Goes All The Way Down
+
+To understand why alpha testing is expensive, you need a mental model of how the GPU finds the triangles that a ray might hit. Checking every triangle in the scene for every ray would be catastrophically slow — a modern scene might have millions of triangles, and a 4K frame has millions of pixels, each casting shadow rays. The brute-force cost would be in the trillions of operations per frame.
+
+The GPU avoids this through a spatial data structure called a **Bounding Volume Hierarchy**, or **BVH**. Imagine a filing cabinet. The top-level drawer contains a single large box that encloses the entire scene. Inside that box are several smaller boxes, each enclosing a major region of the scene — perhaps the left half and the right half. Inside each of those are still smaller boxes, subdividing further. At the bottom of the hierarchy, each leaf node contains a small number of actual triangles.
+
+When a ray enters the BVH, it first tests the top-level bounding box. If it misses, done — the ray hits nothing in the entire scene. If it hits, it opens that box and tests the children. It follows the ones it hits and ignores the ones it misses. The traversal narrows geometrically: rather than testing a million triangles, the ray tests perhaps a few dozen bounding boxes and reaches perhaps a handful of candidate triangles. This is why ray traversal is feasible in real time.
+
+For fully **opaque** geometry, the story ends at the triangle level. When the traversal finds that a ray intersects a triangle, the hardware issues what is called a **committed hit** — it records the hit distance and surface data, and traversal can terminate (or continue looking for closer hits, depending on the mode). No shader code is involved. The fixed-function hardware handles it entirely.
+
+== The Any-Hit Shader: A Necessary Interruption
+
+Alpha-tested geometry breaks this clean story. When the BVH traversal finds a candidate triangle on an alpha-tested mesh, it cannot commit the hit without first checking whether the intersection point is actually solid. To do this, it must invoke a programmable shader — the **any-hit shader**.
+
+The any-hit shader receives the intersection data: specifically, the **barycentric coordinates** of the hit point within the triangle. Barycentric coordinates describe where exactly within the triangle the ray landed, expressed as a weighted combination of the three vertices. From the barycentric coordinates, the shader can interpolate the UV texture coordinates for the hit point. Then it samples the alpha texture at those UVs and examines the result. If the alpha value is above the material's threshold, the hit is solid — the shader allows the default commit to proceed. If the alpha is below threshold, the shader calls the ignore function and traversal continues, hunting for the next candidate.
+
+This is several sequential operations — barycentric interpolation, UV interpolation, a texture sample, a comparison, and a decision — that must complete before traversal can proceed. And it must complete for every candidate hit.
+
+== The Parallelism Problem: Divergence
+
+The GPU is not a sequential machine. It executes shader code on hundreds or thousands of parallel execution units simultaneously. These units work in groups called **warps** (NVIDIA terminology) or **wavefronts** (AMD terminology) — typically 32 or 64 shader threads executing in lockstep, running the same instruction at the same time on different data. This massively parallel execution model is why the GPU can shade millions of pixels per frame.
+
+The lockstep model has a critical weakness: **divergence**. When different threads in a warp need to take different code paths — when some threads find an opaque hit and others find a transparent hit — the warp cannot stay in lockstep. It must execute both code paths, masking off the threads that aren't active on each path. Half the warp waits while the other half runs its branch, then vice versa. The effective parallelism halves, or worse.
+
+Alpha testing is a divergence machine. Out of 32 shadow rays in a warp, some might hit opaque regions of leaf triangles, some might hit transparent regions, and some might not hit any leaf at all. The any-hit shader fires on different triangles for different threads. Some threads finish their alpha check quickly, others take longer due to cache behavior. The warp serializes. Execution units sit idle waiting for stragglers. The GPU's parallel throughput advantage evaporates precisely where it hurts most.
+
+== The Texture Cache Catastrophe
+
+There is a second, related cost that compounds the first: **texture cache misses**. The GPU has dedicated caches for texture data, designed to serve texture samples efficiently. During rasterization, texture caching works beautifully because nearby screen pixels tend to sample nearby points in texture space — spatial coherence means neighboring threads read from the same cache lines, and the cache stays warm.
+
+During BVH traversal, rays come from arbitrary screen positions and can hit triangles at arbitrary UV coordinates. Seventeen shadow rays in the same warp might be testing seventeen completely different leaf triangles, each with different UV coordinates, scattered across the texture atlas. Each sample might land in a different region of texture memory. The cache serves up cold miss after cold miss. The texture unit — built for coherent rasterization access — stalls repeatedly while data is fetched from video memory.
+
+Texture memory bandwidth is finite and shared with other operations happening simultaneously on the GPU. Cache misses in the any-hit shader compete for that bandwidth. In a forest scene, the texture cache thrashing from any-hit shader invocations can account for a substantial fraction of the total frame time.
+
+== Counting the Cost
+
+Let's put concrete numbers on this to build intuition. Suppose a forest scene has 50,000 leaf triangles visible in the shadow view frustum. A shadow map approach would process these once per frame at low resolution. In our ray-traced system, we cast 16 shadow rays per pixel at 1080p, giving us roughly 33 million pixels times 16 rays — about 530 million shadow rays. Each shadow ray might pass through 3 to 5 leaf triangles on average before either finding an opaque hit or exiting the canopy. That is somewhere between 1.5 and 2.5 billion any-hit shader invocations per frame, each requiring a texture sample, all competing for cache, all introducing divergence.
+
+A modern GPU can execute perhaps 50 to 100 billion simple operations per second. But the any-hit shader is not a simple operation — it is a branching shader with a texture sample and a memory-dependent decision. Realistically, each invocation costs tens of nanoseconds. The math is uncomfortable.
+
+== The Fundamental Insight
+
+The waste here is not computational in the algorithmic sense — the any-hit shader is doing exactly what it must, given what the hardware knows. The waste is informational. The GPU is discovering, at runtime, information that was available at scene load time. The alpha texture does not change between frames. The relationship between each triangle and its alpha mask does not change. Every single any-hit shader invocation is re-discovering something that was knowable in advance.
+
+This is the root of the problem, and it points directly to the solution. If the GPU already knew, encoded directly in the acceleration structure, which sub-regions of each triangle are opaque and which are transparent, it could make traversal decisions without running any shader at all — except for the genuinely uncertain edge regions. The any-hit shader would become rare rather than universal.
+
+That is precisely what Opacity Micromaps provide.
+
+'''
+
+xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/01_the_shadow_problem.adoc[Previous: Shadows, Light, and the Trouble with Leaves] | xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/03_what_are_micromaps.adoc[Next: Micromaps: Teaching the Hardware What It Already Should Know]

@@ -371,11 +371,11 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
               const auto& image = gltfModel.images[imageIndex];
               std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
               if (!image.image.empty()) {
-                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true, material->alphaMode == "MASK");
                 material->albedoTexturePath = textureId;
               } else if (!image.uri.empty()) {
                 std::string filePath = baseTexturePath + image.uri;
-                renderer->LoadTextureAsync(filePath);
+                renderer->LoadTextureAsync(filePath, true, material->alphaMode == "MASK");
                 material->albedoTexturePath = filePath;
               }
             }
@@ -394,14 +394,14 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
               const auto& image = gltfModel.images[texture.source];
               if (!image.image.empty()) {
                 // Embedded image data (already decoded by tinygltf image loader)
-                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, false);
+                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, false, material->alphaMode == "MASK");
                 material->specGlossTexturePath = textureId;
                 material->metallicRoughnessTexturePath = textureId; // reuse binding 2
               } else if (!image.uri.empty()) {
                 // External KTX2 file: offload libktx decode + upload to renderer worker threads
                 std::string filePath = baseTexturePath + image.uri;
                 renderer->RegisterTextureAlias(textureId, filePath);
-                renderer->LoadTextureAsync(filePath);
+                renderer->LoadTextureAsync(filePath, false, material->alphaMode == "MASK");
                 material->specGlossTexturePath = textureId;
                 material->metallicRoughnessTexturePath = textureId; // reuse binding 2
               }
@@ -439,13 +439,13 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
           const auto& image = gltfModel.images[imageIndex];
           if (!image.image.empty()) {
             // Always use memory-based upload (KTX2 already decoded by SetImageLoader)
-            renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true);
+            renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true, material->alphaMode == "MASK");
             material->albedoTexturePath = textureId;
           } else if (!image.uri.empty()) {
             // Offload KTX2 file reading/upload to renderer thread pool
             std::string filePath = baseTexturePath + image.uri;
             renderer->RegisterTextureAlias(textureId, filePath);
-            renderer->LoadTextureAsync(filePath, true);
+            renderer->LoadTextureAsync(filePath, true, material->alphaMode == "MASK");
             material->albedoTexturePath = textureId;
           } else {
             std::cerr << "    Warning: No decoded image bytes for base color texture index " << texIndex << std::endl;
@@ -620,7 +620,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
               if (!image.uri.empty()) {
                 texIdOrPath = baseTexturePath + image.uri;
                 // Schedule async load; libktx decoding will occur on renderer worker threads
-                renderer->LoadTextureAsync(texIdOrPath, true);
+                renderer->LoadTextureAsync(texIdOrPath, true, mat->alphaMode == "MASK");
                 mat->albedoTexturePath = texIdOrPath;
               }
               if (mat->albedoTexturePath.empty() && !image.image.empty()) {
@@ -671,7 +671,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
         // Ensure the file exists before attempting to load
         if (std::filesystem::exists(cand)) {
           // Schedule async load; libktx decoding will occur on renderer worker threads
-          renderer->LoadTextureAsync(cand, true);
+          renderer->LoadTextureAsync(cand, true, mat->alphaMode == "MASK");
           mat->albedoTexturePath = cand;
           break;
         }
@@ -714,12 +714,12 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
 
       std::string textureId = baseTexturePath + imageUri; // use path string as ID for cache
       if (!image.image.empty()) {
-        renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+        renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true, mat->alphaMode == "MASK");
         mat->albedoTexturePath = textureId;
         break;
       } else {
         // Fallback: offload KTX2 file load to renderer threads
-        renderer->LoadTextureAsync(textureId);
+        renderer->LoadTextureAsync(textureId, true, mat->alphaMode == "MASK");
         mat->albedoTexturePath = textureId;
         break;
       }
@@ -1390,7 +1390,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
             const auto& image = gltfModel.images[imageIndex];
             if (!image.image.empty()) {
               if (!loadedTextures.contains(textureId)) {
-                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true);
+                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true, gltfMaterial.alphaMode == "MASK");
                 loadedTextures.insert(textureId);
               }
             } else {
@@ -1422,12 +1422,12 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
               // Use the relative path from the GLTF directory
               std::string textureId = baseTexturePath + imageUri;
               if (!image.image.empty()) {
-                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
+                renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, true, gltfMaterial.alphaMode == "MASK");
                 materialMesh.baseColorTexturePath = textureId;
                 materialMesh.texturePath = textureId;
               } else {
                 // Fallback: offload KTX2 file load to renderer worker threads
-                renderer->LoadTextureAsync(textureId, true);
+                renderer->LoadTextureAsync(textureId, true, gltfMaterial.alphaMode == "MASK");
                 materialMesh.baseColorTexturePath = textureId;
                 materialMesh.texturePath = textureId;
               }

@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.29)
 
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Course modules — optional self-contained feature extensions
+# Each course lives entirely in Courses/ and is linked into the engine target.
+# Disable globally with:  cmake -DENABLE_COURSES=OFF ..
+# ─────────────────────────────────────────────────────────────────────────────
+option(ENABLE_COURSES "Build the Simple Engine course modules" OFF)
+
 # Option to enable/disable Vulkan C++20 module support for this standalone project
 option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan in SimpleEngine" OFF)
 
@@ -167,6 +174,19 @@ endif ()
 
 add_dependencies(SimpleEngine shaders)
 set_target_properties (SimpleEngine PROPERTIES CXX_STANDARD 20)
+
+# ── Course modules ────────────────────────────────────────────────────────────
+# Each course is a static library defined in Courses/CMakeLists.txt.
+# The SIMPLE_ENGINE_COURSES_LIB variable is set in that file; it is empty when
+# all course modules are disabled.
+if(ENABLE_COURSES)
+    add_subdirectory(Courses)
+    if(SIMPLE_ENGINE_COURSES_LIB)
+        target_link_libraries(SimpleEngine PUBLIC ${SIMPLE_ENGINE_COURSES_LIB})
+        target_include_directories(SimpleEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Courses)
+        message(STATUS "[SimpleEngine] Course modules linked: ${SIMPLE_ENGINE_COURSES_LIB}")
+    endif()
+endif()
 
 # Enable required defines for GLM experimental extensions and MSVC math constants
 target_compile_definitions(SimpleEngine PRIVATE

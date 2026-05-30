@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 550" width="700" height="550" font-family="'Segoe UI',Arial,sans-serif">
+  <!-- Background -->
+  <rect width="700" height="550" fill="#1e1e2e"/>
+
+  <!-- Title -->
+  <text x="350" y="30" text-anchor="middle" fill="#cdd6f4" font-size="17" font-weight="bold">Opacity Micromap Triangle Subdivision</text>
+
+  <!-- Subtitle -->
+  <text x="350" y="50" text-anchor="middle" fill="#9399b2" font-size="12">Each source triangle is subdivided into a grid of micro-triangles, each assigned an opacity state</text>
+
+  <!-- ===================================================== -->
+  <!-- MAIN LARGE EQUILATERAL TRIANGLE                       -->
+  <!-- Vertices: top=350,75   bottom-left=95,450  bottom-right=605,450 -->
+  <!-- ===================================================== -->
+
+  <!-- Level 2 subdivision = 4x4 = 16 micro-triangles -->
+  <!-- Row 0 (top): 1 up triangle -->
+  <!-- Row 1: 2 up + 1 down = 3 micro-triangles -->
+  <!-- Row 2: 3 up + 2 down = 5 micro-triangles -->
+  <!-- Row 3: 4 up + 3 down = 7 micro-triangles -->
+
+  <!-- Compute vertices for 4-division grid:
+       Edge step: dx = (605-95)/4 = 127.5, dy = (450-75)/4 = 93.75
+       Row vertices from left edge to middle edge:
+       V(row, col) = (95 + col*127.5 - row*63.75, 75 + row*93.75)
+       For row r, col c: x = 95 + c*127.5 - r*63.75,  y = 75 + r*93.75 -->
+
+  <!-- Helper: V(r,c) = (95 + c*127.5 - r*63.75,  75 + r*93.75) -->
+  <!-- V00=(350,75)   -->
+  <!-- V10=(286.25,168.75) V11=(413.75,168.75) -->
+  <!-- V20=(222.5,262.5) V21=(350,262.5) V22=(477.5,262.5) -->
+  <!-- V30=(158.75,356.25) V31=(286.25,356.25) V32=(413.75,356.25) V33=(541.25,356.25) -->
+  <!-- V40=(95,450) V41=(222.5,450) V42=(350,450) V43=(477.5,450) V44=(605,450) -->
+
+  <!-- === ROW 0: 1 up triangle (top) === -->
+  <!-- Up: V00, V10, V11 → opaque (leaf center top) -->
+  <polygon points="350,75 286.25,168.75 413.75,168.75" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+
+  <!-- === ROW 1: 2 up + 1 down === -->
+  <!-- Up-left: V10, V20, V21 → opaque -->
+  <polygon points="286.25,168.75 222.5,262.5 350,262.5" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Down-mid: V10, V11, V21 → opaque (inverted triangle, center) -->
+  <polygon points="286.25,168.75 413.75,168.75 350,262.5" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Up-right: V11, V21, V22 → opaque -->
+  <polygon points="413.75,168.75 350,262.5 477.5,262.5" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+
+  <!-- === ROW 2: 3 up + 2 down === -->
+  <!-- Up-far-left: V20, V30, V31 → unknown (edge boundary) -->
+  <polygon points="222.5,262.5 158.75,356.25 286.25,356.25" fill="#f9e2af" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Down-left: V20, V21, V31 → opaque -->
+  <polygon points="222.5,262.5 350,262.5 286.25,356.25" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Up-center: V21, V31, V32 → opaque -->
+  <polygon points="350,262.5 286.25,356.25 413.75,356.25" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Down-right: V21, V22, V32 → opaque -->
+  <polygon points="350,262.5 477.5,262.5 413.75,356.25" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Up-far-right: V22, V32, V33 → unknown (edge boundary) -->
+  <polygon points="477.5,262.5 413.75,356.25 541.25,356.25" fill="#f9e2af" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+
+  <!-- === ROW 3: 4 up + 3 down === -->
+  <!-- Up-far-left: V30, V40, V41 → transparent -->
+  <polygon points="158.75,356.25 95,450 222.5,450" fill="#f38ba8" stroke="#1e1e2e" stroke-width="1.5" opacity="0.7"/>
+  <!-- Down-left: V30, V31, V41 → unknown -->
+  <polygon points="158.75,356.25 286.25,356.25 222.5,450" fill="#f9e2af" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Up-left-center: V31, V41, V42 → unknown -->
+  <polygon points="286.25,356.25 222.5,450 350,450" fill="#f9e2af" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Down-center: V31, V32, V42 → opaque -->
+  <polygon points="286.25,356.25 413.75,356.25 350,450" fill="#a6e3a1" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Up-right-center: V32, V42, V43 → unknown -->
+  <polygon points="413.75,356.25 350,450 477.5,450" fill="#f9e2af" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Down-right: V32, V33, V43 → unknown -->
+  <polygon points="413.75,356.25 541.25,356.25 477.5,450" fill="#f9e2af" stroke="#1e1e2e" stroke-width="1.5" opacity="0.82"/>
+  <!-- Up-far-right: V33, V43, V44 → transparent -->
+  <polygon points="541.25,356.25 477.5,450 605,450" fill="#f38ba8" stroke="#1e1e2e" stroke-width="1.5" opacity="0.7"/>
+
+  <!-- Outer triangle border -->
+  <polygon points="350,75 95,450 605,450" fill="none" stroke="#89b4fa" stroke-width="2.5"/>
+
+  <!-- ===================================================== -->
+  <!-- LEGEND                                                 -->
+  <!-- ===================================================== -->
+  <rect x="430" y="470" width="255" height="70" rx="8" fill="#181825" stroke="#45475a" stroke-width="1.5"/>
+  <text x="557" y="490" text-anchor="middle" fill="#cdd6f4" font-size="13" font-weight="bold">Legend</text>
+  <rect x="444" y="498" width="14" height="14" rx="2" fill="#a6e3a1" opacity="0.85"/>
+  <text x="465" y="510" fill="#a6e3a1" font-size="11">Opaque — hardware blocks ray</text>
+  <rect x="444" y="516" width="14" height="14" rx="2" fill="#f38ba8" opacity="0.8"/>
+  <text x="465" y="528" fill="#f38ba8" font-size="11">Transparent — hardware passes ray</text>
+  <!-- unknown swatch -->
+  <rect x="562" y="498" width="14" height="14" rx="2" fill="#f9e2af" opacity="0.85"/>
+  <text x="582" y="510" fill="#f9e2af" font-size="11">Unknown — any-hit shader runs</text>
+
+  <!-- Subdivision level note -->
+  <rect x="15" y="470" width="230" height="50" rx="8" fill="#181825" stroke="#45475a" stroke-width="1.5"/>
+  <text x="130" y="490" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="bold">Subdivision Level 2</text>
+  <text x="130" y="508" text-anchor="middle" fill="#9399b2" font-size="11">= 4² = 16 micro-triangles</text>
+  <text x="130" y="524" text-anchor="middle" fill="#9399b2" font-size="11">per source triangle</text>
+
+  <!-- Arrow pointing to unknown border ring with annotation -->
+  <line x1="175" y1="360" x2="145" y2="420" stroke="#f9e2af" stroke-width="1.5"/>
+  <text x="100" y="412" fill="#f9e2af" font-size="11" text-anchor="middle">Edge</text>
+  <text x="100" y="425" fill="#f9e2af" font-size="11" text-anchor="middle">boundary</text>
+  <text x="100" y="438" fill="#f9e2af" font-size="11" text-anchor="middle">(unknown)</text>
+</svg>

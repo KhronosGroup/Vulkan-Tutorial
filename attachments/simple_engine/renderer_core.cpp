@@ -789,6 +789,12 @@ void Renderer::addSupportedOptionalExtensions() {
     // Get available extensions
     auto availableExtensions = physicalDevice.enumerateDeviceExtensionProperties();
 
+    //add any extra extensions enabled by courses
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // Opacity micromap for hardware-accelerated alpha-tested shadow rays (Course: Opacity Micromaps)
+    optionalDeviceExtensions.push_back( VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME );
+#endif
+
     // Build a set of available extension names for quick lookup
     std::set<std::string> avail;
     for (const auto& e : availableExtensions) {
@@ -1045,6 +1051,22 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       tailNext = reinterpret_cast<void **>(&rayQueryEnable.pNext);
     }
 
+    // Opacity micromap (Course: Opacity Micromaps)
+    auto hasOpacityMicromap = hasExtension(VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME);
+    vk::PhysicalDeviceOpacityMicromapFeaturesEXT opacityMicromapSupported{};
+    vk::PhysicalDeviceOpacityMicromapFeaturesEXT opacityMicromapEnable{};
+    if (hasOpacityMicromap) {
+      auto featChain2 = physicalDevice.getFeatures2<
+        vk::PhysicalDeviceFeatures2,
+        vk::PhysicalDeviceOpacityMicromapFeaturesEXT>();
+      opacityMicromapSupported = featChain2.template get<vk::PhysicalDeviceOpacityMicromapFeaturesEXT>();
+      if (opacityMicromapSupported.micromap) {
+        opacityMicromapEnable.micromap = vk::True;
+        *tailNext = &opacityMicromapEnable;
+        tailNext = reinterpret_cast<void **>(&opacityMicromapEnable.pNext);
+      }
+    }
+
     // Record which features ended up enabled (for runtime decisions/tutorial diagnostics)
     robustness2Enabled = hasRobust2 && (robust2Enable.robustBufferAccess2 == vk::True ||
       robust2Enable.robustImageAccess2 == vk::True ||
@@ -1060,6 +1082,9 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
 #endif
     accelerationStructureEnabled = hasAccelerationStructure && (accelerationStructureEnable.accelerationStructure == vk::True);
     rayQueryEnabled = hasRayQuery && (rayQueryEnable.rayQuery == vk::True);
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    opacityMicromapEnabled = hasOpacityMicromap && (opacityMicromapEnable.micromap == vk::True);
+#endif
 
     // One-time startup diagnostics (Ray Query + texture array indexing)
     static bool printedFeatureDiag = false;

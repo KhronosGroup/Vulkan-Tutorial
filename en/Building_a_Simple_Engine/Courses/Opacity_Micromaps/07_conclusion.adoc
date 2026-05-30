@@ -1,0 +1,37 @@
+= Conclusion: Bridging Art and Hardware
+
+== The Journey in Reverse
+
+We began this course with beautiful shadows and a hidden problem. The shadows looked right. The frames were rendering. But underneath the visual correctness, the GPU was engaged in an enormous amount of redundant discovery — re-learning, sixty times per second, which parts of every leaf were solid and which were air. We traced that redundancy to its root in the GPU's traversal hardware, understanding precisely why the any-hit shader is necessary, why it is expensive, why divergence and cache misses compound the cost, and why the problem grows with exactly the features that make rendering most visually compelling.
+
+Then we learned the solution in full. Opacity Micromaps pre-bake the answer to the GPU's repeated question. They subdivide each triangle into a grid of micro-triangles and classify each one with a permanent state. That classification, stored in the acceleration structure itself, allows the fixed-function traversal hardware to resolve the vast majority of alpha-tested intersections without ever entering the programmable shader domain. The any-hit shader is demoted from ubiquitous workhorse to rare specialist, called only for the genuinely uncertain edge regions.
+
+The result is that shadows in foliage-heavy scenes run dramatically faster, look identical, and require no changes to the shadow shader. The savings multiply with soft-shadow sample counts, becoming most valuable precisely in the rendering configurations that matter most for visual quality.
+
+== A Recurring Theme in Graphics
+
+The journey from problem to solution here follows a pattern that appears throughout the history of real-time graphics optimization: move work from runtime to pre-process, from general-purpose compute to dedicated hardware, from discovery to knowledge.
+
+Lightmaps moved dynamic light evaluation to an offline bake. Precomputed radiance transfer moved complex lighting integrals to pre-computation. Mesh shaders moved geometry amplification to a more hardware-aware stage. In every case, the underlying insight is the same: if the answer is knowable in advance, pay the cost once and cache the result in the most hardware-accessible form possible. Opacity Micromaps are an exceptionally clean instance of this principle, because the pre-baked data is small, the benefit is large, and the integration into existing rendering pipelines is nearly seamless.
+
+Understanding this pattern gives you a transferable skill. The next time you encounter a performance bottleneck in a ray-traced or rasterized pipeline, one of the first questions to ask is: "Is this information that could have been known ahead of time?" If the answer is yes, there is likely an optimization to be found.
+
+== What You Now Understand
+
+You understand a genuinely modern, hardware-level GPU feature. Opacity Micromaps were introduced to Vulkan relatively recently, and they represent the kind of deep cooperation between API design, hardware architecture, and content pipeline engineering that defines the frontier of real-time graphics. Many experienced graphics developers are not yet familiar with them in detail.
+
+You understand not just the API surface, but the reason the API exists. You know what problem it solves, at which level of the hardware it operates, and what the trade-offs are in practice. That depth of understanding is what separates someone who can use a feature from someone who can evaluate it, extend it, and explain it to others.
+
+== Next Steps
+
+Open the `OpacityMicromapBuilder` source files in the `Courses/` attachment folder. Read through the implementation with the conceptual framework from this course fresh in mind. Notice how the three phases — analysis, classification, construction — map to the code structure. Look for the subdivision level heuristic and think about whether it fits the content you are rendering.
+
+Enable and disable OMMs in the engine using the configuration flag, and use a GPU profiler — NVIDIA Nsight Graphics or AMD Radeon GPU Profiler — to capture both configurations on a foliage-heavy scene. Look at the any-hit shader invocation count, the time in the BVH traversal stage, and the warp occupancy metrics. The numbers will give you intuition that no amount of explanation can fully replace.
+
+When you are ready to go further, explore `VK_EXT_displacement_micromap` — the sibling extension that uses a similar micro-triangle subdivision model not for opacity, but for geometric displacement. Where Opacity Micromaps let you bake alpha into the acceleration structure, Displacement Micromaps let you bake fine surface detail — the kind normally stored in displacement maps — directly into the BVH without the polygon overhead of tessellating that detail into the mesh. The conceptual foundation you have built in this course transfers directly.
+
+The hardware is clever. Learning to think alongside it is how you become a more effective graphics engineer.
+
+'''
+
+xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/06_results_guidance_and_tradeoffs.adoc[Previous: Seeing the Difference and Knowing When to Use It]

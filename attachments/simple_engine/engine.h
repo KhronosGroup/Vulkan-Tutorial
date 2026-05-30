@@ -35,6 +35,10 @@
 #include "renderer.h"
 #include "resource_manager.h"
 
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+#include "Courses/omm_integration.h"
+#endif
+
 /**
  * @brief Main engine class that manages the game loop and subsystems.
  *
@@ -160,6 +164,14 @@ class Engine
 	 */
 	PhysicsSystem *GetPhysicsSystem();
 
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+	/**
+	 * @brief Get the OMM integration system.
+	 * @return A pointer to the OmmIntegration system.
+	 */
+	OmmIntegration *GetOmmIntegration();
+#endif
+
 	/**
 	 * @brief Get the ImGui system.
 	 * @return A pointer to the ImGui system.
@@ -218,7 +230,10 @@ class Engine
 	std::unique_ptr<ModelLoader>     modelLoader;
 	std::unique_ptr<AudioSystem>     audioSystem;
 	std::unique_ptr<PhysicsSystem>   physicsSystem;
-	std::unique_ptr<ImGuiSystem>     imguiSystem;
+	std::unique_ptr<ImGuiSystem>      imguiSystem;
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+	std::unique_ptr<OmmIntegration>   ommIntegration;
+#endif
 
 	// Entities
 	// NOTE: Entities can be created from a background loading thread (see `main.cpp`).

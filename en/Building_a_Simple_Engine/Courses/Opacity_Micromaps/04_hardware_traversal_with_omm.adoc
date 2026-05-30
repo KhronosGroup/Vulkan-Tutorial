@@ -42,6 +42,19 @@ During traversal, when the hardware identifies a candidate triangle intersection
 
 This is what it means for the hardware to provide **hardware-accelerated opacity evaluation**. The micromap is not a compute buffer that a shader reads. It is metadata embedded in the acceleration structure, readable by the traversal hardware itself.
 
+Under `VK_KHR_opacity_micromap`, the micromap is represented not as a separate object type but as a standard `VkAccelerationStructureKHR` created with type `VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR`. This unification with the standard acceleration structure object is a deliberate design choice in the KHR extension: it means the micromap participates in the same memory model, barrier rules, and lifetime management as all other acceleration structures in the scene, rather than introducing a parallel hierarchy of objects.
+
+== The OpacityMicromapKHR Execution Mode
+
+In `VK_KHR_opacity_micromap`, the hardware micromap fast-path for ray queries is **not** automatic. The shadow shader must explicitly declare the `OpacityMicromapKHR` SPIR-V execution mode, defined by `SPV_KHR_opacity_micromap`, to signal to the traversal hardware that it should consult the micromap data. In GLSL this declaration looks like:
+
+[source,glsl]
+----
+layout(constant_id = N) gl_EnableOpacityMicromapExt;
+----
+
+where `N` is a specialisation constant ID. This is a one-line addition to the shader — not a logical change — but without it, the hardware silently ignores all micromap data during ray query traversal and falls back to the full any-hit shader path on every intersection, as if no micromaps were attached at all. This was a deliberate design change from `VK_EXT_opacity_micromap`, where the optimisation was implicit for ray queries. The explicit declaration makes the hardware intent unambiguous and allows compilers to reason about it correctly.
+
 == The Cascade Effect on Warp Efficiency
 
 Recall from the previous chapter the problem of divergence: when different threads in a warp take different code paths, the warp serializes. Alpha-tested geometry was a chronic source of divergence because the any-hit shader fired with different outcomes for different rays.
@@ -64,7 +77,7 @@ image::images/omm_shadow_ray_lifecycle.svg[Flowchart showing the lifecycle of a 
 
 The complete lifecycle of a shadow ray in an OMM-enabled scene can be summarized as a decision tree. The ray enters BVH traversal. For each candidate triangle intersection, the hardware checks for an attached micromap. If no micromap is present (non-alpha-tested geometry), it uses the standard opaque-geometry path: commit the hit immediately. If a micromap is present, it looks up the micro-triangle state. Opaque: commit, no shader. Transparent: discard, no shader. Unknown: invoke the any-hit shader and let the shader make the final call.
 
-This decision tree lives entirely in fixed-function hardware for the Opaque and Transparent branches. Only the Unknown branch enters programmable execution. The result is that the GPU's shader execution units are freed from the overwhelming majority of alpha-testing work and can focus on the cases that genuinely require a shader.
+This decision tree lives entirely in fixed-function hardware for the Opaque and Transparent branches. Only the Unknown branch enters programmable execution. The result is that the GPU's shader execution units are freed from the overwhelming majority of alpha-testing work and can focus on the cases that genuinely require a shader. In `VK_KHR_opacity_micromap`, reaching this optimized path also depends on the shader having declared the `OpacityMicromapKHR` execution mode — the hardware and the shader must both be in agreement for the optimization to take effect.
 
 '''
 

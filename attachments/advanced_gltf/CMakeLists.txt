@@ -80,6 +80,9 @@ FetchContent_Declare(
     SOURCE_SUBDIR  Build)
 set(DOUBLE_PRECISION       OFF CACHE BOOL "" FORCE)
 set(GENERATE_DEBUG_SYMBOLS ON  CACHE BOOL "" FORCE)
+if(MSVC)
+    set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_MakeAvailable(JoltPhysics)
 
 # ---------------------------------------------------------------------------
@@ -244,9 +247,9 @@ if(MSVC)
     # NOMINMAX needs to inherit so MSVC doesn't have problems with min / max being a MSVC macro.
     target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
-    target_compile_options(SimpleEngineLib PRIVATE
+    target_compile_options(SimpleEngineLib PUBLIC
         /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
-    target_link_libraries(SimpleEngineLib PRIVATE Dbghelp)
+    target_link_libraries(SimpleEngineLib PUBLIC Dbghelp)
 elseif(WIN32)
     target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)

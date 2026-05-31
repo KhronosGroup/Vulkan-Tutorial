@@ -21,7 +21,7 @@ By performing this inference on the GPU, we can use **GEMM** (General Matrix Mul
 [source,slang]
 ----
 // Using Slang's Matrix fragments for cooperative ML inference
-// Note: Requires Vulkan 1.4 with VK_KHR_cooperative_matrix
+// Note: Requires Vulkan 1.3 with VK_KHR_cooperative_matrix
 [shader("compute")]
 [numthreads(32, 1, 1)] // Subgroup-sized for optimal matrix math
 void performHandRefinement() {

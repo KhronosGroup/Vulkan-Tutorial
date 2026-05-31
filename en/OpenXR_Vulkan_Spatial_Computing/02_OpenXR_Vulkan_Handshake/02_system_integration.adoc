@@ -24,7 +24,7 @@ This call populates an `XrGraphicsRequirementsVulkanKHR` structure, which contai
 1.  **minApiVersionSupported**: The minimum Vulkan version the runtime supports.
 2.  **maxApiVersionSupported**: The maximum Vulkan version the runtime has been tested with.
 
-Since we are targeting Vulkan 1.4, we must verify that our chosen version falls within this range. Most modern runtimes are rapidly updating to support the latest specifications, ensuring we have access to the advanced synchronization tools we need.
+Since we are targeting Vulkan 1.3, we must verify that our chosen version falls within this range. Most modern runtimes are rapidly updating to support the latest specifications, ensuring we have access to the advanced synchronization tools we need.
 
 == Extending the Engine Context
 

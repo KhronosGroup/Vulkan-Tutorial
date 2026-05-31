@@ -1,7 +1,7 @@
 :pp: {plus}{plus}
 = Optimizing Projections with Viewport Swizzling
 
-In some wide-FOV headsets, the physical display panel may be mounted at an angle that does not align with the standard Cartesian coordinate system. This is where the **VK_NV_viewport_swizzle** extension (or the modern Vulkan 1.4 equivalents) becomes invaluable.
+In some wide-FOV headsets, the physical display panel may be mounted at an angle that does not align with the standard Cartesian coordinate system. This is where the **VK_NV_viewport_swizzle** extension  becomes invaluable.
 
 == The Swizzle Stage: Re-routing the Pipeline
 

@@ -45,7 +45,7 @@ After this call, our application formally "owns" the image at `imageIndex`. This
 
 Even though OpenXR manages the ownership, we are still responsible for Vulkan-side synchronization. When an image is returned to us, it might be in a state used by the XR compositor (usually `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` or `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`).
 
-We must use a **Pipeline Barrier** (ideally via **Synchronization 2** in Vulkan 1.4) to transition it to `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` before we can use it in our dynamic rendering pass.
+We must use a **Pipeline Barrier** (ideally via **Synchronization 2** in Vulkan 1.3) to transition it to `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` before we can use it in our dynamic rendering pass.
 
 [source,cpp]
 ----

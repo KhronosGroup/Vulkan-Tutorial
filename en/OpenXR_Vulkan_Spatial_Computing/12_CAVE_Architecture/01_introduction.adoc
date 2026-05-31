@@ -21,7 +21,7 @@ Furthermore, because the images are being stitched together from multiple projec
 
 The "holy grail" of CAVE engineering is **Genlock** (Generator Lock) and **Swaplock**. Genlock ensures that the video signal from every GPU is sent to the projectors at the exact same time. Swaplock ensures that the command to swap the front and back buffers happens simultaneously across the entire cluster.
 
-Without these hardware-level guarantees, the "immersion" of a CAVE is quickly broken by jitter and visual discontinuities. We will look at how Vulkan 1.4 features and specialized hardware extensions allow us to achieve this level of precision.
+Without these hardware-level guarantees, the "immersion" of a CAVE is quickly broken by jitter and visual discontinuities. We will look at how Vulkan 1.3 features and specialized hardware extensions allow us to achieve this level of precision.
 
 By the end of this chapter, you will understand how to scale your spatial engine from a single-user headset to a multi-node, room-scale immersive environment.
 

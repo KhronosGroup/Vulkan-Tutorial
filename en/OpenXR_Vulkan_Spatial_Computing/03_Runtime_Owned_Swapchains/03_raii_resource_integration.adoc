@@ -44,7 +44,7 @@ for (const auto& xrImg : xrImages) {
 
 == Integrating with Dynamic Rendering
 
-Because we are using **Dynamic Rendering** (introduced in Vulkan 1.3 and core in 1.4), we don't need to wrap these images into `VkFramebuffer` objects. Instead, we can directly reference the `vk::raii::ImageView` in our `vk::RenderingAttachmentInfo`.
+Because we are using **Dynamic Rendering** (introduced as an extension and made core in Vulkan 1.3), we don't need to wrap these images into `VkFramebuffer` objects. Instead, we can directly reference the `vk::raii::ImageView` in our `vk::RenderingAttachmentInfo`.
 
 [source,cpp]
 ----

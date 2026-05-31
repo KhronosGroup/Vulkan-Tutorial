@@ -1,7 +1,7 @@
 :pp: {plus}{plus}
 = The Last-Second Update
 
-To implement late latching, we need a mechanism that allows the GPU to sit in a "ready state" for as long as possible without stalling the entire hardware pipeline. In Vulkan 1.4, the combination of **Timeline Semaphores** and **Synchronization 2** provides exactly what we need.
+To implement late latching, we need a mechanism that allows the GPU to sit in a "ready state" for as long as possible without stalling the entire hardware pipeline. In Vulkan 1.3, the combination of **Timeline Semaphores** and **Synchronization 2** provides exactly what we need.
 
 == Gating the Pipeline: The Wait-Before-Submit Pattern
 

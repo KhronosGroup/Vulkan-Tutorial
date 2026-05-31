@@ -17,7 +17,7 @@ In a complex scene, this means the CPU is doing twice the work (4,000 draw calls
 
 == View Masks and the Broadcast Mechanism
 
-In a standard Vulkan pipeline, a draw call targets a specific attachment. With multiview enabled (part of the Vulkan 1.4 core), you specify a **View Mask** in your `vk::RenderingInfo`.
+In a standard Vulkan pipeline, a draw call targets a specific attachment. With multiview enabled (part of the Vulkan 1.3 core), you specify a **View Mask** in your `vk::RenderingInfo`.
 
 A view mask is a bitmask where each set bit represents a layer in the output attachment array.
 
@@ -27,7 +27,7 @@ A view mask is a bitmask where each set bit represents a layer in the output att
 
 [source,cpp]
 ----
-// 1. Enabling Multiview in Vulkan 1.4 Dynamic Rendering
+// 1. Enabling Multiview in Vulkan 1.3 Dynamic Rendering
 vk::RenderingInfo renderingInfo;
 renderingInfo.viewMask = 0b11; // Broadcast to bit 0 and bit 1
 ----

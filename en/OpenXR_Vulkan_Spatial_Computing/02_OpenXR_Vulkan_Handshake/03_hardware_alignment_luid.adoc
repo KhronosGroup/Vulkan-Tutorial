@@ -56,8 +56,8 @@ for (const auto& physicalDevice : instance.enumeratePhysicalDevices()) {
 
 The LUID isn't just for selection; it is the foundation of **Cross-Process Memory Visibility**. Because the XR runtime usually lives in a separate process from our game engine, the images we render must be shared across process boundaries.
 
-Vulkan 1.4 makes this easier by standardizing external memory handles, but these handles only work if the memory was allocated on the same physical silicon. By aligning our hardware selection via the LUID, we guarantee that the "Wait-Acquire-Release" cycle can happen entirely on-device, without expensive CPU-side synchronization or system memory copies.
+Vulkan 1.3 makes this easier by standardizing external memory handles, but these handles only work if the memory was allocated on the same physical silicon. By aligning our hardware selection via the LUID, we guarantee that the "Wait-Acquire-Release" cycle can happen entirely on-device, without expensive CPU-side synchronization or system memory copies.
 
-In the final part of our handshake, we will ensure that our selected device is configured with the mandatory **Vulkan 1.4 features** required for a modern spatial pipeline.
+In the final part of our handshake, we will ensure that our selected device is configured with the mandatory **Vulkan 1.3 features** required for a modern spatial pipeline.
 
-xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/04_vulkan_1_4_feature_requirements.adoc[Next]
+xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/04_vulkan_1_3_feature_requirements.adoc[Next]

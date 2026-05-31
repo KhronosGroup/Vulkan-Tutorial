@@ -1,7 +1,7 @@
 :pp: {plus}{plus}
-= Fragment Density Control and Vulkan 1.4 VRS
+= Fragment Density Control and VRS Extensions
 
-In legacy pipelines, reducing shading quality often meant rendering to a lower-resolution buffer and upscaling, which introduced blurring and aliasing artifacts. With Vulkan 1.4, we have a much more elegant solution: **Variable Rate Shading (VRS)**.
+In legacy pipelines, reducing shading quality often meant rendering to a lower-resolution buffer and upscaling, which introduced blurring and aliasing artifacts. Modern Vulkan provides a much more elegant solution via **Variable Rate Shading (VRS)** extensions.
 
 == The Concept: Decoupling Rasterization from Shading
 

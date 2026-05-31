@@ -15,7 +15,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     vk::PhysicalDeviceVulkan12Features vulkan12Features;
     vulkan12Features.bufferDeviceAddress = vk::True;
 
-    // NEW: Also enable 1.4 features for easier memory management
+    // NEW: Also enable 1.3 features for easier memory management
     vk::PhysicalDeviceVulkan13Features vulkan13Features;
     vulkan13Features.dynamicRendering = vk::True;
     vulkan13Features.pNext = &vulkan12Features;

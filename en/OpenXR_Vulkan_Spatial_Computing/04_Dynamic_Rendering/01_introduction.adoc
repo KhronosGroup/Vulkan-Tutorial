@@ -1,7 +1,7 @@
 :pp: {plus}{plus}
 = Dynamic Rendering for Spatial Views
 
-In our journey to integrate OpenXR with Vulkan 1.4, we have established a robust handshake and learned how to manage images that are actually owned by the XR runtime. However, having the images is only half the battle. We now need to render our stereo views into them. In our previous engine building series, we adopted **Dynamic Rendering** (via `VK_KHR_dynamic_rendering`) as our primary rendering path. Now, we'll see why that decision was so critical for spatial computing.
+In our journey to integrate OpenXR with Vulkan 1.3, we have established a robust handshake and learned how to manage images that are actually owned by the XR runtime. However, having the images is only half the battle. We now need to render our stereo views into them. In our previous engine building series, we adopted **Dynamic Rendering** (via `VK_KHR_dynamic_rendering`) as our primary rendering path. Now, we'll see why that decision was so critical for spatial computing.
 
 == Why Leverage Dynamic Rendering for XR?
 

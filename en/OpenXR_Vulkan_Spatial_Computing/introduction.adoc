@@ -1,5 +1,5 @@
 :pp: {plus}{plus}
-= OpenXR and Vulkan 1.4 Spatial Computing: Introduction
+= OpenXR and Vulkan 1.3 Spatial Computing: Introduction
 
 Welcome to the frontiers of spatial computing. In this tutorial series, we are going to bridge the gap between traditional 2D engine architecture and the immersive, low-latency requirements of Virtual Reality (VR), Augmented Reality (AR), and Mixed Reality (MR)—collectively known as XR.
 
@@ -31,9 +31,9 @@ In the early days of XR, developers had to write custom backends for every heads
 
 But OpenXR isn't just a wrapper. It is a sophisticated state machine that manages hardware poses, predictive frame timing, and specialized swapchains that are owned by the XR runtime itself. To use it effectively, we have to rethink how our engine handles its main loop, its memory, and its synchronization.
 
-== The Vulkan 1.4 Advantage
+== The Vulkan 1.3 Advantage
 
-Vulkan 1.4 brings several critical features to the table that are particularly powerful for spatial computing:
+Vulkan 1.3 brings several critical features to the table that are particularly powerful for spatial computing:
 
 * **Timeline Semaphores**: Essential for the complex, cross-process synchronization required between your engine and the XR compositor.
 * **Dynamic Rendering**: Provides a flexible, lightweight rendering path for stereo views, avoiding the rigid state of legacy Render Passes.
@@ -52,6 +52,6 @@ Throughout this series, we will cover the entire lifecycle of an XR frame:
 
 By the end of this tutorial, you won't just have a working XR application; you will have a deep understanding of the architectural patterns required for high-performance spatial computing in the modern Vulkan ecosystem.
 
-Let's get started with the first step: the OpenXR-Vulkan 1.4 Handshake.
+Let's get started with the first step: the OpenXR-Vulkan 1.3 Handshake.
 
 xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/01_introduction.adoc[Next]

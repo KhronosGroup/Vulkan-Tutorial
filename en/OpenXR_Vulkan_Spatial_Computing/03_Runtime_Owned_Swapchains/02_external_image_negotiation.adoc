@@ -38,14 +38,16 @@ Once we have chosen a format, we fill out an `XrSwapchainCreateInfo` structure. 
 
 [source,cpp]
 ----
-XrSwapchainCreateInfo createInfo{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-createInfo.format = chosenVulkanFormat;
-createInfo.sampleCount = 1;
-createInfo.width = viewWidth;
-createInfo.height = viewHeight;
-createInfo.faceCount = 1;
-createInfo.arraySize = 1; // 1 for standard mono/stereo, more for multiview
-createInfo.mipCount = 1;
+XrSwapchainCreateInfo createInfo{
+    .type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
+    .format = chosenVulkanFormat,
+    .sampleCount = 1,
+    .width = viewWidth,
+    .height = viewHeight,
+    .faceCount = 1,
+    .arraySize = 1, // 1 for standard mono/stereo, more for multiview
+    .mipCount = 1
+};
 
 XrSwapchain xrSwapchain;
 xrCreateSwapchain(xrSession, &createInfo, &xrSwapchain);

@@ -69,7 +69,7 @@ std::shared_ptr<Buffer> ResourceManager::loadMLWeights(const std::string& path) 
 
 == Why These Changes?
 
-By placing the ML inference pass directly within our `Renderer` and using **Vulkan 1.4** synchronization (Synchronization 2), we ensure that our spatial refinement happens at the absolute last microsecond before the data is needed. This minimizes the **Motion-to-Photon** gap. Furthermore, by treating weights as standard engine resources, we can hot-reload different ML models (e.g., switching from a high-performance "Mobile" model to a high-fidelity "Desktop" model) without restarting the engine.
+By placing the ML inference pass directly within our `Renderer` and using **Vulkan 1.3** synchronization (Synchronization 2), we ensure that our spatial refinement happens at the absolute last microsecond before the data is needed. This minimizes the **Motion-to-Photon** gap. Furthermore, by treating weights as standard engine resources, we can hot-reload different ML models (e.g., switching from a high-performance "Mobile" model to a high-fidelity "Desktop" model) without restarting the engine.
 
 This integration turns our engine from a simple rasterizer into a context-aware spatial platform capable of understanding and reacting to the user's physical environment.
 

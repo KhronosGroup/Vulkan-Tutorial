@@ -13,6 +13,7 @@ In mobile spatial computing, **Discarding is Winning**.
 
 1.  **Load Op**: Does the tile need to be cleared (`eClear`) or loaded from VRAM (`eLoad`)?
 2.  **Store Op**: Does the final color need to be written back to VRAM (`eStore`) or discarded (`eDontCare`)?
+3.  **Local Read**: In Vulkan 1.3, we can use the **Dynamic Rendering Local Read** extension (`VK_KHR_dynamic_rendering_local_read`) to read back color or depth values within the same tile without hitting main VRAM. This is essential for mobile-focused techniques like deferred shading or custom blending, keeping the entire operation on-chip.
 
 If you don't need the depth buffer for the next frame, you MUST set its store op to `eDontCare`. This prevents the GPU from wasting battery power moving megabytes of depth data across the bus, which is the most power-hungry operation on a mobile chip.
 

@@ -5,7 +5,7 @@ In spatial computing, the gap between "I think my head is here" and "the pixel i
 
 This is where **Late Latching** comes in. Instead of gathering our head pose once at the start of the frame and using it for everything, we want to "latch" onto the most up-to-date pose as late as humanly possible—ideally, right before the GPU begins executing the draw calls that depend on it.
 
-To achieve this in Vulkan 1.4 without causing massive CPU stalls, we leverage **Timeline Semaphores**. Traditionally, synchronizing the CPU and GPU required "heavy" operations like `vkDeviceWaitIdle` or binary semaphores that are difficult to manage across complex frames. Timeline semaphores allow us to create a 64-bit monotonically increasing counter that both the CPU and GPU can wait on or signal.
+To achieve this in Vulkan 1.3 without causing massive CPU stalls, we leverage **Timeline Semaphores**. Traditionally, synchronizing the CPU and GPU required "heavy" operations like `vkDeviceWaitIdle` or binary semaphores that are difficult to manage across complex frames. Timeline semaphores allow us to create a 64-bit monotonically increasing counter that both the CPU and GPU can wait on or signal.
 
 By gating our Uniform Buffer Object (UBO) or Push Constant updates behind a timeline semaphore value, we can ensure that the GPU only proceeds with a draw call once the CPU has finished writing the absolute latest view and projection matrices. This minimizes the prediction error and keeps the virtual world anchored firmly to the user's reality.
 

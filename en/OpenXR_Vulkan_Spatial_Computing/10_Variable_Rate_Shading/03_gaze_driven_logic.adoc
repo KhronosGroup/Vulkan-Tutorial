@@ -28,7 +28,36 @@ void updateShadingRateMap(vk::raii::CommandBuffer& cmd, const glm::vec2& gazeCen
     cmd.pushConstants<glm::vec2>(*pipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, gazeCenter);
     cmd.dispatch(shadingRateWidth / 8, shadingRateHeight / 8, 1);
 }
+-----
+
+[source,glsl]
 ----
+// Simple Compute Shader to generate a Gaze-Driven Shading Rate Map
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, r8ui) uniform writeonly uimage2D shadingRateImage;
+
+layout(push_constant) uniform PushConstants {
+    vec2 gazeCenter; // UV coordinates of the eye gaze
+};
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    vec2 uv = vec2(pos) / vec2(imageSize(shadingRateImage));
+
+    float dist = distance(uv, gazeCenter);
+
+    // Shading Rate values: 0 = 1x1, 4 = 2x1, 5 = 2x2
+    uint rate = 0; // 1x1 (Full Quality)
+    if (dist > 0.35) {
+        rate = 5;  // 2x2 (Coarse)
+    } else if (dist > 0.15) {
+        rate = 4;  // 2x1 (Medium)
+    }
+
+    imageStore(shadingRateImage, pos, uvec4(rate));
+}
+----
+
 
 == Latency: The Immersion Killer
 

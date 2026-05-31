@@ -44,7 +44,6 @@ struct VSOutput {
     float3 GeometricNormal : NORMAL1;
     float2 UV : TEXCOORD0;
     float4 Tangent : TANGENT;
-    uint ViewID : SV_ViewID;
 };
 
 [[vk::binding(0, 1)]] Sampler2D opaqueSceneColor;
@@ -112,7 +111,6 @@ bool traceShadowOccluded(float3 origin, float3 direction, float tMin, float tMax
 VSOutput VSMain(VSInput input, uint viewID : SV_ViewID)
 {
     VSOutput output;
-    output.ViewID = viewID;
     float4x4 instanceModelMatrix = input.InstanceModelMatrix;
     float4 worldPos = mul(ubo.model, mul(instanceModelMatrix, float4(input.Position, 1.0)));
     output.Position = mul(ubo.viewProjections[viewID], worldPos);
@@ -137,7 +135,7 @@ VSOutput VSMain(VSInput input, uint viewID : SV_ViewID)
 
 // Fragment shader entry point for generic PBR materials
 [[shader("fragment")]]
-float4 PSMain(VSOutput input) : SV_TARGET
+float4 PSMain(VSOutput input, uint viewID : SV_ViewID) : SV_TARGET
 {
     // --- 1. Material Properties ---
     float2 uv = float2(input.UV.x, 1.0 - input.UV.y);
@@ -196,7 +194,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float3 G = normalize(input.GeometricNormal);
 
     // --- 3. Opaque Lighting Calculation ---
-    float3 V = normalize(ubo.camPoses[input.ViewID].xyz - input.WorldPos);
+    float3 V = normalize(ubo.camPoses[viewID].xyz - input.WorldPos);
 
     float3 diffuseLighting  = float3(0.0, 0.0, 0.0);
     float3 specularLighting = float3(0.0, 0.0, 0.0);
@@ -214,7 +212,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     uint totalTiles = max(tilesX * tilesY, 1u);
 
     // Clustered Z slice index from view-space depth (positive distance)
-    float dVS = abs(mul(ubo.views[input.ViewID], float4(input.WorldPos, 1.0)).z);
+    float dVS = abs(mul(ubo.views[viewID], float4(input.WorldPos, 1.0)).z);
     float lnN = log(max(ubo.nearZ, 1e-4));
     float lnF = log(max(ubo.farZ,  lnN + 1e-4));
     float denom = max(lnF - lnN, 1e-6);
@@ -408,7 +406,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
 // lighting and screen-space reflections are omitted to avoid global
 // bright/dark flashes across large glass surfaces.
 [[shader("fragment")]]
-float4 GlassPSMain(VSOutput input) : SV_TARGET
+float4 GlassPSMain(VSOutput input, uint viewID : SV_ViewID) : SV_TARGET
 {
     // --- 1. Material / texture sampling (minimal subset) ---
     float2 uv = float2(input.UV.x, 1.0 - input.UV.y);
@@ -433,7 +431,7 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
 
     // Geometric normal for view-angle dependence and refraction
     float3 G = normalize(input.GeometricNormal);
-    float3 V = normalize(ubo.camPoses[input.ViewID].xyz - input.WorldPos);
+    float3 V = normalize(ubo.camPoses[viewID].xyz - input.WorldPos);
 
     // Base albedo used for transmission tint
     float3 albedo = baseColor.rgb;
@@ -551,7 +549,7 @@ float4 GlassPSMain(VSOutput input) : SV_TARGET
         }
         if (count > 0u) {
             float3 Ng = normalize(input.GeometricNormal);
-            float3 Vv = normalize(ubo.camPoses[input.ViewID].xyz - input.WorldPos);
+            float3 Vv = normalize(ubo.camPoses[viewID].xyz - input.WorldPos);
             // Use a neutral albedo to avoid darkening glass; weight specular more
             float3 alb = float3(0.6, 0.6, 0.6);
             float  rough = 0.49;

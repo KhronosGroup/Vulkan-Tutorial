@@ -40,7 +40,6 @@ struct VSOutput {
     float3 Normal : NORMAL;
     float2 TexCoord : TEXCOORD0;
     float4 Tangent : TANGENT; // Pass through tangent to satisfy validation layer
-    uint ViewID : SV_ViewID;
 };
 
 // Uniform buffer (matched to renderer.h)
@@ -58,7 +57,6 @@ struct UniformBufferObject {
 VSOutput VSMain(VSInput input, uint viewID : SV_ViewID)
 {
     VSOutput output;
-    output.ViewID = viewID;
 
     // Use instance matrices directly (CPU uploads column-major model
     // matrix and three float4 normal-matrix columns in attributes

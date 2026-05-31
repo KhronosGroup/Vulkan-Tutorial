@@ -78,9 +78,13 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
     GIT_TAG        v5.2.0
     SOURCE_SUBDIR  Build)
-set(DOUBLE_PRECISION       OFF CACHE BOOL "" FORCE)
-set(GENERATE_DEBUG_SYMBOLS ON  CACHE BOOL "" FORCE)
-set(PROFILE_ENABLED        ON  CACHE BOOL "" FORCE)
+set(DOUBLE_PRECISION                    OFF CACHE BOOL "" FORCE)
+set(GENERATE_DEBUG_SYMBOLS              ON  CACHE BOOL "" FORCE)
+set(PROFILER_IN_DEBUG_AND_RELEASE       ON  CACHE BOOL "" FORCE)
+set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE ON  CACHE BOOL "" FORCE)
+set(ENABLE_OBJECT_STREAM                ON  CACHE BOOL "" FORCE)
+set(FLOATING_POINT_EXCEPTIONS_ENABLED   ON  CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION        ON  CACHE BOOL "" FORCE)
 if(MSVC)
     set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 endif()
@@ -255,9 +259,6 @@ if(MSVC)
 
     # Enable Link Time Code Generation to match Jolt and resolve potential LTO mismatches
     set_target_properties(SimpleEngineLib PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-
-    # Jolt configuration consistency
-    target_compile_definitions(SimpleEngineLib PUBLIC JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
 elseif(WIN32)
     target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
@@ -283,7 +284,6 @@ target_link_libraries(AdvancedGLTF PRIVATE
 
 if(MSVC)
     set_target_properties(AdvancedGLTF PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-    target_compile_definitions(AdvancedGLTF PRIVATE JPH_PROFILE_ENABLED JPH_EXTERNAL_PROFILE)
 endif()
 
 # Ensure all shaders (from simple_engine and local) are in the executable's shader directory.

@@ -23,7 +23,7 @@
 // Forward declarations — callers that only use PhysicsWorld* need not include Jolt headers.
 namespace JPH {
     class BodyID;
-    struct BodyCreationSettings;
+    class BodyCreationSettings;
     enum class EMotionType : std::uint8_t;
 }
 

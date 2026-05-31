@@ -183,8 +183,8 @@ set(SE_SOURCES_COMMON
     ${CMAKE_CURRENT_SOURCE_DIR}/renderer_core.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/renderer_rendering.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/renderer_pipelines.cpp
-    ${SE_DIR}/renderer_compute.cpp
-    ${SE_DIR}/renderer_utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/renderer_compute.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/renderer_utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/renderer_resources.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/renderer_ray_query.cpp
     ${SE_DIR}/memory_pool.cpp
@@ -192,11 +192,11 @@ set(SE_SOURCES_COMMON
     ${SE_DIR}/entity.cpp
     ${SE_DIR}/component.cpp
     ${SE_DIR}/transform_component.cpp
-    ${SE_DIR}/mesh_component.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/mesh_component.cpp
     ${SE_DIR}/camera_component.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/animation_component.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model_loader.cpp
-    ${SE_DIR}/audio_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/audio_system.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/physics_system.cpp
     ${SE_DIR}/imgui/imgui.cpp
     ${SE_DIR}/imgui/imgui_draw.cpp
@@ -250,15 +250,6 @@ if(MSVC)
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     target_compile_options(SimpleEngineLib PUBLIC
         /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
-
-    # Generate MSVC include aliases to resolve header shadowing from simple_engine
-    set(MSVC_FIXES_H "${CMAKE_CURRENT_BINARY_DIR}/msvc_include_fixes.h")
-    set(FIXES_CONTENT "#pragma once\n")
-    foreach(hdr renderer.h model_loader.h engine.h scene_loading.h animation_component.h physics_system.h)
-        string(APPEND FIXES_CONTENT "#pragma include_alias(\"${hdr}\", \"${CMAKE_CURRENT_SOURCE_DIR}/${hdr}\")\n")
-    endforeach()
-    file(WRITE "${MSVC_FIXES_H}" "${FIXES_CONTENT}")
-    target_compile_options(SimpleEngineLib PUBLIC "/FI${MSVC_FIXES_H}")
 
     target_link_libraries(SimpleEngineLib PUBLIC Dbghelp)
 

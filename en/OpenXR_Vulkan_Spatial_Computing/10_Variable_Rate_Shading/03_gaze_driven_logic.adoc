@@ -28,7 +28,7 @@ void updateShadingRateMap(vk::raii::CommandBuffer& cmd, const glm::vec2& gazeCen
     cmd.pushConstants<glm::vec2>(*pipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, gazeCenter);
     cmd.dispatch(shadingRateWidth / 8, shadingRateHeight / 8, 1);
 }
------
+----
 
 [source,glsl]
 ----

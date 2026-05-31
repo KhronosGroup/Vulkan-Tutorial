@@ -85,6 +85,7 @@ set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE ON  CACHE BOOL "" FORCE)
 set(ENABLE_OBJECT_STREAM                ON  CACHE BOOL "" FORCE)
 set(FLOATING_POINT_EXCEPTIONS_ENABLED   ON  CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION        ON  CACHE BOOL "" FORCE)
+set(WARNINGS_AS_ERRORS                  OFF CACHE BOOL "" FORCE)
 if(MSVC)
     set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 endif()
@@ -253,7 +254,7 @@ if(MSVC)
     target_compile_definitions(SimpleEngineLib PUBLIC
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     target_compile_options(SimpleEngineLib PUBLIC
-        /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
+        /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj /wd4714 /wd4723)
 
     target_link_libraries(SimpleEngineLib PUBLIC Dbghelp)
 

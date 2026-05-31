@@ -109,7 +109,7 @@ function(agltf_compile_shader target_name slang_file entry_point out_stem)
             COMMAND "${SLANGC_EXECUTABLE}"
                     "${slang_file}"
                     -target spirv
-                    -profile spirv_1_4
+                    -profile spirv_1_5
                     -emit-spirv-directly
                     ${entry_args}
                     -o      "${spv_out}"
@@ -192,7 +192,7 @@ set(SE_SOURCES_COMMON
     ${SE_DIR}/entity.cpp
     ${SE_DIR}/component.cpp
     ${SE_DIR}/transform_component.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/mesh_component.cpp
+    ${SE_DIR}/mesh_component.cpp
     ${SE_DIR}/camera_component.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/animation_component.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model_loader.cpp
@@ -250,8 +250,16 @@ if(MSVC)
         NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     target_compile_options(SimpleEngineLib PUBLIC
         /permissive- /Zc:__cplusplus /EHsc /W3 /MP /bigobj)
-    # Force use of the advanced renderer header to avoid shadowing issues with simple_engine/renderer.h
-    target_compile_options(SimpleEngineLib PRIVATE /FI "${CMAKE_CURRENT_SOURCE_DIR}/renderer.h")
+
+    # Generate MSVC include aliases to resolve header shadowing from simple_engine
+    set(MSVC_FIXES_H "${CMAKE_CURRENT_BINARY_DIR}/msvc_include_fixes.h")
+    set(FIXES_CONTENT "#pragma once\n")
+    foreach(hdr renderer.h model_loader.h engine.h scene_loading.h animation_component.h physics_system.h)
+        string(APPEND FIXES_CONTENT "#pragma include_alias(\"${hdr}\", \"${CMAKE_CURRENT_SOURCE_DIR}/${hdr}\")\n")
+    endforeach()
+    file(WRITE "${MSVC_FIXES_H}" "${FIXES_CONTENT}")
+    target_compile_options(SimpleEngineLib PUBLIC "/FI${MSVC_FIXES_H}")
+
     target_link_libraries(SimpleEngineLib PUBLIC Dbghelp)
 
     # Enable Link Time Code Generation to match Jolt and resolve potential LTO mismatches

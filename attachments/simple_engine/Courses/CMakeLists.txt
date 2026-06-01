@@ -24,7 +24,7 @@
 # 4. Document the course in en/Building_a_Simple_Engine/Courses/.
 #
 # The course modules in this file:
-#   * Opacity Micromaps  — VK_EXT_opacity_micromap hardware shadow acceleration
+#   * Opacity Micromaps  — VK_KHR_opacity_micromap hardware shadow acceleration
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.29)
@@ -33,7 +33,7 @@ cmake_minimum_required(VERSION 3.29)
 # Per-course opt-in options
 # ─────────────────────────────────────────────────────────────────────────────
 option(ENABLE_COURSE_OPACITY_MICROMAPS
-       "Build the Opacity Micromaps course module (VK_EXT_opacity_micromap)"
+       "Build the Opacity Micromaps course module (VK_KHR_opacity_micromap)"
        ON)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ if(ENABLE_COURSE_OPACITY_MICROMAPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/omm_integration.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/omm_imgui_panel.cpp
     )
-    # No standalone shader needed: VK_EXT_opacity_micromap is transparent to
+    # No standalone shader needed: VK_KHR_opacity_micromap is transparent to
     # the existing ray_query.slang shader — the hardware handles everything.
     message(STATUS "[Courses] Opacity Micromaps module ENABLED")
 else()

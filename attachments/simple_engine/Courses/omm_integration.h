@@ -57,7 +57,7 @@ class MeshComponent;
 // ---------------------------------------------------------------------------
 struct OmmSceneStats {
   uint32_t meshesConsidered  = 0; // alpha-masked meshes examined
-  uint32_t micromapsBuilt    = 0; // VkMicromapEXT objects created
+  uint32_t micromapsBuilt    = 0; // VkAccelerationStructureKHR micromap objects created
   uint64_t totalGpuBytes     = 0;
   float    avgPctOpaque      = 0.f;
   float    avgPctTransparent = 0.f;

@@ -96,9 +96,9 @@ void OmmImGuiPanel::draw(OmmIntegration& omm, Renderer* /*renderer*/) {
 
   // ── Hardware support ──────────────────────────────────────────────────────
   if (omm.isSupported()) {
-    ImGui::TextColored(kGreen, "[OK]  VK_EXT_opacity_micromap:  ENABLED");
+    ImGui::TextColored(kGreen, "[OK]  VK_KHR_opacity_micromap:  ENABLED");
   } else {
-    ImGui::TextColored(kRed,   "[--]  VK_EXT_opacity_micromap:  NOT SUPPORTED");
+    ImGui::TextColored(kRed,   "[--]  VK_KHR_opacity_micromap:  NOT SUPPORTED");
     ImGui::TextWrapped("This GPU does not support opacity micromaps.  "
                        "Shadow rays will continue to use the any-hit shader path "
                        "for alpha-masked geometry, which is correct but slower.  "

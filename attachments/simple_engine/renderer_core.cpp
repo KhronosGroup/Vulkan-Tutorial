@@ -792,7 +792,7 @@ void Renderer::addSupportedOptionalExtensions() {
     //add any extra extensions enabled by courses
 #ifdef ENABLE_COURSE_OPACITY_MICROMAPS
     // Opacity micromap for hardware-accelerated alpha-tested shadow rays (Course: Opacity Micromaps)
-    optionalDeviceExtensions.push_back( VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME );
+    optionalDeviceExtensions.push_back( VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME );
 #endif
 
     // Build a set of available extension names for quick lookup
@@ -1051,15 +1051,15 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       tailNext = reinterpret_cast<void **>(&rayQueryEnable.pNext);
     }
 
-    // Opacity micromap (Course: Opacity Micromaps)
-    auto hasOpacityMicromap = hasExtension(VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME);
-    vk::PhysicalDeviceOpacityMicromapFeaturesEXT opacityMicromapSupported{};
-    vk::PhysicalDeviceOpacityMicromapFeaturesEXT opacityMicromapEnable{};
+    // Opacity micromap — VK_KHR_opacity_micromap (Course: Opacity Micromaps)
+    auto hasOpacityMicromap = hasExtension(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME);
+    vk::PhysicalDeviceOpacityMicromapFeaturesKHR opacityMicromapSupported{};
+    vk::PhysicalDeviceOpacityMicromapFeaturesKHR opacityMicromapEnable{};
     if (hasOpacityMicromap) {
       auto featChain2 = physicalDevice.getFeatures2<
         vk::PhysicalDeviceFeatures2,
-        vk::PhysicalDeviceOpacityMicromapFeaturesEXT>();
-      opacityMicromapSupported = featChain2.template get<vk::PhysicalDeviceOpacityMicromapFeaturesEXT>();
+        vk::PhysicalDeviceOpacityMicromapFeaturesKHR>();
+      opacityMicromapSupported = featChain2.template get<vk::PhysicalDeviceOpacityMicromapFeaturesKHR>();
       if (opacityMicromapSupported.micromap) {
         opacityMicromapEnable.micromap = vk::True;
         *tailNext = &opacityMicromapEnable;

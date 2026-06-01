@@ -73,7 +73,7 @@ void OmmIntegration::init(Renderer& renderer, ModelLoader& modelLoader) {
   if (m_builder.isSupported()) {
     std::cout << "[OMM] Integration layer initialised — ready to build micromaps.\n";
   } else {
-    std::cout << "[OMM] Hardware does not support VK_EXT_opacity_micromap.\n"
+    std::cout << "[OMM] Hardware does not support VK_KHR_opacity_micromap.\n"
               << "      Shadow rays will continue to use the any-hit shader path.\n";
   }
 }

@@ -25,12 +25,27 @@
 //
 // WHAT THIS DOES
 // --------------
-// Builds a VkMicromapEXT for every alpha-masked mesh submitted to it, then
-// attaches the result into the engine's BLAS build via the standard Vulkan
-// pNext chain.  After the BLAS is rebuilt the GPU hardware traversal unit
-// resolves most shadow-ray hits against alpha-tested geometry without running
-// any shader code.  Only micro-triangles at the very edge of the alpha
-// boundary still invoke the any-hit shader.
+// Builds a VkAccelerationStructureKHR micromap (type
+// VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR) for every alpha-masked
+// mesh submitted to it, then attaches the result into the engine's BLAS build
+// via VkAccelerationStructureTrianglesOpacityMicromapKHR in the pNext chain.
+//
+// After the BLAS is rebuilt the GPU hardware traversal unit resolves most
+// shadow-ray hits against alpha-tested geometry without running any shader
+// code. Only micro-triangles at the very edge of the alpha boundary still
+// invoke the any-hit shader.
+//
+// This module implements VK_KHR_opacity_micromap. Key design points:
+//   - Micromaps are VkAccelerationStructureKHR objects, not a separate type.
+//     They are created via vkCreateAccelerationStructure2KHR and built via
+//     vkCmdBuildAccelerationStructuresKHR — device-side only, no host path.
+//   - The pNext attachment struct is VkAccelerationStructureTrianglesOpacityMicromapKHR.
+//     Its indexBuffer field is a plain VkDeviceAddress (device-only).
+//   - The BLAS always holds a live reference to its micromap — there is no
+//     "discardable" property as in VK_EXT_opacity_micromap.
+//   - Ray query shaders must declare the OpacityMicromapKHR SPIR-V execution
+//     mode (via SPV_KHR_opacity_micromap) for the hardware optimisation to
+//     activate. Without it the traversal unit ignores all micromap data.
 //
 // INTEGRATION SEQUENCE
 // --------------------
@@ -43,9 +58,6 @@
 //       attach it to the geometry struct (done in omm_integration.cpp).
 // 4. OpacityMicromapBuilder::reset()
 //       — call on scene change / engine shutdown.
-//
-// The shadow shader (shaders/ray_query.slang) does NOT need any changes;
-// the speed-up is entirely driven by micromap data embedded in the BLAS.
 //
 // COURSE NOTE
 // -----------
@@ -62,52 +74,55 @@
 
 #include <vulkan/vulkan_raii.hpp>
 
-// Engine types used by the builder.
-#include "../mesh_component.h"   // MeshComponent, Vertex
-#include "../model_loader.h"     // Material, ModelLoader
-#include "../memory_pool.h"      // MemoryPool (forward-only, we don't call it)
+// Engine types
+#include "../mesh_component.h"
+#include "../model_loader.h"
+#include "../memory_pool.h"
 
 // Forward declarations
 class Renderer;
 
 // ---------------------------------------------------------------------------
-// OmmConfig — tuning knobs exposed to students / the UI panel
+// OmmConfig — tuning knobs exposed to students and the ImGui panel
 // ---------------------------------------------------------------------------
 struct OmmConfig {
   /// Subdivision level 0–4.  Level 2 → 16 micro-triangles per triangle.
-  /// Higher = better accuracy at alpha edges, more GPU memory.
+  /// Capped by VkPhysicalDeviceOpacityMicromapPropertiesKHR::maxOpacity4StateSubdivisionLevel.
+  /// With lossyBuild, up to maxOpacityLossy4StateSubdivisionLevel may be used.
   uint32_t subdivisionLevel = 2;
 
-  /// Alpha values below this threshold → TRANSPARENT state (hardware passes ray).
+  /// Alpha values below this threshold → TRANSPARENT (hardware passes ray, no shader).
   float transparentThreshold = 0.05f;
 
-  /// Alpha values at or above this threshold → OPAQUE state (hardware blocks ray).
+  /// Alpha values at or above this threshold → OPAQUE (hardware blocks ray, no shader).
   float opaqueThreshold = 0.95f;
 
-  /// Samples taken per micro-triangle centroid during classification.
-  /// More samples → fewer mis-classifications at gradient edges; slower build.
+  /// Samples taken per micro-triangle during classification.
   uint32_t samplesPerMicroTriangle = 4;
 
-  /// When true, micro-triangles whose average alpha falls between the two
-  /// thresholds are classified UNKNOWN — the any-hit shader fires for them.
-  /// When false, they are forced OPAQUE (zero shader cost, minor visual bias).
+  /// When true, boundary micro-triangles are classified UNKNOWN — the any-hit
+  /// shader fires for them. When false, they are forced OPAQUE.
   bool allowUnknownState = true;
+
+  /// Request VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR.
+  /// Allows the driver to apply lossy compression, potentially supporting
+  /// higher subdivision levels at the cost of occasional Unknown substitution.
+  bool lossyBuild = false;
 };
 
 // ---------------------------------------------------------------------------
 // OmmMeshInfo — per-mesh result returned by buildForMesh()
 // ---------------------------------------------------------------------------
 struct OmmMeshInfo {
-  /// True when a VkMicromapEXT was successfully built for this mesh.
+  /// True when a micromap was successfully built for this mesh.
   bool built = false;
 
-  /// Pointer to a VkAccelerationStructureTrianglesOpacityMicromapEXT that
-  /// should be placed in the pNext chain of the geometry triangles struct.
-  /// This memory is owned by OpacityMicromapBuilder and stays valid until
-  /// reset() is called.
+  /// Pointer to a VkAccelerationStructureTrianglesOpacityMicromapKHR that
+  /// must be placed in the pNext chain of VkAccelerationStructureGeometryTrianglesDataKHR.
+  /// Owned by OpacityMicromapBuilder; valid until reset() is called.
   void* pNextChain = nullptr;
 
-  // Diagnostics — shown in the ImGui panel.
+  // Diagnostics shown in the ImGui panel.
   float    pctOpaque       = 0.f;
   float    pctTransparent  = 0.f;
   float    pctUnknown      = 0.f;
@@ -123,38 +138,29 @@ public:
   OpacityMicromapBuilder()  = default;
   ~OpacityMicromapBuilder() { reset(); }
 
-  // Non-copyable; non-movable (due to mutex).
   OpacityMicromapBuilder(const OpacityMicromapBuilder&)            = delete;
   OpacityMicromapBuilder& operator=(const OpacityMicromapBuilder&) = delete;
   OpacityMicromapBuilder(OpacityMicromapBuilder&&)                 = delete;
   OpacityMicromapBuilder& operator=(OpacityMicromapBuilder&&)      = delete;
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
   void swap(OpacityMicromapBuilder& other) noexcept;
 
-  /// Bind engine resources.  Safe to call even when the extension is not
-  /// supported — buildForMesh() will return false in that case.
+  /// Bind engine resources. Safe to call even when the extension is absent.
   void init(Renderer& renderer);
 
-  /// Release all GPU resources.  Must be called before the Renderer is
-  /// destroyed.  Safe to call multiple times.
+  /// Release all GPU resources. Must be called before the Renderer is destroyed.
   void reset();
 
-  /// Returns true if VK_EXT_opacity_micromap is available and was enabled.
+  /// Returns true if VK_KHR_opacity_micromap is available and was enabled.
   [[nodiscard]] bool isSupported() const { return m_supported; }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
-  /// Classify micro-triangles for one alpha-masked mesh and build its
-  /// VkMicromapEXT.  Call once per mesh after CPU texture data is available.
-  ///
-  /// @param mesh       The MeshComponent whose BLAS will receive the micromap.
-  /// @param texPixels  CPU-accessible RGBA/RGB/R pixel data (stb_image layout).
-  /// @param texW       Texture width in texels.
-  /// @param texH       Texture height in texels.
-  /// @param texChannels Bytes per texel (1, 2, 3, or 4; alpha taken from last channel when ≥2).
-  /// @param config     Quality/memory trade-off settings.
-  /// @returns OmmMeshInfo describing the result.
+  /// Classify micro-triangles and build the micromap acceleration structure
+  /// for one alpha-masked mesh. Call once per mesh after CPU texture data is
+  /// available, before the BLAS build.
   [[nodiscard]] OmmMeshInfo buildForMesh(const MeshComponent* mesh,
                                          const uint8_t*       texPixels,
                                          uint32_t             texW,
@@ -162,24 +168,25 @@ public:
                                          uint32_t             texChannels,
                                          const OmmConfig&     config = {});
 
-  /// Look up the OmmMeshInfo built for a given mesh.
-  /// Returns nullptr when no micromap exists for that mesh.
+  /// Look up the OmmMeshInfo for a given mesh. Returns nullptr if none exists.
   [[nodiscard]] const OmmMeshInfo* getInfo(const MeshComponent* mesh) const;
 
-  // ── Statistics ────────────────────────────────────────────────────────────
+  // ── Statistics ─────────────────────────────────────────────────────────────
 
   [[nodiscard]] uint32_t micromapCount() const;
   [[nodiscard]] uint64_t totalGpuBytes() const;
 
 private:
-  // ── Internal phase implementations ───────────────────────────────────────
+  // ── Internal phase implementations ────────────────────────────────────────
 
+  // Phase 1: does this mesh have alpha variation worth encoding?
   [[nodiscard]] bool analyseVariation(const std::vector<Vertex>&   verts,
                                       const std::vector<uint32_t>& indices,
                                       const uint8_t* pixels,
                                       uint32_t w, uint32_t h, uint32_t ch,
                                       const OmmConfig& cfg) const;
 
+  // Phase 2: CPU classification — assign a 2-bit state per micro-triangle.
   void classify(const std::vector<Vertex>&   verts,
                 const std::vector<uint32_t>& indices,
                 const uint8_t* pixels,
@@ -188,13 +195,16 @@ private:
                 std::vector<uint8_t>& outStates,
                 OmmMeshInfo& outInfo) const;
 
+  // Phase 3: GPU construction — upload packed states, create and build the
+  // VkAccelerationStructureKHR micromap, fill the pNext attachment chain.
   [[nodiscard]] void* buildOnGpu(const MeshComponent* mesh,
                                   const std::vector<uint8_t>& unpackedStates,
                                   uint32_t triangleCount,
                                   uint32_t subdivisionLevel,
+                                  bool lossyBuild,
                                   OmmMeshInfo& outInfo);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   [[nodiscard]] float sampleAlpha(const uint8_t* pixels,
                                    uint32_t w, uint32_t h, uint32_t ch,
@@ -203,41 +213,48 @@ private:
   [[nodiscard]] vk::raii::CommandBuffer beginOneShot(vk::raii::CommandPool& pool) const;
   void                                  submitOneShot(vk::raii::CommandBuffer& cb) const;
 
-  // ── Per-micromap GPU resource ownership ──────────────────────────────────
+  // ── Per-micromap GPU resource ownership ───────────────────────────────────
+  //
+  // In VK_KHR_opacity_micromap the micromap is a VkAccelerationStructureKHR
+  // with type VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, backed by
+  // a device-local buffer. The BLAS holds a permanent live reference to it.
 
-  // The pNext chain that the BLAS build reads must stay alive for the BLAS's
-  // lifetime.  We keep it here alongside the GPU buffers it refers to.
   struct GpuEntry {
-    vk::raii::Buffer       dataBuf  {nullptr}; // 2-bit state data
-    vk::raii::DeviceMemory dataMem  {nullptr};
-    vk::raii::Buffer       mmBuf    {nullptr}; // VkMicromapEXT storage
-    vk::raii::DeviceMemory mmMem    {nullptr};
-    vk::raii::Buffer       triBuf   {nullptr}; // Array of VkMicromapTriangleEXT
-    vk::raii::DeviceMemory triMem   {nullptr};
-    vk::raii::MicromapEXT  micromap {nullptr};
+    // State data and triangle-array buffers (build inputs)
+    vk::raii::Buffer       dataBuf   {nullptr};
+    vk::raii::DeviceMemory dataMem   {nullptr};
+    vk::raii::Buffer       triBuf    {nullptr};
+    vk::raii::DeviceMemory triMem    {nullptr};
 
-    // Owns the pNext chain struct lifetime — never relocated after construction.
+    // Backing storage for the micromap acceleration structure
+    vk::raii::Buffer       mmStoreBuf {nullptr};
+    vk::raii::DeviceMemory mmStoreMem {nullptr};
+
+    // The micromap itself: VkAccelerationStructureKHR (OPACITY_MICROMAP type)
+    vk::raii::AccelerationStructureKHR micromap {nullptr};
+
+    // VkAccelerationStructureTrianglesOpacityMicromapKHR + usage entry.
+    // Heap-allocated and never moved — the BLAS build holds a raw pointer to it.
     struct PNextStorage {
-      vk::AccelerationStructureTrianglesOpacityMicromapEXT chain{};
-      vk::MicromapUsageEXT usageEntry{};
+      VkAccelerationStructureTrianglesOpacityMicromapKHR chain{};
+      VkMicromapUsageKHR usageEntry{};
     };
     std::unique_ptr<PNextStorage> pNextOwner;
   };
 
-  // ── State ─────────────────────────────────────────────────────────────────
-  mutable std::mutex           m_mutex;
+  // ── State ──────────────────────────────────────────────────────────────────
 
-  bool                         m_initialised = false;
-  bool                         m_supported   = false;
-  Renderer*                    m_renderer    = nullptr;
-  const vk::raii::Device*      m_device      = nullptr;
-  const vk::raii::PhysicalDevice* m_physDev  = nullptr;
-  const vk::raii::CommandPool* m_commandPool = nullptr;
-  uint32_t                     m_gfxFamily   = 0;
+  mutable std::mutex              m_mutex;
 
-  // Map from MeshComponent* → index into m_entries / m_infos.
+  bool                            m_initialised = false;
+  bool                            m_supported   = false;
+  Renderer*                       m_renderer    = nullptr;
+  const vk::raii::Device*         m_device      = nullptr;
+  const vk::raii::PhysicalDevice* m_physDev     = nullptr;
+  uint32_t                        m_gfxFamily   = 0;
+
   std::unordered_map<const MeshComponent*, size_t> m_meshToEntry;
-  std::vector<GpuEntry>   m_entries;
+  std::vector<GpuEntry>    m_entries;
   std::vector<OmmMeshInfo> m_infos;
 
   uint64_t m_totalGpuBytes = 0;

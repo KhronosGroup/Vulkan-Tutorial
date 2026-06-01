@@ -1725,7 +1725,7 @@ class Renderer {
     bool rayQueryEnabled = false;
     bool accelerationStructureEnabled = false;
 #ifdef ENABLE_COURSE_OPACITY_MICROMAPS
-    bool opacityMicromapEnabled = false; // VK_EXT_opacity_micromap (Course: Opacity Micromaps)
+    bool opacityMicromapEnabled = false; // VK_KHR_opacity_micromap (Course: Opacity Micromaps)
 #endif
 
     // When true and current render mode is RayQuery, the engine renders a static opaque scene:

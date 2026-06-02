@@ -57,6 +57,9 @@ bool ImGuiSystem::Initialize(Renderer* renderer, uint32_t width, uint32_t height
   io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
   io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 
+  // Inform ImGui that we support the new texture update protocol (v1.92+)
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+
   // Set up ImGui style
   ImGui::StyleColorsDark();
 
@@ -153,9 +156,8 @@ void ImGuiSystem::NewFrame() {
     const bool modelLoading = renderer->IsLoading();
     if (modelLoading) {
       ImGuiIO& io = ImGui::GetIO();
-      // Suppress right-click while loading
-      if (io.MouseDown[1])
-        io.MouseDown[1] = false;
+      // Suppress right-click while loading (v1.87+ event API)
+      io.AddMouseButtonEvent(1, false);
 
       const ImVec2 dispSize = io.DisplaySize;
 
@@ -491,6 +493,16 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer& commandBuffer, uint32_t frameI
     return;
   }
 
+  // Process dynamic texture updates (v1.92+ RendererHasTextures protocol)
+  if (drawData->Textures) {
+    for (int n = 0; n < drawData->Textures->Size; n++) {
+      ImTextureData* tex = (*drawData->Textures)[n];
+      if (tex->Status != ImTextureStatus_OK) {
+        UpdateTexture(tex);
+      }
+    }
+  }
+
   try {
     // Bind the pipeline
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
@@ -524,7 +536,7 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer& commandBuffer, uint32_t frameI
     int vertexOffset = 0;
     int indexOffset = 0;
 
-    for (int i = 0; i < drawData->CmdListsCount; i++) {
+    for (int i = 0; i < drawData->CmdLists.Size; i++) {
       const ImDrawList* cmdList = drawData->CmdLists[i];
 
       for (int j = 0; j < cmdList->CmdBuffer.Size; j++) {
@@ -538,8 +550,13 @@ void ImGuiSystem::Render(vk::raii::CommandBuffer& commandBuffer, uint32_t frameI
         scissor.extent.height = static_cast<uint32_t>(pcmd->ClipRect.w - pcmd->ClipRect.y);
         commandBuffer.setScissor(0, {scissor});
 
-        // Bind descriptor set (font texture)
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*descriptorSet}, {});
+        // Bind descriptor set (v1.92+ protocol: TexID stores the descriptor set handle or ID)
+        VkDescriptorSet texHandle = (VkDescriptorSet)pcmd->GetTexID();
+        if (texHandle) {
+          commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {vk::DescriptorSet(texHandle)}, {});
+        } else {
+          commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, {*descriptorSet}, {});
+        }
 
         // Draw
         commandBuffer.drawIndexed(pcmd->ElemCount, 1, indexOffset, vertexOffset, 0);
@@ -560,13 +577,16 @@ void ImGuiSystem::HandleMouse(float x, float y, uint32_t buttons) {
 
   ImGuiIO& io = ImGui::GetIO();
 
-  // Update mouse position
-  io.MousePos = ImVec2(x, y);
+  // Update mouse position (v1.87+ event API)
+  io.AddMousePosEvent(x, y);
 
-  // Update mouse buttons
-  io.MouseDown[0] = (buttons & 0x01) != 0; // Left button
-  io.MouseDown[1] = (buttons & 0x02) != 0; // Right button
-  io.MouseDown[2] = (buttons & 0x04) != 0; // Middle button
+  // Update mouse buttons (v1.87+ event API)
+  // We compare with current state to send events only on change
+  static uint32_t lastButtons = 0;
+  if ((buttons & 0x01) != (lastButtons & 0x01)) io.AddMouseButtonEvent(0, (buttons & 0x01) != 0);
+  if ((buttons & 0x02) != (lastButtons & 0x02)) io.AddMouseButtonEvent(1, (buttons & 0x02) != 0);
+  if ((buttons & 0x04) != (lastButtons & 0x04)) io.AddMouseButtonEvent(2, (buttons & 0x04) != 0);
+  lastButtons = buttons;
 }
 
 void ImGuiSystem::HandleKeyboard(uint32_t key, bool pressed) {
@@ -576,17 +596,11 @@ void ImGuiSystem::HandleKeyboard(uint32_t key, bool pressed) {
 
   ImGuiIO& io = ImGui::GetIO();
 
-  // Update key state
+  // Update key state (v1.87+ event API)
+  // GLFW key codes are compatible with ImGuiKey values in modern ImGui backends
   if (key < 512) {
-    io.KeysDown[key] = pressed;
+    io.AddKeyEvent((ImGuiKey)key, pressed);
   }
-
-  // Update modifier keys
-  // Using GLFW key codes instead of Windows-specific VK_* constants
-  io.KeyCtrl = io.KeysDown[341] || io.KeysDown[345]; // Left/Right Control
-  io.KeyShift = io.KeysDown[340] || io.KeysDown[344]; // Left/Right Shift
-  io.KeyAlt = io.KeysDown[342] || io.KeysDown[346]; // Left/Right Alt
-  io.KeySuper = io.KeysDown[343] || io.KeysDown[347]; // Left/Right Super
 }
 
 void ImGuiSystem::HandleChar(uint32_t c) {
@@ -628,9 +642,7 @@ bool ImGuiSystem::WantCaptureMouse() const {
 
 bool ImGuiSystem::createResources() {
   // Create all Vulkan resources needed for ImGui rendering
-  if (!createFontTexture()) {
-    return false;
-  }
+  // (Font texture is now handled dynamically via UpdateTexture during Render)
 
   if (!createDescriptorSetLayout()) {
     return false;
@@ -655,119 +667,139 @@ bool ImGuiSystem::createResources() {
   return true;
 }
 
-bool ImGuiSystem::createFontTexture() {
-  // Get font texture from ImGui
-  ImGuiIO& io = ImGui::GetIO();
-  unsigned char* fontData;
-  int texWidth, texHeight;
-  io.Fonts->GetTexDataAsRGBA32(&fontData, &texWidth, &texHeight);
-  vk::DeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
+void ImGuiSystem::UpdateTexture(ImTextureData* tex) {
+  if (tex->Status == ImTextureStatus_WantCreate || tex->Status == ImTextureStatus_WantUpdates) {
+    int texWidth = tex->Width;
+    int texHeight = tex->Height;
+    unsigned char* fontData = (unsigned char*)tex->Pixels;
 
-  try {
-    // Create the font image
-    vk::ImageCreateInfo imageInfo;
-    imageInfo.imageType = vk::ImageType::e2D;
-    imageInfo.format = vk::Format::eR8G8B8A8Unorm;
-    imageInfo.extent.width = static_cast<uint32_t>(texWidth);
-    imageInfo.extent.height = static_cast<uint32_t>(texHeight);
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.samples = vk::SampleCountFlagBits::e1;
-    imageInfo.tiling = vk::ImageTiling::eOptimal;
-    imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
-    imageInfo.sharingMode = vk::SharingMode::eExclusive;
-    imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+    if (!fontData) return;
 
-    const vk::raii::Device& device = renderer->GetRaiiDevice();
-    fontImage = vk::raii::Image(device, imageInfo);
+    vk::DeviceSize uploadSize = texWidth * texHeight * tex->BytesPerPixel;
 
-    // Allocate memory for the image
-    vk::MemoryRequirements memRequirements = fontImage.getMemoryRequirements();
+    try {
+      const vk::raii::Device& device = renderer->GetRaiiDevice();
 
-    vk::MemoryAllocateInfo allocInfo;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = renderer->FindMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
+      if (tex->Status == ImTextureStatus_WantCreate) {
+        // Create the font image
+        vk::ImageCreateInfo imageInfo;
+        imageInfo.imageType = vk::ImageType::e2D;
+        imageInfo.format = (tex->BytesPerPixel == 4) ? vk::Format::eR8G8B8A8Unorm : vk::Format::eR8Unorm;
+        imageInfo.extent.width = static_cast<uint32_t>(texWidth);
+        imageInfo.extent.height = static_cast<uint32_t>(texHeight);
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = vk::SampleCountFlagBits::e1;
+        imageInfo.tiling = vk::ImageTiling::eOptimal;
+        imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
+        imageInfo.sharingMode = vk::SharingMode::eExclusive;
+        imageInfo.initialLayout = vk::ImageLayout::eUndefined;
 
-    fontMemory = vk::raii::DeviceMemory(device, allocInfo);
-    fontImage.bindMemory(*fontMemory, 0);
+        fontImage = vk::raii::Image(device, imageInfo);
 
-    // Create a staging buffer for uploading the font data
-    vk::BufferCreateInfo bufferInfo;
-    bufferInfo.size = uploadSize;
-    bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-    bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+        // Allocate memory for the image
+        vk::MemoryRequirements memRequirements = fontImage.getMemoryRequirements();
+        vk::MemoryAllocateInfo allocInfo;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = renderer->FindMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    vk::raii::Buffer stagingBuffer(device, bufferInfo);
+        fontMemory = vk::raii::DeviceMemory(device, allocInfo);
+        fontImage.bindMemory(*fontMemory, 0);
 
-    vk::MemoryRequirements stagingMemRequirements = stagingBuffer.getMemoryRequirements();
+        // Create image view
+        vk::ImageViewCreateInfo viewInfo;
+        viewInfo.image = *fontImage;
+        viewInfo.viewType = vk::ImageViewType::e2D;
+        viewInfo.format = (tex->BytesPerPixel == 4) ? vk::Format::eR8G8B8A8Unorm : vk::Format::eR8Unorm;
+        viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
 
-    vk::MemoryAllocateInfo stagingAllocInfo;
-    stagingAllocInfo.allocationSize = stagingMemRequirements.size;
-    stagingAllocInfo.memoryTypeIndex = renderer->FindMemoryType(stagingMemRequirements.memoryTypeBits,
-                                                                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        fontView = vk::raii::ImageView(device, viewInfo);
 
-    vk::raii::DeviceMemory stagingBufferMemory(device, stagingAllocInfo);
-    stagingBuffer.bindMemory(*stagingBufferMemory, 0);
+        // Create sampler
+        vk::SamplerCreateInfo samplerInfo;
+        samplerInfo.magFilter = vk::Filter::eLinear;
+        samplerInfo.minFilter = vk::Filter::eLinear;
+        samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+        samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+        samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+        samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+        samplerInfo.mipLodBias = 0.0f;
+        samplerInfo.anisotropyEnable = VK_FALSE;
+        samplerInfo.maxAnisotropy = 1.0f;
+        samplerInfo.compareEnable = VK_FALSE;
+        samplerInfo.compareOp = vk::CompareOp::eAlways;
+        samplerInfo.minLod = 0.0f;
+        samplerInfo.maxLod = 0.0f;
+        samplerInfo.borderColor = vk::BorderColor::eFloatOpaqueWhite;
+        samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
-    // Copy font data to staging buffer
-    void* data = stagingBufferMemory.mapMemory(0, uploadSize);
-    memcpy(data, fontData, uploadSize);
-    stagingBufferMemory.unmapMemory();
+        fontSampler = vk::raii::Sampler(device, samplerInfo);
 
-    // Transition image layout and copy data
-    renderer->TransitionImageLayout(*fontImage,
-                                    vk::Format::eR8G8B8A8Unorm,
-                                    vk::ImageLayout::eUndefined,
-                                    vk::ImageLayout::eTransferDstOptimal);
-    renderer->CopyBufferToImage(*stagingBuffer,
-                                *fontImage,
-                                static_cast<uint32_t>(texWidth),
-                                static_cast<uint32_t>(texHeight));
-    renderer->TransitionImageLayout(*fontImage,
-                                    vk::Format::eR8G8B8A8Unorm,
-                                    vk::ImageLayout::eTransferDstOptimal,
-                                    vk::ImageLayout::eShaderReadOnlyOptimal);
+        // Update descriptor set
+        vk::DescriptorImageInfo imageDescriptor;
+        imageDescriptor.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        imageDescriptor.imageView = *fontView;
+        imageDescriptor.sampler = *fontSampler;
 
-    // Staging buffer and memory will be automatically cleaned up by RAII
+        vk::WriteDescriptorSet writeSet;
+        writeSet.dstSet = *descriptorSet;
+        writeSet.descriptorCount = 1;
+        writeSet.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+        writeSet.pImageInfo = &imageDescriptor;
+        writeSet.dstBinding = 0;
 
-    // Create image view
-    vk::ImageViewCreateInfo viewInfo;
-    viewInfo.image = *fontImage;
-    viewInfo.viewType = vk::ImageViewType::e2D;
-    viewInfo.format = vk::Format::eR8G8B8A8Unorm;
-    viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
+        device.updateDescriptorSets({writeSet}, {});
+      }
 
-    fontView = vk::raii::ImageView(device, viewInfo);
+      // Create a staging buffer for uploading the data
+      vk::BufferCreateInfo bufferInfo;
+      bufferInfo.size = uploadSize;
+      bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
+      bufferInfo.sharingMode = vk::SharingMode::eExclusive;
 
-    // Create sampler
-    vk::SamplerCreateInfo samplerInfo;
-    samplerInfo.magFilter = vk::Filter::eLinear;
-    samplerInfo.minFilter = vk::Filter::eLinear;
-    samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
-    samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
-    samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
-    samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
-    samplerInfo.mipLodBias = 0.0f;
-    samplerInfo.anisotropyEnable = VK_FALSE;
-    samplerInfo.maxAnisotropy = 1.0f;
-    samplerInfo.compareEnable = VK_FALSE;
-    samplerInfo.compareOp = vk::CompareOp::eAlways;
-    samplerInfo.minLod = 0.0f;
-    samplerInfo.maxLod = 0.0f;
-    samplerInfo.borderColor = vk::BorderColor::eFloatOpaqueWhite;
-    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+      vk::raii::Buffer stagingBuffer(device, bufferInfo);
+      vk::MemoryRequirements stagingMemRequirements = stagingBuffer.getMemoryRequirements();
 
-    fontSampler = vk::raii::Sampler(device, samplerInfo);
+      vk::MemoryAllocateInfo stagingAllocInfo;
+      stagingAllocInfo.allocationSize = stagingMemRequirements.size;
+      stagingAllocInfo.memoryTypeIndex = renderer->FindMemoryType(stagingMemRequirements.memoryTypeBits,
+                                                                  vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    return true;
-  } catch (const std::exception& e) {
-    std::cerr << "Failed to create font texture: " << e.what() << std::endl;
-    return false;
+      vk::raii::DeviceMemory stagingBufferMemory(device, stagingAllocInfo);
+      stagingBuffer.bindMemory(*stagingBufferMemory, 0);
+
+      // Copy data to staging buffer
+      void* mappedData = stagingBufferMemory.mapMemory(0, uploadSize);
+      memcpy(mappedData, fontData, uploadSize);
+      stagingBufferMemory.unmapMemory();
+
+      // Transition image layout and copy data
+      vk::Format format = (tex->BytesPerPixel == 4) ? vk::Format::eR8G8B8A8Unorm : vk::Format::eR8Unorm;
+      renderer->TransitionImageLayout(*fontImage,
+                                      format,
+                                      vk::ImageLayout::eUndefined,
+                                      vk::ImageLayout::eTransferDstOptimal);
+      renderer->CopyBufferToImage(*stagingBuffer,
+                                  *fontImage,
+                                  static_cast<uint32_t>(texWidth),
+                                  static_cast<uint32_t>(texHeight));
+      renderer->TransitionImageLayout(*fontImage,
+                                      format,
+                                      vk::ImageLayout::eTransferDstOptimal,
+                                      vk::ImageLayout::eShaderReadOnlyOptimal);
+
+      // Store descriptor set handle as the ImTextureID
+      tex->SetTexID((ImTextureID)(intptr_t)(VkDescriptorSet)*descriptorSet);
+      tex->SetStatus(ImTextureStatus_OK);
+
+    } catch (const std::exception& e) {
+      std::cerr << "Failed to update ImGui texture: " << e.what() << std::endl;
+    }
   }
 }
 
@@ -826,21 +858,6 @@ bool ImGuiSystem::createDescriptorSet() {
     vk::raii::DescriptorSets descriptorSets(device, allocInfo);
     descriptorSet = std::move(descriptorSets[0]); // Store the first (and only) descriptor set
     std::cout << "ImGui created descriptor set with handle: " << *descriptorSet << std::endl;
-
-    // Update descriptor set
-    vk::DescriptorImageInfo imageInfo;
-    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-    imageInfo.imageView = *fontView;
-    imageInfo.sampler = *fontSampler;
-
-    vk::WriteDescriptorSet writeSet;
-    writeSet.dstSet = *descriptorSet;
-    writeSet.descriptorCount = 1;
-    writeSet.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    writeSet.pImageInfo = &imageInfo;
-    writeSet.dstBinding = 0;
-
-    device.updateDescriptorSets({writeSet}, {});
 
     return true;
   } catch (const std::exception& e) {

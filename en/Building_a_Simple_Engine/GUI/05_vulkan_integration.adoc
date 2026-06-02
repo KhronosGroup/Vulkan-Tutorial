@@ -460,10 +460,9 @@ public:
         renderingInfo.pColorAttachmentFormats = formats;
         renderer.setDynamicRenderingInfo(renderingInfo);
 
-        // Upload ImGui fonts
-        vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
-        renderer.uploadFonts(commandBuffer);
-        endSingleTimeCommands(commandBuffer);
+        // Note: With modern ImGui (v1.92+), we no longer need to manually upload fonts here.
+        // The renderer will handle font atlas updates automatically during the draw phase
+        // using the RendererHasTextures protocol.
     }
 
     void drawFrame() {

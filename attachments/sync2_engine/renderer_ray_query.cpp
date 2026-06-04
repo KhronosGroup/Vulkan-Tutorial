@@ -140,6 +140,10 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
             skippedNoRes++;
             continue;
           }
+          const auto& res = meshIt->second;
+          if (res.vertexBufferSizeBytes != 0 || res.indexBufferSizeBytes != 0 || !*res.vertexBuffer || !*res.indexBuffer || res.indexCount == 0) {
+            continue;
+          }
         } catch (...) {
           skippedException++;
           continue;
@@ -160,9 +164,14 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     }
 
     if (readyRenderableCount == 0 || readyUniqueMeshCount == 0) {
-      std::cout << "AS build skipped: no ready meshes yet (renderables=" << readyRenderableCount
-          << ", uniqueMeshes=" << readyUniqueMeshCount << ")\n";
-      return false;
+      if (HasPendingMeshUploads()) {
+        std::cout << "AS build skipped: waiting for mesh uploads (renderables=" << readyRenderableCount
+            << ", uniqueMeshes=" << readyUniqueMeshCount << ")\n";
+        // Returning true here clears the asBuildRequested flag, breaking the infinite loop.
+        // If meshes become ready later (via uploads), a new build will be requested.
+        return true;
+      }
+      std::cout << "AS build: proceeding with empty scene (renderables=0, uniqueMeshes=0)\n";
     }
 
     // Move old AS structures to pending deletion queue
@@ -257,10 +266,11 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
     }
 
     if (uniqueMeshes.empty()) {
-      // Nothing ready yet (e.g., mesh uploads still pending). Treat as a transient
-      // condition so the caller can retry next frame without clearing the request.
-      setASUi(true, "AS: waiting on meshes", 0.0f, 0u, 0u);
-      return false;
+      // Nothing ready yet (e.g., mesh uploads still pending).
+      // Returning true clears the asBuildRequested flag. If meshes become ready later,
+      // a new build will be requested (e.g. by renderer_resources.cpp).
+      setASUi(true, "AS: no meshes ready", 0.0f, 0u, 0u);
+      return true;
     }
 
     // One concise build summary (no per-entity spam)

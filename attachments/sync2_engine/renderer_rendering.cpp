@@ -31,6 +31,7 @@
 #include <iostream>
 #include <map>
 #include <ranges>
+#include <shared_mutex>
 #include <sstream>
 #include <stdexcept>
 
@@ -1438,6 +1439,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
                                  lastASBuildRequestReason.find("Initial geometry preallocation complete") != std::string::npos));
 
       if (forceScan || (totalFrameCount % 30 == 0) || isInitialPostLoad) {
+        std::shared_lock<std::shared_mutex> meshLock(meshResourcesMutex);
         size_t missingMeshResources = 0;
         size_t pendingUploadsCount = 0;
         size_t nullBuffersCount = 0;
@@ -1547,7 +1549,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         // ... defer logic ...
       } else if ((!intervalPassed && !significantDelta && !asDevOverrideAllowRebuild && !isInitialPostLoad) || preallocActive) {
         // Skip build this frame to maintain frame rate or wait for preallocation to finish.
-      } else {
+      } else if (readyRenderableCount > 0 || (totalRenderableEntities == 0 && !*tlasStructure.handle)) {
         if (deferralTimedOut && readiness < buildThreshold && !asDevOverrideAllowRebuild) {
           std::cout << "AS build forced after " << maxDeferralSeconds
               << "s deferral (readiness " << readyRenderableCount << "/" << totalRenderableEntities

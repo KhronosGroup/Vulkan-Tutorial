@@ -68,7 +68,24 @@ if (NOT OpenAL_FOUND)
     set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "" FORCE)
     set(ALSOFT_INSTALL OFF CACHE BOOL "" FORCE)
 
-    FetchContent_MakeAvailable(openal-soft)
+    # Set policy to suppress the deprecation warning
+    if (POLICY CMP0169)
+        cmake_policy(SET CMP0169 OLD)
+    endif ()
+
+    FetchContent_GetProperties(openal-soft)
+    if (NOT openal-soft_POPULATED)
+        FetchContent_Populate(openal-soft)
+
+        # Update the minimum required CMake version to avoid errors on new CMake versions
+        file(READ "${openal-soft_SOURCE_DIR}/CMakeLists.txt" OPENAL_CMAKE_CONTENT)
+        string(REPLACE "cmake_minimum_required(VERSION 3.0.2)"
+                "cmake_minimum_required(VERSION 3.5)"
+                OPENAL_CMAKE_CONTENT "${OPENAL_CMAKE_CONTENT}")
+        file(WRITE "${openal-soft_SOURCE_DIR}/CMakeLists.txt" "${OPENAL_CMAKE_CONTENT}")
+
+        add_subdirectory(${openal-soft_SOURCE_DIR} ${openal-soft_BINARY_DIR})
+    endif ()
 
     # openal-soft defines a target named 'OpenAL'
     if (TARGET OpenAL)
@@ -77,8 +94,7 @@ if (NOT OpenAL_FOUND)
             add_library(OpenAL::OpenAL ALIAS OpenAL)
         endif ()
         # Satisfy find_package_handle_standard_args
-        FetchContent_GetProperties(openal-soft SOURCE_DIR openal_SOURCE_DIR)
-        set(OPENAL_INCLUDE_DIR "${openal_SOURCE_DIR}/include")
+        set(OPENAL_INCLUDE_DIR "${openal-soft_SOURCE_DIR}/include")
         set(OPENAL_LIBRARY OpenAL)
     endif ()
 endif ()

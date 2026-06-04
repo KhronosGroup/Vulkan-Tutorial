@@ -67,13 +67,29 @@ if (NOT glfw3_FOUND)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
-    FetchContent_MakeAvailable(glfw)
+    # Set policy to suppress the deprecation warning
+    if (POLICY CMP0169)
+        cmake_policy(SET CMP0169 OLD)
+    endif ()
+
+    FetchContent_GetProperties(glfw)
+    if (NOT glfw_POPULATED)
+        FetchContent_Populate(glfw)
+
+        # Update the minimum required CMake version to avoid errors on new CMake versions
+        file(READ "${glfw_SOURCE_DIR}/CMakeLists.txt" GLFW_CMAKE_CONTENT)
+        string(REPLACE "cmake_minimum_required(VERSION 3.0)"
+                "cmake_minimum_required(VERSION 3.5)"
+                GLFW_CMAKE_CONTENT "${GLFW_CMAKE_CONTENT}")
+        file(WRITE "${glfw_SOURCE_DIR}/CMakeLists.txt" "${GLFW_CMAKE_CONTENT}")
+
+        add_subdirectory(${glfw_SOURCE_DIR} ${glfw_BINARY_DIR})
+    endif ()
 
     # GLFW's CMakeLists.txt defines a target named 'glfw'
     if (TARGET glfw)
         set(glfw3_FOUND TRUE)
         # Satisfy find_package_handle_standard_args
-        FetchContent_GetProperties(glfw SOURCE_DIR glfw_SOURCE_DIR)
         set(GLFW3_INCLUDE_DIR "${glfw_SOURCE_DIR}/include")
         set(GLFW3_LIBRARY glfw)
     endif ()

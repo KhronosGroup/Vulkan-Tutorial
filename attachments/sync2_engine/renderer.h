@@ -391,7 +391,7 @@ class Renderer {
       vk::SemaphoreSubmitInfo signalInfo{
         .semaphore = *frameTimeline,
         .value = value,
-        .stageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .stageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
         .deviceIndex = 0
       };
       vk::SubmitInfo2 submit2{
@@ -560,7 +560,7 @@ class Renderer {
         signalInfo = vk::SemaphoreSubmitInfo{
           .semaphore = *uploadsTimeline,
           .value = 1, // Will be overridden by Submit2
-          .stageMask = vk::PipelineStageFlagBits2::eAllCommands
+          .stageMask = vk::PipelineStageFlagBits2::eBottomOfPipe
         };
         signalCount = 1;
       }

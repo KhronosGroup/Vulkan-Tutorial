@@ -2588,7 +2588,7 @@ void Renderer::transitionImageLayout(vk::Image image, vk::Format format, vk::Ima
     vk::SemaphoreSubmitInfo signalInfo{
       .semaphore = *uploadsTimeline,
       .value = 1, // Monotonic value will be set by Submit2
-      .stageMask = vk::PipelineStageFlagBits2::eAllCommands
+      .stageMask = vk::PipelineStageFlagBits2::eBottomOfPipe
     };
     vk::SubmitInfo2 submit2{
       .commandBufferInfoCount = 1,
@@ -2646,7 +2646,7 @@ void Renderer::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t wi
     vk::SemaphoreSubmitInfo signalInfo{
       .semaphore = *uploadsTimeline,
       .value = 1, // Monotonic value will be set by Submit2
-      .stageMask = vk::PipelineStageFlagBits2::eAllCommands
+      .stageMask = vk::PipelineStageFlagBits2::eBottomOfPipe
     };
     vk::SubmitInfo2 submit2{
       .commandBufferInfoCount = 1,

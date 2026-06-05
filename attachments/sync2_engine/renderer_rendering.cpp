@@ -1912,19 +1912,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     extractAcquire(acquireRet, acquireResultCode, imageIndex);
   } catch (const vk::OutOfDateKHRError&) {
     watchdogProgressLabel.store("Render: acquireNextImage out-of-date", std::memory_order_relaxed);
-    // Swapchain is out of date (e.g., window resized) before we could
-    // query the result. Trigger recreation and exit this frame cleanly.
-    framebufferResized.store(true, std::memory_order_relaxed);
     if (imguiSystem)
       ImGui::EndFrame();
-    // IMPORTANT: We already reset the in-flight fence at the start of the frame.
-    // Because we're exiting early (no submit), signal it via an empty submit so
-    // swapchain recreation won't hang waiting for an unsignaled fence.
-    {
-      vk::SubmitInfo2 emptySubmit2{};
-      Submit2(*graphicsQueue, emptySubmit2, *inFlightFences[currentFrame]);
-    }
     recreateSwapChain();
+    device.signalSemaphore({.semaphore = *frameTimeline, .value = currentTimelineValue + TimelineMilestones::eGpuWorkFinished});
     return;
   }
 
@@ -1944,7 +1935,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       vk::SemaphoreSubmitInfo signalInfo{
         .semaphore = *frameTimeline,
         .value = currentTimelineValue + TimelineMilestones::eGpuWorkFinished,
-        .stageMask = vk::PipelineStageFlagBits2::eAllCommands
+        .stageMask = vk::PipelineStageFlagBits2::eTopOfPipe
       };
       emptySubmit2.signalSemaphoreInfoCount = 1;
       emptySubmit2.pSignalSemaphoreInfos = &signalInfo;
@@ -1952,33 +1943,21 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     }
     return;
   }
-  if (acquireResultCode == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
+  if (framebufferResized.load(std::memory_order_relaxed)) {
     framebufferResized.store(false, std::memory_order_relaxed);
     if (imguiSystem)
       ImGui::EndFrame();
-    // Fence was reset earlier; ensure it is signaled before we bail out
-    // to avoid a deadlock in swapchain recreation.
-    {
-      vk::SubmitInfo2 emptySubmit2{};
-      Submit2(*graphicsQueue, emptySubmit2, *inFlightFences[currentFrame]);
-    }
     recreateSwapChain();
+    device.signalSemaphore({.semaphore = *frameTimeline, .value = currentTimelineValue + TimelineMilestones::eGpuWorkFinished});
     return;
+  }
+  if (acquireResultCode == vk::Result::eSuboptimalKHR) {
+    acquireResultCode = vk::Result::eSuccess;
   }
   if (acquireResultCode != vk::Result::eSuccess) {
     throw std::runtime_error("Failed to acquire swap chain image");
   }
 
-  if (framebufferResized.load(std::memory_order_relaxed)) {
-    // Signal the fence via empty submit since no real work will be submitted
-    // this frame, preventing a wait on an unsignaled fence during resize.
-    {
-      vk::SubmitInfo2 emptySubmit2{};
-      Submit2(*graphicsQueue, emptySubmit2, *inFlightFences[currentFrame]);
-    }
-    recreateSwapChain();
-    return;
-  }
 
   // Perform any descriptor updates that must not happen during command buffer recording
   if (useForwardPlus) {
@@ -2037,11 +2016,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   commandBuffers[currentFrame].begin(vk::CommandBufferBeginInfo());
   isRecordingCmd.store(true, std::memory_order_relaxed);
 
-  if (framebufferResized.load(std::memory_order_relaxed)) {
-    commandBuffers[currentFrame].end();
-    recreateSwapChain();
-    return;
-  }
 
   // Ray query rendering mode dispatch
   if (currentRenderMode == RenderMode::RayQuery && rayQueryEnabled && accelerationStructureEnabled) {
@@ -2824,7 +2798,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         vk::ImageMemoryBarrier2 presentBarrier2{
           .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
           .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-          .dstStageMask = vk::PipelineStageFlagBits2::eNone,
+          .dstStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe,
           .dstAccessMask = {},
           .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
           .newLayout = vk::ImageLayout::ePresentSrcKHR,
@@ -2945,13 +2919,13 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     vk::SemaphoreSubmitInfo{
       .semaphore = *renderFinishedSemaphores[imageIndex],
       .value = 0,
-      .stageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+      .stageMask = vk::PipelineStageFlagBits2::eBottomOfPipe,
       .deviceIndex = 0
     },
     vk::SemaphoreSubmitInfo{
       .semaphore = *frameTimeline,
       .value = currentTimelineValue + TimelineMilestones::eGpuWorkFinished,
-      .stageMask = vk::PipelineStageFlagBits2::eAllCommands,
+      .stageMask = vk::PipelineStageFlagBits2::eBottomOfPipe,
       .deviceIndex = 0
     }
   };
@@ -2965,16 +2939,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     .pSignalSemaphoreInfos = signalInfos.data()
   };
 
-  if (framebufferResized.load(std::memory_order_relaxed)) {
-    vk::SubmitInfo2 emptySubmit2{};
-    uint64_t sig = currentTimelineValue + TimelineMilestones::eGpuWorkFinished;
-    vk::SemaphoreSubmitInfo resizeSignal{.semaphore = *frameTimeline, .value = sig, .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
-    emptySubmit2.signalSemaphoreInfoCount = 1;
-    emptySubmit2.pSignalSemaphoreInfos = &resizeSignal;
-    Submit2(*graphicsQueue, emptySubmit2, nullptr);
-    recreateSwapChain();
-    return;
-  }
 
   // Update watchdog BEFORE queue submit because submit can block waiting for GPU
   // This proves frame CPU work is complete even if GPU queue is busy

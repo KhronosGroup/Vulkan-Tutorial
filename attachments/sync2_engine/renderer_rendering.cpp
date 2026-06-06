@@ -2798,7 +2798,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         vk::ImageMemoryBarrier2 presentBarrier2{
           .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
           .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-          .dstStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe,
+          .dstStageMask = vk::PipelineStageFlagBits2::eNone,
           .dstAccessMask = {},
           .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
           .newLayout = vk::ImageLayout::ePresentSrcKHR,

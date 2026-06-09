@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <!-- Background -->
+  <rect width="800" height="400" fill="#f8f9fa" />
+
+  <!-- "Before" State -->
+  <rect x="50" y="100" width="200" height="150" rx="10" fill="#dee2e6" stroke="#495057" stroke-width="2" />
+  <text x="150" y="130" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Source State</text>
+  <text x="60" y="160" font-family="Arial" font-size="12">Stage: Color Attachment</text>
+  <text x="60" y="180" font-family="Arial" font-size="12">Access: Write</text>
+  <text x="60" y="200" font-family="Arial" font-size="12">Layout: Color Attachment</text>
+
+  <!-- The Barrier "Gate" -->
+  <path d="M 300 50 L 500 50 L 500 350 L 300 350 Z" fill="#e9ecef" stroke="#adb5bd" stroke-width="2" stroke-dasharray="5,5" />
+  <text x="400" y="40" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">vk::ImageMemoryBarrier2</text>
+
+  <!-- Transition Arrow -->
+  <path d="M 260 175 L 340 175" stroke="#343a40" stroke-width="3" fill="none" marker-end="url(#arrowhead)" />
+  <text x="310" y="165" text-anchor="middle" font-family="Arial" font-size="12" font-style="italic">Transition</text>
+
+  <!-- "After" State -->
+  <rect x="550" y="100" width="200" height="150" rx="10" fill="#ced4da" stroke="#343a40" stroke-width="2" />
+  <text x="650" y="130" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Destination State</text>
+  <text x="560" y="160" font-family="Arial" font-size="12">Stage: Fragment Shader</text>
+  <text x="560" y="180" font-family="Arial" font-size="12">Access: Shader Read</text>
+  <text x="560" y="200" font-family="Arial" font-size="12">Layout: Shader Read Only</text>
+
+  <!-- Markers -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#343a40" />
+    </marker>
+  </defs>
+
+  <!-- Labels for the "Gate" -->
+  <text x="400" y="200" text-anchor="middle" font-family="Arial" font-size="14" fill="#495057">Execution Wait</text>
+  <text x="400" y="220" text-anchor="middle" font-family="Arial" font-size="14" fill="#495057">+ Memory Visibility</text>
+  <text x="400" y="240" text-anchor="middle" font-family="Arial" font-size="14" fill="#495057">+ Layout Transition</text>
+</svg>

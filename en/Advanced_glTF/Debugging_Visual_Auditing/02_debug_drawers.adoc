@@ -1,0 +1,330 @@
+:pp: {plus}{plus}
+= Debug Drawers: Visualizing Physics and Skeleton
+
+== The Principle of Debug Visualization
+
+Before writing any debug drawing code, it is worth understanding the design principle: a debug drawer is not a permanent part of the rendering pipeline. It is a mode-switched overlay that is compiled away in release builds and active in debug or development builds. It should be:
+
+- **Simple.** Debug geometry is rendered with a minimal pipeline—no lighting, no textures, no shadows. Solid or wireframe colored lines and shapes.
+- **Always on top.** Debug geometry is typically rendered with depth testing disabled (or with a very biased depth offset) so it is never hidden by opaque geometry. If a collision capsule is inside a mesh, you still want to see it.
+- **Zero-overhead when inactive.** In release builds, all debug draw calls should compile to nothing. Use a preprocessor flag or a compile-time constant to eliminate them entirely.
+
+The implementation pattern is a **deferred line buffer**: instead of issuing draw calls immediately for each debug shape, accumulate all the line segments for the frame into a CPU-side buffer, upload the buffer once at the end of the frame, and draw it in a single indexed draw call with a simple unlit shader. This is fast, simple, and GPU-friendly.
+
+== The Debug Line Buffer
+
+[source,cpp]
+----
+struct DebugLine {
+    glm::vec3 start;
+    glm::vec3 end;
+    glm::vec3 color;
+};
+
+class DebugDrawer {
+public:
+    void draw_line(const glm::vec3& start, const glm::vec3& end, const glm::vec3& color)
+    {
+        lines_.push_back({ start, end, color });
+    }
+
+    void draw_sphere(const glm::vec3& center, float radius, const glm::vec3& color,
+                     int segments = 16)
+    {
+        // Draw three orthogonal circles to represent a sphere
+        draw_circle(center, radius, glm::vec3(1,0,0), glm::vec3(0,1,0), color, segments);
+        draw_circle(center, radius, glm::vec3(1,0,0), glm::vec3(0,0,1), color, segments);
+        draw_circle(center, radius, glm::vec3(0,1,0), glm::vec3(0,0,1), color, segments);
+    }
+
+    void draw_capsule(const glm::vec3& base, const glm::vec3& tip,
+                      float radius, const glm::vec3& color, int segments = 12)
+    {
+        glm::vec3 axis = tip - base;
+        float height   = glm::length(axis);
+        if (height < 1e-6f) { draw_sphere(base, radius, color, segments); return; }
+        glm::vec3 dir = axis / height;
+
+        // Draw the cylindrical body
+        draw_circle(base, radius, get_perpendicular(dir), glm::cross(dir, get_perpendicular(dir)), color, segments);
+        draw_circle(tip,  radius, get_perpendicular(dir), glm::cross(dir, get_perpendicular(dir)), color, segments);
+
+        // Draw connecting lines
+        glm::vec3 perp = get_perpendicular(dir);
+        for (int i = 0; i < 4; ++i) {
+            float angle = glm::radians(90.0f * i);
+            glm::vec3 offset = radius * (std::cos(angle) * perp +
+                                         std::sin(angle) * glm::cross(dir, perp));
+            draw_line(base + offset, tip + offset, color);
+        }
+
+        // Draw hemispherical caps (simplified as 3/4 circles at each end)
+        draw_hemisphere(base, radius, -dir, get_perpendicular(dir), color, segments);
+        draw_hemisphere(tip,  radius,  dir, get_perpendicular(dir), color, segments);
+    }
+
+    void draw_box(const glm::mat4& transform, const glm::vec3& half_extents,
+                  const glm::vec3& color)
+    {
+        // Generate 8 corners in local space and transform to world space
+        const glm::vec3 e = half_extents;
+        glm::vec3 corners[8] = {
+            { -e.x, -e.y, -e.z }, {  e.x, -e.y, -e.z },
+            {  e.x,  e.y, -e.z }, { -e.x,  e.y, -e.z },
+            { -e.x, -e.y,  e.z }, {  e.x, -e.y,  e.z },
+            {  e.x,  e.y,  e.z }, { -e.x,  e.y,  e.z }
+        };
+        for (auto& c : corners) c = glm::vec3(transform * glm::vec4(c, 1.0f));
+
+        // Draw 12 edges
+        static const int edges[12][2] = {
+            {0,1},{1,2},{2,3},{3,0}, // bottom face
+            {4,5},{5,6},{6,7},{7,4}, // top face
+            {0,4},{1,5},{2,6},{3,7}  // side edges
+        };
+        for (auto& [a, b] : edges) draw_line(corners[a], corners[b], color);
+    }
+
+    // Upload this frame's lines to the GPU and return the draw info.
+    // Call this once per frame after all debug draws are issued.
+    void flush(VkCommandBuffer cmd, VkPipelineLayout layout)
+    {
+        if (lines_.empty()) return;
+        upload_to_gpu_and_draw(cmd, layout);
+        lines_.clear();
+    }
+
+private:
+    std::vector<DebugLine> lines_;
+
+    void draw_circle(const glm::vec3& center, float radius,
+                     const glm::vec3& x_axis, const glm::vec3& y_axis,
+                     const glm::vec3& color, int segments)
+    {
+        glm::vec3 prev = center + radius * x_axis;
+        for (int i = 1; i <= segments; ++i) {
+            float angle = glm::two_pi<float>() * i / segments;
+            glm::vec3 curr = center + radius * (std::cos(angle) * x_axis +
+                                                std::sin(angle) * y_axis);
+            draw_line(prev, curr, color);
+            prev = curr;
+        }
+    }
+
+    static glm::vec3 get_perpendicular(const glm::vec3& v)
+    {
+        // Find a vector not parallel to v, then cross to get a perpendicular
+        glm::vec3 candidate = (std::abs(v.x) < 0.9f) ? glm::vec3(1,0,0) : glm::vec3(0,1,0);
+        return glm::normalize(glm::cross(v, candidate));
+    }
+
+    void draw_hemisphere(const glm::vec3& center, float radius, const glm::vec3& axis,
+                         const glm::vec3& perp, const glm::vec3& color, int segments)
+    {
+        glm::vec3 cross = glm::cross(axis, perp);
+        for (int ring = 0; ring < segments / 4; ++ring) {
+            float phi0 = glm::half_pi<float>() * ring / (segments / 4);
+            float phi1 = glm::half_pi<float>() * (ring + 1) / (segments / 4);
+            float r0 = radius * std::cos(phi0), h0 = radius * std::sin(phi0);
+            float r1 = radius * std::cos(phi1), h1 = radius * std::sin(phi1);
+            draw_circle(center + h0 * axis, r0, perp, cross, color, segments);
+            for (int j = 0; j < segments; ++j) {
+                float angle = glm::two_pi<float>() * j / segments;
+                glm::vec3 p0 = center + h0*axis + r0*(std::cos(angle)*perp + std::sin(angle)*cross);
+                glm::vec3 p1 = center + h1*axis + r1*(std::cos(angle)*perp + std::sin(angle)*cross);
+                draw_line(p0, p1, color);
+            }
+        }
+    }
+
+    void upload_to_gpu_and_draw(VkCommandBuffer cmd, VkPipelineLayout layout)
+    {
+        // 1. Create/Update the Vertex Buffer
+        size_t buffer_size = lines_.size() * sizeof(DebugLine);
+
+        // In a real engine, you would use a persistent mapped buffer or a staging pool.
+        // For this example, we assume we have a host-visible buffer we can map.
+        void* data;
+        vmaMapMemory(allocator, debug_buffer_allocation, &data);
+        memcpy(data, lines_.data(), buffer_size);
+        vmaUnmapMemory(allocator, debug_buffer_allocation);
+
+        // 2. Bind the Debug Pipeline (lines, no depth write, unlit)
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debug_pipeline);
+
+        // 3. Bind the buffer as a vertex buffer
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &debug_buffer, &offset);
+
+        // 4. Draw!
+        // Each DebugLine contains 2 vertices, so we draw lines_.size() * 2 vertices.
+        vkCmdDraw(cmd, static_cast<uint32_t>(lines_.size() * 2), 1, 0, 0);
+    }
+};
+----
+
+=== Creating the Debug Renderer Pipeline
+
+Rendering colored lines requires a specialized graphics pipeline. Because we want debug geometry to be visible even through walls, we typically disable depth testing or use a very large depth bias. Here is the complete configuration for a debug line pipeline:
+
+[source,cpp]
+----
+void create_debug_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout layout, VkPipeline& out_pipeline)
+{
+    // 1. Shaders: Simple unlit color pass
+    // Vertex shader takes vec3 pos, vec3 color and multiplies by ViewProj.
+    // Fragment shader simply outputs the color.
+
+    // 2. Primitive Topology: Line List
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+
+    // 3. Vertex Input Description
+    VkVertexInputBindingDescription bindingDescription{};
+    bindingDescription.binding = 0;
+    bindingDescription.stride = sizeof(DebugLine) / 2; // Stride is per vertex (Pos+Color)
+    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(2);
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[1].binding = 0;
+    attributeDescriptions[0].location = 0; // Position
+    attributeDescriptions[1].location = 1; // Color
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(DebugLine, start); // Start and color are interleaved
+    attributeDescriptions[1].offset = offsetof(DebugLine, color);
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+    // 4. Rasterizer: Line width
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
+
+    // 5. Disable Depth Testing (to see lines through geometry)
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_FALSE;
+    depthStencil.depthWriteEnable = VK_FALSE;
+
+    // ... Create the pipeline ...
+}
+----
+
+== Drawing the Skeleton
+
+The skeleton is the most important debug overlay. It makes the scene graph transform hierarchy visible, showing exactly where each joint is in world space and which joint is which bone's parent:
+
+[source,cpp]
+----
+const glm::vec3 BONE_COLOR = { 1.0f, 1.0f, 0.0f };  // Yellow for bones
+const glm::vec3 JOINT_COLOR = { 1.0f, 0.5f, 0.0f }; // Orange for joint spheres
+
+void draw_skeleton(
+    DebugDrawer&              drawer,
+    const std::vector<Node>&  nodes,
+    const Skin&               skin)
+{
+    for (uint32_t joint_idx = 0; joint_idx < skin.joints.size(); ++joint_idx) {
+        uint32_t node_idx = skin.joints[joint_idx];
+        const Node& node  = nodes[node_idx];
+
+        glm::vec3 joint_world = glm::vec3(node.world_matrix[3]);
+
+        // Draw a small sphere at the joint location
+        drawer.draw_sphere(joint_world, 0.015f, JOINT_COLOR);
+
+        // Draw a line from this joint to its parent
+        if (node.parent_index != INVALID_NODE_INDEX) {
+            glm::vec3 parent_world = glm::vec3(nodes[node.parent_index].world_matrix[3]);
+            drawer.draw_line(joint_world, parent_world, BONE_COLOR);
+        }
+    }
+}
+----
+
+== Drawing Collision Shapes and Constraints
+
+Drawing collision shapes requires querying the physics engine for the current transform of each body, then using the stored `ColliderDef` to determine the shape parameters:
+
+[source,cpp]
+----
+const glm::vec3 KINEMATIC_COLOR = { 0.0f, 1.0f, 0.0f };  // Green: animation-driven
+const glm::vec3 DYNAMIC_COLOR   = { 1.0f, 0.0f, 0.0f };  // Red: physics-driven
+
+void draw_bone_bodies(
+    DebugDrawer&                    drawer,
+    const std::vector<BoneBody>&    bodies,
+    const PhysicsWorld&             physics_world,
+    RagdollState                    ragdoll_state)
+{
+    for (const auto& bone_body : bodies) {
+        PhysicsPose pose = physics_world.get_body_pose(bone_body.physics_body);
+
+        glm::vec3 color = (ragdoll_state == RagdollState::RAGDOLL)
+                        ? DYNAMIC_COLOR
+                        : KINEMATIC_COLOR;
+
+        glm::mat4 body_transform = pose_to_matrix(pose);
+
+        const ColliderDef& def = bone_body.collider_def;
+        if (def.shape == ColliderDef::Shape::CAPSULE) {
+            // Compute capsule base and tip in world space
+            // (assumes capsule local axis is Y)
+            glm::vec3 local_base = glm::vec3(0, -def.half_height, 0);
+            glm::vec3 local_tip  = glm::vec3(0,  def.half_height, 0);
+            glm::vec3 world_base = glm::vec3(body_transform * glm::vec4(local_base, 1));
+            glm::vec3 world_tip  = glm::vec3(body_transform * glm::vec4(local_tip,  1));
+            drawer.draw_capsule(world_base, world_tip, def.radius, color);
+
+        } else if (def.shape == ColliderDef::Shape::BOX) {
+            drawer.draw_box(body_transform, def.box_half_extents, color);
+        }
+    }
+}
+----
+
+For physics constraints, most physics engines provide a query API to retrieve the constraint's anchor points and axis direction. Drawing a constraint as a line between its two anchor points plus a small indicator for the constraint axis gives you enough information to visually verify that the constraint setup is correct:
+
+[source,cpp]
+----
+const glm::vec3 CONSTRAINT_COLOR = { 0.0f, 0.5f, 1.0f }; // Blue for constraints
+const glm::vec3 LIMIT_COLOR      = { 1.0f, 0.0f, 1.0f }; // Magenta for limits
+
+void draw_constraints(
+    DebugDrawer&              drawer,
+    const PhysicsWorld&       physics_world,
+    const std::vector<void*>& constraint_handles)
+{
+    for (void* constraint : constraint_handles) {
+        ConstraintDebugInfo info = physics_world.get_constraint_debug_info(constraint);
+
+        // Draw a line connecting the two constraint anchor points
+        drawer.draw_line(info.anchor_a, info.anchor_b, CONSTRAINT_COLOR);
+
+        // For hinge constraints, draw the hinge axis as a small arrow
+        if (info.type == ConstraintType::HINGE) {
+            glm::vec3 axis_end = info.anchor_a + info.hinge_axis_world * 0.05f;
+            drawer.draw_line(info.anchor_a, axis_end, LIMIT_COLOR);
+        }
+
+        // For ball-socket constraints, draw a small sphere at the pivot
+        if (info.type == ConstraintType::BALL_SOCKET) {
+            drawer.draw_sphere(info.anchor_a, 0.01f, LIMIT_COLOR);
+        }
+    }
+}
+----
+
+When the ragdoll handoff from Chapter 4 goes wrong and bodies explode apart, these overlays will immediately show you whether the problem is the constraints failing to hold (the capsules are no longer touching, and the connecting lines are very long) or the bodies being in the wrong initial position (the capsules are offset from the rendered mesh).
+
+xref:Advanced_glTF/Debugging_Visual_Auditing/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Debugging_Visual_Auditing/03_skinning_heatmaps.adoc[Next: Skinning Heatmaps]

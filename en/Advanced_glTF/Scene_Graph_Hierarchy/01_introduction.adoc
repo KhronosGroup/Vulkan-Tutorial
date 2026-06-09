@@ -1,0 +1,46 @@
+= The Scene Graph & Transform Hierarchy
+
+== Unifying the World
+
+In the "Building a Simple Engine" series, we implemented a hybrid scene architecture. We maintained a flat collection of `ObjectInstance` entities in our world, each of which contained a `Model` that possessed its own internal glTF node hierarchy. This was a perfect middle ground for learning: it allowed us to load complex glTF assets while keeping the top-level engine logic simple.
+
+However, as we move into advanced character animation and physics, this separation becomes a barrier. A character isn't just a self-contained model; it is a collection of interacting systems. Their hand might be a node that needs to grasp a separate sword entity. Their feet might be nodes that must interact with the terrain's physics collider. To support these cross-entity interactions seamlessly, we need to move to a **Unified Scene Graph**.
+
+In this chapter, we will dissolve the boundary between "the world" and "the model." We will transition our engine to a single, global recursive node system where every object—whether it's a 200-bone character, a static building, or a light source—is simply a `Node` in a universal hierarchy.
+
+== The Performance Barrier: Redundant Computation
+
+The "Simple Engine" used a straightforward recursive traversal to calculate world-space transformation matrices:
+
+[source,cpp]
+----
+void renderNode(const std::vector<Node*>& nodes, const glm::mat4& parentMatrix) {
+    for (const auto node : nodes) {
+        glm::mat4 nodeMatrix = parentMatrix * node->getLocalMatrix();
+        // ... render and recurse ...
+    }
+}
+----
+
+While elegant, this approach has a major performance flaw: it recalculates the world matrix for every node, every single frame, regardless of whether anything actually moved. In a scene with thousands of nodes—common in modern character-heavy environments—this results in a massive waste of CPU cycles and memory bandwidth.
+
+To solve this, we will implement the **Dirty Flag Pattern**. Each node will track whether its local transform or its parent's world transform has changed. We will only perform the expensive matrix multiplications when a node is "dirty." This optimization is the difference between an engine that chokes on a few characters and one that can handle a whole crowd.
+
+== Bridging Animation and Physics
+
+The Scene Graph is the architectural "nervous system" of our character pipeline. It is where the mathematical theory of skeletal animation meets the physical reality of the engine world.
+
+A character's skeleton is, at its heart, just a specialized scene graph. By building a robust, optimized hierarchy first, we create a system that can handle both simple parent-child attachments and complex skeletal structures with the same underlying logic. Furthermore, this hierarchy provides the hooks for our physics engine. We will attach collision proxies (capsules, boxes) directly to nodes in our hierarchy. When the animation system moves a bone node, the physics engine's collider follows automatically. This bi-directional syncing is what allows a character's arm to react to collisions while it's in the middle of a swing.
+
+== What We'll Build
+
+In this chapter, we will lay the foundational "plumbing" for our advanced character pipeline across four key areas:
+
+*   **The Engine Expansion**: We'll refactor our entity management into a global, recursive `Node` system. We'll implement the Dirty Flag optimization and explore a more data-oriented layout to improve cache locality.
+*   **Metadata & Physics Extras**: We'll explore the use of glTF "extras" to automate our physics setup. We'll leverage custom properties defined in 3D tools to automatically generate colliders and physical properties within our engine.
+*   **Physics Syncing Theory**: we'll establish the mathematical link between our visual nodes and our physics rigid bodies, preparing us for the Kinematic-to-Dynamic handoff (Ragdolls) later in the series.
+*   **The Transformation Pipeline**: We'll refine our math to handle inverse transforms and global-to-local conversions, which are the prerequisites for Inverse Kinematics (IK).
+
+Let's begin by expanding our engine's core and building a scene graph that is ready for the rigors of modern character animation.
+
+xref:Advanced_glTF/introduction.adoc[Previous: Advanced glTF Introduction] | xref:Advanced_glTF/Scene_Graph_Hierarchy/02_engine_expansion.adoc[Next: The Engine Expansion]

@@ -1,0 +1,173 @@
+:pp: {plus}{plus}
+= Physics Integration: Colliders & Ragdolls
+
+== The Gap Between Looking Right and Behaving Right
+
+Everything we have built so far has been about making a character *look* correct. The scene graph ensures that child bones follow parent bones in a physically plausible hierarchy. The compute skinning pipeline deforms the mesh in a GPU buffer that every downstream system can read. The interpolation and blending system ensures that transitions between animations are smooth and natural.
+
+But a character that looks correct and a character that *behaves* correctly in a physics simulation are two very different things. A character can have a flawlessly animated walk cycle and completely nonsensical ragdoll physics. The arm that looks graceful during animation can fly off at impossible angles the moment the physics engine takes over. The body that falls down a flight of stairs can pass straight through the steps as if they weren't there. These are not rendering problems—they are physics integration problems, and they are the focus of this chapter.
+
+The fundamental challenge is that animation systems and physics engines have fundamentally different world views. An animation system is deterministic and artist-controlled: it follows keyframe data, blends between clips, and drives joint transforms in a predictable sequence. A physics engine is a solver: it works with shapes, masses, forces, and constraints, and it produces joint transforms as an *output* rather than as an input. Bridging these two world views—making them cooperate rather than conflict—requires careful design and a clear definition of who is in control at any given moment.
+
+== What This Chapter Will Build
+
+We will construct the physical representation of our character's body from the same glTF skeleton that drives the visual mesh. The key insight is that we don't need—and shouldn't want—a high-fidelity mesh collider for each body part. That would be enormously expensive and would produce an unstable simulation. Instead, we will generate **proxy colliders**: simple geometric shapes (capsules and boxes) that approximate each bone's volume closely enough for plausible collision behavior, while remaining fast enough to simulate in real time.
+
+We will attach those collider shapes to the skeleton using **physics constraints**—specifically, hinge constraints and ball-and-socket constraints that mirror the joints of the human body. A real knee only bends in one plane. A real shoulder has a large but finite range of motion. By encoding these limits into our constraints, we prevent the ragdoll from producing the grotesque contortions that unconstrained simulations are infamous for.
+
+We will then build the machinery for the **Ragdoll Handoff**: the state transition where the animation controller, which has been driving the skeleton every frame, yields control to the physics solver. This is a surprisingly subtle problem. If you simply hand over control at the wrong moment—or without properly initializing the physics bodies' velocities from the character's current motion—the ragdoll will snap, jitter, or pop in a way that immediately breaks immersion.
+
+Finally, we will address **self-collision filtering**. Without it, the character's arm will collide with its own torso, the thighs will prevent the knees from bending, and the simulation will explode with internal constraint violations. We will use Vulkan-independent bitmask logic (since collision filtering is a physics engine concept, not a Vulkan one) to tell the simulation which body parts are allowed to interact with each other.
+
+== Recommended Engine: Jolt Physics
+
+Throughout this chapter, we will use **Jolt Physics** for our examples. Jolt is a high-performance, multi-threaded physics engine used in titles like *Horizon Forbidden West*. It is particularly well-suited for character physics due to its robust constraint solver and clean C++ API.
+
+=== Jolt Physics Setup
+To integrate Jolt into your project, you can use CMake's `FetchContent` as shown in the series introduction. Once integrated, you must initialize the engine:
+
+[source,cpp]
+----
+#include <Jolt/Jolt.h>
+#include <Jolt/RegisterTypes.h>
+#include <Jolt/Core/Factory.h>
+#include <Jolt/Physics/PhysicsSystem.h>
+
+// 1. Initialize Jolt global state
+JPH::RegisterDefaultAllocator();
+JPH::Factory::sInstance = new JPH::Factory();
+JPH::RegisterTypes();
+
+// 2. Create the Physics System
+JPH::PhysicsSystem physics_system;
+physics_system.Init(
+    max_bodies,
+    num_body_mutexes,
+    max_body_pairs,
+    max_contact_constraints,
+    broad_phase_layer_interface,
+    object_vs_broad_phase_layer_filter,
+    object_vs_object_layer_filter
+);
+----
+
+=== The PhysicsWorld Interface
+To keep our code clean and engine-agnostic, we will wrap the physics engine calls in a `PhysicsWorld` abstraction. Here is the interface we will use:
+
+[source,cpp]
+----
+struct PhysicsPose {
+    glm::vec3 position;
+    glm::quat orientation;
+
+    glm::mat4 to_matrix() const {
+        return glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(orientation);
+    }
+};
+
+class PhysicsWorld {
+public:
+    virtual ~PhysicsWorld() = default;
+
+    // Body Management
+    virtual JPH::BodyID create_body(const JPH::BodyCreationSettings& settings) = 0;
+    virtual void        destroy_body(JPH::BodyID body_id) = 0;
+    virtual void        set_motion_type(JPH::BodyID body_id, JPH::EMotionType type) = 0;
+    virtual void        activate_body(JPH::BodyID body_id) = 0;
+
+    // Syncing
+    virtual void        move_kinematic(JPH::BodyID body_id, const PhysicsPose& pose) = 0;
+    virtual PhysicsPose get_body_pose(JPH::BodyID body_id) const = 0;
+    virtual void        set_linear_velocity(JPH::BodyID body_id, const glm::vec3& velocity) = 0;
+
+    // Constraints
+    virtual void        create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2, float swing, float twist) = 0;
+    virtual void        create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2, const glm::vec3& axis, float min_angle, float max_angle) = 0;
+};
+----
+
+In a real implementation, `move_kinematic` would call `JPH::BodyInterface::SetPositionAndRotation` with the `EActivation::Activate` flag, and `get_body_pose` would read from `JPH::BodyInterface::GetPositionAndRotation`.
+
+=== Concrete Implementation: Jolt Physics
+
+To bridge our engine-agnostic `PhysicsWorld` to Jolt, we implement the methods using Jolt's `BodyInterface`. The `BodyInterface` is the primary way to interact with bodies in Jolt, handling thread safety and state synchronization automatically.
+
+[source,cpp]
+----
+class JoltPhysicsWorld : public PhysicsWorld {
+    JPH::PhysicsSystem* system;
+    JPH::BodyInterface* body_interface;
+
+public:
+    JoltPhysicsWorld(JPH::PhysicsSystem* s) : system(s) {
+        body_interface = &system->GetBodyInterface();
+    }
+
+    JPH::BodyID create_body(const JPH::BodyCreationSettings& settings) override {
+        // Create and add the body to the world
+        JPH::Body* body = body_interface->CreateBody(settings);
+        body_interface->AddBody(body->GetID(), JPH::EActivation::Activate);
+        return body->GetID();
+    }
+
+    void destroy_body(JPH::BodyID body_id) override {
+        body_interface->RemoveBody(body_id);
+        body_interface->DestroyBody(body_id);
+    }
+
+    void set_motion_type(JPH::BodyID body_id, JPH::EMotionType type) override {
+        body_interface->SetMotionType(body_id, type, JPH::EActivation::Activate);
+    }
+
+    void activate_body(JPH::BodyID body_id) override {
+        body_interface->ActivateBody(body_id);
+    }
+
+    void move_kinematic(JPH::BodyID body_id, const PhysicsPose& pose) override {
+        // Jolt uses float3/quat. We convert from our glm types.
+        JPH::Vec3 position(pose.position.x, pose.position.y, pose.position.z);
+        JPH::Quat rotation(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w);
+
+        // SetPositionAndRotation is the correct way to drive kinematic bodies.
+        // It ensures velocities are correctly calculated for the next physics step.
+        body_interface->SetPositionAndRotation(body_id, position, rotation, JPH::EActivation::Activate);
+    }
+
+    PhysicsPose get_body_pose(JPH::BodyID body_id) const override {
+        JPH::RVec3 position;
+        JPH::Quat rotation;
+        body_interface->GetPositionAndRotation(body_id, position, rotation);
+
+        return {
+            glm::vec3(position.GetX(), position.GetY(), position.GetZ()),
+            glm::quat(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ())
+        };
+    }
+
+    void set_linear_velocity(JPH::BodyID body_id, const glm::vec3& v) override {
+        body_interface->SetLinearVelocity(body_id, JPH::Vec3(v.x, v.y, v.z));
+    }
+
+    void create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2, float swing, float twist) override {
+        JPH::PointConstraintSettings settings;
+        settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
+        // In a real implementation, you would set the anchor points and limits here
+        // using JPH::PointConstraintSettings and swing/twist values.
+        system->GetConstraintInterface().AddConstraint(settings.Create(
+            *body_interface->GetBody(p1), *body_interface->GetBody(p2)));
+    }
+
+    void create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2, const glm::vec3& axis, float min_angle, float max_angle) override {
+        JPH::HingeConstraintSettings settings;
+        settings.mPoint1 = settings.mPoint2 = JPH::Vec3::sZero(); // Anchor at COM for simplicity
+        settings.mHingeAxis1 = settings.mHingeAxis2 = JPH::Vec3(axis.x, axis.y, axis.z);
+        settings.mLimitsMin = min_angle;
+        settings.mLimitsMax = max_angle;
+
+        system->GetConstraintInterface().AddConstraint(settings.Create(
+            *body_interface->GetBody(p1), *body_interface->GetBody(p2)));
+    }
+};
+----
+
+xref:Advanced_glTF/Skeletal_Compute_Skinning/06_conclusion.adoc[Previous: Compute Skinning Conclusion] | xref:Advanced_glTF/Physics_Integration/02_bone_proxy_colliders.adoc[Next: Bone Proxy Colliders]

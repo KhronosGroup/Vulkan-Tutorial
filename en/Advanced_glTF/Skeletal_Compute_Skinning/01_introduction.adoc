@@ -1,0 +1,38 @@
+:pp: {plus}{plus}
+= Advanced Skeletal & Compute Skinning
+
+== What Skinning Actually Is
+
+If you have worked through the "Building a Simple Engine" series, you have already seen skeletal animation in action. We loaded a glTF file, parsed its animation channels, and updated the bone matrices each frame to move the model's joints. But in that tutorial, we deliberately kept things straightforward: the mesh deformation—the actual process of making the vertices *follow* the bones—happened in the vertex shader, one vertex at a time, as part of the normal rasterization pipeline.
+
+That approach works. For simple scenes with a handful of animated characters, it is perfectly acceptable. But it carries a hidden cost that only becomes apparent at scale: every system that needs access to the deformed mesh has to do the math itself, in isolation.
+
+Think about what happens when you add physics to your scene. Your character's ragdoll needs to know where the mesh surface is so that environmental objects collide with the *animated* body, not with the original T-pose. But your physics engine doesn't know about your vertex shader. It can't see the deformed positions. So either you run an entire second skinning calculation on the CPU for the physics system, or you accept that your physics colliders will be in the wrong place—an approximation that looks increasingly bad the more dramatic the animation.
+
+Add ray tracing to that picture and the problem compounds. A Vulkan Ray Tracing Acceleration Structure—the data structure that enables effects like reflections, ambient occlusion, and ray-traced shadows—is built from the mesh's vertex positions. If those positions are still in T-pose because the skinning only happens in the rasterization vertex shader, then your shadows and reflections will be cast by a lifeless mannequin instead of your animated character.
+
+The solution to all of these problems is a strategy we call **"Skin Once, Use Everywhere."** Instead of skinning the mesh as a side effect of rendering it, we skin the mesh *first*, as a dedicated step, and store the resulting deformed vertex positions in a GPU buffer. The rasterizer, the ray tracer, and the physics system all then read from that *same* buffer. Every system sees the correct, animated mesh, and we only do the expensive deformation math once per frame.
+
+Implementing this strategy requires moving the skinning work from the vertex shader into a **Vulkan Compute Shader**. This chapter is about building that compute-based skinning pipeline from the ground up.
+
+== What You Need to Know First
+
+Before diving into the implementation, it is worth being explicit about what this chapter assumes you already understand, and what it will teach you from scratch.
+
+You should be comfortable with the basics of glTF skeletal animation from the "Building a Simple Engine" series. Specifically, you should understand what **joints** and **skins** are in a glTF file, how animation channels drive bone transformations over time, and how the `AnimationSampler` and `AnimationChannel` structures work together to produce a pose. If any of those terms are unfamiliar, you should revisit that material before continuing here.
+
+You should also have a solid grasp of the **Scene Graph** system we built in the previous chapter of this series. The skinning system we are about to build is deeply integrated with that hierarchy. We will be reading joint world matrices directly from our `Node` array, so understanding how those matrices are calculated and cached using the Dirty Flag pattern is essential.
+
+What this chapter *will* teach you is the mathematical relationship between a vertex's rest position and its animated position—specifically, the role of the **Inverse Bind Matrix** and how it anchors the skinning calculation to the original T-pose. It will then show you how to encode that math in a Vulkan Compute shader, how to manage the input and output buffers, and how to structure the pipeline so that the output can be consumed by multiple downstream systems simultaneously.
+
+== The Plan for This Chapter
+
+We will build this system in layers. First, we will establish the mathematical foundation—exactly what computation we need to perform on each vertex, and why. Without understanding the math, the shader code is just a sequence of matrix multiplications that produce magic. With it, every line of the shader becomes a deliberate, principled step.
+
+Second, we will design and implement the Vulkan Compute pipeline. This involves creating shader storage buffers for the input vertices, the joint matrices, and the output vertices, writing the compute shader in Slang, and dispatching it correctly each frame.
+
+Third, we will wire up the output buffer as a shared resource. We will show how the rasterization pipeline reads from it instead of the original vertex buffer, how to use it as the geometry source for a ray tracing Bottom-Level Acceleration Structure (BLAS), and how to expose it to a physics system for accurate collision queries.
+
+Finally, we will tackle the more sophisticated aspects of animation: **cubic spline interpolation** for smooth, natural movement, and **cross-fade blending** for transitioning between animation clips—including the critical case of blending from a scripted animation into a physics-driven ragdoll.
+
+xref:Advanced_glTF/Skeletal_Compute_Skinning/02_skinning_math.adoc[Next: The Mathematics of Skinning]

@@ -1,0 +1,117 @@
+:pp: {plus}{plus}
+= The Mathematics of Skinning
+
+== Why the Math Matters
+
+It is tempting to treat skinning as a black box. You give the GPU some bones and a mesh, and it figures out where the vertices should go. Many developers work this way for years. But when something goes wrong—and in skeletal animation, things always go wrong at some point—the developers who understand the underlying math can diagnose the problem in minutes, while those who don't are left staring at a contorted mesh with no idea why their character looks like they were put through a blender.
+
+This section will not be a brief overview. We are going to build the skinning equation from first principles, and by the end of it, you should be able to look at the compute shader code in the next section and understand exactly why every matrix multiplication is there.
+
+== The Bind Pose and Why It Exists
+
+Every skinned character starts its life in what is called the **Bind Pose** (sometimes called the **T-Pose** or **Rest Pose**). This is the specific configuration of the skeleton that the artist used when they attached the mesh to the rig. It is the "neutral" state where the bones and the mesh were in perfect alignment when the skinning weights were painted.
+
+The bind pose is critically important because all of the animation data in a glTF file is expressed as a *delta from the bind pose*. When a joint's animation channel says "rotate 30 degrees around the Z axis," it means "30 degrees more than the bind pose rotation." This implies that the bind pose is the shared reference frame that ties the animation data to the mesh geometry.
+
+In glTF, the bind pose information is stored as the **Inverse Bind Matrix** for each joint. This matrix is exactly what its name suggests: the mathematical inverse of the joint's transformation matrix at the time the mesh was bound to the skeleton. If the joint's world matrix in the bind pose was `B`, then the Inverse Bind Matrix stored in the file is `B⁻¹`.
+
+We will see exactly why we need this inverse in a moment.
+
+== The Three-Step Skinning Equation
+
+Calculating where an animated vertex should be is a three-step process. Understanding each step individually makes the combined equation obvious rather than mysterious.
+
+=== Step 1: Transform the Vertex to Bone-Local Space
+
+Every vertex in the mesh is stored in **model space**—its position is relative to the model's origin. But to apply a joint's rotation, we need the vertex to be in **bone-local space**, where the joint itself is the origin.
+
+This is exactly what the Inverse Bind Matrix does. When we multiply a vertex position by the Inverse Bind Matrix of a joint, we are expressing that vertex's position *relative to that joint as it existed in the bind pose*. We are essentially asking, "If the bind-pose joint were sitting at the origin of its own coordinate system, where would this vertex be?"
+
+For example, if a character's wrist joint was at position `(0.5, 1.2, 0.0)` in the bind pose, then the Inverse Bind Matrix for the wrist encodes that offset. When we multiply a vertex near the hand by this matrix, the result is a position close to the origin—close to the wrist—rather than somewhere in world space.
+
+=== Step 2: Apply the Current Joint Transform
+
+Now that the vertex is expressed relative to the bind-pose joint, we can apply the *current* joint transformation. This is the animated world matrix of the joint—the one our Scene Graph calculated in the previous chapter using the Dirty Flag system.
+
+When we multiply the bone-local vertex position by the current joint world matrix, we are saying: "Take this vertex that was positioned relative to the bind-pose joint, and move it to where the animated joint is now." If the wrist is currently rotated 45 degrees from its bind pose, the vertex will follow that rotation correctly because we first expressed it relative to the wrist's origin.
+
+The combined operation for a single joint is:
+
+`Animated Position = Joint World Matrix * Inverse Bind Matrix * Rest Position`
+
+Reading this right-to-left (as matrix multiplications work): we take the rest position, transform it into the joint's local space, and then transform it from the joint's local space into the final animated world space.
+
+=== Step 3: Blend Multiple Joint Influences
+
+A real character mesh is not driven by a single bone. Each vertex is influenced by multiple joints simultaneously. This is called **Linear Blend Skinning (LBS)**, or sometimes **Smooth Skinning**. Without it, character meshes fold and crumple at joints like a piece of cardboard, rather than stretching smoothly like skin over a real skeleton.
+
+In glTF, each vertex stores up to four **joint indices** and four corresponding **weights**. The joint indices identify which bones influence this vertex, and the weights specify how much each bone contributes. The weights must sum to 1.0 to ensure the vertex doesn't get scaled or translated by accident.
+
+The complete skinning equation for a single vertex is a weighted sum of the per-joint transforms:
+
+----
+Skinned_Position = (w0 * J0 * IB0 + w1 * J1 * IB1 + w2 * J2 * IB2 + w3 * J3 * IB3) * Rest_Position
+----
+
+Where `Jn` is the current world matrix of joint `n`, `IBn` is its Inverse Bind Matrix, and `wn` is the vertex's weight for that joint.
+
+This weighted sum is sometimes called the **Skin Matrix** for a vertex. Different vertices near a joint will have different weight distributions—a vertex right on the elbow might be 50% upper arm and 50% forearm, while a vertex halfway up the arm might be 90% upper arm and 10% forearm. The artist controls these weights using a weight-painting tool in their modeling software.
+
+== The Joint Matrix: Pre-Computing the Key Operation
+
+In the equation above, we are multiplying `Jn * IBn` for every vertex. But notice that this product is the same for every vertex influenced by the same joint. It doesn't matter whether we are computing vertex 100 or vertex 100,000—if both are influenced by joint `5`, they both use the same `J5 * IB5` matrix.
+
+This means we can and should pre-compute these products on the CPU before uploading them to the GPU. Instead of having each shader invocation look up two matrices and multiply them, we create an array of pre-multiplied **Joint Matrices**—one per joint—and upload only those to the GPU.
+
+[source,cpp]
+----
+// Called once per frame, after the animation update and scene graph update
+void compute_joint_matrices(
+    const Skin& skin,
+    const std::vector<Node>& nodes,
+    std::vector<glm::mat4>& joint_matrices_out)
+{
+    joint_matrices_out.resize(skin.joints.size());
+
+    for (size_t i = 0; i < skin.joints.size(); ++i) {
+        // Get the current world matrix of this joint's node
+        // (already computed by the scene graph's dirty flag system)
+        const Node& joint_node = nodes[skin.joints[i]];
+        const glm::mat4& current_world = joint_node.world_matrix;
+
+        // Multiply: Current Joint Transform * Inverse Bind Matrix
+        // This pre-computes the per-joint portion of the skinning equation.
+        // The shader only needs to multiply this by the vertex's rest position.
+        joint_matrices_out[i] = current_world * skin.inverse_bind_matrices[i];
+    }
+}
+----
+
+The `Skin` structure here mirrors what we parsed from the glTF file: a list of joint node indices and their corresponding inverse bind matrices. The output `joint_matrices_out` is what we will upload to the GPU as a **Shader Storage Buffer Object (SSBO)**—a large, GPU-accessible buffer that the compute shader can index into freely.
+
+== Handling Normals
+
+The skinning equation above correctly transforms vertex positions, but a complete skinning implementation must also transform **vertex normals**. Normals are the vectors perpendicular to the mesh surface, and they drive all of the lighting calculations. If you deform the mesh but don't deform the normals to match, your character will appear to be lit as if it were still in the T-pose—a jarring visual artifact.
+
+Normals cannot be transformed by the full joint matrix (which includes translation). Instead, they must be transformed by the **Normal Matrix**, which is the transpose of the inverse of the 3x3 rotation and scale portion of the joint matrix. In most cases—and this is the standard practice for character animation—we can assume that our joint matrices don't contain non-uniform scale. In that scenario, the normal matrix simplifies to the 3x3 portion of the joint matrix directly.
+
+[source,cpp]
+----
+// For joint matrices without non-uniform scale, the normal transform is simpler:
+glm::mat3 normal_matrix = glm::mat3(joint_matrix);
+
+// If non-uniform scale is present (e.g., squash-and-stretch animation):
+// glm::mat3 normal_matrix = glm::transpose(glm::inverse(glm::mat3(joint_matrix)));
+----
+
+This is a tradeoff worth being explicit about: skipping the full normal matrix calculation is a performance optimization that is almost always invisible in practice, because character rigs rarely use non-uniform scale on their skeletal joints. If your engine ever needs to support squash-and-stretch bone animation, you will need to revisit this assumption.
+
+== Tangents and Bitangents
+
+For characters using normal maps—which is nearly universal in AAA production—we also need to skin the **tangent vectors**. The tangent and bitangent define a per-vertex coordinate system that maps the normal map's texture space into the world space of the deformed mesh. If the mesh deforms but the tangent frame doesn't follow, normal-mapped lighting will be incorrect.
+
+Tangents are transformed using the same approach as normals—the 3x3 rotation portion of the joint matrix, without translation. The bitangent is typically not stored directly; it is reconstructed in the fragment shader as the cross product of the normal and tangent, using a handedness sign stored in the tangent's W component.
+
+With this mathematical foundation in place, we now have everything we need to write the compute shader. We know what inputs are required (rest positions, normals, tangents, joint indices, weights, and pre-computed joint matrices), we know what computation to perform, and we know what outputs to produce (animated positions, normals, and tangents in a new buffer that everyone else can read from).
+
+xref:Advanced_glTF/Skeletal_Compute_Skinning/01_introduction.adoc[Previous: Introduction] | xref:Advanced_glTF/Skeletal_Compute_Skinning/03_compute_skinning.adoc[Next: The Compute Skinning Pipeline]

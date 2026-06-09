@@ -1,0 +1,343 @@
+name: Advanced glTF Example CI
+
+on:
+  push:
+    paths:
+      - 'attachments/advanced_gltf/**'
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/advanced_gltf_example_ci.yml'
+  pull_request:
+    paths:
+      - 'attachments/advanced_gltf/**'
+      - 'attachments/simple_engine/**'
+      - '.github/workflows/advanced_gltf_example_ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: attachments/advanced_gltf
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Linux toolchain
+      # -----------------------------------------------------------------------
+      - name: Install Clang + Ninja + ccache (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build ccache spirv-tools
+
+      - name: Select Clang toolchain (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # Windows toolchain
+      # -----------------------------------------------------------------------
+      - name: Set up MSVC dev environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Ninja + sccache (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y ninja sccache
+          $chocoBin = "C:\ProgramData\chocolatey\bin"
+          if (Test-Path $chocoBin) {
+            $chocoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          "SCCACHE_DIR=$env:LOCALAPPDATA\Mozilla\sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # -----------------------------------------------------------------------
+      # Compiler cache
+      # -----------------------------------------------------------------------
+      - name: ccache (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-advanced-gltf-ccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-advanced-gltf-ccache-
+
+      - name: sccache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: ${{ runner.os }}-advanced-gltf-sccache-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-advanced-gltf-sccache-
+
+      # -----------------------------------------------------------------------
+      # Vulkan SDK — provides slangc + headers; reuses same cache keys as
+      # simple_engine_ci so the two workflows share cached SDK tarballs.
+      # -----------------------------------------------------------------------
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        id: cache-vulkan-windows
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
+
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ("${{ steps.cache-vulkan-windows.outputs.cache-hit }}" -ne "true") {
+            choco install -y aria2
+            $installer = Join-Path $env:TEMP "vulkan-sdk.exe"
+            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M `
+              --dir="$env:TEMP" --out="vulkan-sdk.exe" `
+              "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+            Start-Process -FilePath $installer `
+              -ArgumentList "--accept-licenses --default-answer --confirm-command install" `
+              -Wait -NoNewWindow
+          }
+          $vulkanPath = Get-ChildItem "C:\VulkanSDK" |
+            Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+          "VULKAN_SDK=$vulkanPath"                  | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$vulkanPath\Bin"                          | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE_PREFIX_PATH=$vulkanPath"            | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_INCLUDE_DIR=$vulkanPath\Include"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-vulkan-linux
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk
+
+      - name: Install Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_DIR="${RUNNER_TEMP}/VulkanSDK"
+
+          if [ "${{ steps.cache-vulkan-linux.outputs.cache-hit }}" != "true" ]; then
+            SDK_TGZ="${RUNNER_TEMP}/vulkan-sdk.tar.xz"
+            download_ok=0
+            for url in \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz" \
+              "https://sdk.lunarg.com/sdk/download/latest/linux/vulkansdk-linux-x86_64.tar.xz"
+            do
+              if curl -L --fail -o "$SDK_TGZ" "$url"; then
+                download_ok=1; break
+              fi
+            done
+            [ "$download_ok" -eq 1 ] || { echo "Vulkan SDK download failed" >&2; exit 1; }
+            rm -rf "$SDK_DIR"; mkdir -p "$SDK_DIR"
+            tar -xJf "$SDK_TGZ" -C "$SDK_DIR"
+          fi
+
+          VULKAN_SDK_PATH="$(find "$SDK_DIR" -maxdepth 1 -type d -name '1.*' | sort -r | head -n 1)"
+          SDK_SYSROOT="$VULKAN_SDK_PATH"
+          [ -d "$VULKAN_SDK_PATH/x86_64" ] && SDK_SYSROOT="$VULKAN_SDK_PATH/x86_64"
+
+          echo "VULKAN_SDK=$VULKAN_SDK_PATH"               >> "$GITHUB_ENV"
+          echo "VULKAN_SDK_SYSROOT=$SDK_SYSROOT"           >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$SDK_SYSROOT"            >> "$GITHUB_ENV"
+          echo "Vulkan_INCLUDE_DIR=$SDK_SYSROOT/include"   >> "$GITHUB_ENV"
+
+          for libname in libvulkan.so libvulkan.so.1; do
+            if [ -f "$SDK_SYSROOT/lib/$libname" ]; then
+              echo "Vulkan_LIBRARY=$SDK_SYSROOT/lib/$libname" >> "$GITHUB_ENV"; break
+            fi
+          done
+
+          [ -d "$VULKAN_SDK_PATH/bin"  ] && echo "$VULKAN_SDK_PATH/bin"  >> "$GITHUB_PATH"
+          [ -d "$SDK_SYSROOT/bin"      ] && echo "$SDK_SYSROOT/bin"      >> "$GITHUB_PATH"
+
+          if command -v slangc >/dev/null 2>&1; then
+            echo "SLANGC_EXECUTABLE=$(command -v slangc)" >> "$GITHUB_ENV"
+          fi
+
+          compat_dir="${RUNNER_TEMP}/slang-compat"
+          mkdir -p "$compat_dir"
+          pthread_path="$(ldconfig -p | awk '/libpthread\.so\.0/{print $NF; exit 0}' || true)"
+          if [ -n "${pthread_path:-}" ] && [ -f "$pthread_path" ]; then
+            ln -sf "$pthread_path" "$compat_dir/libpthread.so"
+          fi
+          echo "LD_LIBRARY_PATH=$compat_dir:${SDK_SYSROOT}/lib:${VULKAN_SDK_PATH}/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # simple_engine system dependencies
+      # The advanced_gltf project links against SimpleEngineLib which is built
+      # from simple_engine's sources, so we need the same library dependencies.
+      # -----------------------------------------------------------------------
+      - name: Install simple_engine dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash ../simple_engine/install_dependencies_linux.sh
+
+      - name: Set up vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = "C:\vcpkg"
+          if (-not (Test-Path $vcpkgRoot)) {
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+            & "$vcpkgRoot\bootstrap-vcpkg.bat" -disableMetrics
+          }
+          "$vcpkgRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install simple_engine dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: call ..\simple_engine\install_dependencies_windows.bat
+
+      # -----------------------------------------------------------------------
+      # FetchContent dependency cache (Jolt only; simple_engine deps are system-installed)
+      # -----------------------------------------------------------------------
+      - name: Cache FetchContent (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: attachments/advanced_gltf/build/_deps
+          key: ${{ runner.os }}-advanced-gltf-deps-v1
+          restore-keys: ${{ runner.os }}-advanced-gltf-deps-
+
+      - name: Cache FetchContent (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: attachments/advanced_gltf/build/_deps
+          key: ${{ runner.os }}-advanced-gltf-deps-v1
+          restore-keys: ${{ runner.os }}-advanced-gltf-deps-
+
+      # -----------------------------------------------------------------------
+      # Configure
+      # -----------------------------------------------------------------------
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra_args=()
+          [ -n "${Vulkan_INCLUDE_DIR:-}" ] && extra_args+=("-DVulkan_INCLUDE_DIR=${Vulkan_INCLUDE_DIR}")
+          [ -n "${Vulkan_LIBRARY:-}"     ] && extra_args+=("-DVulkan_LIBRARY=${Vulkan_LIBRARY}")
+          [ -n "${SLANGC_EXECUTABLE:-}"  ] && extra_args+=("-DSLANGC_EXECUTABLE=${SLANGC_EXECUTABLE}")
+
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_PREFIX_PATH="${VULKAN_SDK_SYSROOT:-}" \
+            "${extra_args[@]}"
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $extra = @()
+          if ($env:Vulkan_INCLUDE_DIR) { $extra += "-DVulkan_INCLUDE_DIR=$env:Vulkan_INCLUDE_DIR" }
+          if ($env:Vulkan_LIBRARY)     { $extra += "-DVulkan_LIBRARY=$env:Vulkan_LIBRARY" }
+          if ($env:VCPKG_ROOT)         { $extra += "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" }
+
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            $extra
+
+      # -----------------------------------------------------------------------
+      # Build — the tutorial executable + all shader compilation targets
+      # -----------------------------------------------------------------------
+      - name: Build
+        run: cmake --build build --target AdvancedGLTF --parallel 4
+
+      - name: Verify shaders compiled
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for spv in \
+            build/shaders/skinning.spv \
+            build/shaders/morph_accumulate.spv \
+            build/shaders/pbr_heatmap_vertex.spv \
+            "build/shaders/pbr_heatmap_fragment_dominant_bone.spv" \
+            "build/shaders/pbr_heatmap_fragment_weight_distribution.spv"
+          do
+            if [ -f "$spv" ]; then
+              echo "  OK  $spv"
+            else
+              echo "  MISSING  $spv" >&2
+              missing=$((missing + 1))
+            fi
+          done
+          [ "$missing" -eq 0 ] || { echo "$missing shader(s) missing" >&2; exit 1; }
+
+      - name: Cache stats
+        if: always()
+        shell: bash
+        run: |
+          command -v ccache  >/dev/null 2>&1 && ccache -s  || true
+          command -v sccache >/dev/null 2>&1 && sccache -s || true
+
+  # ---------------------------------------------------------------------------
+  # Validate Python asset tool (no deps beyond stdlib)
+  # ---------------------------------------------------------------------------
+  validate-python-tool:
+    name: Validate add_physics_extras.py
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: python3 -m py_compile attachments/advanced_gltf/assets/add_physics_extras.py
+
+      - name: Download SimpleSkin and annotate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fetch a minimal CC0 glTF that has a skin (SimpleSkin from Khronos samples)
+          curl -fsSL \
+            "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/SimpleSkin/glTF/SimpleSkin.gltf" \
+            -o /tmp/SimpleSkin.gltf
+
+          python3 attachments/advanced_gltf/assets/add_physics_extras.py \
+            /tmp/SimpleSkin.gltf \
+            /tmp/SimpleSkin_physics.gltf
+
+          # Verify extras were written
+          python3 -c "
+          import json, sys
+          with open('/tmp/SimpleSkin_physics.gltf') as f:
+              g = json.load(f)
+          joints = set()
+          for skin in g.get('skins', []):
+              joints.update(skin.get('joints', []))
+          for idx in joints:
+              node = g['nodes'][idx]
+              extras = node.get('extras', {})
+              if 'collider' not in extras:
+                  sys.exit(f'Node {idx} ({node.get(\"name\",\"?\")}) missing collider extras')
+              if 'constraint' not in extras:
+                  sys.exit(f'Node {idx} ({node.get(\"name\",\"?\")}) missing constraint extras')
+          print(f'All {len(joints)} joint(s) annotated correctly.')
+          "

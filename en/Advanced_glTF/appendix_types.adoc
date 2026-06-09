@@ -1,0 +1,233 @@
+= Appendix: Common Types Reference
+
+This appendix provides authoritative, consolidated definitions for the shared types and interfaces used throughout the Advanced glTF series.
+
+== Core Scene Graph Types
+
+[source,cpp]
+----
+const uint32_t INVALID_NODE_INDEX = 0xFFFFFFFF;
+
+enum TransformStatus : uint8_t {
+    Clean      = 0,
+    LocalDirty = 1 << 0,  // This node's SRT components changed
+    WorldDirty = 1 << 1   // This node's world matrix needs recalculation
+};
+
+struct ColliderDef {
+    enum class Shape { CAPSULE, BOX, NONE };
+    Shape shape     = Shape::NONE;
+    float radius    = 0.0f;
+    float half_height = 0.0f;
+    glm::vec3 box_half_extents = {0,0,0};
+    float mass      = 1.0f;
+    std::string collision_group;
+    std::string collision_mask;
+};
+
+struct ConstraintDef {
+    enum class Type { NONE, BALL_SOCKET, HINGE };
+    Type        type              = Type::NONE;
+    float       swing_limit_deg   = 180.0f;
+    float       twist_limit_deg   = 180.0f;
+    float       hinge_min_deg     = -180.0f;
+    float       hinge_max_deg     =  180.0f;
+    glm::vec3   hinge_axis        = {0,0,1};
+    std::string parent_bone;
+};
+
+struct Node {
+    uint32_t node_index;
+    uint32_t parent_index = INVALID_NODE_INDEX;
+    std::vector<uint32_t> child_indices;
+    std::string name;
+
+    // Local transform data (SRT: Scale, Rotation, Translation)
+    glm::vec3 translation    = {0,0,0};
+    glm::quat local_rotation = glm::identity<glm::quat>();
+    glm::vec3 scale          = {1,1,1};
+
+    // Cached world matrix
+    glm::mat4 world_matrix = glm::mat4(1.0f);
+
+    uint8_t status = TransformStatus::Clean;
+    bool is_joint = false;
+
+    // Physics metadata (extracted from glTF extras)
+    ColliderDef collider_def;
+    ConstraintDef constraint_def;
+
+    // Call this whenever you change translation, rotation, or scale
+    void mark_dirty() {
+        status |= TransformStatus::LocalDirty | TransformStatus::WorldDirty;
+    }
+
+    // Computes the local transform matrix from SRT components (TRS order)
+    glm::mat4 get_local_matrix() const {
+        return glm::translate(glm::mat4(1.0f), translation) *
+               glm::mat4_cast(local_rotation) *
+               glm::scale(glm::mat4(1.0f), scale);
+    }
+
+    // Safely extracts rotation from the world matrix, stripping any scale.
+    glm::quat get_world_rotation() const {
+        glm::mat3 rot_scale = glm::mat3(world_matrix);
+        glm::mat3 rotation;
+        rotation[0] = glm::normalize(rot_scale[0]);
+        rotation[1] = glm::normalize(rot_scale[1]);
+        rotation[2] = glm::normalize(rot_scale[2]);
+        return glm::quat_cast(rotation);
+    }
+};
+
+class SceneGraph {
+public:
+    std::vector<Node> nodes;
+
+    // Linear update: Only works if nodes are topologically sorted
+    void update_transforms() {
+        for (auto& node : nodes) {
+            if (node.status & TransformStatus::WorldDirty) {
+                if (node.parent_index != INVALID_NODE_INDEX) {
+                    node.world_matrix = nodes[node.parent_index].world_matrix * node.get_local_matrix();
+                } else {
+                    node.world_matrix = node.get_local_matrix();
+                }
+
+                for (uint32_t child_index : node.child_indices) {
+                    nodes[child_index].status |= TransformStatus::WorldDirty;
+                }
+                node.status = TransformStatus::Clean;
+            }
+        }
+    }
+
+    // Recursive update: Handles any node order and sub-tree updates
+    void update_world_matrices_subtree(uint32_t index) {
+        Node& node = nodes[index];
+        if (node.parent_index != INVALID_NODE_INDEX) {
+            node.world_matrix = nodes[node.parent_index].world_matrix * node.get_local_matrix();
+        } else {
+            node.world_matrix = node.get_local_matrix();
+        }
+        for (uint32_t child_idx : node.child_indices) {
+            nodes[child_idx].status |= TransformStatus::WorldDirty;
+            update_world_matrices_subtree(child_idx);
+        }
+        node.status = TransformStatus::Clean;
+    }
+};
+
+// Free-function helper for recursive subtree updates (matches IK chapter usage)
+inline void update_world_matrices_subtree(std::vector<Node>& nodes, uint32_t index) {
+    Node& node = nodes[index];
+    if (node.parent_index != INVALID_NODE_INDEX) {
+        node.world_matrix = nodes[node.parent_index].world_matrix * node.get_local_matrix();
+    } else {
+        node.world_matrix = node.get_local_matrix();
+    }
+    for (uint32_t child_idx : node.child_indices) {
+        nodes[child_idx].status |= TransformStatus::WorldDirty;
+        update_world_matrices_subtree(nodes, child_idx);
+    }
+    node.status = TransformStatus::Clean;
+}
+----
+
+== Animation & Skinning Types
+
+[source,cpp]
+----
+enum InterpolationMode { STEP, LINEAR, CUBICSPLINE };
+
+struct AnimationSampler {
+    InterpolationMode interpolation;
+    std::vector<float> inputs;              // Timestamps
+    std::vector<glm::vec4> outputs_raw;     // Raw packed output data
+
+    // For CUBICSPLINE, we split the raw data for easier interpolation
+    std::vector<glm::vec4> in_tangents;
+    std::vector<glm::vec4> values;
+    std::vector<glm::vec4> out_tangents;
+};
+
+struct AnimationChannel {
+    enum PathType { TRANSLATION, ROTATION, SCALE, WEIGHTS };
+    PathType path;
+    uint32_t node_index;
+    uint32_t sampler_index;
+};
+
+struct Pose {
+    std::vector<glm::vec3> translations;
+    std::vector<glm::quat> rotations;
+    std::vector<glm::vec3> scales;
+};
+
+// Binary search for the keyframe index corresponding to time
+uint32_t find_keyframe(const AnimationSampler& sampler, float time) {
+    if (sampler.inputs.size() < 2) return 0;
+    auto it = std::lower_bound(sampler.inputs.begin(), sampler.inputs.end(), time);
+    uint32_t idx = static_cast<uint32_t>(std::distance(sampler.inputs.begin(), it));
+    return (idx > 0) ? idx - 1 : 0;
+}
+
+// Bridges the Animation output (Pose) back to the Scene Graph Nodes
+void apply_pose_to_scene_graph(std::vector<Node>& nodes, const Pose& pose, const std::vector<uint32_t>& joint_indices) {
+    for (size_t i = 0; i < joint_indices.size(); ++i) {
+        Node& node = nodes[joint_indices[i]];
+        node.translation    = pose.translations[i];
+        node.local_rotation = pose.rotations[i];
+        node.scale          = pose.scales[i];
+        node.mark_dirty();
+    }
+}
+----
+
+== Physics Types
+
+[source,cpp]
+----
+struct PhysicsPose {
+    glm::vec3 position;
+    glm::quat orientation;
+
+    glm::mat4 to_matrix() const {
+        return glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(orientation);
+    }
+};
+
+class PhysicsWorld {
+public:
+    virtual ~PhysicsWorld() = default;
+
+    // Body Management
+    virtual JPH::BodyID create_body(const JPH::BodyCreationSettings& settings) = 0;
+    virtual void        destroy_body(JPH::BodyID body_id) = 0;
+    virtual void        set_motion_type(JPH::BodyID body_id, JPH::EMotionType type) = 0;
+    virtual void        activate_body(JPH::BodyID body_id) = 0;
+
+    // Syncing
+    virtual void        move_kinematic(JPH::BodyID body_id, const PhysicsPose& pose) = 0;
+    virtual PhysicsPose get_body_pose(JPH::BodyID body_id) const = 0;
+    virtual void        set_linear_velocity(JPH::BodyID body_id, const glm::vec3& velocity) = 0;
+
+    // Constraints
+    virtual void        create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2, float swing, float twist) = 0;
+    virtual void        create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2, const glm::vec3& axis, float min_angle, float max_angle) = 0;
+};
+----
+
+== IK & Procedural Types
+
+[source,cpp]
+----
+struct IKChain {
+    std::vector<uint32_t> joints;  // Ordered from root to end effector
+    uint32_t effector_node;        // The node whose position we are trying to place
+    float    threshold;            // Convergence threshold in world-space units
+    int      max_iterations;       // Safety cap
+    glm::vec3 target_world;        // Target position
+    glm::vec3 pole_vector;         // For algorithms like FABRIK or constrained CCD
+};
+----

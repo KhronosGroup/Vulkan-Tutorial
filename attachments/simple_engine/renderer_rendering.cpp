@@ -1702,7 +1702,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     return;
   }
 
-  // Synchronize UI display size with renderer extent before NewFrame logic\n  if (imguiSystem) {\n    imguiSystem->HandleResize(swapChainExtent.width, swapChainExtent.height);\n  }\n\n  // imageIndex already populated above
+  // imageIndex already populated above
   watchdogProgressLabel.store("Render: acquired swapchain image", std::memory_order_relaxed);
 
   bool isLoading = IsLoading();

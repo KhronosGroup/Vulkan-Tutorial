@@ -291,6 +291,12 @@ class Engine
 		float     mouseSensitivity        = 0.1f;
 		bool      baseOrientationCaptured = false;
 		glm::quat baseOrientation{1.0f, 0.0f, 0.0f, 0.0f};
+
+		// Touch/Mouse interaction locking
+		bool      startedOnImGui          = false;
+		bool      isFirstFrameOfInteraction = true;
+		float     pendingXOffset          = 0.0f;
+		float     pendingYOffset          = 0.0f;
 	} cameraControl;
 
 	// Mouse position tracking

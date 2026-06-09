@@ -377,73 +377,54 @@ const ImGuiSystem* Engine::GetImGuiSystem() const {
 }
 
 void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
-  // Check if ImGui wants to capture mouse input first
-  bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
-
-  // Suppress right-click while loading
-  if (renderer&& renderer
-  
-  ->
-  IsLoading()
-  ) {
-    buttons &= ~2u; // clear right button bit
-  }
-
-  if (!imguiWantsMouse) {
-    // Handle mouse click for ball throwing (right mouse button)
-    if (buttons & 2) {
-      // Right mouse button (bit 1)
-      if (!cameraControl.mouseRightPressed) {
-        cameraControl.mouseRightPressed = true;
-        // Throw a ball on mouse click
-        ThrowBall(x, y);
-      }
-    } else {
-      cameraControl.mouseRightPressed = false;
-    }
-
-    // Handle camera rotation when left mouse button is pressed
-    if (buttons & 1) {
-      // Left mouse button (bit 0)
-      if (!cameraControl.mouseLeftPressed) {
-        cameraControl.mouseLeftPressed = true;
-        cameraControl.firstMouse = true;
-      }
-
-      if (cameraControl.firstMouse) {
-        cameraControl.lastMouseX = x;
-        cameraControl.lastMouseY = y;
-        cameraControl.firstMouse = false;
-      }
-
-      float xOffset = x - cameraControl.lastMouseX;
-      float yOffset = y - cameraControl.lastMouseY;
-      cameraControl.lastMouseX = x;
-      cameraControl.lastMouseY = y;
-
-      xOffset *= cameraControl.mouseSensitivity;
-      yOffset *= cameraControl.mouseSensitivity;
-
-      // Mouse look: positive X moves view to the right; positive Y moves view up.
-      // Platform mouse coordinates increase downward, so invert Y.
-      cameraControl.yaw -= xOffset;
-      cameraControl.pitch -= yOffset;
-
-      // Constrain pitch to avoid gimbal lock
-      if (cameraControl.pitch > 89.0f)
-        cameraControl.pitch = 89.0f;
-      if (cameraControl.pitch < -89.0f)
-        cameraControl.pitch = -89.0f;
-    } else {
-      cameraControl.mouseLeftPressed = false;
-    }
-  }
-
+  // Update ImGui system with current mouse state immediately.
+  // This pushes events to the ImGui IO queue for processing in NewFrame().
   if (imguiSystem) {
     imguiSystem->HandleMouse(x, y, buttons);
   }
 
-  // Always perform hover detection (even when ImGui is active)
+  // Handle LEFT button (Touch DOWN/MOVE/UP)
+  if (buttons & 1) {
+    if (!cameraControl.mouseLeftPressed) {
+      // Finger just went down
+      cameraControl.mouseLeftPressed = true;
+      cameraControl.firstMouse = true;
+    }
+
+    if (cameraControl.firstMouse) {
+      cameraControl.lastMouseX = x;
+      cameraControl.lastMouseY = y;
+      cameraControl.firstMouse = false;
+    }
+
+    // Accumulate movement deltas. These will be applied in UpdateCameraControls
+    // AFTER ImGui has updated its capture state (post-NewFrame).
+    cameraControl.pendingXOffset += (x - cameraControl.lastMouseX);
+    cameraControl.pendingYOffset += (y - cameraControl.lastMouseY);
+
+    cameraControl.lastMouseX = x;
+    cameraControl.lastMouseY = y;
+  } else {
+    // Finger lifted
+    cameraControl.mouseLeftPressed = false;
+  }
+
+  // Handle RIGHT button (Ball throwing)
+  if (buttons & 2) {
+    if (!cameraControl.mouseRightPressed) {
+      cameraControl.mouseRightPressed = true;
+      // Note: We check capture status in NewFrame/Update for consistent behavior
+      // but for discrete clicks, we use the stale capture status or wait.
+      // On Android, we don't currently generate right clicks easily.
+      if (imguiSystem && !imguiSystem->WantCaptureMouse()) {
+        ThrowBall(x, y);
+      }
+    }
+  } else {
+    cameraControl.mouseRightPressed = false;
+  }
+
+  // Update hover detection
   HandleMouseHover(x, y);
 }
 void Engine::handleKeyInput(uint32_t key, bool pressed) {
@@ -674,6 +655,44 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
   // Manual camera controls (only when tracking is disabled)
   // Calculate movement speed
   float velocity = cameraControl.cameraSpeed * deltaTime.count() * .001f;
+
+  // Check if ImGui wants to capture mouse input (updated in NewFrame)
+  bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
+
+  // INTERACTION LOCKING LOGIC:
+  // If a touch began, we wait until ImGui has processed the first DOWN event (in NewFrame)
+  // before deciding whether this drag belongs to the GUI or the 3D Scene.
+  if (cameraControl.mouseLeftPressed) {
+    if (cameraControl.isFirstFrameOfInteraction) {
+      // This is the first frame (Update call) where the finger is DOWN.
+      // ImGui's WantCaptureMouse now accurately reflects if the tap was on a window.
+      cameraControl.startedOnImGui = imguiWantsMouse;
+      cameraControl.isFirstFrameOfInteraction = false;
+    }
+
+    // Only apply rotation if the interaction started on the scene background
+    if (!cameraControl.startedOnImGui) {
+      float xOffset = cameraControl.pendingXOffset * cameraControl.mouseSensitivity;
+      float yOffset = cameraControl.pendingYOffset * cameraControl.mouseSensitivity;
+
+      cameraControl.yaw -= xOffset;
+      cameraControl.pitch -= yOffset;
+
+      // Constrain pitch to avoid gimbal lock
+      if (cameraControl.pitch > 89.0f)
+        cameraControl.pitch = 89.0f;
+      if (cameraControl.pitch < -89.0f)
+        cameraControl.pitch = -89.0f;
+    }
+  } else {
+    // Reset locking state when finger is lifted
+    cameraControl.isFirstFrameOfInteraction = true;
+    cameraControl.startedOnImGui = false;
+  }
+
+  // Clear accumulated offsets after processing
+  cameraControl.pendingXOffset = 0.0f;
+  cameraControl.pendingYOffset = 0.0f;
 
   // Capture base orientation from GLTF camera once and then apply mouse deltas relative to it
   if (!cameraControl.baseOrientationCaptured) {

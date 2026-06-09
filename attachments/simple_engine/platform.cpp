@@ -129,16 +129,35 @@ bool AndroidPlatform::ProcessEvents() {
     for (uint64_t i = 0; i < inputBuffer->motionEventsCount; ++i) {
       GameActivityMotionEvent& event = inputBuffer->motionEvents[i];
 
-      // We only care about the first pointer for now (mouse emulation)
+      int32_t action = event.action & AMOTION_EVENT_ACTION_MASK;
+
       if (event.pointerCount > 0) {
+        // For mouse emulation, always follow the primary finger (index 0).
+        // This avoids position "jumps" when multiple fingers are used.
         float x = GameActivityPointerAxes_getX(&event.pointers[0]);
         float y = GameActivityPointerAxes_getY(&event.pointers[0]);
 
-        int32_t action = event.action & AMOTION_EVENT_ACTION_MASK;
         uint32_t buttons = 0;
+        if (action == AMOTION_EVENT_ACTION_DOWN ||
+            action == AMOTION_EVENT_ACTION_MOVE ||
+            action == AMOTION_EVENT_ACTION_POINTER_DOWN) {
+          buttons = 0x01; // Finger(s) down
+        } else if (action == AMOTION_EVENT_ACTION_UP ||
+                   action == AMOTION_EVENT_ACTION_CANCEL) {
+          buttons = 0x00; // All fingers up
+        } else if (action == AMOTION_EVENT_ACTION_POINTER_UP) {
+          // One finger up, but others might still be down.
+          // If the primary finger (0) was the one that left, the next finger
+          // will become index 0 in the NEXT event, so we'll get a release
+          // only when the LAST finger is lifted.
+          buttons = (event.pointerCount > 1) ? 0x01 : 0x00;
+        }
 
-        if (action == AMOTION_EVENT_ACTION_DOWN || action == AMOTION_EVENT_ACTION_MOVE) {
-          buttons = 0x01; // Left button pressed
+        // Diagnostic log for touch events (throttled)
+        static int moveLogThrottler = 0;
+        if (action != AMOTION_EVENT_ACTION_MOVE || ++moveLogThrottler % 30 == 0) {
+           LOGI("Touch: act=%d pos=(%.1f, %.1f) btn=%u count=%d",
+                action, x, y, buttons, event.pointerCount);
         }
 
         if (mouseCallback) {
@@ -311,9 +330,10 @@ void AndroidPlatform::InitializeTouchInput() {
   if (!app)
     return;
 
-  // GameActivity specific input handling is handled via GameActivity_set*Callback in the glue,
-  // but the android_app structure in the new glue doesn't have onInputEvent anymore.
-  // Instead, we rely on the activity callbacks or the internal event processing.
+  // Configure GameActivity to pass all motion and key events to the native side
+  // without filtering. This ensures we see all touches, moves, and releases.
+  android_app_set_motion_event_filter(app, nullptr);
+  android_app_set_key_event_filter(app, nullptr);
 }
 
 void AndroidPlatform::EnablePowerSavingMode(bool enable) {

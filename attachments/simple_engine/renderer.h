@@ -536,6 +536,60 @@ class Renderer {
     // creation sees the final textureResources instead of fallbacks.
     void WaitForAllTextureTasks();
 
+    // Block until meshResources has been populated and its count is stable.
+    // The render thread drains deferred mesh uploads asynchronously; this polls
+    // until the count has not changed for 4 consecutive 50 ms steps so that
+    // OMM can scan a complete mesh list.  Returns false on timeout.
+    bool WaitForMeshResourcesToSettle(float timeoutSeconds = 60.f) const {
+      const auto deadline = std::chrono::steady_clock::now()
+          + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<float>(timeoutSeconds));
+      size_t prevCount = 0;
+      int stableSteps = 0;
+      while (true) {
+        const size_t cur = GetRegisteredMeshes().size();
+        if (cur > 0 && cur == prevCount) {
+          if (++stableSteps >= 4) return true; // stable for 4 × 50 ms = 200 ms
+        } else {
+          stableSteps = 0;
+        }
+        prevCount = cur;
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+    }
+
+    // WaitForAllTextureTasks() only confirms that jobs have been ENQUEUED to the
+    // upload workers — it does not wait for the workers to finish processing them.
+    // This method polls rawPixelCache.size() until it is stable, confirming that
+    // upload worker threads have finished their StoreRawTexturePixels calls.
+    // Returns false on timeout.
+    bool WaitForRawPixelCacheToSettle(float timeoutSeconds = 60.f) const {
+      const auto deadline = std::chrono::steady_clock::now()
+          + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<float>(timeoutSeconds));
+      size_t prevCount = 0;
+      int stableSteps = 0;
+      while (true) {
+        size_t cur; {
+          std::shared_lock<std::shared_mutex> lk(rawPixelCacheMutex);
+          cur = rawPixelCache.size();
+        }
+        if (cur == prevCount) {
+          // Populated cache: 200 ms stability (4 × 50 ms).
+          // Empty cache: 2 s grace (40 × 50 ms) so we don't mistake
+          // "upload workers haven't started yet" for "no MASK textures".
+          const int threshold = (cur > 0) ? 4 : 40;
+          if (++stableSteps >= threshold) return cur > 0;
+        } else {
+          stableSteps = 0;
+        }
+        prevCount = cur;
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+    }
+
     // Process pending texture GPU uploads on the calling thread.
     // This should be invoked from the main/render thread so that all
     // Vulkan work happens from a single thread while worker threads

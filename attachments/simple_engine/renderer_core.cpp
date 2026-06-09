@@ -792,7 +792,10 @@ void Renderer::addSupportedOptionalExtensions() {
     //add any extra extensions enabled by courses
 #ifdef ENABLE_COURSE_OPACITY_MICROMAPS
     // Opacity micromap for hardware-accelerated alpha-tested shadow rays (Course: Opacity Micromaps)
+    // vkCreateAccelerationStructure2KHR (KHR micromap build entry point) lives in
+    // VK_KHR_device_address_commands — both must be present for the build path to work.
     optionalDeviceExtensions.push_back( VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME );
+    optionalDeviceExtensions.push_back(VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME);
 #endif
 
     // Build a set of available extension names for quick lookup
@@ -1052,7 +1055,9 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     }
 
     // Opacity micromap — VK_KHR_opacity_micromap (Course: Opacity Micromaps)
-    auto hasOpacityMicromap = hasExtension(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME);
+    // Also requires VK_KHR_device_address_commands for vkCreateAccelerationStructure2KHR.
+    auto hasOpacityMicromap = hasExtension(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME)
+        && hasExtension(VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME);
     vk::PhysicalDeviceOpacityMicromapFeaturesKHR opacityMicromapSupported{};
     vk::PhysicalDeviceOpacityMicromapFeaturesKHR opacityMicromapEnable{};
     if (hasOpacityMicromap) {

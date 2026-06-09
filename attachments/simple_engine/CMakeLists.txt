@@ -37,11 +37,16 @@ if(ENABLE_CPP20_MODULE)
     target_compile_definitions(VulkanCppModule
             PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
     )
-    target_include_directories(VulkanCppModule
-            PUBLIC
-            "${Vulkan_INCLUDE_DIR}"
-            "${VulkanHpp_INCLUDE_DIRS}"
-    )
+    # Build include list — fetched Vulkan-Headers must come before the SDK
+    # include dir when the installed SDK is too old for VK_KHR_opacity_micromap.
+    # This should be reverted when SDK 351 is released.
+    set(_vkmod_incdirs)
+    if (DEFINED VULKAN_FETCHED_HEADERS_INCLUDE AND EXISTS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+        list(APPEND _vkmod_incdirs "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    endif ()
+    list(APPEND _vkmod_incdirs "${Vulkan_INCLUDE_DIR}" "${VulkanHpp_INCLUDE_DIRS}")
+    target_include_directories(VulkanCppModule PUBLIC ${_vkmod_incdirs})
+    unset(_vkmod_incdirs)
     target_link_libraries(VulkanCppModule
             PUBLIC
             Vulkan::Vulkan
@@ -75,7 +80,17 @@ else()
     target_compile_definitions(VulkanCppModule
             INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
     )
-    target_include_directories(VulkanCppModule INTERFACE "${VulkanHpp_INCLUDE_DIRS}")
+    # Same header-ordering logic as the module path: fetched Vulkan-Headers must
+    # come before VulkanHpp_INCLUDE_DIRS so the newer vulkan_core.h is found
+    # first when the installed SDK is too old for VK_KHR_opacity_micromap.
+    # This section should be reverted when SDK 351 is released.
+    set(_vkmod_incdirs)
+    if (DEFINED VULKAN_FETCHED_HEADERS_INCLUDE AND EXISTS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+        list(APPEND _vkmod_incdirs "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    endif ()
+    list(APPEND _vkmod_incdirs "${VulkanHpp_INCLUDE_DIRS}")
+    target_include_directories(VulkanCppModule INTERFACE ${_vkmod_incdirs})
+    unset(_vkmod_incdirs)
 endif()
 
 

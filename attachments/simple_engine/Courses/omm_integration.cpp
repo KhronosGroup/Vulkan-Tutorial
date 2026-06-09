@@ -112,12 +112,25 @@ void OmmIntegration::buildMicromaps(const OmmConfig& config) {
       OpacityMicromapBuilder tempBuilder;
       tempBuilder.init(*m_renderer);
 
-      // Wait for any pending texture streaming to complete.
-      // This ensures that textures we expect to be cached are actually processed.
-      std::cout << "[OMM] Waiting for pending texture tasks...\n";
+      // Wait for textures, then wait for the render thread to drain deferred
+      // mesh uploads (which populates meshResources).  OMM must not scan
+      // before meshResources is fully populated or it will find 0 meshes.
+      // WaitForAllTextureTasks only confirms jobs are ENQUEUED to upload workers,
+      // not that they have been PROCESSED (StoreRawTexturePixels called).
+      // We must also wait for the raw pixel cache to stabilise before scanning.
+      std::cout << "[OMM] Waiting for texture jobs to enqueue...\n";
       m_renderer->WaitForAllTextureTasks();
+      std::cout << "[OMM] Waiting for mesh resources to settle...\n";
+      if (!m_renderer->WaitForMeshResourcesToSettle()) {
+        std::cout << "[OMM] Timed out waiting for mesh resources; proceeding with partial mesh list.\n";
+      }
+      std::cout << "[OMM] Waiting for raw pixel cache to settle...\n";
+      if (!m_renderer->WaitForRawPixelCacheToSettle()) {
+        std::cout << "[OMM] Timed out waiting for pixel cache; some textures may be missing.\n";
+      }
 
       std::vector<const MeshComponent*> meshes = m_renderer->GetRegisteredMeshes();
+      std::cout << "[OMM] Scanning " << meshes.size() << " registered meshes.\n";
       OmmSceneStats tempStats{};
 
       float sumOpaque = 0.f, sumTransparent = 0.f, sumUnknown = 0.f;
@@ -148,7 +161,14 @@ void OmmIntegration::buildMicromaps(const OmmConfig& config) {
         std::cout << "[OMM] Building for mesh with texture '" << mat->albedoTexturePath
                   << "' (" << texW << "x" << texH << ")\n";
 
-        const OmmMeshInfo info = tempBuilder.buildForMesh(mesh, pixels, texW, texH, texCh, config);
+        OmmMeshInfo info{};
+        try {
+          info = tempBuilder.buildForMesh(mesh, pixels, texW, texH, texCh, config);
+        } catch (const std::exception& e) {
+          std::cerr << "[OMM] buildForMesh failed for '" << mat->albedoTexturePath
+              << "': " << e.what() << "\n";
+          continue;
+        }
 
         if (info.built) {
           ++tempStats.micromapsBuilt;

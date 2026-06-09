@@ -47,8 +47,9 @@
 //   geometryType = VK_GEOMETRY_TYPE_MICROMAP_KHR. No host build path exists.
 //
 // - Size query is vkGetAccelerationStructureBuildSizesKHR with buildType =
-//   VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR. pMaxPrimitiveCounts must
-//   be null for micromap builds.
+//   VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR.
+//   pMaxPrimitiveCounts[i] is the max triangle count for geometry[i].
+//   The raw C dispatcher is used so we can directly control the call.
 //
 // - Input buffers require VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR.
 //   The micromap backing buffer requires VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR.
@@ -442,19 +443,19 @@ void OpacityMicromapBuilder::classify(
 // =============================================================================
 // Phase 3 — buildOnGpu
 //
-// KHR API flow:
+// KHR micromap build path (VK_KHR_opacity_micromap):
 //   1. Upload packed state data and VkMicromapTriangleKHR array to device-local
 //      buffers via staging copies.
-//   2. Fill VkAccelerationStructureBuildGeometryInfoKHR with
-//      type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR and
-//      geometryType = VK_GEOMETRY_TYPE_MICROMAP_KHR.
-//   3. Query build sizes via vkGetAccelerationStructureBuildSizesKHR
-//      (pMaxPrimitiveCounts = null for micromap builds).
-//   4. Allocate storage buffer with VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR.
-//   5. Create micromap via vkCreateAccelerationStructure2KHR with
-//      type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR.
-//   6. Record and submit vkCmdBuildAccelerationStructuresKHR.
-//   7. Fill VkAccelerationStructureTrianglesOpacityMicromapKHR for the BLAS pNext chain.
+//   2. Fill VkAccelerationStructureGeometryMicromapDataKHR (chained via pNext of
+//      VkAccelerationStructureGeometryKHR with geometryType=eMicromap).
+//   3. Query build sizes via vkGetAccelerationStructureBuildSizesKHR.
+//   4. Allocate storage buffer with eAccelerationStructureStorageKHR.
+//   5. Create VkAccelerationStructureKHR (type=eOpacityMicromap) via
+//      vkCreateAccelerationStructure2KHR (VK_KHR_device_address_commands).
+//   6. Fill device addresses, record vkCmdBuildAccelerationStructuresKHR,
+//      submit and wait.
+//   7. Fill VkAccelerationStructureTrianglesOpacityMicromapKHR for the BLAS
+//      pNext chain.
 // =============================================================================
 
 void* OpacityMicromapBuilder::buildOnGpu(
@@ -508,7 +509,7 @@ void* OpacityMicromapBuilder::buildOnGpu(
 
   cb.copyBuffer(*stagTriBuf, *triBuf, vk::BufferCopy{ .size = triArraySize });
 
-  // ── Barrier: transfer write → acceleration structure build read ────────────
+  // ── Barrier: transfer write → AS build read ───────────────────────────────
   const std::array<vk::BufferMemoryBarrier2, 2> barriers{{
     {
       .srcStageMask  = vk::PipelineStageFlagBits2::eTransfer,
@@ -536,130 +537,116 @@ void* OpacityMicromapBuilder::buildOnGpu(
   usage.subdivisionLevel = subdivisionLevel;
   usage.format           = VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR;
 
-  // ── Build geometry: VK_GEOMETRY_TYPE_MICROMAP_KHR ─────────────────────────
-  // VkAccelerationStructureGeometryMicromapDataKHR is chained into pNext of
-  // VkAccelerationStructureGeometryKHR when geometryType == MICROMAP_KHR.
-  // data and triangleArray are left at 0 for the size query (ignored per spec).
-  VkAccelerationStructureGeometryMicromapDataKHR mmData{};
-  mmData.sType                = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_MICROMAP_DATA_KHR;
-  mmData.pNext                = nullptr;
-  mmData.usageCountsCount     = 1;
-  mmData.pUsageCounts         = &usage;
-  mmData.data                 = {};       // filled after size query
-  mmData.triangleArray        = {};       // filled after size query
-  mmData.triangleArrayStride  = sizeof(VkMicromapTriangleKHR);
+  // ── Micromap geometry data (chained via pNext of the geometry struct) ──────
+  VkAccelerationStructureGeometryMicromapDataKHR micromapData{};
+  micromapData.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_MICROMAP_DATA_KHR;
+  micromapData.usageCountsCount = 1;
+  micromapData.pUsageCounts = &usage;
+  micromapData.triangleArrayStride = sizeof(VkMicromapTriangleKHR);
+  // data and triangleArray device addresses filled after size query
 
-  VkAccelerationStructureGeometryKHR geom{};
-  geom.sType        = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-  geom.pNext        = nullptr;
-  geom.geometryType = VK_GEOMETRY_TYPE_MICROMAP_KHR;
-  geom.geometry     = {};   // union — micromap data goes in pNext
-  geom.flags        = 0;
+  VkAccelerationStructureGeometryKHR geometry{};
+  geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+  geometry.pNext = &micromapData;
+  geometry.geometryType = VK_GEOMETRY_TYPE_MICROMAP_KHR;
 
-  // We pass the micromap data via the geometry pNext chain
-  geom.pNext = &mmData;
+  // ── Build info (size query phase) ─────────────────────────────────────────
+  vk::BuildAccelerationStructureFlagsKHR buildFlags =
+      vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+  if (lossyBuild)
+    buildFlags |= vk::BuildAccelerationStructureFlagBitsKHR::eMicromapLossy;
 
   VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
-  buildInfo.sType                    = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-  buildInfo.type                     = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR;
-  buildInfo.flags                    = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-  buildInfo.mode                     = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-  buildInfo.geometryCount            = 1;
-  buildInfo.pGeometries              = &geom;
+  buildInfo.sType         = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+  buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR;
+  buildInfo.flags = static_cast<VkBuildAccelerationStructureFlagsKHR>(buildFlags);
+  buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+  buildInfo.geometryCount = 1;
+  buildInfo.pGeometries = &geometry;
 
-  if (lossyBuild)
-    buildInfo.flags |= VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR;
+  // ── Pre-flight: verify VK_KHR_device_address_commands function is loaded ───
+  if (!dev.getDispatcher()->vkCreateAccelerationStructure2KHR)
+    throw std::runtime_error(
+      "[OMM] vkCreateAccelerationStructure2KHR is null — "
+      "VK_KHR_device_address_commands was not enabled at device creation.");
 
   // ── Size query ─────────────────────────────────────────────────────────────
-  // pMaxPrimitiveCounts must be null for micromap builds (spec requirement).
-  VkAccelerationStructureBuildSizesInfoKHR sizes{};
-  sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-  vkGetAccelerationStructureBuildSizesKHR(
+  // pMaxPrimitiveCounts[i] is the maximum number of micromap triangles for
+  // geometry[i] per the VK_KHR_opacity_micromap spec.
+  VkAccelerationStructureBuildSizesInfoKHR sizeInfo{};
+  sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+  dev.getDispatcher()->vkGetAccelerationStructureBuildSizesKHR(
     *dev,
     VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
     &buildInfo,
-    nullptr,   // pMaxPrimitiveCounts — must be null for micromaps
-    &sizes);
+    &triangleCount,
+    &sizeInfo);
+
+  if (sizeInfo.accelerationStructureSize == 0)
+    throw std::runtime_error(
+      "[OMM] vkGetAccelerationStructureBuildSizesKHR returned zero size. "
+      "Ensure VK_KHR_opacity_micromap and VK_KHR_device_address_commands are enabled.");
 
   // ── Storage buffer for the micromap AS ────────────────────────────────────
-  // Requires VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR.
-  auto [mmStoreBuf, mmStoreMem] = makeDeviceBuffer(dev, *m_physDev, sizes.accelerationStructureSize,
+  auto [mmStoreBuf, mmStoreMem] = makeDeviceBuffer(dev, *m_physDev,
+    sizeInfo.accelerationStructureSize,
     vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
     vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
-  const vk::DeviceAddress mmStoreAddr =
-      dev.getBufferAddress({ .buffer = *mmStoreBuf });
-
   // ── Scratch buffer ─────────────────────────────────────────────────────────
-  auto [scratchBuf, scratchMem] = makeDeviceBuffer(dev, *m_physDev, sizes.buildScratchSize,
+  auto [scratchBuf, scratchMem] = makeDeviceBuffer(dev, *m_physDev,
+    std::max(sizeInfo.buildScratchSize, VkDeviceSize{4}),
     vk::BufferUsageFlagBits::eStorageBuffer |
     vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
-  // ── Create micromap — vkCreateAccelerationStructure2KHR ───────────────────
-  // VK_KHR_opacity_micromap requires vkCreateAccelerationStructure2KHR from
-  // VK_KHR_device_address_commands. vkCreateAccelerationStructureKHR cannot
-  // be used for micromaps.
-  VkAccelerationStructureCreateInfo2KHR mmCreateInfo{};
-  mmCreateInfo.sType        = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_2_KHR;
-  mmCreateInfo.createFlags  = 0;
-  mmCreateInfo.addressRange = mmStoreAddr;
-  mmCreateInfo.size         = sizes.accelerationStructureSize;
-  mmCreateInfo.type         = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR;
+  // ── Create VkAccelerationStructureKHR (type = opacity micromap) ───────────
+  const vk::DeviceAddress storageAddr = dev.getBufferAddress({.buffer = *mmStoreBuf});
+  auto micromap = dev.createAccelerationStructure2KHR(vk::AccelerationStructureCreateInfo2KHR{
+    .addressRange = {storageAddr, sizeInfo.accelerationStructureSize},
+    .type = vk::AccelerationStructureTypeKHR::eOpacityMicromap
+  });
 
-  VkAccelerationStructureKHR rawMicromap = VK_NULL_HANDLE;
-  vk::Result createResult = static_cast<vk::Result>(
-      dev.getDispatcher()->vkCreateAccelerationStructure2KHR(
-          *dev, &mmCreateInfo, nullptr, &rawMicromap));
-  if (createResult != vk::Result::eSuccess)
-    throw std::runtime_error("[OMM] vkCreateAccelerationStructure2KHR failed");
+  // ── Fill device addresses and record build ────────────────────────────────
+  micromapData.data = dev.getBufferAddress({.buffer = *dataBuf});
+  micromapData.triangleArray = dev.getBufferAddress({.buffer = *triBuf});
 
-  vk::raii::AccelerationStructureKHR micromap(dev, rawMicromap);
-
-  // ── Fill in device addresses for the actual build ─────────────────────────
-  mmData.data.deviceAddress           = dev.getBufferAddress({ .buffer = *dataBuf });
-  mmData.triangleArray.deviceAddress  = dev.getBufferAddress({ .buffer = *triBuf  });
-
-  buildInfo.dstAccelerationStructure  = *micromap;
+  buildInfo.dstAccelerationStructure = *micromap;
   buildInfo.scratchData.deviceAddress = dev.getBufferAddress({ .buffer = *scratchBuf });
 
-  // ── Record build — vkCmdBuildAccelerationStructuresKHR ────────────────────
-  // ppBuildRangeInfos elements are ignored for micromap builds (spec).
-  VkAccelerationStructureBuildRangeInfoKHR rangeInfo{};
+  const VkAccelerationStructureBuildRangeInfoKHR rangeInfo{
+    .primitiveCount  = triangleCount,
+    .primitiveOffset = 0,
+    .firstVertex = 0,
+    .transformOffset = 0
+  };
   const VkAccelerationStructureBuildRangeInfoKHR* pRangeInfo = &rangeInfo;
-  dev.getDispatcher()->vkCmdBuildAccelerationStructuresKHR(
-      *cb, 1, &buildInfo, &pRangeInfo);
+  dev.getDispatcher()->vkCmdBuildAccelerationStructuresKHR(*cb, 1, &buildInfo, &pRangeInfo);
 
   submitOneShot(cb);
 
   // ── Build the pNext attachment chain ──────────────────────────────────────
-  // VkAccelerationStructureTrianglesOpacityMicromapKHR is chained into
-  // pNext of VkAccelerationStructureGeometryTrianglesDataKHR for the BLAS build.
-  // indexBuffer is VkDeviceAddress (no host address variant in KHR).
-  // micromap is the VkAccelerationStructureKHR we just built.
+  // VkAccelerationStructureTrianglesOpacityMicromapKHR is chained into pNext
+  // of VkAccelerationStructureGeometryTrianglesDataKHR for the BLAS build.
   auto pNextOwner = std::make_unique<GpuEntry::PNextStorage>();
   pNextOwner->usageEntry = usage;
 
   VkAccelerationStructureTrianglesOpacityMicromapKHR& chain = pNextOwner->chain;
-  chain.sType           = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_KHR;
-  chain.pNext           = nullptr;
-  chain.indexType       = VK_INDEX_TYPE_NONE_KHR;  // identity mapping: tri N → micromap entry N
-  chain.indexBuffer     = 0;
-  chain.indexStride     = 0;
-  chain.baseTriangle    = 0;
-  chain.usageCountsCount = 1;
-  chain.pUsageCounts    = &pNextOwner->usageEntry;
-  chain.micromap        = *micromap;
+  chain.sType              = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_KHR;
+  chain.pNext = nullptr;
+  chain.indexType = VK_INDEX_TYPE_NONE_KHR; // identity: tri N → entry N
+  chain.indexBuffer = {};
+  chain.indexStride = 0;
+  chain.baseTriangle = 0;
+  chain.micromap = *micromap;
 
   void* pNextPtr = &chain;
 
-  outInfo.gpuBytes = sizes.accelerationStructureSize + dataSize + triArraySize;
+  outInfo.gpuBytes = sizeInfo.accelerationStructureSize + dataSize + triArraySize;
 
   // ── Store GPU resources ────────────────────────────────────────────────────
-  // The BLAS always holds a live reference to the micromap — the discardable
-  // property from VK_EXT_opacity_micromap is not in KHR.
   GpuEntry ge;
-  ge.dataBuf     = std::move(dataBuf);
-  ge.dataMem     = std::move(dataMem);
+  ge.dataBuf = std::move(dataBuf);
+  ge.dataMem = std::move(dataMem);
   ge.triBuf      = std::move(triBuf);
   ge.triMem      = std::move(triMem);
   ge.mmStoreBuf  = std::move(mmStoreBuf);

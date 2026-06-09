@@ -177,6 +177,126 @@ else()
   endif()
 endif()
 
+# ── Minimum version check for VK_KHR_opacity_micromap ─────────────────────────
+# VkAccelerationStructureTrianglesOpacityMicromapKHR first appeared in Vulkan
+# headers 1.4.351 (VK_KHR_opacity_micromap promotion from EXT to KHR).
+# If the installed SDK/system headers are older, we fetch both Vulkan-Headers
+# (C structs) and Vulkan-Hpp (C++ wrappers) from the GitHub main branch so the
+# project can compile.  The fetched C headers are prepended to all include
+# paths at the end of this file so they shadow the too-old SDK headers.
+# This block of code should be removed once SDK 351 is released.
+set(VULKAN_KHR_OMM_MIN_HEADER_VERSION 351)
+set(VULKAN_HEADERS_SUFFICIENT FALSE)
+
+if (VULKAN_CORE_H AND EXISTS "${VULKAN_CORE_H}")
+    file(STRINGS "${VULKAN_CORE_H}" _vk_hdr_line REGEX "^#define VK_HEADER_VERSION ")
+    file(STRINGS "${VULKAN_CORE_H}" _vk_cmp_line REGEX "^#define VK_HEADER_VERSION_COMPLETE")
+    string(REGEX MATCH "[0-9]+" _vk_patch "${_vk_hdr_line}")
+    if (_vk_cmp_line MATCHES "VK_MAKE_API_VERSION\\([^,]+,[ \t]*([0-9]+),[ \t]*([0-9]+),")
+        set(_vk_major "${CMAKE_MATCH_1}")
+        set(_vk_minor "${CMAKE_MATCH_2}")
+    else ()
+        set(_vk_major 0)
+        set(_vk_minor 0)
+    endif ()
+    if ((_vk_major GREATER 1) OR
+    (_vk_major EQUAL 1 AND _vk_minor GREATER 4) OR
+    (_vk_major EQUAL 1 AND _vk_minor EQUAL 4 AND
+            NOT _vk_patch LESS VULKAN_KHR_OMM_MIN_HEADER_VERSION))
+        set(VULKAN_HEADERS_SUFFICIENT TRUE)
+    endif ()
+    message(STATUS "Installed Vulkan headers: ${_vk_major}.${_vk_minor}.${_vk_patch} — need >= 1.4.${VULKAN_KHR_OMM_MIN_HEADER_VERSION} for VK_KHR_opacity_micromap")
+    unset(_vk_hdr_line)
+    unset(_vk_cmp_line)
+    unset(_vk_patch)
+    unset(_vk_major)
+    unset(_vk_minor)
+else ()
+    message(STATUS "Could not verify Vulkan header version — will fetch latest for VK_KHR_opacity_micromap safety")
+endif ()
+
+if (NOT VULKAN_HEADERS_SUFFICIENT)
+    message(STATUS "Installed Vulkan headers too old for VK_KHR_opacity_micromap — fetching from GitHub...")
+
+    include(FetchContent)
+    if (POLICY CMP0169)
+        cmake_policy(SET CMP0169 OLD)
+    endif ()
+
+    # ── Step 1: Fetch Vulkan-Hpp at main ──────────────────────────────────────
+    # Use a distinct content name (VulkanHppMain, not VulkanHpp) so a stale
+    # FetchContent cache entry from a prior run at an older versioned tag is
+    # never silently reused here.
+    FetchContent_Declare(
+            VulkanHppMain
+            GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Hpp.git
+            GIT_TAG main
+    )
+    FetchContent_GetProperties(VulkanHppMain SOURCE_DIR VulkanHppMain_SOURCE_DIR)
+    if (NOT VulkanHppMain_POPULATED)
+        FetchContent_Populate(VulkanHppMain)
+        FetchContent_GetProperties(VulkanHppMain SOURCE_DIR VulkanHppMain_SOURCE_DIR)
+    endif ()
+    message(STATUS "Fetched Vulkan-Hpp (main): ${VulkanHppMain_SOURCE_DIR}")
+
+    # ── Step 2: Determine the exact VK_HEADER_VERSION Vulkan-Hpp expects ─────
+    # vulkan.hpp contains a static_assert that pins the required C header
+    # version, e.g.:
+    #   static_assert( VK_HEADER_VERSION == 352, "Wrong VK_HEADER_VERSION!" );
+    # Fetching both Vulkan-Hpp and Vulkan-Headers independently at 'main' races:
+    # they advance separately and can diverge by one revision, triggering that
+    # assertion at compile time.  Parse the expected version now so Vulkan-Headers
+    # can be fetched at the matching versioned tag rather than at 'main'.
+    set(_vk_headers_tag "main")
+    set(_vk_headers_content_name "VulkanHeadersC_main")
+    if (EXISTS "${VulkanHppMain_SOURCE_DIR}/vulkan/vulkan.hpp")
+        file(STRINGS "${VulkanHppMain_SOURCE_DIR}/vulkan/vulkan.hpp" _assert_line
+                REGEX "ASSERT.*VK_HEADER_VERSION ==")
+        if (_assert_line MATCHES "==[ \t]*([0-9]+)")
+            set(_vk_expected_patch "${CMAKE_MATCH_1}")
+            set(_vk_headers_tag "v1.4.${_vk_expected_patch}")
+            # Encode the patch version in the content name so FetchContent's
+            # cache is invalidated automatically when Vulkan-Hpp advances to a
+            # new header version — no manual cache wipe needed.
+            set(_vk_headers_content_name "VulkanHeadersC_v1_4_${_vk_expected_patch}")
+            message(STATUS "Vulkan-Hpp (main) asserts VK_HEADER_VERSION == ${_vk_expected_patch} — fetching Vulkan-Headers at ${_vk_headers_tag}")
+            unset(_vk_expected_patch)
+        else ()
+            message(STATUS "Could not parse VK_HEADER_VERSION assertion from vulkan.hpp — falling back to Vulkan-Headers main")
+        endif ()
+        unset(_assert_line)
+    endif ()
+
+    # ── Step 3: Fetch Vulkan-Headers at the matched versioned tag ─────────────
+    FetchContent_Declare(
+            ${_vk_headers_content_name}
+            GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+            GIT_TAG "${_vk_headers_tag}"
+    )
+    FetchContent_GetProperties(${_vk_headers_content_name} SOURCE_DIR _VulkanHeadersC_srcdir)
+    if (NOT ${_vk_headers_content_name}_POPULATED)
+        FetchContent_Populate(${_vk_headers_content_name})
+        FetchContent_GetProperties(${_vk_headers_content_name} SOURCE_DIR _VulkanHeadersC_srcdir)
+    endif ()
+    # Vulkan-Headers lays out its headers under include/vulkan/
+    set(VULKAN_FETCHED_HEADERS_INCLUDE "${_VulkanHeadersC_srcdir}/include")
+    message(STATUS "Fetched Vulkan-Headers (${_vk_headers_tag}): ${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    unset(_vk_headers_tag)
+    unset(_vk_headers_content_name)
+    unset(_VulkanHeadersC_srcdir)
+
+    # Set VulkanHpp_INCLUDE_DIR (FORCE cache) so the existing versioned-fetch
+    # block below sees the directory as already satisfied and does not re-fetch
+    # at the old SDK-matched tag.
+    set(VulkanHpp_INCLUDE_DIR "${VulkanHppMain_SOURCE_DIR}" CACHE PATH
+            "Vulkan-Hpp include directory (fetched at main for VK_KHR_opacity_micromap)" FORCE)
+    if (EXISTS "${VulkanHppMain_SOURCE_DIR}/vulkan/vulkan.cppm")
+        set(VulkanHpp_CPPM_DIR "${VulkanHppMain_SOURCE_DIR}" CACHE PATH
+                "Vulkan-Hpp cppm directory (fetched at main)" FORCE)
+    endif ()
+endif ()
+# ── End of minimum version check ──────────────────────────────────────────────
+
 # If the include directory wasn't found, use FetchContent to download and build
 if(NOT VulkanHpp_INCLUDE_DIR OR NOT VulkanHpp_CPPM_DIR)
   # If not found, use FetchContent to download
@@ -422,5 +542,42 @@ export namespace vk {
 
   message(STATUS "Final VulkanHpp_CPPM_DIR: ${VulkanHpp_CPPM_DIR}")
 endif()
+
+# ── Prepend fetched C headers so they shadow the too-old SDK headers ──────────
+# This must run after all the VulkanHpp_INCLUDE_DIRS / target setup above so
+# that we can insert at position 0 regardless of which code path ran.
+# This section should be removed when SDK 351 is released.
+if (DEFINED VULKAN_FETCHED_HEADERS_INCLUDE AND EXISTS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    if (DEFINED VulkanHpp_INCLUDE_DIRS)
+        list(INSERT VulkanHpp_INCLUDE_DIRS 0 "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    else ()
+        set(VulkanHpp_INCLUDE_DIRS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    endif ()
+    # Update the imported target so any consumer that links VulkanHpp::VulkanHpp
+    # also gets the fetched headers first in its include path.
+    if (TARGET VulkanHpp::VulkanHpp)
+        set_target_properties(VulkanHpp::VulkanHpp PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${VulkanHpp_INCLUDE_DIRS}")
+    endif ()
+    # Patch the Vulkan::Headers / Vulkan::Vulkan targets that FindVulkan.cmake
+    # created — they point to the old SDK, so prepend the fetched headers there
+    # too so that direct users of those targets also see the newer definitions.
+    foreach (_vk_tgt Vulkan::Headers Vulkan::Vulkan)
+        if (TARGET "${_vk_tgt}")
+            get_target_property(_vk_incdirs "${_vk_tgt}" INTERFACE_INCLUDE_DIRECTORIES)
+            if (_vk_incdirs)
+                list(INSERT _vk_incdirs 0 "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+            else ()
+                set(_vk_incdirs "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+            endif ()
+            set_target_properties("${_vk_tgt}" PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${_vk_incdirs}")
+        endif ()
+    endforeach ()
+    unset(_vk_tgt)
+    unset(_vk_incdirs)
+    message(STATUS "Prepended fetched Vulkan-Headers to all include paths for VK_KHR_opacity_micromap")
+endif ()
+# ── End of fetched-headers prepend ────────────────────────────────────────────
 
 mark_as_advanced(VulkanHpp_INCLUDE_DIR VulkanHpp_CPPM_DIR)

@@ -25,24 +25,21 @@
 //
 // WHAT THIS DOES
 // --------------
-// Builds a VkAccelerationStructureKHR micromap (type
-// VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR) for every alpha-masked
-// mesh submitted to it, then attaches the result into the engine's BLAS build
-// via VkAccelerationStructureTrianglesOpacityMicromapKHR in the pNext chain.
+// Builds a VkAccelerationStructureKHR (type=eOpacityMicromap) for every
+// alpha-masked mesh submitted to it, then attaches the result into the engine's
+// BLAS build via VkAccelerationStructureTrianglesOpacityMicromapKHR in the
+// pNext chain.
 //
 // After the BLAS is rebuilt the GPU hardware traversal unit resolves most
 // shadow-ray hits against alpha-tested geometry without running any shader
 // code. Only micro-triangles at the very edge of the alpha boundary still
 // invoke the any-hit shader.
 //
-// This module implements VK_KHR_opacity_micromap. Key design points:
-//   - Micromaps are VkAccelerationStructureKHR objects, not a separate type.
-//     They are created via vkCreateAccelerationStructure2KHR and built via
-//     vkCmdBuildAccelerationStructuresKHR — device-side only, no host path.
-//   - The pNext attachment struct is VkAccelerationStructureTrianglesOpacityMicromapKHR.
-//     Its indexBuffer field is a plain VkDeviceAddress (device-only).
-//   - The BLAS always holds a live reference to its micromap — there is no
-//     "discardable" property as in VK_EXT_opacity_micromap.
+// This module requires VK_KHR_opacity_micromap and VK_KHR_device_address_commands:
+//   - Build sizes via vkGetAccelerationStructureBuildSizesKHR
+//   - Micromap AS via vkCreateAccelerationStructure2KHR (type=eOpacityMicromap)
+//   - Build recorded via vkCmdBuildAccelerationStructuresKHR
+//   - Attached to BLAS via VkAccelerationStructureTrianglesOpacityMicromapKHR
 //   - Ray query shaders must declare the OpacityMicromapKHR SPIR-V execution
 //     mode (via SPV_KHR_opacity_micromap) for the hardware optimisation to
 //     activate. Without it the traversal unit ignores all micromap data.
@@ -215,9 +212,8 @@ private:
 
   // ── Per-micromap GPU resource ownership ───────────────────────────────────
   //
-  // In VK_KHR_opacity_micromap the micromap is a VkAccelerationStructureKHR
-  // with type VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, backed by
-  // a device-local buffer. The BLAS holds a permanent live reference to it.
+  // Micromaps are VkAccelerationStructureKHR objects (type=eOpacityMicromap)
+  // built via VK_KHR_device_address_commands + VK_KHR_opacity_micromap.
 
   struct GpuEntry {
     // State data and triangle-array buffers (build inputs)
@@ -226,18 +222,18 @@ private:
     vk::raii::Buffer       triBuf    {nullptr};
     vk::raii::DeviceMemory triMem    {nullptr};
 
-    // Backing storage for the micromap acceleration structure
+    // Backing storage buffer for the micromap AS
     vk::raii::Buffer       mmStoreBuf {nullptr};
     vk::raii::DeviceMemory mmStoreMem {nullptr};
 
-    // The micromap itself: VkAccelerationStructureKHR (OPACITY_MICROMAP type)
+    // The micromap acceleration structure (VK_KHR_opacity_micromap)
     vk::raii::AccelerationStructureKHR micromap {nullptr};
 
     // VkAccelerationStructureTrianglesOpacityMicromapKHR + usage entry.
-    // Heap-allocated and never moved — the BLAS build holds a raw pointer to it.
+    // Heap-allocated and never moved — the BLAS build holds a raw pointer.
     struct PNextStorage {
-      VkAccelerationStructureTrianglesOpacityMicromapKHR chain{};
       VkMicromapUsageKHR usageEntry{};
+      VkAccelerationStructureTrianglesOpacityMicromapKHR chain{};
     };
     std::unique_ptr<PNextStorage> pNextOwner;
   };

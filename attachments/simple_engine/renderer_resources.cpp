@@ -829,9 +829,19 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
   }
   // Double-check cache after the wait
   {
-    std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
-    auto it2 = textureResources.find(resolvedId);
-    if (it2 != textureResources.end()) {
+    bool alreadyLoaded = false; {
+      std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+      alreadyLoaded = textureResources.contains(resolvedId);
+    }
+    if (alreadyLoaded) {
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // Another thread may have loaded the GPU texture but skipped the pixel
+      // cache (e.g. it used a different cachePixels=false call).  Store the
+      // pixels now while we still have imageData in hand.
+      if (cachePixels && GetRawTexturePixels(resolvedId, nullptr, nullptr, nullptr) == nullptr) {
+        StoreRawTexturePixels(resolvedId, imageData, width, height, channels);
+      }
+#endif
       return true;
     }
   }

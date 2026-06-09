@@ -1124,7 +1124,9 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       opacityMicromapSupported = featChain2.template get<vk::PhysicalDeviceOpacityMicromapFeaturesKHR>();
       if (opacityMicromapSupported.micromap) {
         opacityMicromapEnable.micromap = vk::True;
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
         opacityMicromapEnabled = true;
+#endif
         *tailNext = &opacityMicromapEnable;
         tailNext = reinterpret_cast<void **>(&opacityMicromapEnable.pNext);
       }

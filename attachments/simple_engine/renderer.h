@@ -555,6 +555,7 @@ class Renderer {
     // This method polls rawPixelCache.size() until it is stable, confirming that
     // upload worker threads have finished their StoreRawTexturePixels calls.
     // Returns false on timeout.
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
     bool WaitForRawPixelCacheToSettle(float timeoutSeconds = 60.f) const {
       const auto deadline = std::chrono::steady_clock::now()
           + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -580,6 +581,7 @@ class Renderer {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
     }
+#endif // ENABLE_COURSE_OPACITY_MICROMAPS
 
     // Process pending texture GPU uploads on the calling thread.
     // This should be invoked from the main/render thread so that all

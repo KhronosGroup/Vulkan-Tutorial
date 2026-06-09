@@ -1,0 +1,170 @@
+version = 1
+
+[[annotations]]
+path = [
+    "attachments/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Khronos Group, Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "attachments/00_base_code.cpp",
+    "attachments/01_instance_creation.cpp",
+    "attachments/02_validation_layers.cpp",
+    "attachments/03_physical_device_selection.cpp",
+    "attachments/04_logical_device.cpp",
+    "attachments/05_window_surface.cpp",
+    "attachments/06_swap_chain_creation.cpp",
+    "attachments/07_image_views.cpp",
+    "attachments/08_graphics_pipeline.cpp",
+    "attachments/09_shader_base.frag",
+    "attachments/09_shader_base.vert",
+    "attachments/09_shader_modules.cpp",
+    "attachments/10_fixed_functions.cpp",
+    "attachments/12_graphics_pipeline_complete.cpp",
+    "attachments/14_command_buffers.cpp",
+    "attachments/15_hello_triangle.cpp",
+    "attachments/16_frames_in_flight.cpp",
+    "attachments/17_swap_chain_recreation.cpp",
+    "attachments/19_vertex_buffer.cpp",
+    "attachments/20_staging_buffer.cpp",
+    "attachments/21_index_buffer.cpp",
+    "attachments/22_shader_ubo.frag",
+    "attachments/22_shader_ubo.vert",
+    "attachments/23_descriptor_sets.cpp",
+    "attachments/24_texture_image.cpp",
+    "attachments/25_sampler.cpp",
+    "attachments/26_shader_textures.frag",
+    "attachments/26_shader_textures.vert",
+    "attachments/26_texture_mapping.cpp",
+    "attachments/27_depth_buffering.cpp",
+    "attachments/27_shader_depth.frag",
+    "attachments/27_shader_depth.vert",
+    "attachments/28_model_loading.cpp",
+    "attachments/29_mipmapping.cpp",
+    "attachments/30_multisampling.cpp",
+    "attachments/31_compute_shader.cpp",
+    "attachments/31_shader_compute.comp",
+    "attachments/31_shader_compute.frag",
+    "attachments/31_shader_compute.vert",
+    "attachments/CMakeLists.txt",
+    "attachments/incremental_patch.sh",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+    "2023 Alexander Overvoorde",
+    "2023-2026 The Khronos Group, Inc.",
+]
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "attachments/CMake/FindVulkan.cmake"
+precedence = "closest"
+SPDX-FileCopyrightText = "Holochip Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "attachments/simple_engine/**",
+    "scripts/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Holochip Corporation"
+SPDX-License-Identifier = "Apache-2.0"
+
+
+[[annotations]]
+path = [
+    "images/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+    "2023 Alexander Overvoorde",
+    "2023-2026 The Khronos Group, Inc.",
+]
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = [
+    "images/38_*",
+    "bistro.png",
+    "bookstand.png",
+    "component_based_architecture_diagram.png",
+    "data_oriented_design_diagram.svg",
+    "layered_architecture_diagram.png",
+    "MainEntry.png",
+    "matrix-order-comparison.svg",
+    "PBR_ray_shadows.png",
+    "rendering_pipeline_flowchart.png",
+    "sdk_install_mac.png",
+    "service_locator_pattern_diagram.svg",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+    "2023-2026 The Khronos Group, Inc.",
+]
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = [
+    "en/00_Introduction.adoc",
+    "en/01_Overview.adoc",
+    "en/02_Development_environment.adoc",
+    "en/03_Drawing_a_triangle/**",
+    "en/04_Vertex_buffers/**",
+    "en/05_Uniform_buffers/**",
+    "en/06_Texture_mapping/**",
+    "en/07_Depth_buffering.adoc",
+    "en/08_Loading_models.adoc",
+    "en/09_Generating_Mipmaps.adoc",
+    "en/10_Multisampling.adoc",
+    "en/11_Compute_Shader.adoc",
+    "en/90_FAQ.adoc",
+    "en/95_Privacy_policy.adoc",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+    "2023 Alexander Overvoorde",
+    "2023-2026 The Khronos Group, Inc.",
+]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = [
+    "en/Building_a_Simple_Engine/**",
+    "en/courses/**",
+    "en/12_Ecosystem_Utilities_and_Compatibility.adoc",
+    "en/13_Vulkan_Profiles.adoc",
+    "en/14_Android.adoc",
+    "en/15_GLTF_KTX2_Migration.adoc",
+    "en/16_Multiple_Objects.adoc",
+    "en/17_Multithreading.adoc",
+    "en/18_Ray_tracing.adoc",
+    "en/conclusion.adoc",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+    "2023-2026 The Khronos Group, Inc.",
+]
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "antora-ci-playbook.yml",
+    "antora/**",
+    ".github/workflows/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Sascha Willems"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = [
+    ".github/workflows/reuse-compliance.yml",
+    ".gitignore",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Khronos Group, Inc."
+SPDX-License-Identifier = "CC-BY-4.0"

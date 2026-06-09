@@ -106,6 +106,10 @@ if(COURSE_SOURCES)
 
     target_link_libraries(SimpleEngineCourses PUBLIC glm::glm)
 
+    if (ANDROID)
+        target_link_libraries(SimpleEngineCourses PUBLIC game-activity::game-activity)
+    endif ()
+
     # Export the library name to the parent scope so CMakeLists.txt can link it.
     set(SIMPLE_ENGINE_COURSES_LIB SimpleEngineCourses PARENT_SCOPE)
 

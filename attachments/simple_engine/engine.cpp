@@ -495,12 +495,13 @@ void Engine::Update(TimeDelta deltaTime) {
   // list from the main thread. This lets the loading thread construct
   // entities/components safely while the main thread only drives the
   // UI/loading overlay.
-  if (renderer&& renderer
-  
-  ->
-  IsLoading()
-  ) {
+  if (renderer && renderer->IsLoading()) {
     if (imguiSystem) {
+      uint32_t rw, rh;
+      renderer->GetSwapChainExtent(&rw, &rh);
+      if (rw > 0 && rh > 0) {
+        imguiSystem->HandleResize(rw, rh);
+      }
       imguiSystem->NewFrame();
     }
     return;
@@ -521,7 +522,14 @@ void Engine::Update(TimeDelta deltaTime) {
   audioSystem->Update(deltaTime);
 
   // Update ImGui system
-  imguiSystem->NewFrame();
+  if (imguiSystem) {
+    uint32_t rw, rh;
+    renderer->GetSwapChainExtent(&rw, &rh);
+    if (rw > 0 && rh > 0) {
+      imguiSystem->HandleResize(rw, rh);
+    }
+    imguiSystem->NewFrame();
+  }
 
   // Update camera controls
   if (activeCamera) {
@@ -601,6 +609,8 @@ void Engine::HandleResize(int width, int height) const {
   if (height <= 0 || width <= 0) {
     return;
   }
+  LOGI("Engine: HandleResize %dx%d", width, height);
+
   // Update the active camera's aspect ratio
   if (activeCamera) {
     activeCamera->SetAspectRatio(static_cast<float>(width) / static_cast<float>(height));
@@ -945,8 +955,19 @@ void Engine::HandleMouseHover(float mouseX, float mouseY) {
 #if defined(PLATFORM_ANDROID)
 // Android-specific implementation
 bool Engine::InitializeAndroid(android_app* app, const std::string& appName, bool enableValidationLayers) {
+  // Record main thread identity
+  mainThreadId = std::this_thread::get_id();
+
   // Create platform
   platform = CreatePlatform(app);
+
+  // Wait for the window to be initialized before continuing
+  while (app->window == nullptr) {
+    if (!platform->ProcessEvents()) {
+      return false; // Exit requested
+    }
+  }
+
   if (!platform->Initialize(appName, 0, 0)) {
     return false;
   }
@@ -995,37 +1016,50 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
   });
 
   // Create renderer
+  LOGI("Engine: Initializing Renderer...");
   renderer = std::make_unique<Renderer>(platform.get());
   if (!renderer->Initialize(appName, enableValidationLayers)) {
+    LOGE("Engine: Renderer initialization failed");
     return false;
   }
+  LOGI("Engine: Renderer initialized successfully");
 
   // Get window dimensions from platform for ImGui initialization
   int width, height;
   platform->GetWindowSize(&width, &height);
+  LOGI("Engine: Initial window size: %dx%d", width, height);
+
+  // Ensure initial size is applied to camera and renderer
+  HandleResize(width, height);
 
   try {
     // Model loader via constructor; also wire into renderer
+    LOGI("Engine: Initializing ModelLoader...");
     modelLoader = std::make_unique<ModelLoader>(renderer.get());
     renderer->SetModelLoader(modelLoader.get());
 
     // Audio system via constructor
+    LOGI("Engine: Initializing AudioSystem...");
     audioSystem = std::make_unique<AudioSystem>(this, renderer.get());
 
     // Physics system via constructor (GPU enabled)
+    LOGI("Engine: Initializing PhysicsSystem...");
     physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
 
 #ifdef ENABLE_COURSE_OPACITY_MICROMAPS
     // OMM integration via constructor
-    ommIntegration = std::make_unique<OmmIntegration>();
+LOGI("Engine: Initializing OmmIntegration...");
+ommIntegration = std::make_unique<OmmIntegration>();
     ommIntegration->init(*renderer, *modelLoader);
 #endif
 
     // ImGui via constructor, then connect audio system
+    LOGI("Engine: Initializing ImGuiSystem...");
     imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
     imguiSystem->SetAudioSystem(audioSystem.get());
+    LOGI("Engine: Subsystems initialized successfully");
   } catch (const std::exception& e) {
-    std::cerr << "Subsystem initialization failed: " << e.what() << std::endl;
+    LOGE("Subsystem initialization failed: %s", e.what());
     return false;
   }
 
@@ -1046,16 +1080,29 @@ void Engine::RunAndroid() {
 
   running = true;
 
-  // Main loop is handled by the platform
-  // We just need to update and render when the platform is ready
+  while (running) {
+    // Process Android events
+    if (!platform->ProcessEvents()) {
+      running = false;
+      break;
+    }
 
-  // Calculate delta time
-  deltaTimeMs = CalculateDeltaTimeMs();
+    // Only update and render if we have a valid window size
+    int width, height;
+    platform->GetWindowSize(&width, &height);
+    if (width > 0 && height > 0) {
+      // Calculate delta time
+      deltaTimeMs = CalculateDeltaTimeMs();
 
-  // Update
-  Update(deltaTimeMs);
+      // Update
+      Update(deltaTimeMs);
 
-  // Render
-  Render();
+      // Render
+      Render();
+    } else {
+      // If the window is not ready or minimized, yield to the system
+      std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+  }
 }
 #endif

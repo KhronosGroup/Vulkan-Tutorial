@@ -35,22 +35,44 @@ AndroidPlatform::AndroidPlatform(android_app* androidApp) : app(androidApp) {
     switch (cmd) {
       case APP_CMD_INIT_WINDOW:
       case APP_CMD_WINDOW_RESIZED:
+      case APP_CMD_CONFIG_CHANGED:
         if (app->window != nullptr) {
           // Get the window dimensions
           ANativeWindow* window = app->window;
-          platform->width = ANativeWindow_getWidth(window);
-          platform->height = ANativeWindow_getHeight(window);
-          platform->windowResized = true;
+          int32_t newWidth = ANativeWindow_getWidth(window);
+          int32_t newHeight = ANativeWindow_getHeight(window);
 
-          // Call the resize callback if set
-          if (platform->resizeCallback) {
-            platform->resizeCallback(platform->width, platform->height);
+          LOGI("AndroidPlatform: Window event %d. Dimensions: %dx%d", cmd, newWidth, newHeight);
+
+          if (newWidth > 0 && newHeight > 0 && (newWidth != platform->width || newHeight != platform->height)) {
+            platform->width = newWidth;
+            platform->height = newHeight;
+            platform->windowResized = true;
+
+            LOGI("AndroidPlatform: Resizing to %dx%d", platform->width, platform->height);
+
+            // Call the resize callback if set
+            if (platform->resizeCallback) {
+              platform->resizeCallback(platform->width, platform->height);
+            }
           }
         }
         break;
 
       case APP_CMD_TERM_WINDOW:
-        // Window is being hidden or closed
+        LOGI("AndroidPlatform: APP_CMD_TERM_WINDOW");
+        // Window is being hidden or closed. Mark as resized with 0 size to stop rendering.
+        platform->width = 0;
+        platform->height = 0;
+        platform->windowResized = true;
+        break;
+
+      case APP_CMD_GAINED_FOCUS:
+        LOGI("AndroidPlatform: APP_CMD_GAINED_FOCUS");
+        break;
+
+      case APP_CMD_LOST_FOCUS:
+        LOGI("AndroidPlatform: APP_CMD_LOST_FOCUS");
         break;
 
       default:
@@ -98,6 +120,42 @@ bool AndroidPlatform::ProcessEvents() {
     if (app->destroyRequested != 0) {
       return false;
     }
+  }
+
+  // Handle GameActivity input events
+  android_input_buffer* inputBuffer = android_app_swap_input_buffers(app);
+  if (inputBuffer) {
+    // Process motion events (touches)
+    for (uint64_t i = 0; i < inputBuffer->motionEventsCount; ++i) {
+      GameActivityMotionEvent& event = inputBuffer->motionEvents[i];
+
+      // We only care about the first pointer for now (mouse emulation)
+      if (event.pointerCount > 0) {
+        float x = GameActivityPointerAxes_getX(&event.pointers[0]);
+        float y = GameActivityPointerAxes_getY(&event.pointers[0]);
+
+        int32_t action = event.action & AMOTION_EVENT_ACTION_MASK;
+        uint32_t buttons = 0;
+
+        if (action == AMOTION_EVENT_ACTION_DOWN || action == AMOTION_EVENT_ACTION_MOVE) {
+          buttons = 0x01; // Left button pressed
+        }
+
+        if (mouseCallback) {
+          mouseCallback(x, y, buttons);
+        }
+      }
+    }
+    android_app_clear_motion_events(inputBuffer);
+
+    // Process key events
+    for (uint64_t i = 0; i < inputBuffer->keyEventsCount; ++i) {
+      GameActivityKeyEvent& event = inputBuffer->keyEvents[i];
+      if (keyboardCallback) {
+        keyboardCallback(event.keyCode, event.action == AKEY_EVENT_ACTION_DOWN);
+      }
+    }
+    android_app_clear_key_events(inputBuffer);
   }
 
   return true;

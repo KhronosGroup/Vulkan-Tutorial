@@ -101,10 +101,12 @@ bool LoadGLTFModel(Engine* engine,
             << ", noGeometry=" << physicsNoGeometry << std::endl;
       }
     };
-    // Load the complete GLTF model with all textures and lighting on the main thread
+    // Load the complete GLTF model with all textures and lighting on the background thread
     Model* loadedModel = modelLoader->LoadGLTF(modelPath);
     if (!loadedModel) {
       std::cerr << "Failed to load GLTF model: " << modelPath << std::endl;
+      // Ensure the loading screen disappears even on failure so the app doesn't hang
+      renderer->MarkInitialLoadComplete();
       return false;
     }
 
@@ -188,6 +190,7 @@ bool LoadGLTFModel(Engine* engine,
     const std::vector<MaterialMesh>& materialMeshes = modelLoader->GetMaterialMeshes(modelPath);
     if (materialMeshes.empty()) {
       std::cerr << "No material meshes found in loaded model: " << modelPath << std::endl;
+      renderer->MarkInitialLoadComplete();
       return false;
     }
 
@@ -578,6 +581,10 @@ bool LoadGLTFModel(Engine* engine,
     renderer->SetLoadingPhaseProgress(0.0f);
     std::cout << "Requesting acceleration structure build for loaded scene..." << std::endl;
     renderer->RequestAccelerationStructureBuild();
+  } else {
+    // No acceleration structure build needed; jump straight to finalizing
+    // to allow the render thread to dismiss the loading overlay.
+    renderer->SetLoadingPhase(Renderer::LoadingPhase::Finalizing);
   }
 
   return true;

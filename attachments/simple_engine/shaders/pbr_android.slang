@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// Simplified PBR shader for Android to avoid PowerVR driver bugs
 import common_types;
 import pbr_utils;
 import lighting_utils;
@@ -47,7 +48,6 @@ struct VSOutput {
 [[vk::binding(3, 0)]] Sampler2D normalMap;
 [[vk::binding(4, 0)]] Sampler2D occlusionMap;
 [[vk::binding(5, 0)]] Sampler2D emissiveMap;
-// Bindings 6, 7, 8 (SSBOs) REMOVED
 [[vk::binding(10, 0)]] Sampler2D reflectionMap;
 
 [[vk::push_constant]] PushConstants material;
@@ -79,19 +79,15 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float2 uv = float2(input.UV.x, 1.0 - input.UV.y);
     float4 baseColor = (material.baseColorTextureSet < 0) ? material.baseColorFactor : baseColorMap.Sample(uv) * material.baseColorFactor;
 
-    float metallic = material.metallicFactor;
-    float roughness = material.roughnessFactor;
-    float3 albedo = baseColor.rgb * (1.0 - metallic);
-
     if (material.alphaMask > 0.5 && baseColor.a < material.alphaMaskCutoff) { discard; }
 
     float3 N = normalize(input.Normal);
     float3 V = normalize(ubo.camPos.xyz - input.WorldPos);
-    float3 L = normalize(float3(1.0, 1.0, 1.0));
+    float3 L = normalize(float3(1.0, 1.0, 1.0)); // Single directional light
 
     float NdotL = max(dot(N, L), 0.0);
-    float3 ambient = albedo * 0.1 * ubo.scaleIBLAmbient;
-    float3 diffuse = albedo * NdotL;
+    float3 ambient = baseColor.rgb * 0.1 * ubo.scaleIBLAmbient;
+    float3 diffuse = baseColor.rgb * NdotL;
 
     return float4(diffuse + ambient, baseColor.a);
 }
@@ -99,6 +95,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
 [[shader("fragment")]]
 float4 GlassPSMain(VSOutput input) : SV_TARGET
 {
+    // Basic glass fallback for Android
     float2 uv = float2(input.UV.x, 1.0 - input.UV.y);
     float4 baseColor = (material.baseColorTextureSet < 0) ? material.baseColorFactor : baseColorMap.Sample(uv) * material.baseColorFactor;
 

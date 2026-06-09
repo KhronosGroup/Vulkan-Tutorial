@@ -15,6 +15,11 @@
  * limitations under the License.
  */
 #include "renderer.h"
+
+#ifdef PLATFORM_ANDROID
+#include <vulkan/vulkan_android.h>
+#endif
+
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -120,6 +125,12 @@ Renderer::Renderer(Platform* platform) : platform(platform) {
   // Initialize deviceExtensions with required extensions only
   // Optional extensions will be added later after checking device support
   deviceExtensions = requiredDeviceExtensions;
+
+#if defined(PLATFORM_ANDROID)
+  // Re-enable Ray Query and Forward+ for Android now that basic rendering is stabilized
+  currentRenderMode = RenderMode::RayQuery;
+  useForwardPlus = true;
+#endif
 }
 
 // Destructor
@@ -129,204 +140,275 @@ Renderer::~Renderer() {
 
 // Initialize the renderer
 bool Renderer::Initialize(const std::string& appName, bool enableValidationLayers) {
-  // Initialize the Vulkan-Hpp default dispatcher using the global symbol directly.
-  // This avoids differences across Vulkan-Hpp versions for DynamicLoader placement.
-  VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-  // Create a Vulkan instance
-  if (!createInstance(appName, enableValidationLayers)) {
-    std::cerr << "Failed to create Vulkan instance" << std::endl;
+  LOGI("Renderer::Initialize start");
+  // Initialize the Vulkan-Hpp default dispatcher.
+  // On Android, use a dynamic loader to ensure we get the correct entry point.
+#if defined(PLATFORM_ANDROID)
+  LOGI("Initializing dispatcher with DynamicLoader...");
+  static vk::detail::DynamicLoader dl;
+  PFN_vkGetInstanceProcAddr pvkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+  if (!pvkGetInstanceProcAddr) {
+    LOGE("Failed to load vkGetInstanceProcAddr!");
     return false;
   }
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(pvkGetInstanceProcAddr);
+  LOGI("Dispatcher initialized");
+#else
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+#endif
+  // Create a Vulkan instance
+  LOGI("Creating Vulkan instance...");
+  if (!createInstance(appName, enableValidationLayers)) {
+    LOGE("Failed to create Vulkan instance");
+    return false;
+  }
+  LOGI("Instance created successfully");
 
   // Setup debug messenger
+  LOGI("Setting up debug messenger...");
   if (!setupDebugMessenger(enableValidationLayers)) {
-    std::cerr << "Failed to setup debug messenger" << std::endl;
+    LOGE("Failed to setup debug messenger");
     return false;
   }
+  LOGI("Debug messenger setup successfully");
 
   // Create surface
+  LOGI("Creating surface...");
   if (!createSurface()) {
-    std::cerr << "Failed to create surface" << std::endl;
+    LOGE("Failed to create surface");
     return false;
   }
+  LOGI("Surface created successfully");
 
   // Pick the physical device
+  LOGI("Picking physical device...");
   if (!pickPhysicalDevice()) {
-    std::cerr << "Failed to pick physical device" << std::endl;
+    LOGE("Failed to pick physical device");
     return false;
   }
+  LOGI("Physical device picked successfully");
 
   // Create logical device
+  LOGI("Creating logical device...");
   if (!createLogicalDevice(enableValidationLayers)) {
-    std::cerr << "Failed to create logical device" << std::endl;
+    LOGE("Failed to create logical device");
     return false;
   }
+  LOGI("Logical device created successfully");
 
   // Initialize memory pool for efficient memory management
+  LOGI("Initializing memory pool...");
   try {
     memoryPool = std::make_unique<MemoryPool>(device, physicalDevice);
     if (!memoryPool->initialize()) {
-      std::cerr << "Failed to initialize memory pool" << std::endl;
+      LOGE("Failed to initialize memory pool");
       return false;
     }
-
-    // Optionally pre-allocate initial memory blocks for pools.
-    // For large scenes (e.g., Bistro) on mid-range GPUs this can cause early OOM.
-    // Skip pre-allocation to reduce peak memory pressure; blocks will be created on demand.
-    // if (!memoryPool->preAllocatePools()) { /* non-fatal */ }
+    LOGI("Memory pool initialized successfully");
   } catch (const std::exception& e) {
-    std::cerr << "Failed to create memory pool: " << e.what() << std::endl;
+    LOGE("Failed to create memory pool: %s", e.what());
     return false;
   }
 
   // Create swap chain
+  LOGI("Creating swap chain...");
   if (!createSwapChain()) {
-    std::cerr << "Failed to create swap chain" << std::endl;
+    LOGE("Failed to create swap chain");
     return false;
   }
+  LOGI("Swap chain created successfully");
 
   // Create image views
+  LOGI("Creating image views...");
   if (!createImageViews()) {
-    std::cerr << "Failed to create image views" << std::endl;
+    LOGE("Failed to create image views");
     return false;
   }
+  LOGI("Image views created successfully");
 
   // Setup dynamic rendering
+  LOGI("Setting up dynamic rendering...");
   if (!setupDynamicRendering()) {
-    std::cerr << "Failed to setup dynamic rendering" << std::endl;
+    LOGE("Failed to setup dynamic rendering");
     return false;
   }
+  LOGI("Dynamic rendering setup successfully");
 
   // Create the descriptor set layout
+  LOGI("Creating descriptor set layout...");
   if (!createDescriptorSetLayout()) {
-    std::cerr << "Failed to create descriptor set layout" << std::endl;
+    LOGE("Failed to create descriptor set layout");
     return false;
   }
+  LOGI("Descriptor set layout created successfully");
 
   // Create the graphics pipeline
+  LOGI("Creating graphics pipeline...");
   if (!createGraphicsPipeline()) {
-    std::cerr << "Failed to create graphics pipeline" << std::endl;
+    LOGE("Failed to create graphics pipeline");
     return false;
   }
+  LOGI("Graphics pipeline created successfully");
 
   // Create PBR pipeline
+  LOGI("Creating PBR pipeline...");
   if (!createPBRPipeline()) {
-    std::cerr << "Failed to create PBR pipeline" << std::endl;
+    LOGE("Failed to create PBR pipeline");
     return false;
   }
+  LOGI("PBR pipeline created successfully");
 
   // Create the lighting pipeline
+  LOGI("Creating lighting pipeline...");
   if (!createLightingPipeline()) {
-    std::cerr << "Failed to create lighting pipeline" << std::endl;
+    LOGE("Failed to create lighting pipeline");
     return false;
   }
+  LOGI("Lighting pipeline created successfully");
 
   // Create composite pipeline (fullscreen pass for off-screen → swapchain)
+  LOGI("Creating composite pipeline...");
   if (!createCompositePipeline()) {
-    std::cerr << "Failed to create composite pipeline" << std::endl;
+    LOGE("Failed to create composite pipeline");
     return false;
   }
+  LOGI("Composite pipeline created successfully");
 
   // Create compute pipeline
+  LOGI("Creating compute pipeline...");
   if (!createComputePipeline()) {
-    std::cerr << "Failed to create compute pipeline" << std::endl;
+    LOGE("Failed to create compute pipeline");
     return false;
   }
+  LOGI("Compute pipeline created successfully");
 
   // Ensure light storage buffers exist before creating Forward+ resources
   // so that compute descriptor binding 0 (lights SSBO) can be populated safely.
+  LOGI("Creating light storage buffers...");
   if (!createOrResizeLightStorageBuffers(1)) {
-    std::cerr << "Failed to create initial light storage buffers" << std::endl;
+    LOGE("Failed to create initial light storage buffers");
     return false;
   }
+  LOGI("Light storage buffers created successfully");
 
   // Create Forward+ compute and depth pre-pass pipelines/resources
   if (useForwardPlus) {
+    LOGI("Creating Forward+ resources...");
     if (!createForwardPlusPipelinesAndResources()) {
-      std::cerr << "Failed to create Forward+ resources" << std::endl;
+      LOGE("Failed to create Forward+ resources");
       return false;
     }
+    LOGI("Forward+ resources created successfully");
   }
 
   // Create ray query descriptor set layout and pipeline (but not resources yet - need descriptor pool first)
+  LOGI("Creating ray query descriptor set layout...");
   if (!createRayQueryDescriptorSetLayout()) {
-    std::cerr << "Failed to create ray query descriptor set layout" << std::endl;
+    LOGE("Failed to create ray query descriptor set layout");
     return false;
   }
+  LOGI("Ray query descriptor set layout created successfully");
+
+  LOGI("Creating ray query pipeline...");
   if (!createRayQueryPipeline()) {
-    std::cerr << "Failed to create ray query pipeline" << std::endl;
+    LOGE("Failed to create ray query pipeline");
     return false;
   }
+  LOGI("Ray query pipeline created successfully");
 
   // Create the command pool
+  LOGI("Creating command pool...");
   if (!createCommandPool()) {
-    std::cerr << "Failed to create command pool" << std::endl;
+    LOGE("Failed to create command pool");
     return false;
   }
+  LOGI("Command pool created successfully");
 
   // Create depth resources
+  LOGI("Creating depth resources...");
   if (!createDepthResources()) {
-    std::cerr << "Failed to create depth resources" << std::endl;
+    LOGE("Failed to create depth resources");
     return false;
   }
+  LOGI("Depth resources created successfully");
 
   if (useForwardPlus) {
+    LOGI("Creating depth prepass pipeline...");
     if (!createDepthPrepassPipeline()) {
-      std::cerr << "Failed to create depth prepass pipeline" << std::endl;
+      LOGE("Failed to create depth prepass pipeline");
       return false;
     }
+    LOGI("Depth prepass pipeline created successfully");
   }
 
   // Create the descriptor pool
+  LOGI("Creating descriptor pool...");
   if (!createDescriptorPool()) {
-    std::cerr << "Failed to create descriptor pool" << std::endl;
+    LOGE("Failed to create descriptor pool");
     return false;
   }
+  LOGI("Descriptor pool created successfully");
 
   // Create ray query resources AFTER descriptor pool (needs pool for descriptor set allocation)
+  LOGI("Creating ray query resources...");
   if (!createRayQueryResources()) {
-    std::cerr << "Failed to create ray query resources" << std::endl;
+    LOGE("Failed to create ray query resources");
     return false;
   }
+  LOGI("Ray query resources created successfully");
 
   // Note: Acceleration structure build is requested by scene_loading.cpp after entities load
   // No need to request it here during init
 
   // Light storage buffers were already created earlier to satisfy Forward+ binding requirements
 
+  LOGI("Creating opaque scene color resources...");
   if (!createOpaqueSceneColorResources()) {
-    std::cerr << "Failed to create opaque scene color resources" << std::endl;
+    LOGE("Failed to create opaque scene color resources");
     return false;
   }
+  LOGI("Opaque scene color resources created successfully");
 
+  LOGI("Creating transparent descriptor sets...");
   createTransparentDescriptorSets();
+  LOGI("Transparent descriptor sets created");
 
   // Create default texture resources
+  LOGI("Creating default texture resources...");
   if (!createDefaultTextureResources()) {
-    std::cerr << "Failed to create default texture resources" << std::endl;
+    LOGE("Failed to create default texture resources");
     return false;
   }
+  LOGI("Default texture resources created successfully");
 
   // Create fallback transparent descriptor sets (must occur after default textures exist)
+  LOGI("Creating fallback transparent descriptor sets...");
   createTransparentFallbackDescriptorSets();
+  LOGI("Fallback transparent descriptor sets created");
 
   // Create shared default PBR textures (to avoid creating hundreds of identical textures)
+  LOGI("Creating shared default PBR textures...");
   if (!createSharedDefaultPBRTextures()) {
-    std::cerr << "Failed to create shared default PBR textures" << std::endl;
+    LOGE("Failed to create shared default PBR textures");
     return false;
   }
+  LOGI("Shared default PBR textures created successfully");
 
   // Create command buffers
+  LOGI("Creating command buffers...");
   if (!createCommandBuffers()) {
-    std::cerr << "Failed to create command buffers" << std::endl;
+    LOGE("Failed to create command buffers");
     return false;
   }
+  LOGI("Command buffers created successfully");
 
   // Create sync objects
+  LOGI("Creating sync objects...");
   if (!createSyncObjects()) {
-    std::cerr << "Failed to create sync objects" << std::endl;
+    LOGE("Failed to create sync objects");
     return false;
   }
+  LOGI("Sync objects created successfully");
 
   // Initialize background thread pool for async tasks (textures, etc.) AFTER all Vulkan resources are ready
   try {
@@ -334,7 +416,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     unsigned int hw = std::max(2u, std::min(8u, std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : 4u));
     threadPool = std::make_unique<ThreadPool>(hw);
   } catch (const std::exception& e) {
-    std::cerr << "Failed to create thread pool: " << e.what() << std::endl;
+    LOGE("Failed to create thread pool: %s", e.what());
     return false;
   }
 
@@ -575,6 +657,9 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
+#elif defined(PLATFORM_ANDROID)
+    extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
 #endif
 
     // Add debug extension if validation layers are enabled
@@ -593,12 +678,15 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
     vk::ValidationFeaturesEXT validationFeatures{};
     std::vector<vk::ValidationFeatureEnableEXT> enabledValidationFeatures;
 
-    if (enableValidationLayers) {
+    bool actualEnableValidationLayers = enableValidationLayers;
+    if (actualEnableValidationLayers) {
       if (!checkValidationLayerSupport()) {
-        std::cerr << "Validation layers requested, but not available" << std::endl;
-        return false;
+        LOGW("Validation layers requested, but not available. Continuing without validation.");
+        actualEnableValidationLayers = false;
       }
+    }
 
+    if (actualEnableValidationLayers) {
       createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
       createInfo.ppEnabledLayerNames = validationLayers.data();
 
@@ -613,9 +701,11 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
 
     // Create instance
     instance = vk::raii::Instance(context, createInfo);
+    // Initialize the dispatcher with the instance to load instance-level functions
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
     return true;
   } catch (const std::exception& e) {
-    std::cerr << "Failed to create instance: " << e.what() << std::endl;
+    LOGE("Failed to create instance: %s", e.what());
     return false;
   }
 }
@@ -637,13 +727,8 @@ bool Renderer::setupDebugMessenger(bool enableValidationLayers) {
         vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
         vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
 
-    // Select callback via simple platform macro: Android typically expects C PFN types in headers
-    // while desktop (newer Vulkan-Hpp) expects vk:: types.
-#if defined(__ANDROID__)
-    createInfo.pfnUserCallback = &debugCallbackVkRaii;
-#else
+    // Select callback: modern Vulkan-Hpp expects vk:: types.
     createInfo.pfnUserCallback = &debugCallbackVkHpp;
-#endif
 
     // Create debug messenger
     debugMessenger = vk::raii::DebugUtilsMessengerEXT(instance, createInfo);
@@ -690,13 +775,12 @@ bool Renderer::pickPhysicalDevice() {
     for (auto& _device : devices) {
       // Print device properties for debugging
       vk::PhysicalDeviceProperties deviceProperties = _device.getProperties();
-      std::cout << "Checking device: " << deviceProperties.deviceName
-          << " (Type: " << vk::to_string(deviceProperties.deviceType) << ")" << std::endl;
+      LOGI("Checking device: %s (Type: %s)", deviceProperties.deviceName.data(), vk::to_string(deviceProperties.deviceType).c_str());
 
       // Check if the device supports Vulkan 1.3
       bool supportsVulkan1_3 = deviceProperties.apiVersion >= VK_API_VERSION_1_3;
       if (!supportsVulkan1_3) {
-        std::cout << "  - Does not support Vulkan 1.3" << std::endl;
+        LOGI("  - Does not support Vulkan 1.3");
         continue;
       }
 
@@ -704,14 +788,14 @@ bool Renderer::pickPhysicalDevice() {
       QueueFamilyIndices indices = findQueueFamilies(_device);
       bool supportsGraphics = indices.isComplete();
       if (!supportsGraphics) {
-        std::cout << "  - Missing required queue families" << std::endl;
+        LOGI("  - Missing required queue families");
         continue;
       }
 
       // Check device extensions
       bool supportsAllRequiredExtensions = checkDeviceExtensionSupport(_device);
       if (!supportsAllRequiredExtensions) {
-        std::cout << "  - Missing required extensions" << std::endl;
+        LOGI("  - Missing required extensions");
         continue;
       }
 
@@ -719,7 +803,7 @@ bool Renderer::pickPhysicalDevice() {
       SwapChainSupportDetails swapChainSupport = querySwapChainSupport(_device);
       bool swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
       if (!swapChainAdequate) {
-        std::cout << "  - Inadequate swap chain support" << std::endl;
+        LOGI("  - Inadequate swap chain support");
         continue;
       }
 
@@ -727,7 +811,7 @@ bool Renderer::pickPhysicalDevice() {
       auto features = _device.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features>();
       bool supportsRequiredFeatures = features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
       if (!supportsRequiredFeatures) {
-        std::cout << "  - Does not support required features (dynamicRendering)" << std::endl;
+        LOGI("  - Does not support required features (dynamicRendering)");
         continue;
       }
 
@@ -737,12 +821,12 @@ bool Renderer::pickPhysicalDevice() {
       // Discrete GPUs get the highest priority (NVIDIA RTX 2080, AMD, etc.)
       if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
         score += 1000;
-        std::cout << "  - Discrete GPU: +1000 points" << std::endl;
+        LOGI("  - Discrete GPU: +1000 points");
       }
       // Integrated GPUs get lower priority (Intel UHD Graphics, etc.)
       else if (deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) {
         score += 100;
-        std::cout << "  - Integrated GPU: +100 points" << std::endl;
+        LOGI("  - Integrated GPU: +100 points");
       }
 
       // Add points for memory size (more VRAM is better)
@@ -755,7 +839,7 @@ bool Renderer::pickPhysicalDevice() {
         }
       }
 
-      std::cout << "  - Device is suitable with score: " << score << std::endl;
+      LOGI("  - Device is suitable with score: %d", score);
       suitableDevices.emplace(score, _device);
     }
 
@@ -763,9 +847,10 @@ bool Renderer::pickPhysicalDevice() {
       // Select the device with the highest score (discrete GPU with most VRAM)
       physicalDevice = suitableDevices.rbegin()->second;
       vk::PhysicalDeviceProperties deviceProperties = physicalDevice.getProperties();
-      std::cout << "Selected device: " << deviceProperties.deviceName
-          << " (Type: " << vk::to_string(deviceProperties.deviceType)
-          << ", Score: " << suitableDevices.rbegin()->first << ")" << std::endl;
+      LOGI("Selected device: %s (Type: %s, Score: %d)",
+           deviceProperties.deviceName.data(),
+           vk::to_string(deviceProperties.deviceType).c_str(),
+           suitableDevices.rbegin()->first);
 
       // Store queue family indices for the selected device
       queueFamilyIndices = findQueueFamilies(physicalDevice);
@@ -775,7 +860,7 @@ bool Renderer::pickPhysicalDevice() {
 
       return true;
     }
-    std::cerr << "Failed to find a suitable GPU. Make sure your GPU supports Vulkan and has the required extensions." << std::endl;
+    LOGE("Failed to find a suitable GPU. Make sure your GPU supports Vulkan and has the required extensions.");
     return false;
   } catch (const std::exception& e) {
     std::cerr << "Failed to pick physical device: " << e.what() << std::endl;
@@ -817,6 +902,7 @@ void Renderer::addSupportedOptionalExtensions() {
 
 // Create logical device
 bool Renderer::createLogicalDevice(bool enableValidationLayers) {
+  LOGI("Entering createLogicalDevice");
   try {
     // Create queue create info for each unique queue family
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
@@ -837,130 +923,64 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       queueCreateInfos.push_back(queueCreateInfo);
     }
 
+    LOGI("Querying supported features...");
     // Query supported features before enabling them
-    auto supportedFeatures = physicalDevice.getFeatures2<
+    auto featureChainSupported = physicalDevice.getFeatures2<
       vk::PhysicalDeviceFeatures2,
       vk::PhysicalDeviceTimelineSemaphoreFeatures,
       vk::PhysicalDeviceVulkanMemoryModelFeatures,
       vk::PhysicalDeviceBufferDeviceAddressFeatures,
       vk::PhysicalDevice8BitStorageFeatures,
       vk::PhysicalDeviceVulkan11Features,
-      vk::PhysicalDeviceVulkan13Features>();
-
-    // Verify critical features are supported
-    const auto& coreSupported = supportedFeatures.get<vk::PhysicalDeviceFeatures2>().features;
-    const auto& timelineSupported = supportedFeatures.get<vk::PhysicalDeviceTimelineSemaphoreFeatures>();
-    const auto& memoryModelSupported = supportedFeatures.get<vk::PhysicalDeviceVulkanMemoryModelFeatures>();
-    const auto& bufferAddressSupported = supportedFeatures.get<vk::PhysicalDeviceBufferDeviceAddressFeatures>();
-    const auto& storage8BitSupported = supportedFeatures.get<vk::PhysicalDevice8BitStorageFeatures>();
-    const auto& vulkan11Supported = supportedFeatures.get<vk::PhysicalDeviceVulkan11Features>();
-    const auto& vulkan13Supported = supportedFeatures.get<vk::PhysicalDeviceVulkan13Features>();
-
-    // Check for required features
-    if (!coreSupported.samplerAnisotropy ||
-      !timelineSupported.timelineSemaphore ||
-      !memoryModelSupported.vulkanMemoryModel ||
-      !bufferAddressSupported.bufferDeviceAddress ||
-      !vulkan11Supported.shaderDrawParameters ||
-      !vulkan13Supported.dynamicRendering ||
-      !vulkan13Supported.synchronization2) {
-      throw std::runtime_error("Required Vulkan features not supported by physical device");
-    }
-
-    // Enable required features (now verified to be supported)
-    auto features = physicalDevice.getFeatures2();
-    features.features.samplerAnisotropy = vk::True;
-    features.features.depthBiasClamp = coreSupported.depthBiasClamp ? vk::True : vk::False;
-
-    // Explicitly configure device features to prevent validation layer warnings
-    // These features are required by extensions or other features, so we enable them explicitly
-
-    // Timeline semaphore features (required for synchronization2)
-    vk::PhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures;
-    timelineSemaphoreFeatures.timelineSemaphore = vk::True;
-
-    // Vulkan memory model features (required for some shader operations)
-    vk::PhysicalDeviceVulkanMemoryModelFeatures memoryModelFeatures;
-    memoryModelFeatures.vulkanMemoryModel = vk::True;
-    memoryModelFeatures.vulkanMemoryModelDeviceScope = memoryModelSupported.vulkanMemoryModelDeviceScope ? vk::True : vk::False;
-
-    // Buffer device address features (required for some buffer operations)
-    vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures;
-    bufferDeviceAddressFeatures.bufferDeviceAddress = vk::True;
-
-    // 8-bit storage features (required for some shader storage operations)
-    vk::PhysicalDevice8BitStorageFeatures storage8BitFeatures;
-    storage8BitFeatures.storageBuffer8BitAccess = storage8BitSupported.storageBuffer8BitAccess ? vk::True : vk::False;
-
-    // Enable Vulkan 1.3 features
-    vk::PhysicalDeviceVulkan13Features vulkan13Features;
-    vulkan13Features.dynamicRendering = vk::True;
-    vulkan13Features.synchronization2 = vk::True;
-
-    // Vulkan 1.1 features: shaderDrawParameters to satisfy SPIR-V DrawParameters capability
-    vk::PhysicalDeviceVulkan11Features vulkan11Features{};
-    vulkan11Features.shaderDrawParameters = vk::True;
-    // Query extended feature support
-#if !defined(PLATFORM_ANDROID)
-    auto featureChain = physicalDevice.getFeatures2<
-      vk::PhysicalDeviceFeatures2,
+      vk::PhysicalDeviceVulkan12Features,
+      vk::PhysicalDeviceVulkan13Features,
       vk::PhysicalDeviceDescriptorIndexingFeatures,
       vk::PhysicalDeviceRobustness2FeaturesEXT,
       vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR,
       vk::PhysicalDeviceShaderTileImageFeaturesEXT,
       vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
       vk::PhysicalDeviceRayQueryFeaturesKHR>();
-    const auto& localReadSupported = featureChain.get<vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR>();
-    const auto& tileImageSupported = featureChain.get<vk::PhysicalDeviceShaderTileImageFeaturesEXT>();
-#else
-    auto featureChain = physicalDevice.getFeatures2<
-      vk::PhysicalDeviceFeatures2,
-      vk::PhysicalDeviceDescriptorIndexingFeatures,
-      vk::PhysicalDeviceRobustness2FeaturesEXT,
-      vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-      vk::PhysicalDeviceRayQueryFeaturesKHR>();
-#endif
-    const auto& coreFeaturesSupported = featureChain.get<vk::PhysicalDeviceFeatures2>().features;
-    const auto& indexingFeaturesSupported = featureChain.get<vk::PhysicalDeviceDescriptorIndexingFeatures>();
-    const auto& robust2Supported = featureChain.get<vk::PhysicalDeviceRobustness2FeaturesEXT>();
-    const auto& accelerationStructureSupported = featureChain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
-    const auto& rayQuerySupported = featureChain.get<vk::PhysicalDeviceRayQueryFeaturesKHR>();
+    LOGI("Features queried successfully");
 
-    // Ray Query shader uses indexing into a (large) sampled-image array.
-    // Some drivers require this core feature to be explicitly enabled.
-    if (coreFeaturesSupported.shaderSampledImageArrayDynamicIndexing) {
-      features.features.shaderSampledImageArrayDynamicIndexing = vk::True;
+    // Extract supported feature structs
+    const auto& coreSupported = featureChainSupported.get<vk::PhysicalDeviceFeatures2>().features;
+    const auto& timelineSupported = featureChainSupported.get<vk::PhysicalDeviceTimelineSemaphoreFeatures>();
+    const auto& memoryModelSupported = featureChainSupported.get<vk::PhysicalDeviceVulkanMemoryModelFeatures>();
+    const auto& bufferAddressSupported = featureChainSupported.get<vk::PhysicalDeviceBufferDeviceAddressFeatures>();
+    const auto& storage8BitSupported = featureChainSupported.get<vk::PhysicalDevice8BitStorageFeatures>();
+    const auto& vulkan11Supported = featureChainSupported.get<vk::PhysicalDeviceVulkan11Features>();
+    const auto& vulkan13Supported = featureChainSupported.get<vk::PhysicalDeviceVulkan13Features>();
+    const auto& indexingFeaturesSupported = featureChainSupported.get<vk::PhysicalDeviceDescriptorIndexingFeatures>();
+    const auto& robust2Supported = featureChainSupported.get<vk::PhysicalDeviceRobustness2FeaturesEXT>();
+    const auto& localReadSupported = featureChainSupported.get<vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR>();
+    const auto& tileImageSupported = featureChainSupported.get<vk::PhysicalDeviceShaderTileImageFeaturesEXT>();
+    const auto& accelerationStructureSupported = featureChainSupported.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
+    const auto& rayQuerySupported = featureChainSupported.get<vk::PhysicalDeviceRayQueryFeaturesKHR>();
+
+    // Verify critical features are supported
+    if (!coreSupported.samplerAnisotropy)
+    LOGW("Missing feature: samplerAnisotropy");
+    if (!timelineSupported.timelineSemaphore)
+    LOGW("Missing feature: timelineSemaphore");
+    if (!memoryModelSupported.vulkanMemoryModel)
+    LOGW("Missing feature: vulkanMemoryModel");
+    if (!bufferAddressSupported.bufferDeviceAddress)
+    LOGW("Missing feature: bufferDeviceAddress");
+    if (!vulkan13Supported.dynamicRendering)
+    LOGW("Missing feature: dynamicRendering");
+    if (!vulkan13Supported.synchronization2)
+    LOGW("Missing feature: synchronization2");
+
+    if (!coreSupported.samplerAnisotropy ||
+      !timelineSupported.timelineSemaphore ||
+      !memoryModelSupported.vulkanMemoryModel ||
+      !bufferAddressSupported.bufferDeviceAddress ||
+      !vulkan13Supported.dynamicRendering ||
+      !vulkan13Supported.synchronization2) {
+      throw std::runtime_error("Required Vulkan features not supported by physical device");
     }
 
-    // Prepare descriptor indexing features to enable if supported
-    vk::PhysicalDeviceDescriptorIndexingFeatures indexingFeaturesEnable{};
-    descriptorIndexingEnabled = false;
-    // Enable non-uniform indexing of sampled image arrays when supported — required for
-    // `NonUniformResourceIndex()` in the ray-query shader to actually take effect.
-    if (indexingFeaturesSupported.shaderSampledImageArrayNonUniformIndexing) {
-      indexingFeaturesEnable.shaderSampledImageArrayNonUniformIndexing = vk::True;
-      descriptorIndexingEnabled = true;
-    }
-
-    // These are not strictly required when writing a fully-populated descriptor array,
-    // but enabling them when available avoids edge-case driver behavior for large arrays.
-    if (descriptorIndexingEnabled) {
-      if (indexingFeaturesSupported.descriptorBindingPartiallyBound) {
-        indexingFeaturesEnable.descriptorBindingPartiallyBound = vk::True;
-      }
-      if (indexingFeaturesSupported.descriptorBindingUpdateUnusedWhilePending) {
-        indexingFeaturesEnable.descriptorBindingUpdateUnusedWhilePending = vk::True;
-      }
-    }
-    // Optionally enable UpdateAfterBind flags when supported (not strictly required for RQ textures)
-    if (indexingFeaturesSupported.descriptorBindingSampledImageUpdateAfterBind)
-      indexingFeaturesEnable.descriptorBindingSampledImageUpdateAfterBind = vk::True;
-    if (indexingFeaturesSupported.descriptorBindingUniformBufferUpdateAfterBind)
-      indexingFeaturesEnable.descriptorBindingUniformBufferUpdateAfterBind = vk::True;
-    if (indexingFeaturesSupported.descriptorBindingUpdateUnusedWhilePending)
-      indexingFeaturesEnable.descriptorBindingUpdateUnusedWhilePending = vk::True;
-
-    // Helper to check if an extension is enabled (using string comparison)
+    // Helper to check extension availability
     auto hasExtension = [&](const char* name) {
       return std::find_if(deviceExtensions.begin(),
                           deviceExtensions.end(),
@@ -969,63 +989,100 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
                           }) != deviceExtensions.end();
     };
 
-    // Prepare Robustness2 features if the extension is enabled and device supports
-    auto hasRobust2 = hasExtension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME);
-    vk::PhysicalDeviceRobustness2FeaturesEXT robust2Enable{};
-    if (hasRobust2) {
-      if (robust2Supported.robustBufferAccess2)
-        robust2Enable.robustBufferAccess2 = vk::True;
-      if (robust2Supported.robustImageAccess2)
-        robust2Enable.robustImageAccess2 = vk::True;
-      if (robust2Supported.nullDescriptor)
-        robust2Enable.nullDescriptor = vk::True;
+    // Feature structures for the logical device
+    vk::PhysicalDeviceFeatures2 features2{};
+    features2.features.samplerAnisotropy = vk::True;
+    features2.features.depthBiasClamp = coreSupported.depthBiasClamp ? vk::True : vk::False;
+    if (coreSupported.shaderSampledImageArrayDynamicIndexing) {
+      features2.features.shaderSampledImageArrayDynamicIndexing = vk::True;
     }
 
-#if !defined(PLATFORM_ANDROID)
-    // Prepare Dynamic Rendering Local Read features if extension is enabled and supported
-    auto hasLocalRead = hasExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+    vk::PhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures{};
+    timelineSemaphoreFeatures.timelineSemaphore = vk::True;
+
+    vk::PhysicalDeviceVulkanMemoryModelFeatures memoryModelFeatures{};
+    memoryModelFeatures.vulkanMemoryModel = vk::True;
+    memoryModelFeatures.vulkanMemoryModelDeviceScope = memoryModelSupported.vulkanMemoryModelDeviceScope ? vk::True : vk::False;
+
+    vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+    bufferDeviceAddressFeatures.bufferDeviceAddress = vk::True;
+
+    vk::PhysicalDevice8BitStorageFeatures storage8BitFeatures{};
+    storage8BitFeatures.storageBuffer8BitAccess = storage8BitSupported.storageBuffer8BitAccess ? vk::True : vk::False;
+
+    vk::PhysicalDeviceVulkan11Features vulkan11Features{};
+    if (vulkan11Supported.shaderDrawParameters) {
+      vulkan11Features.shaderDrawParameters = vk::True;
+    }
+
+    vk::PhysicalDeviceVulkan13Features vulkan13Features{};
+    vulkan13Features.dynamicRendering = vk::True;
+    vulkan13Features.synchronization2 = vk::True;
+
+    vk::PhysicalDeviceDescriptorIndexingFeatures indexingFeaturesEnable{};
+    descriptorIndexingEnabled = false;
+    if (indexingFeaturesSupported.shaderSampledImageArrayNonUniformIndexing) {
+      indexingFeaturesEnable.shaderSampledImageArrayNonUniformIndexing = vk::True;
+      descriptorIndexingEnabled = true;
+    }
+    if (descriptorIndexingEnabled) {
+      if (indexingFeaturesSupported.descriptorBindingPartiallyBound) indexingFeaturesEnable.descriptorBindingPartiallyBound = vk::True;
+      if (indexingFeaturesSupported.descriptorBindingUpdateUnusedWhilePending) indexingFeaturesEnable.descriptorBindingUpdateUnusedWhilePending = vk::True;
+      if (indexingFeaturesSupported.descriptorBindingSampledImageUpdateAfterBind) {
+        indexingFeaturesEnable.descriptorBindingSampledImageUpdateAfterBind = vk::True;
+        descriptorBindingSampledImageUpdateAfterBindEnabled = true;
+      }
+      if (indexingFeaturesSupported.descriptorBindingUniformBufferUpdateAfterBind) {
+        indexingFeaturesEnable.descriptorBindingUniformBufferUpdateAfterBind = vk::True;
+        descriptorBindingUniformBufferUpdateAfterBindEnabled = true;
+      }
+    }
+
+    vk::PhysicalDeviceRobustness2FeaturesEXT robust2Enable{};
+    bool hasRobust2 = hasExtension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME);
+    if (hasRobust2) {
+      if (robust2Supported.robustBufferAccess2) robust2Enable.robustBufferAccess2 = vk::True;
+      if (robust2Supported.robustImageAccess2) robust2Enable.robustImageAccess2 = vk::True;
+      if (robust2Supported.nullDescriptor) robust2Enable.nullDescriptor = vk::True;
+    }
+    robustness2Enabled = hasRobust2 && (robust2Enable.robustBufferAccess2 || robust2Enable.robustImageAccess2 || robust2Enable.nullDescriptor);
+
     vk::PhysicalDeviceDynamicRenderingLocalReadFeaturesKHR localReadEnable{};
+    bool hasLocalRead = hasExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
     if (hasLocalRead && localReadSupported.dynamicRenderingLocalRead) {
       localReadEnable.dynamicRenderingLocalRead = vk::True;
     }
+    dynamicRenderingLocalReadEnabled = hasLocalRead && localReadEnable.dynamicRenderingLocalRead;
 
-    // Prepare Shader Tile Image features if extension is enabled and supported
-    auto hasTileImage = hasExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME);
     vk::PhysicalDeviceShaderTileImageFeaturesEXT tileImageEnable{};
-    if (hasTileImage) {
-      if (tileImageSupported.shaderTileImageColorReadAccess)
-        tileImageEnable.shaderTileImageColorReadAccess = vk::True;
-      if (tileImageSupported.shaderTileImageDepthReadAccess)
-        tileImageEnable.shaderTileImageDepthReadAccess = vk::True;
-      if (tileImageSupported.shaderTileImageStencilReadAccess)
-        tileImageEnable.shaderTileImageStencilReadAccess = vk::True;
+    bool hasTileImage = hasExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME);
+    if (hasTileImage && tileImageSupported.shaderTileImageColorReadAccess) {
+      tileImageEnable.shaderTileImageColorReadAccess = vk::True;
     }
-#endif
+    shaderTileImageEnabled = hasTileImage && tileImageEnable.shaderTileImageColorReadAccess;
 
-    // Prepare Acceleration Structure features if extension is enabled and supported
-    auto hasAccelerationStructure = hasExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureEnable{};
-    if (hasAccelerationStructure && accelerationStructureSupported.accelerationStructure) {
-      accelerationStructureEnable.accelerationStructure = vk::True;
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR asFeaturesEnable{};
+    bool hasAS = hasExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+    if (hasAS && accelerationStructureSupported.accelerationStructure) {
+      asFeaturesEnable.accelerationStructure = vk::True;
     }
+    accelerationStructureEnabled = hasAS && asFeaturesEnable.accelerationStructure;
 
-    // Prepare Ray Query features if extension is enabled and supported
-    auto hasRayQuery = hasExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME);
-    vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryEnable{};
-    if (hasRayQuery && rayQuerySupported.rayQuery) {
-      rayQueryEnable.rayQuery = vk::True;
+    vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryFeaturesEnable{};
+    bool hasRQ = hasExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+    if (hasRQ && rayQuerySupported.rayQuery) {
+      rayQueryFeaturesEnable.rayQuery = vk::True;
     }
+    rayQueryEnabled = hasRQ && rayQueryFeaturesEnable.rayQuery;
 
-    // Chain the feature structures together (build pNext chain explicitly)
-    // Base
-    features.pNext = &timelineSemaphoreFeatures;
+    // Build the pNext chain
+    features2.pNext = &timelineSemaphoreFeatures;
     timelineSemaphoreFeatures.pNext = &memoryModelFeatures;
     memoryModelFeatures.pNext = &bufferDeviceAddressFeatures;
     bufferDeviceAddressFeatures.pNext = &storage8BitFeatures;
-    storage8BitFeatures.pNext = &vulkan11Features; // link 1.1 first
-    vulkan11Features.pNext = &vulkan13Features; // then 1.3 features
+    storage8BitFeatures.pNext = &vulkan11Features;
+    vulkan11Features.pNext = &vulkan13Features;
 
-    // Build tail chain starting at Vulkan 1.3 features
     void** tailNext = reinterpret_cast<void **>(&vulkan13Features.pNext);
     if (descriptorIndexingEnabled) {
       *tailNext = &indexingFeaturesEnable;
@@ -1045,13 +1102,13 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       tailNext = reinterpret_cast<void **>(&tileImageEnable.pNext);
     }
 #endif
-    if (hasAccelerationStructure) {
-      *tailNext = &accelerationStructureEnable;
-      tailNext = reinterpret_cast<void **>(&accelerationStructureEnable.pNext);
+    if (hasAS) {
+      *tailNext = &asFeaturesEnable;
+      tailNext = reinterpret_cast<void **>(&asFeaturesEnable.pNext);
     }
-    if (hasRayQuery) {
-      *tailNext = &rayQueryEnable;
-      tailNext = reinterpret_cast<void **>(&rayQueryEnable.pNext);
+    if (hasRQ) {
+      *tailNext = &rayQueryFeaturesEnable;
+      tailNext = reinterpret_cast<void **>(&rayQueryFeaturesEnable.pNext);
     }
 
     // Opacity micromap — VK_KHR_opacity_micromap (Course: Opacity Micromaps)
@@ -1067,6 +1124,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       opacityMicromapSupported = featChain2.template get<vk::PhysicalDeviceOpacityMicromapFeaturesKHR>();
       if (opacityMicromapSupported.micromap) {
         opacityMicromapEnable.micromap = vk::True;
+        opacityMicromapEnabled = true;
         *tailNext = &opacityMicromapEnable;
         tailNext = reinterpret_cast<void **>(&opacityMicromapEnable.pNext);
       }
@@ -1085,39 +1143,25 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     dynamicRenderingLocalReadEnabled = false;
     shaderTileImageEnabled = false;
 #endif
-    accelerationStructureEnabled = hasAccelerationStructure && (accelerationStructureEnable.accelerationStructure == vk::True);
-    rayQueryEnabled = hasRayQuery && (rayQueryEnable.rayQuery == vk::True);
-#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
-    opacityMicromapEnabled = hasOpacityMicromap && (opacityMicromapEnable.micromap == vk::True);
-#endif
+    accelerationStructureEnabled = hasAS && (asFeaturesEnable.accelerationStructure == vk::True);
+    rayQueryEnabled = hasRQ && (rayQueryFeaturesEnable.rayQuery == vk::True);
 
-    // One-time startup diagnostics (Ray Query + texture array indexing)
-    static bool printedFeatureDiag = false;
-    if (!printedFeatureDiag) {
-      printedFeatureDiag = true;
-      std::cout << "[DeviceFeatures] shaderSampledImageArrayDynamicIndexing="
-          << (features.features.shaderSampledImageArrayDynamicIndexing == vk::True ? "ON" : "OFF")
-          << ", shaderSampledImageArrayNonUniformIndexing="
-          << (indexingFeaturesEnable.shaderSampledImageArrayNonUniformIndexing == vk::True ? "ON" : "OFF")
-          << ", descriptorIndexingEnabled="
-          << (descriptorIndexingEnabled ? "true" : "false")
-          << "\n";
-    }
-
-    // Create a device. Device layers are deprecated and ignored, so we
-    // only configure extensions and features here; validation is enabled
-    // via instance layers.
+    // Create device info
     vk::DeviceCreateInfo createInfo{
-      .pNext = &features,
+      .pNext = &features2,
       .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
       .pQueueCreateInfos = queueCreateInfos.data(),
       .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
       .ppEnabledExtensionNames = deviceExtensions.data(),
-      .pEnabledFeatures = nullptr // Using pNext for features
+      .pEnabledFeatures = nullptr
     };
 
-    // Create the logical device
+    LOGI("Creating logical device...");
     device = vk::raii::Device(physicalDevice, createInfo);
+    LOGI("Device created successfully");
+
+    // Initialize the dispatcher with the device to load device-level functions
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(*device);
 
     // Get queue handles
     graphicsQueue = vk::raii::Queue(device, queueFamilyIndices.graphicsFamily.value(), 0);
@@ -1134,7 +1178,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
 
     return true;
   } catch (const std::exception& e) {
-    std::cerr << "Failed to create logical device: " << e.what() << std::endl;
+    LOGE("Failed to create logical device: %s", e.what());
     return false;
   }
 }

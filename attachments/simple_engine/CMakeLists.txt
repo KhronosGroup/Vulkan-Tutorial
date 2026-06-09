@@ -114,6 +114,7 @@ list(FILTER SLANG_SHADER_SOURCES EXCLUDE REGEX ".*/(common_types|pbr_utils|light
 
 # Find slangc executable (optional)
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin)
+find_program(SPIRV_OPT_EXECUTABLE spirv-opt HINTS $ENV{VULKAN_SDK}/bin)
 
 if(SLANGC_EXECUTABLE)
     # Ensure the output directory for compiled shaders exists
@@ -124,16 +125,49 @@ if(SLANGC_EXECUTABLE)
         get_filename_component(SHADER_NAME ${SHADER} NAME)
         get_filename_component(SHADER_NAME_WE ${SHADER_NAME} NAME_WE)
         string(REGEX REPLACE "\.slang$" "" OUTPUT_NAME ${SHADER_NAME})
-        add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-            COMMAND ${SLANGC_EXECUTABLE} ${SHADER} -target spirv -profile spirv_1_4 -emit-spirv-directly -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-            DEPENDS ${SHADER}
-            COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
-        )
-        list(APPEND SHADER_SPVS ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
+        set(OUTPUT_SPV ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
+
+        set(SLANGC_FLAGS -target spirv -profile spirv_1_3 -g0 -O3)
+        if (ANDROID)
+            list(APPEND SLANGC_FLAGS -DPLATFORM_ANDROID=1)
+        endif ()
+
+        if (SPIRV_OPT_EXECUTABLE)
+            add_custom_command(
+                    OUTPUT ${OUTPUT_SPV}
+                    COMMAND ${SLANGC_EXECUTABLE} ${SHADER} ${SLANGC_FLAGS} -o ${OUTPUT_SPV}.tmp
+                    COMMAND ${SPIRV_OPT_EXECUTABLE} --strip-debug --strip-nonsemantic -Os ${OUTPUT_SPV}.tmp -o ${OUTPUT_SPV}
+                    COMMAND ${CMAKE_COMMAND} -E remove ${OUTPUT_SPV}.tmp
+                    DEPENDS ${SHADER}
+                    COMMENT "Compiling and optimizing Slang shader ${SHADER_NAME}"
+            )
+        else ()
+            add_custom_command(
+                    OUTPUT ${OUTPUT_SPV}
+                    COMMAND ${SLANGC_EXECUTABLE} ${SHADER} ${SLANGC_FLAGS} -o ${OUTPUT_SPV}
+                    DEPENDS ${SHADER}
+                    COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
+            )
+        endif ()
+        list(APPEND SHADER_SPVS ${OUTPUT_SPV})
     endforeach()
 
     add_custom_target(shaders DEPENDS ${SHADER_SPVS})
+
+    # Copy shaders to the source directory's shaders folder so the app can find them when run from root
+    add_custom_command(TARGET shaders POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_SPVS} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/
+            COMMENT "Copying compiled shaders to source shaders directory"
+    )
+
+    if (ANDROID)
+        # On Android, copy shaders to the Assets directory so Gradle can package them
+        add_custom_command(TARGET shaders POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/Assets/shaders
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_SPVS} ${CMAKE_CURRENT_SOURCE_DIR}/Assets/shaders/
+                COMMENT "Copying compiled shaders to Assets/shaders for Android packaging"
+        )
+    endif ()
 else()
     message(STATUS "slangc not found. Skipping shader compilation step.")
     add_custom_target(shaders)
@@ -181,7 +215,7 @@ set(SOURCES_DESKTOP
 # Create target
 if (ANDROID)
     # Android: build the engine as a library to be linked into the app's `simple_engine_android` SHARED library.
-    add_library(SimpleEngine STATIC ${SOURCES_COMMON})
+    add_library(SimpleEngine STATIC ${SOURCES_COMMON} ${SOURCES_DESKTOP})
 else ()
     # Desktop: build the runnable executable (unchanged behavior vs `HEAD`).
     add_executable(SimpleEngine ${SOURCES_COMMON} ${SOURCES_DESKTOP})

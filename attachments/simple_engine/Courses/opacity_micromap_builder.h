@@ -70,6 +70,7 @@
 #include <vector>
 
 #include <vulkan/vulkan_raii.hpp>
+#include "../vulkan_compatibility.h"
 
 // Engine types
 #include "../mesh_component.h"

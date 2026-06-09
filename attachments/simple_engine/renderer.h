@@ -45,16 +45,7 @@
 #include "platform.h"
 #include "thread_pool.h"
 
-// Fallback defines for optional extension names (allow compiling against older headers)
-#ifndef VK_EXT_ROBUSTNESS_2_EXTENSION_NAME
-#	define VK_EXT_ROBUSTNESS_2_EXTENSION_NAME "VK_EXT_robustness2"
-#endif
-#ifndef VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME
-#	define VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME "VK_KHR_dynamic_rendering_local_read"
-#endif
-#ifndef VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME
-#	define VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME "VK_EXT_shader_tile_image"
-#endif
+#include "vulkan_compatibility.h"
 
 // Forward declarations
 class ImGuiSystem;
@@ -649,6 +640,7 @@ class Renderer {
       loadingPhaseProgress.store(std::clamp(v, 0.0f, 1.0f), std::memory_order_relaxed);
     }
     void MarkInitialLoadComplete() {
+      LOGI("Renderer: MarkInitialLoadComplete");
       initialLoadComplete.store(true, std::memory_order_relaxed);
       SetLoadingPhase(LoadingPhase::Finalizing);
       loadingPhaseProgress.store(1.0f, std::memory_order_relaxed);
@@ -669,11 +661,21 @@ class Renderer {
       return loadingFlag.load(std::memory_order_relaxed);
     }
     void SetLoading(bool v) {
+      LOGI("Renderer: SetLoading %s", v ? "true" : "false");
       loadingFlag.store(v, std::memory_order_relaxed);
       if (v) {
         // New load cycle starting
         initialLoadComplete.store(false, std::memory_order_relaxed);
         SetLoadingPhase(LoadingPhase::Scene);
+      } else {
+        // Load cycle ending (successfully or not), ensure we don't stay in white-fallback state forever.
+        // We don't call MarkInitialLoadComplete() here because that triggers "Finalizing" phase,
+        // which the render thread uses to clear other flags. We just want to ensure IsLoading() can return false.
+        // If scene construction failed, there are no more AS/textures pending, so this is safe.
+        if (!initialLoadComplete.load(std::memory_order_relaxed)) {
+          LOGI("Renderer: Ending load cycle without completion mark. Forcing completion to avoid deadlock.");
+          initialLoadComplete.store(true, std::memory_order_relaxed);
+        }
       }
     }
 
@@ -974,6 +976,11 @@ class Renderer {
     }
     bool IsRayQueryStaticOnly() const {
       return rayQueryStaticOnly;
+    }
+
+    void GetSwapChainExtent(uint32_t* width, uint32_t* height) const {
+      *width = swapChainExtent.width;
+      *height = swapChainExtent.height;
     }
 
     /**
@@ -1771,6 +1778,8 @@ class Renderer {
     bool initialized = false;
     // Whether VK_EXT_descriptor_indexing (update-after-bind) path is enabled
     bool descriptorIndexingEnabled = false;
+    bool descriptorBindingUniformBufferUpdateAfterBindEnabled = false;
+    bool descriptorBindingSampledImageUpdateAfterBindEnabled = false;
     bool storageAfterBindEnabled = false;
     // Feature toggles detected/enabled at device creation
     bool robustness2Enabled = false;
@@ -2082,8 +2091,7 @@ class Renderer {
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
     bool hasStencilComponent(vk::Format format);
 
-    std::vector<char> readFile(const std::string& filename);
-
+  private:
     // Background uploader helpers
     void StartUploadsWorker(size_t workerCount = 0);
     void StopUploadsWorker();
@@ -2095,6 +2103,8 @@ class Renderer {
 
     // Upload perf getters
   public:
+    std::vector<char> readFile(const std::string& filename);
+    bool fileExists(const std::string& filename);
     uint64_t GetBytesUploadedTotal() const {
       return bytesUploadedTotal.load(std::memory_order_relaxed);
     }

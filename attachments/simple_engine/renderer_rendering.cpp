@@ -125,6 +125,14 @@ bool Renderer::createSwapChain() {
       imageCount = swapChainSupport.capabilities.maxImageCount;
     }
 
+    // Choose preTransform. On Android, eIdentity is preferred if supported to let the system handle rotation.
+    vk::SurfaceTransformFlagBitsKHR preTransform;
+    if (swapChainSupport.capabilities.supportedTransforms & vk::SurfaceTransformFlagBitsKHR::eIdentity) {
+      preTransform = vk::SurfaceTransformFlagBitsKHR::eIdentity;
+    } else {
+      preTransform = swapChainSupport.capabilities.currentTransform;
+    }
+
     // Create swap chain info
     vk::SwapchainCreateInfoKHR createInfo{
       .surface = *surface,
@@ -134,7 +142,7 @@ bool Renderer::createSwapChain() {
       .imageExtent = extent,
       .imageArrayLayers = 1,
       .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
-      .preTransform = swapChainSupport.capabilities.currentTransform,
+      .preTransform = preTransform,
       .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
       .presentMode = presentMode,
       .clipped = VK_TRUE,
@@ -527,7 +535,7 @@ bool Renderer::setupDynamicRendering() {
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearColorValue(std::array < float, 4 >{0.0f, 0.0f, 0.0f, 1.0f})
+        .clearValue = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}) // Black default
 
       }
     };
@@ -1362,12 +1370,16 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
         }
 
         watchdogProgressLabel.store("Render: buildAccelerationStructures", std::memory_order_relaxed);
-        if (buildAccelerationStructures(entities)) {
-          watchdogProgressLabel.store("Render: after buildAccelerationStructures", std::memory_order_relaxed);
-          asBuildRequested.store(false, std::memory_order_release);
-          asBuildRequestStartNs.store(0, std::memory_order_relaxed);
-          // AS build request resolved; restore normal watchdog sensitivity.
-          watchdogSuppressed.store(false, std::memory_order_relaxed);
+        bool buildSuccess = buildAccelerationStructures(entities);
+        watchdogProgressLabel.store("Render: after buildAccelerationStructures", std::memory_order_relaxed);
+
+        // Always resolve the request flag once we've attempted a build (success or fail)
+        // to avoid getting stuck in the loading state.
+        asBuildRequested.store(false, std::memory_order_release);
+        asBuildRequestStartNs.store(0, std::memory_order_relaxed);
+        watchdogSuppressed.store(false, std::memory_order_relaxed);
+
+        if (buildSuccess) {
           // Transition the loading UI to a finalizing phase (descriptor cold-init, etc.).
           if (IsLoading()) {
             SetLoadingPhase(LoadingPhase::Finalizing);
@@ -1583,7 +1595,9 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     const bool noPreallocPending = !pendingEntityPreallocQueued.load(std::memory_order_relaxed);
     const bool noDirtyEntities = descriptorDirtyEntities.empty();
     const bool noDeferredDescOps = !descriptorRefreshPending.load(std::memory_order_relaxed);
+
     if (loaderDone && criticalDone && noASPending && noPreallocPending && noDirtyEntities && noDeferredDescOps) {
+      LOGI("Renderer: Transitioning from Loading to Active scene");
       MarkInitialLoadComplete();
     }
   }
@@ -1688,8 +1702,13 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     return;
   }
 
-  // imageIndex already populated above
+  // Synchronize UI display size with renderer extent before NewFrame logic\n  if (imguiSystem) {\n    imguiSystem->HandleResize(swapChainExtent.width, swapChainExtent.height);\n  }\n\n  // imageIndex already populated above
   watchdogProgressLabel.store("Render: acquired swapchain image", std::memory_order_relaxed);
+
+  bool isLoading = IsLoading();
+  bool flag = loadingFlag.load();
+  uint32_t critical = criticalJobsOutstanding.load();
+  bool initDone = initialLoadComplete.load();
 
   if (acquireResultCode == vk::Result::eSuboptimalKHR || framebufferResized.load(std::memory_order_relaxed)) {
     framebufferResized.store(false, std::memory_order_relaxed);
@@ -2493,6 +2512,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       // Begin rendering to swapchain for composite
       colorAttachments[0].imageView = *swapChainImageViews[imageIndex];
       colorAttachments[0].loadOp = vk::AttachmentLoadOp::eClear; // clear before composing base layer (full-screen composite overwrites all pixels)
+      colorAttachments[0].clearValue = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}); // Neutral black
       depthAttachment.loadOp = vk::AttachmentLoadOp::eDontCare; // no depth for composite
       renderingInfo.renderArea = vk::Rect2D({0, 0}, swapChainExtent);
       // IMPORTANT: Composite pass does not use a depth attachment. Avoid binding it to satisfy dynamic rendering VUIDs.
@@ -2530,6 +2550,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
       pc.exposure = std::clamp(this->exposure, 0.2f, 4.0f);
       pc.gamma = this->gamma;
       pc.outputIsSRGB = (swapChainImageFormat == vk::Format::eR8G8B8A8Srgb || swapChainImageFormat == vk::Format::eB8G8R8A8Srgb) ? 1 : 0;
+
       commandBuffers[currentFrame].pushConstants<CompositePush>(*compositePipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, pc);
 
       // Draw fullscreen triangle

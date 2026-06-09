@@ -466,6 +466,9 @@ void* OpacityMicromapBuilder::buildOnGpu(
     bool                        lossyBuild,
     OmmMeshInfo&                outInfo)
 {
+#if defined(PLATFORM_ANDROID)
+  return nullptr; // OMM build is not supported on Android yet due to missing KHR symbols
+#else
   const auto& dev = *m_device;
 
   // ── Pack state data ────────────────────────────────────────────────────────
@@ -661,8 +664,8 @@ void* OpacityMicromapBuilder::buildOnGpu(
   }
 
   return pNextPtr;
+#endif // !defined(PLATFORM_ANDROID)
 }
-
 
 // =============================================================================
 // Helpers

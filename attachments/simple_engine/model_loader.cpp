@@ -669,7 +669,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
         std::string cand = candidateBase;
         cand.replace(pos, normalLower[pos] == '_' && normalLower.compare(pos, 5, "_ddna") == 0 ? 5 : 2, suf);
         // Ensure the file exists before attempting to load
-        if (std::filesystem::exists(cand)) {
+        if (renderer->fileExists(cand)) {
           // Schedule async load; libktx decoding will occur on renderer worker threads
           renderer->LoadTextureAsync(cand, true, mat->alphaMode == "MASK");
           mat->albedoTexturePath = cand;
@@ -899,7 +899,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
 
   // Extract the directory path from the model file to use as a base path for textures
   std::filesystem::path modelPath(filename);
-  std::filesystem::path baseDir = std::filesystem::absolute(modelPath).parent_path();
+  std::filesystem::path baseDir = modelPath.parent_path();
   std::string baseTexturePath = baseDir.string();
   if (!baseTexturePath.empty() && baseTexturePath.back() != '/') {
     baseTexturePath += "/";
@@ -911,6 +911,32 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
   tinygltf::TinyGLTF loader;
   std::string err;
   std::string warn;
+
+  // Set up file system callbacks to use our cross-platform readFile (supports Android assets)
+  tinygltf::FsCallbacks fsCallbacks;
+  fsCallbacks.user_data = this->renderer;
+  fsCallbacks.FileExists = [](const std::string& path, void* userData) -> bool {
+    Renderer* renderer = static_cast<Renderer *>(userData);
+    return renderer->fileExists(path);
+  };
+  fsCallbacks.ExpandFilePath = [](const std::string& path, void*) -> std::string {
+    return path;
+  };
+  fsCallbacks.ReadWholeFile = [](std::vector<unsigned char>* out, std::string* err, const std::string& path, void* userData) -> bool {
+    Renderer* renderer = static_cast<Renderer *>(userData);
+    try {
+      std::vector<char> data = renderer->readFile(path);
+      out->assign(data.begin(), data.end());
+      return true;
+    } catch (const std::exception& e) {
+      if (err) *err = e.what();
+      return false;
+    }
+  };
+  fsCallbacks.WriteWholeFile = [](std::string*, const std::string&, const std::vector<unsigned char>&, void*) -> bool {
+    return false; // No write support needed
+  };
+  loader.SetFsCallbacks(fsCallbacks);
 
   // Set up image loader: prefer KTX2 via libktx; fallback to stb for other formats
   loader.SetImageLoader(LoadKTX2Image, nullptr);

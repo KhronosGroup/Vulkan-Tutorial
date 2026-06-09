@@ -71,6 +71,10 @@ find_path(VulkanProfiles_INCLUDE_DIR
 
 # Function to extract Vulkan version from vulkan_core.h
 function(extract_vulkan_version VULKAN_CORE_H_PATH OUTPUT_VERSION_TAG)
+    if (NOT EXISTS ${VULKAN_CORE_H_PATH})
+        set(${OUTPUT_VERSION_TAG} "v1.3.275" PARENT_SCOPE)
+        return()
+    endif ()
   # Extract the version information from vulkan_core.h
   file(STRINGS ${VULKAN_CORE_H_PATH} VULKAN_VERSION_MAJOR_LINE REGEX "^#define VK_VERSION_MAJOR")
   file(STRINGS ${VULKAN_CORE_H_PATH} VULKAN_VERSION_MINOR_LINE REGEX "^#define VK_VERSION_MINOR")
@@ -137,6 +141,7 @@ elseif(DEFINED ENV{VULKAN_SDK})
   find_file(VULKAN_CORE_H vulkan_core.h
     PATHS
       $ENV{VULKAN_SDK}/include/vulkan
+          $ENV{VULKAN_SDK}/x86_64/include/vulkan
     NO_DEFAULT_PATH
   )
 
@@ -176,6 +181,42 @@ else()
     message(STATUS "Could not find vulkan_core.h in system paths, using default version: ${VULKAN_VERSION_TAG}")
   endif()
 endif()
+
+# Check if the detected version is less than 1.4.351
+string(REGEX REPLACE "^v" "" VULKAN_VERSION_NUM "${VULKAN_VERSION_TAG}")
+if (VULKAN_VERSION_NUM VERSION_LESS "1.4.351")
+    message(STATUS "Vulkan version ${VULKAN_VERSION_NUM} is less than 1.4.351. Fetching latest Vulkan-Headers from git...")
+    include(FetchContent)
+    FetchContent_Declare(
+            VulkanHeaders
+            GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+            GIT_TAG main
+    )
+    FetchContent_Populate(VulkanHeaders)
+
+    # Override Vulkan_INCLUDE_DIR to use the git headers
+    set(Vulkan_INCLUDE_DIR "${vulkanheaders_SOURCE_DIR}/include" CACHE PATH "Path to Vulkan headers" FORCE)
+    set(VULKAN_VERSION_TAG "main")
+
+    # Force fetching of Vulkan-Hpp and Vulkan-Profiles
+    set(VulkanHpp_INCLUDE_DIR "VulkanHpp_INCLUDE_DIR-NOTFOUND" CACHE PATH "" FORCE)
+    set(VulkanHpp_CPPM_DIR "VulkanHpp_CPPM_DIR-NOTFOUND" CACHE PATH "" FORCE)
+    set(VulkanProfiles_INCLUDE_DIR "VulkanProfiles_INCLUDE_DIR-NOTFOUND" CACHE PATH "" FORCE)
+
+    message(STATUS "Using Vulkan-Headers from git: ${Vulkan_INCLUDE_DIR}")
+
+    # Update the existing Vulkan::Headers target if it exists
+    if (TARGET Vulkan::Headers)
+        set_target_properties(Vulkan::Headers PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${Vulkan_INCLUDE_DIR}"
+        )
+    endif ()
+    if (TARGET Vulkan::Vulkan)
+        set_target_properties(Vulkan::Vulkan PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${Vulkan_INCLUDE_DIR}"
+        )
+    endif ()
+endif ()
 
 # ── Minimum version check for VK_KHR_opacity_micromap ─────────────────────────
 # VkAccelerationStructureTrianglesOpacityMicromapKHR first appeared in Vulkan
@@ -327,6 +368,10 @@ if(NOT VulkanHpp_INCLUDE_DIR OR NOT VulkanHpp_CPPM_DIR)
 
   # Set the include directory to the source directory
   set(VulkanHpp_INCLUDE_DIR ${VulkanHpp_SOURCE_DIR})
+  # Ensure we also include the Vulkan-Headers if we fetched them
+  if (vulkanheaders_SOURCE_DIR)
+      list(APPEND VulkanHpp_INCLUDE_DIR "${vulkanheaders_SOURCE_DIR}/include")
+  endif ()
   message(STATUS "VulkanHpp_SOURCE_DIR: ${VulkanHpp_SOURCE_DIR}")
   message(STATUS "VulkanHpp_INCLUDE_DIR: ${VulkanHpp_INCLUDE_DIR}")
 
@@ -419,6 +464,18 @@ message(STATUS "VULKANHPP_FOUND: ${VULKANHPP_FOUND}")
 
 if(VulkanHpp_FOUND)
   set(VulkanHpp_INCLUDE_DIRS ${VulkanHpp_INCLUDE_DIR})
+
+  # Force git headers to the front to avoid conflicts with system headers
+  if (vulkanheaders_SOURCE_DIR)
+      include_directories(BEFORE SYSTEM "${vulkanheaders_SOURCE_DIR}/include")
+  endif ()
+  include_directories(BEFORE SYSTEM "${VulkanHpp_INCLUDE_DIR}")
+  # The pinned C headers (VulkanHeadersC_v1_4_XXX) must shadow any unpinned
+  # main-branch headers added above.  Add them last so BEFORE prepends them
+  # to the front of the global include path, ahead of vulkanheaders_SOURCE_DIR.
+  if (DEFINED VULKAN_FETCHED_HEADERS_INCLUDE AND EXISTS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+      include_directories(BEFORE SYSTEM "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+  endif ()
 
   # Make sure VulkanHpp_CPPM_DIR is set
   if(NOT DEFINED VulkanHpp_CPPM_DIR)

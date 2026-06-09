@@ -1,6 +1,6 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    alias(libs.plugins.android.application) apply false
+    id 'com.android.application' version '9.2.1' apply false
 }
 
 // For Gradle 9.0+, use the Delete interface instead of type

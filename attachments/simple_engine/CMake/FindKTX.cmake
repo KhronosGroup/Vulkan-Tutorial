@@ -46,6 +46,25 @@ find_library(KTX_LIBRARY
         ${CMAKE_SOURCE_DIR}/external/ktx/lib
 )
 
+  if (KTX_INCLUDE_DIR AND KTX_LIBRARY)
+    set(KTX_FOUND TRUE)
+  else ()
+    set(KTX_FOUND FALSE)
+  endif()
+endif()
+
+if(KTX_FOUND)
+  set(KTX_INCLUDE_DIRS ${KTX_INCLUDE_DIR})
+  set(KTX_LIBRARIES ${KTX_LIBRARY})
+
+  if(NOT TARGET KTX::ktx)
+    add_library(KTX::ktx UNKNOWN IMPORTED)
+    set_target_properties(KTX::ktx PROPERTIES
+      IMPORTED_LOCATION "${KTX_LIBRARIES}"
+      INTERFACE_INCLUDE_DIRECTORIES "${KTX_INCLUDE_DIRS}"
+    )
+  endif()
+else()
 # If not found, use FetchContent to download and build
 if (NOT KTX_INCLUDE_DIR OR NOT KTX_LIBRARY)
   include(FetchContent)
@@ -103,7 +122,20 @@ if (KTX_FOUND)
                     INTERFACE_INCLUDE_DIRECTORIES "${KTX_INCLUDE_DIR}"
             )
         endif ()
+
+  # Set variables to indicate that KTX was found and to satisfy find_package_handle_standard_args
+  set(KTX_FOUND TRUE)
+  FetchContent_GetProperties(ktx SOURCE_DIR ktx_SOURCE_DIR)
+  set(KTX_INCLUDE_DIR "${ktx_SOURCE_DIR}/include")
+  set(KTX_LIBRARY ktx)
+  set(KTX_INCLUDE_DIRS ${KTX_INCLUDE_DIR})
+  set(KTX_LIBRARIES ${KTX_LIBRARY})
     endif ()
 endif ()
 
 mark_as_advanced(KTX_INCLUDE_DIR KTX_LIBRARY)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(KTX
+        REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
+)

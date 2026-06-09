@@ -201,6 +201,8 @@ set(SOURCES_COMMON
     imgui_system.cpp
     imgui/imgui.cpp
     imgui/imgui_draw.cpp
+    imgui/imgui_tables.cpp
+    imgui/imgui_widgets.cpp
     vulkan_device.cpp
     pipeline.cpp
     descriptor_manager.cpp

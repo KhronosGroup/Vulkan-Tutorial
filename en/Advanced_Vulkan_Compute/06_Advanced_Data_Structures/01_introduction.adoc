@@ -29,4 +29,4 @@ GPU-resident data structures are the foundation of modern high-performance rende
 
 By the end of this chapter, you'll understand how to stop treating the GPU as a "dumb array processor" and start treating it as a platform for autonomous, complex data management.
 
-xref:../06_SYCL_and_Single_Source_CPP/05_unified_shared_memory_usm.adoc[Previous: Unified Shared Memory (USM)] | xref:02_gpu_resident_trees.adoc[Next: GPU-Resident Trees]
+xref:../05_OpenCL_on_Vulkan/05_clvk_and_layering.adoc[Previous: clvk and Layering] | xref:02_gpu_resident_trees.adoc[Next: GPU-Resident Trees]

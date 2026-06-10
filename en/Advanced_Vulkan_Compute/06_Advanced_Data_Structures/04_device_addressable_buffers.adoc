@@ -84,7 +84,7 @@ While the Slang syntax is much closer to C{pp}, both produce the same low-level 
 
 1.  **Zero Binding Overhead**: You can pass thousands of buffer addresses to a single shader via a single push constant or a "pointer buffer," completely bypassing the CPU cost of managing descriptor pools and sets.
 2.  **Complex Data Structures**: You can build real linked lists, trees, and graphs where nodes contain actual 64-bit pointers to other nodes, allowing for "pointer chasing" that was previously impossible.
-3.  **Heterogeneous Programming**: BDA is the foundation for SYCL's **Unified Shared Memory (USM)**. It bridges the gap between the pointer-based world of C{pp} and the explicit world of Vulkan.
+3.  **Heterogeneous Programming**: BDA enables pointer-based GPU memory models, bridging the gap between the pointer-based world of C{pp} and the explicit world of Vulkan — the same foundation that higher-level compute APIs use for unified pointer semantics.
 
 === The Cost of Freedom: Safety and Performance
 
@@ -98,4 +98,4 @@ By combining 64-bit atomics, subgroup operations, and raw buffer device addresse
 
 In the next chapter, we'll see how to take this a step further and use these structures to drive the entire rendering pipeline directly from the GPU: **Indirect Dispatch and GPU-Driven Pipelines**.
 
-xref:03_global_atomic_management.adoc[Previous: Global Atomic Management] | xref:../08_GPU_Driven_Pipelines/01_introduction.adoc[Next: Indirect Dispatch]
+xref:03_global_atomic_management.adoc[Previous: Global Atomic Management] | xref:../07_GPU_Driven_Pipelines/01_introduction.adoc[Next: Indirect Dispatch]

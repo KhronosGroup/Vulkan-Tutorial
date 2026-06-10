@@ -17,4 +17,4 @@ In this chapter, we're going to move beyond the simple "one queue for all" model
 
 Orchestrating these workloads requires a shift in how we think about the GPU's timeline. It's no longer just a linear sequence of commands, but a multi-lane highway where different types of traffic can move at different speeds, occasionally merging or yielding to ensure the overall throughput is maximized.
 
-xref:../08_GPU_Driven_Pipelines/04_multi_draw_indirect_mdi.adoc[Previous: Multi-Draw Indirect (MDI)] | xref:02_concurrent_execution.adoc[Next: Concurrent Execution]
+xref:../07_GPU_Driven_Pipelines/04_multi_draw_indirect_mdi.adoc[Previous: Multi-Draw Indirect (MDI)] | xref:02_concurrent_execution.adoc[Next: Concurrent Execution]

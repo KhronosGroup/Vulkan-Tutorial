@@ -44,4 +44,4 @@ By mastering **Indirect Dispatch**, **GPU-Side Command Generation**, and **Multi
 
 In the next chapter, we'll look at how to coordinate these heavy compute workloads with your graphics rendering using **Asynchronous Compute Orchestration**.
 
-xref:03_gpu_side_command_generation.adoc[Previous: GPU-Side Command Generation] | xref:../09_Asynchronous_Compute/01_introduction.adoc[Next: Asynchronous Compute Orchestration]
+xref:03_gpu_side_command_generation.adoc[Previous: GPU-Side Command Generation] | xref:../08_Asynchronous_Compute/01_introduction.adoc[Next: Asynchronous Compute Orchestration]

@@ -10,7 +10,7 @@ Throughout this series, we have explored the depths of modern GPU compute, movin
 1. **Compute Architecture**: We mastered the mapping between workgroup grids and physical hardware (CUs and SMs), and learned how to maximize occupancy and hide latency. We also utilized Vulkan 1.4's scalar layouts for maximum bandwidth efficiency.
 2. **Memory Models**: We demystified the Vulkan Memory Model, mastering availability, visibility, and domain operations to ensure thread safety without sacrificing performance.
 3. **Subgroup Power**: We utilized subgroup shuffles, broadcasts, and arithmetic to exchange data at hardware speed, bypassing VRAM and shared memory (LDS) entirely.
-4. **Heterogeneous Ecosystems**: We explored bridging legacy code with OpenCL (clspv/clvk) and modernizing development with single-source SYCL (AdaptiveCpp).
+4. **Heterogeneous Ecosystems**: We explored bridging legacy OpenCL code to Vulkan with `clspv` and `clvk`, which provides conformant OpenCL 3.0 layered on Vulkan — invisible to the application.
 5. **Advanced Data Structures**: We implemented GPU-resident trees, lock-free linked lists, and utilized raw Buffer Device Addresses (BDA) for pointer-like flexibility.
 6. **GPU-Driven Pipelines**: We transitioned control from the CPU to the GPU using indirect dispatches and autonomous command generation.
 7. **Asynchronous Orchestration**: We harnessed the power of multiple hardware engines to run compute concurrently with graphics using Synchronization 2 and Timeline Semaphores.
@@ -35,7 +35,7 @@ The world of high-performance computing is vast. Now that you have a solid found
 1. **Deep Dive into Machine Learning**: Use what you've learned about Cooperative Matrices and Mixed Precision to optimize neural network inference or training.
 2. **Real-Time Path Tracing**: Combine GPU-Driven pipelines and Asynchronous Compute to build a high-performance ray tracer that handles complex spatial structures entirely on the device.
 3. **Physical Simulations**: Implement advanced fluid dynamics (SPH) or rigid body solvers using the lock-free data structures we discussed.
-4. **Vulkan Ecosystem**: Contribute to projects like `clspv`, `clvk`, or `AdaptiveCpp`, or build your own high-level compute abstraction.
+4. **Vulkan Ecosystem**: Contribute to projects like `clspv` or `clvk`, or build your own high-level compute abstraction on top of the Vulkan features covered in this series.
 
 == Community and Resources
 
@@ -49,4 +49,4 @@ Thank you for following along with this series. We've moved from "making pixels 
 
 Happy Hacking!
 
-xref:12_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Previous: Assistant-Led Optimization] | xref:../00_Introduction.adoc[Back to Home]
+xref:11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Previous: Assistant-Led Optimization] | xref:../00_Introduction.adoc[Back to Home]

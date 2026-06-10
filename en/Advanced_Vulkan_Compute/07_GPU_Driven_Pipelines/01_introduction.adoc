@@ -34,4 +34,4 @@ By moving the "decision-making" to the GPU, we can:
 
 In this chapter, we'll learn how to build these autonomous pipelines, starting with the fundamental building block: **Indirect Dispatch**.
 
-xref:../07_Advanced_Data_Structures/04_device_addressable_buffers.adoc[Previous: Device-Addressable Buffers] | xref:02_indirect_dispatch.adoc[Next: Indirect Dispatch]
+xref:../06_Advanced_Data_Structures/04_device_addressable_buffers.adoc[Previous: Device-Addressable Buffers] | xref:02_indirect_dispatch.adoc[Next: Indirect Dispatch]

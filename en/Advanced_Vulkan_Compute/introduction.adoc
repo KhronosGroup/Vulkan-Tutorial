@@ -26,7 +26,7 @@ This tutorial series is organized into several key areas:
 1.  **Compute Architecture** - Mapping workgroups to Compute Units (CU) and Streaming Multiprocessors (SM), and mastering occupancy.
 2.  **Memory Models and Consistency** - Understanding the Vulkan Memory Model, shared memory (**LDS** - Local Data Store), and fine-grained synchronization.
 3.  **Subgroup Operations** - Using cross-invocation communication to avoid VRAM round-trips and maximize **SIMD** (Single Instruction, Multiple Data) throughput.
-4.  **Heterogeneous Ecosystems** - Running OpenCL C and SYCL code on top of Vulkan using `clspv`, `clvk`, and AdaptiveCpp.
+4.  **Heterogeneous Ecosystems** - Running legacy OpenCL C on Vulkan using `clspv` (AOT compiler) and `clvk` (conformant OpenCL 3.0 runtime layered on Vulkan).
 5.  **Advanced Data Structures** - Moving complex structures like trees and linked lists entirely to the GPU using 64-bit atomics and **BDA** (Buffer Device Address).
 6.  **GPU-Driven Pipelines** - Moving command generation and workload management entirely to the GPU for autonomous execution.
 7.  **Asynchronous Orchestration** - Running compute and graphics concurrently using Synchronization 2 and multiple hardware queues.
@@ -53,12 +53,11 @@ Let's dive into the world of high-performance GPU computing!
 * xref:03_Memory_Models/01_introduction.adoc[Memory Models and Consistency]
 * xref:04_Subgroup_Operations/01_introduction.adoc[Subgroup Operations: The Hidden Power]
 * xref:05_OpenCL_on_Vulkan/01_introduction.adoc[Heterogeneous Ecosystem: OpenCL on Vulkan]
-* xref:06_SYCL_and_Single_Source_CPP/01_introduction.adoc[High-Level Abstraction: SYCL and Single-Source C{pp}]
-* xref:07_Advanced_Data_Structures/01_introduction.adoc[Advanced Data Structures on the GPU]
-* xref:08_GPU_Driven_Pipelines/01_introduction.adoc[Indirect Dispatch and GPU-Driven Pipelines]
-* xref:09_Asynchronous_Compute/01_introduction.adoc[Asynchronous Compute Orchestration]
-* xref:10_Specialized_Math/01_introduction.adoc[Cooperative Matrices and Specialized Math]
-* xref:11_Performance_Optimization/01_introduction.adoc[Performance Auditing and Optimization]
-* xref:12_Diagnostics_and_Refinement/01_introduction.adoc[Diagnostics and AI-Assisted Compute Refinement]
+* xref:06_Advanced_Data_Structures/01_introduction.adoc[Advanced Data Structures on the GPU]
+* xref:07_GPU_Driven_Pipelines/01_introduction.adoc[Indirect Dispatch and GPU-Driven Pipelines]
+* xref:08_Asynchronous_Compute/01_introduction.adoc[Asynchronous Compute Orchestration]
+* xref:09_Specialized_Math/01_introduction.adoc[Cooperative Matrices and Specialized Math]
+* xref:10_Performance_Optimization/01_introduction.adoc[Performance Auditing and Optimization]
+* xref:11_Diagnostics_and_Refinement/01_introduction.adoc[Diagnostics and AI-Assisted Compute Refinement]
 
 xref:11_Compute_Shader.adoc[Previous: Basic Compute Shaders] | xref:02_Compute_Architecture/01_introduction.adoc[Next: Compute Architecture]

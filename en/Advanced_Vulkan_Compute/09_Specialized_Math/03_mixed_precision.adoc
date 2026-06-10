@@ -100,4 +100,4 @@ Managing this requires a technique known as **Loss Scaling**. You multiply your 
 
 By mastering mixed precision, you're not just "squeezing out more performance"; you're being smarter about how you use the hardware's resources. Whether you're optimizing a fluid simulation or a real-time signal processing engine, these techniques are essential for pushing the boundaries of what's possible on modern GPUs.
 
-xref:02_cooperative_matrices.adoc[Previous: Cooperative Matrices] | xref:../11_Performance_Optimization/01_introduction.adoc[Next: Performance Optimization]
+xref:02_cooperative_matrices.adoc[Previous: Cooperative Matrices] | xref:../10_Performance_Optimization/01_introduction.adoc[Next: Performance Optimization]

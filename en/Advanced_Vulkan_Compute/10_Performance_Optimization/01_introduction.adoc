@@ -1,7 +1,7 @@
 :pp: {plus}{plus}
 = Performance Auditing and Optimization
 
-We've covered a vast range of advanced Vulkan compute topics—from low-level architecture to high-level abstractions like SYCL. But there's one question that every developer eventually faces: "Is this as fast as it can be?" Answering this question is not about guesswork or intuition; it's about a rigorous, methodical approach to **Performance Auditing**.
+We've covered a vast range of advanced Vulkan compute topics—from low-level architecture and memory models to GPU-driven pipelines and asynchronous compute. But there's one question that every developer eventually faces: "Is this as fast as it can be?" Answering this question is not about guesswork or intuition; it's about a rigorous, methodical approach to **Performance Auditing**.
 
 In the world of GPU compute, a "fast" kernel can be held back by many things. It might be waiting on memory (**memory-bound**), it might be overwhelmed by complex arithmetic (**compute-bound**), or it might be suffering from "divergence"—where different invocations in a **subgroup** (or **warp/wavefront**) are forced to take different execution paths, causing the hardware to serialize their work.
 
@@ -25,4 +25,4 @@ By the end of this chapter, you'll be equipped with the methodology to move from
 2. **The Divergence Audit**: Techniques for visualizing and refactoring divergent branching logic.
 
 [horizontal]
-*Previous:* xref:../10_Specialized_Math/03_mixed_precision.adoc[Mastering Mixed Precision] | *Next:* xref:02_instruction_throughput.adoc[Instruction Throughput Analysis]
+*Previous:* xref:../09_Specialized_Math/03_mixed_precision.adoc[Mastering Mixed Precision] | *Next:* xref:02_instruction_throughput.adoc[Instruction Throughput Analysis]

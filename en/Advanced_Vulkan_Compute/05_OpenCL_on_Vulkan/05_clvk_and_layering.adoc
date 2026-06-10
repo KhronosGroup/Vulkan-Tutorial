@@ -23,6 +23,8 @@ The biggest advantage of `clvk` is **Portability without Rewrite**.
 
 If you have a large desktop application written in C{pp} that uses OpenCL, you can run it on an Android device or a Vulkan-only Linux system simply by linking it against the `clvk` library. You don't have to touch a single line of your host code or your kernels.
 
+Importantly, `clvk` implements OpenCL 3.0 **conformantly** — your application does not need to know it is running on top of Vulkan. From the host code perspective, it behaves identically to a native OpenCL driver. This is the correct design: a layered implementation should be invisible to the application.
+
 This is great for cross-platform developers who want to target as many devices as possible with a single codebase.
 
 == Performance Considerations
@@ -35,6 +37,6 @@ Since the actual computation happens in the native Vulkan driver, the primary co
 
 `clvk` supports most of the OpenCL 3.0 specification. However, its compatibility depends on the features supported by your Vulkan driver. If your driver supports Vulkan 1.4 with **Descriptor Indexing**, **Variable Pointers**, and **Buffer Device Address**, `clvk` will be able to support almost all OpenCL features.
 
-In the next chapter, we'll move from the OpenCL ecosystem to the modern C{pp} world of **SYCL**, which takes this abstraction even further.
+In the next chapter, we'll move from the OpenCL ecosystem to **Advanced Data Structures on the GPU** — GPU-resident trees, lock-free linked lists, and raw Buffer Device Addresses.
 
-xref:04_kernel_portability.adoc[Previous: Kernel Portability] | xref:../06_SYCL_and_Single_Source_CPP/01_introduction.adoc[Next: SYCL and Single-Source C{pp}]
+xref:04_kernel_portability.adoc[Previous: Kernel Portability] | xref:../06_Advanced_Data_Structures/01_introduction.adoc[Next: Advanced Data Structures]

@@ -56,12 +56,14 @@ void computeMain(uint3 globalID : SV_DispatchThreadID) {
 
 === In the Host Code
 To see the output from `printf`, you must:
+
 1. Enable the `VK_KHR_shader_non_semantic_info` extension on your device.
 2. Have a standard **Debug Messenger** callback registered. The output from your shader will arrive as a `VkDebugUtilsMessengerCallbackDataEXT` with a message ID that identifies it as a printf call.
 
 == Interpreting the Output
 
 When a validation error or a `printf` occurs, the output can be verbose. Look for:
+
 * **The Shader Module**: Which shader triggered the message.
 * **The Instruction Offset**: The specific SPIR-V instruction that failed.
 * **The Value**: For `printf`, this is your formatted string. For GAV, it might be the invalid index or pointer address.

@@ -16,14 +16,16 @@ You might wonder why we would want to run "legacy" OpenCL code on a modern API l
 2.  **Cross-Vendor Compatibility**: Not all hardware vendors provide a high-quality, native OpenCL driver (especially on mobile or integrated GPUs). By layering OpenCL on top of Vulkan, you can provide an OpenCL implementation wherever Vulkan is available.
 3.  **Unified Tooling**: If your application already uses Vulkan for rendering, being able to handle compute workloads through the same API simplifies your synchronization, memory management, and deployment.
 
-== The "Vulkan Flavor" of OpenCL
+== OpenCL on Vulkan: Standard, Not Special
 
-It's important to understand that we aren't just running OpenCL as-is. We are using a specific "Vulkan-compatible" subset of OpenCL. This involves:
+A key insight from conformant layered implementations like `clvk` is that OpenCL-on-Vulkan looks and behaves like **any other OpenCL implementation** from the application's perspective. You use the same `clCreateContext`, `clEnqueueNDRangeKernel`, and other standard OpenCL 3.0 calls. The Vulkan layer underneath is an implementation detail.
 
-*   **SPIR-V as the Bridge**: OpenCL C kernels are compiled into **SPIR-V** (Standard Portable Intermediate Representation - V), the same binary format used by Vulkan for its shaders.
-*   **Memory Mapping**: Mapping OpenCL's pointer-based memory model (Buffers and Images) to Vulkan's explicit memory management.
-*   **Execution Models**: Aligning OpenCL's global and local work sizes with Vulkan's workgroups and invocations.
+What makes this interesting from a Vulkan developer's perspective is the **advanced Vulkan features** that make a conformant OpenCL implementation possible:
 
-In this chapter, we'll explore the two primary ways to bridge this gap: **AOT** (Ahead-of-Time, compiling before the program runs) compilation using `clspv`, and **Runtime Layering** using `clvk`.
+*   **SPIR-V as the Bridge**: OpenCL C kernels are compiled into **SPIR-V** (Standard Portable Intermediate Representation - V), the same binary format used by Vulkan for its shaders. This is the key integration point — Vulkan's shader format is flexible enough to express OpenCL semantics.
+*   **Variable Pointers and Buffer Device Address**: OpenCL's pointer-based memory model requires Vulkan's `VK_KHR_variable_pointers` (core in Vulkan 1.1) and the **Buffer Device Address** feature to emulate flat address spaces efficiently.
+*   **Subgroup Extensions**: OpenCL's work-group collective operations map directly to Vulkan's subgroup operations, enabling hardware-accelerated reductions and scans.
+
+In this chapter, we'll explore the two primary tools: **AOT** (Ahead-of-Time) compilation using `clspv`, and **Runtime Layering** using `clvk`.
 
 xref:../04_Subgroup_Operations/04_non_uniform_indexing.adoc[Previous: Non-Uniform Indexing] | xref:02_setup_and_installation.adoc[Next: Setup and Installation]

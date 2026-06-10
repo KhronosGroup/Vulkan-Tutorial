@@ -17,6 +17,7 @@
 #include "engine.h"
 #include "mesh_component.h"
 #include "scene_loading.h"
+#include <cmath>
 
 #include <algorithm>
 #include <chrono>
@@ -389,6 +390,10 @@ void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
       // Finger just went down
       cameraControl.mouseLeftPressed = true;
       cameraControl.firstMouse = true;
+      cameraControl.touchTotalDistance = 0.0f;
+      cameraControl.touchDownX = x;
+      cameraControl.touchDownY = y;
+      cameraControl.touchStartTime = 0.0; // We'll increment this in Update
     }
 
     if (cameraControl.firstMouse) {
@@ -399,8 +404,20 @@ void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
 
     // Accumulate movement deltas. These will be applied in UpdateCameraControls
     // AFTER ImGui has updated its capture state (post-NewFrame).
-    cameraControl.pendingXOffset += (x - cameraControl.lastMouseX);
-    cameraControl.pendingYOffset += (y - cameraControl.lastMouseY);
+    float dx = (x - cameraControl.lastMouseX);
+    float dy = (y - cameraControl.lastMouseY);
+    cameraControl.pendingXOffset += dx;
+    cameraControl.pendingYOffset += dy;
+    cameraControl.touchTotalDistance += std::sqrt(dx*dx + dy*dy);
+
+#if defined(PLATFORM_ANDROID)
+    // On Android, we map SWIPE to MOVEMENT (Forward/Backward, Left/Right)
+    // if the touch didn't start on UI.
+    if (!cameraControl.isFirstFrameOfInteraction && !cameraControl.startedOnImGui) {
+       cameraControl.touchMoveX = dx;
+       cameraControl.touchMoveY = dy;
+    }
+#endif
 
     cameraControl.lastMouseX = x;
     cameraControl.lastMouseY = y;
@@ -457,15 +474,15 @@ void Engine::handleKeyInput(uint32_t key, bool pressed) {
     default:
       break;
   }
-
-  if (imguiSystem) {
-    imguiSystem->HandleKeyboard(key, pressed);
-  }
 #else
   // Android uses different input handling via touch events
   (void) key;
   (void) pressed;
 #endif
+
+  if (imguiSystem) {
+    imguiSystem->HandleKeyboard(key, pressed);
+  }
 }
 
 void Engine::Update(TimeDelta deltaTime) {
@@ -659,6 +676,110 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
   // Check if ImGui wants to capture mouse input (updated in NewFrame)
   bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
 
+#if defined(PLATFORM_ANDROID)
+  // --- Android: Ambitious Controls ---
+  // 1. Accelerometer -> Rotation (Tilting)
+  float ax, ay, az;
+  float androidPitchOffset = 0.0f;
+  float androidYawOffset = 0.0f;
+  if (platform->GetAccelerometerData(&ax, &ay, &az)) {
+    // Correct for display rotation (Portrait vs Landscape vs Reversed)
+    ax = -ax;
+    ay = -ay;
+    float rawX = ax;
+    float rawY = ay;
+    int rotation = platform->GetDisplayRotation();
+    switch (rotation) {
+      case 1: // ROTATION_90 (Landscape Left)
+        ax = -rawY; ay = rawX; break;
+      case 2: // ROTATION_180 (Portrait Upside Down)
+        ax = -rawX; ay = -rawY; break;
+      case 3: // ROTATION_270 (Landscape Right)
+        ax = rawY; ay = -rawX; break;
+      default: // ROTATION_0 (Portrait)
+        break;
+    }
+
+    // If not calibrated, take current values as neutral
+    if (!cameraControl.tiltCalibrated) {
+      cameraControl.tiltCenterX = ax;
+      cameraControl.tiltCenterY = ay;
+      cameraControl.tiltCalibrated = true;
+    }
+
+    float dax = ax - cameraControl.tiltCenterX;
+    float day = ay - cameraControl.tiltCenterY;
+
+    // Auto-recalibration: If the phone is held steady (small delta from current center),
+    // we slowly drift the center point towards the current reading.
+    // This allows the "rest" position to adapt to the user's hands.
+    float distFromCenter = std::sqrt(dax*dax + day*day);
+    float dt = deltaTime.count() * 0.001f;
+
+    if (distFromCenter < 1.5f) {
+      // Steady detection: If we're close to the center for a while, snap it.
+      cameraControl.tiltSteadyTime += dt;
+      if (cameraControl.tiltSteadyTime > 0.5f) {
+        // Drift the center towards current value to "establish a new deadzone"
+        float driftRate = 2.0f * dt;
+        cameraControl.tiltCenterX += dax * driftRate;
+        cameraControl.tiltCenterY += day * driftRate;
+      }
+    } else {
+      cameraControl.tiltSteadyTime = 0.0f;
+    }
+
+    // Deadzone and immediate stop: if within deadzone, motion is ZERO.
+    // Increased deadzone to 0.8f for more stability.
+    if (std::abs(dax) < 0.8f) dax = 0.0f;
+    if (std::abs(day) < 0.8f) day = 0.0f;
+
+    // We multiply by deltaTime to ensure consistent rotation speed across different frame rates.
+    const float tiltSensitivity = 20.0f; // Degrees per second at max tilt
+    androidYawOffset = dax * tiltSensitivity * dt;
+    androidPitchOffset = -day * tiltSensitivity * dt;
+  }
+
+  // 2. Swipe -> Movement
+  float androidMoveForward = 0.0f;
+  float androidMoveRight = 0.0f;
+  if (cameraControl.mouseLeftPressed && !cameraControl.startedOnImGui) {
+    const float moveSensitivity = 0.15f;
+    androidMoveRight = cameraControl.touchMoveX * moveSensitivity;
+    androidMoveForward = -cameraControl.touchMoveY * moveSensitivity;
+  }
+  // Clear touch movement frame delta
+  cameraControl.touchMoveX = 0.0f;
+  cameraControl.touchMoveY = 0.0f;
+
+  // 3. Tap and Hold -> Reset Camera & Recalibrate Tilt
+  bool isHoldingToReset = false;
+  if (cameraControl.mouseLeftPressed && !cameraControl.startedOnImGui) {
+    cameraControl.touchStartTime += deltaTime.count() * 0.001f;
+    // If held for more than 0.5s without moving more than 10 pixels
+    if (cameraControl.touchStartTime > 0.5f && cameraControl.touchTotalDistance < 10.0f) {
+      cameraControl.yaw = 0.0f;
+      cameraControl.pitch = 0.0f;
+
+      // Force the camera to be level (horizon-aligned) during reset.
+      // We extract the yaw from the base orientation and discard pitch/roll.
+      glm::vec3 euler = glm::eulerAngles(cameraControl.baseOrientation);
+      cameraControl.baseOrientation = glm::angleAxis(euler.y, glm::vec3(0.0f, 1.0f, 0.0f));
+
+      // Recalibrate: current physical orientation becomes the new "zero"
+      // We use the rotation-corrected values already calculated in ax/ay above.
+      cameraControl.tiltCenterX = ax;
+      cameraControl.tiltCenterY = ay;
+
+      androidYawOffset = 0.0f;
+      androidPitchOffset = 0.0f;
+      isHoldingToReset = true;
+    }
+  } else {
+    cameraControl.touchStartTime = 0.0f;
+  }
+#endif
+
   // INTERACTION LOCKING LOGIC:
   // If a touch began, we wait until ImGui has processed the first DOWN event (in NewFrame)
   // before deciding whether this drag belongs to the GUI or the 3D Scene.
@@ -672,23 +793,33 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
 
     // Only apply rotation if the interaction started on the scene background
     if (!cameraControl.startedOnImGui) {
+#if !defined(PLATFORM_ANDROID)
       float xOffset = cameraControl.pendingXOffset * cameraControl.mouseSensitivity;
       float yOffset = cameraControl.pendingYOffset * cameraControl.mouseSensitivity;
 
       cameraControl.yaw -= xOffset;
       cameraControl.pitch -= yOffset;
-
-      // Constrain pitch to avoid gimbal lock
-      if (cameraControl.pitch > 89.0f)
-        cameraControl.pitch = 89.0f;
-      if (cameraControl.pitch < -89.0f)
-        cameraControl.pitch = -89.0f;
+#endif
     }
   } else {
     // Reset locking state when finger is lifted
     cameraControl.isFirstFrameOfInteraction = true;
     cameraControl.startedOnImGui = false;
   }
+
+#if defined(PLATFORM_ANDROID)
+  // Apply Android tilt and swiping
+  if (!isHoldingToReset) {
+    cameraControl.yaw += androidYawOffset;
+    cameraControl.pitch += androidPitchOffset;
+  }
+#endif
+
+  // Constrain pitch to avoid gimbal lock
+  if (cameraControl.pitch > 89.0f)
+    cameraControl.pitch = 89.0f;
+  if (cameraControl.pitch < -89.0f)
+    cameraControl.pitch = -89.0f;
 
   // Clear accumulated offsets after processing
   cameraControl.pendingXOffset = 0.0f;
@@ -744,6 +875,20 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
   if (cameraControl.moveDown) {
     position -= up * velocity;
   }
+
+#if defined(PLATFORM_ANDROID)
+  // Apply Android swipe-to-walk displacement
+  // We use the same front/right vectors but apply the swipe deltas.
+  // Note: androidMoveForward/Right are already calculated in the Android block above.
+  position += front * androidMoveForward * cameraControl.cameraSpeed * 0.02f;
+  position += right * androidMoveRight * cameraControl.cameraSpeed * 0.02f;
+#endif
+
+#if defined(PLATFORM_ANDROID)
+  // Apply Android swipe-based movement
+  position += front * androidMoveForward;
+  position += right * androidMoveRight;
+#endif
 
   // Update camera position
   cameraTransform->SetPosition(position);
@@ -998,33 +1143,12 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
 
   // Set mouse callback
   platform->SetMouseCallback([this](float x, float y, uint32_t buttons) {
-    // Check if ImGui wants to capture mouse input first
-    bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
-
-    if (!imguiWantsMouse) {
-      // Handle mouse click for ball throwing (right mouse button)
-      if (buttons & 2) {
-        // Right mouse button (bit 1)
-        if (!cameraControl.mouseRightPressed) {
-          cameraControl.mouseRightPressed = true;
-          // Throw a ball on mouse click
-          ThrowBall(x, y);
-        }
-      } else {
-        cameraControl.mouseRightPressed = false;
-      }
-    }
-
-    if (imguiSystem) {
-      imguiSystem->HandleMouse(x, y, buttons);
-    }
+    handleMouseInput(x, y, buttons);
   });
 
   // Set keyboard callback
   platform->SetKeyboardCallback([this](uint32_t key, bool pressed) {
-    if (imguiSystem) {
-      imguiSystem->HandleKeyboard(key, pressed);
-    }
+    handleKeyInput(key, pressed);
   });
 
   // Set char callback

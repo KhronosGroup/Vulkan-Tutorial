@@ -644,6 +644,8 @@ class Renderer {
     void MarkInitialLoadComplete() {
       LOGI("Renderer: MarkInitialLoadComplete");
       initialLoadComplete.store(true, std::memory_order_relaxed);
+      // Unsuppress watchdog after initial load is complete
+      watchdogSuppressed.store(false, std::memory_order_relaxed);
       SetLoadingPhase(LoadingPhase::Finalizing);
       loadingPhaseProgress.store(1.0f, std::memory_order_relaxed);
     }
@@ -677,6 +679,7 @@ class Renderer {
         if (!initialLoadComplete.load(std::memory_order_relaxed)) {
           LOGI("Renderer: Ending load cycle without completion mark. Forcing completion to avoid deadlock.");
           initialLoadComplete.store(true, std::memory_order_relaxed);
+          watchdogSuppressed.store(false, std::memory_order_relaxed);
         }
       }
     }

@@ -28,6 +28,21 @@ AndroidPlatform::AndroidPlatform(android_app* androidApp) : app(androidApp) {
   // Set up the app's user data
   app->userData = this;
 
+  // Initialize sensors
+  // Use the deprecated but widely available getInstance() for compatibility with minSdk 24
+  sensorManager = ASensorManager_getInstance();
+
+  if (sensorManager) {
+    accelerometerSensor = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
+    if (accelerometerSensor) {
+       ALooper* looper = ALooper_forThread();
+       if (!looper) {
+         looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+       }
+       sensorEventQueue = ASensorManager_createEventQueue(sensorManager, looper, 3 /*IDENT_SENSOR*/, nullptr, nullptr);
+    }
+  }
+
   // Set up the command callback
   app->onAppCmd = [](android_app* app, int32_t cmd) {
     auto* platform = static_cast<AndroidPlatform *>(app->userData);
@@ -87,6 +102,13 @@ bool AndroidPlatform::Initialize(const std::string& appName, int requestedWidth,
     width = ANativeWindow_getWidth(app->window);
     height = ANativeWindow_getHeight(app->window);
 
+    // Enable accelerometer
+    if (sensorEventQueue && accelerometerSensor) {
+      ASensorEventQueue_enableSensor(sensorEventQueue, accelerometerSensor);
+      // Set sensor rate (e.g., 60Hz)
+      ASensorEventQueue_setEventRate(sensorEventQueue, accelerometerSensor, (1000L / 60) * 1000);
+    }
+
     // Get device information for performance optimizations
     DetectDeviceCapabilities();
 
@@ -102,7 +124,13 @@ bool AndroidPlatform::Initialize(const std::string& appName, int requestedWidth,
 }
 
 void AndroidPlatform::Cleanup() {
-  // Nothing to clean up for Android
+  if (sensorEventQueue) {
+    if (accelerometerSensor) {
+      ASensorEventQueue_disableSensor(sensorEventQueue, accelerometerSensor);
+    }
+    ASensorManager_destroyEventQueue(sensorManager, sensorEventQueue);
+    sensorEventQueue = nullptr;
+  }
 }
 
 bool AndroidPlatform::ProcessEvents() {
@@ -110,10 +138,24 @@ bool AndroidPlatform::ProcessEvents() {
   int events;
   android_poll_source* source;
 
+  int ident;
   // Poll for events with a timeout of 0 (non-blocking)
-  while (ALooper_pollOnce(0, nullptr, &events, (void **) &source) >= 0) {
+  // We check for both LOOPER_ID_MAIN (cmd/input) and IDENT_SENSOR (3)
+  while ((ident = ALooper_pollOnce(0, nullptr, &events, (void **) &source)) >= 0) {
     if (source != nullptr) {
       source->process(app, source);
+    }
+
+    // Handle sensors if they triggered the looper
+    if (ident == 3 /*IDENT_SENSOR*/ && sensorEventQueue) {
+      ASensorEvent event;
+      while (ASensorEventQueue_getEvents(sensorEventQueue, &event, 1) > 0) {
+        if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
+          accelX = event.acceleration.x;
+          accelY = event.acceleration.y;
+          accelZ = event.acceleration.z;
+        }
+      }
     }
 
     // Check if we are exiting
@@ -216,6 +258,33 @@ void AndroidPlatform::SetKeyboardCallback(std::function < void(uint32_t, bool) >
 
 void AndroidPlatform::SetCharCallback(std::function<void(uint32_t)> callback) {
   charCallback = std::move(callback);
+}
+
+int AndroidPlatform::GetDisplayRotation() const {
+  if (!app || !app->activity || !app->activity->javaGameActivity) return 0;
+
+  JNIEnv* env = nullptr;
+  app->activity->vm->AttachCurrentThread(&env, nullptr);
+  int rotation = 0;
+  if (env) {
+    // 1. Get WindowManager from Activity via getWindowManager()
+    jclass activityClass = env->GetObjectClass(app->activity->javaGameActivity);
+    jmethodID getWindowManager = env->GetMethodID(activityClass, "getWindowManager", "()Landroid/view/WindowManager;");
+    jobject windowManager = env->CallObjectMethod(app->activity->javaGameActivity, getWindowManager);
+
+    // 2. Get Default Display from WindowManager
+    jclass windowManagerClass = env->FindClass("android/view/WindowManager");
+    jmethodID getDefaultDisplay = env->GetMethodID(windowManagerClass, "getDefaultDisplay", "()Landroid/view/Display;");
+    jobject display = env->CallObjectMethod(windowManager, getDefaultDisplay);
+
+    // 3. Get Rotation from Display
+    jclass displayClass = env->FindClass("android/view/Display");
+    jmethodID getRotation = env->GetMethodID(displayClass, "getRotation", "()I");
+    rotation = env->CallIntMethod(display, getRotation);
+
+    app->activity->vm->DetachCurrentThread();
+  }
+  return rotation;
 }
 
 void AndroidPlatform::SetWindowTitle([[maybe_unused]] const std::string& title) {

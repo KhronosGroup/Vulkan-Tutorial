@@ -297,6 +297,20 @@ class Engine
 		bool      isFirstFrameOfInteraction = true;
 		float     pendingXOffset          = 0.0f;
 		float     pendingYOffset          = 0.0f;
+
+		// Mobile movement state
+		float     touchMoveX              = 0.0f; // Left/Right
+		float     touchMoveY              = 0.0f; // Forward/Backward
+		float     tiltYaw                 = 0.0f;
+		float     tiltPitch               = 0.0f;
+		float     tiltCenterX             = 0.0f;
+		float     tiltCenterY             = 0.0f;
+		bool      tiltCalibrated          = false;
+		float     tiltSteadyTime          = 0.0f;
+		float     touchTotalDistance      = 0.0f;
+		float     touchDownX              = 0.0f;
+		float     touchDownY              = 0.0f;
+		double    touchStartTime          = 0.0;
 	} cameraControl;
 
 	// Mouse position tracking

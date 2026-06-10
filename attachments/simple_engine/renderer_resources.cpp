@@ -1467,8 +1467,8 @@ bool Renderer::createDescriptorSets(Entity* entity, EntityResources& res, const 
         lightBufferInfo = vk::DescriptorBufferInfo{.buffer = *lightStorageBuffers[i].buffer, .range = VK_WHOLE_SIZE};
         descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = 6, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &lightBufferInfo});
 
-        // Ensure Forward+ per-frame array exists
-        if (forwardPlusPerFrame.empty()) {
+        // Ensure Forward+ per-frame array is properly sized
+        if (forwardPlusPerFrame.size() < MAX_FRAMES_IN_FLIGHT) {
           forwardPlusPerFrame.resize(MAX_FRAMES_IN_FLIGHT);
         }
 
@@ -3669,7 +3669,7 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
         return;
 
       // Binding 7/8: Forward+ tile buffers (must be valid even when Forward+ is disabled)
-      if (forwardPlusPerFrame.empty()) {
+      if (forwardPlusPerFrame.size() < MAX_FRAMES_IN_FLIGHT) {
         forwardPlusPerFrame.resize(MAX_FRAMES_IN_FLIGHT);
       }
       vk::Buffer headersBuf{};

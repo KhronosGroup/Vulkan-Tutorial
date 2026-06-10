@@ -126,10 +126,15 @@ Renderer::Renderer(Platform* platform) : platform(platform) {
   // Optional extensions will be added later after checking device support
   deviceExtensions = requiredDeviceExtensions;
 
+  // Suppress watchdog by default during startup to allow for debugger attachment
+  // and long initialization times on some mobile devices.
+  watchdogSuppressed.store(false, std::memory_order_relaxed);
+
 #if defined(PLATFORM_ANDROID)
   // Re-enable Ray Query and Forward+ for Android now that basic rendering is stabilized
   currentRenderMode = RenderMode::RayQuery;
   useForwardPlus = true;
+  forwardPlusPerFrame.resize(MAX_FRAMES_IN_FLIGHT);
 #endif
 }
 
@@ -428,7 +433,7 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
   watchdogRunning.store(true, std::memory_order_relaxed);
   watchdogThread = std::thread(WatchdogThreadFunc, &lastFrameUpdateTime, &watchdogRunning, &watchdogSuppressed, &watchdogProgressLabel, &watchdogProgressIndex);
 
-  std::cout << "[Watchdog] Started - will abort if no frame updates for 10+ seconds\n";
+  std::cout << "[Watchdog] Started - will abort if no frame updates for 10+ seconds (60s during loading)\n";
 
   initialized = true;
   return true;
@@ -439,19 +444,10 @@ void Renderer::ensureThreadLocalVulkanInit() const {
   static thread_local bool s_tlsInitialized = false;
   if (s_tlsInitialized)
     return;
-  try {
-    // Initialize the dispatcher for this thread using the global symbol.
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-    if (*instance) {
-      VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
-    }
-    if (*device) {
-      VULKAN_HPP_DEFAULT_DISPATCHER.init(*device);
-    }
+    // The dispatcher is global and initialized on the main thread during Renderer::Initialize.
+    // Background threads inherit this global state. No per-thread init is required
+    // for VULKAN_HPP_DEFAULT_DISPATCHER when using the default storage.
     s_tlsInitialized = true;
-  } catch (...) {
-    // best-effort
-  }
 }
 
 // Clean up renderer resources

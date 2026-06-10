@@ -16,6 +16,7 @@
  */
 #include "renderer.h"
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -87,6 +88,44 @@ bool Renderer::hasStencilComponent(vk::Format format) {
 // Read file
 std::vector<char> Renderer::readFile(const std::string& filename) {
   try {
+#if defined(PLATFORM_ANDROID)
+    // Professional Android Game Path:
+    // 1. Check App's persistent data directory (for large models/DLC)
+    // 2. Fall back to APK assets (for small/core files)
+
+    auto* androidPlatform = static_cast<AndroidPlatform *>(platform);
+
+    // Check external files dir first: /sdcard/Android/data/com.simple_engine/files/Assets/...
+    // Note: In a full engine this would be queried from Java, but we'll use the standard path
+    std::string externalPath = "/sdcard/Android/data/com.simple_engine/files/Assets/" + filename;
+    std::ifstream externalFile(externalPath, std::ios::ate | std::ios::binary);
+    if (externalFile.is_open()) {
+      size_t fileSize = externalFile.tellg();
+      std::vector<char> buffer(fileSize);
+      externalFile.seekg(0);
+      externalFile.read(buffer.data(), fileSize);
+      return buffer;
+    }
+
+    // Fall back to APK assets
+    AAssetManager* assetManager = androidPlatform->GetAssetManager();
+    if (!assetManager) {
+      throw std::runtime_error("Asset manager not available");
+    }
+
+    AAsset* asset = AAssetManager_open(assetManager, filename.c_str(), AASSET_MODE_BUFFER);
+    if (!asset) {
+      throw std::runtime_error("Failed to open asset: " + filename);
+    }
+
+    size_t fileSize = AAsset_getLength(asset);
+    std::vector<char> buffer(fileSize);
+
+    AAsset_read(asset, buffer.data(), fileSize);
+    AAsset_close(asset);
+
+    return buffer;
+#else
     // Open file at end to get size
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -106,24 +145,55 @@ std::vector<char> Renderer::readFile(const std::string& filename) {
     file.close();
 
     return buffer;
+#endif
   } catch (const std::exception& e) {
-    std::cerr << "Failed to read file: " << e.what() << std::endl;
+    LOGE("Failed to read file '%s': %s", filename.c_str(), e.what());
     throw;
   }
+}
+
+bool Renderer::fileExists(const std::string& filename) {
+#if defined(PLATFORM_ANDROID)
+  auto* androidPlatform = static_cast<AndroidPlatform *>(platform);
+  std::string externalPath = "/sdcard/Android/data/com.simple_engine/files/Assets/" + filename;
+  if (std::filesystem::exists(externalPath)) {
+    return true;
+  }
+
+  AAssetManager* assetManager = androidPlatform->GetAssetManager();
+  if (!assetManager) return false;
+
+  AAsset* asset = AAssetManager_open(assetManager, filename.c_str(), AASSET_MODE_BUFFER);
+  if (asset) {
+    AAsset_close(asset);
+    return true;
+  }
+  return false;
+#else
+  return std::filesystem::exists(filename);
+#endif
 }
 
 // Create shader module
 vk::raii::ShaderModule Renderer::createShaderModule(const std::vector<char>& code) {
   try {
+    // Ensure 4-byte alignment for pCode
+    if (code.size() % 4 != 0) {
+      throw std::runtime_error("Shader code size must be a multiple of 4");
+    }
+
+    std::vector<uint32_t> alignedCode(code.size() / 4);
+    std::memcpy(alignedCode.data(), code.data(), code.size());
+
     // Create shader module
     vk::ShaderModuleCreateInfo createInfo{
       .codeSize = code.size(),
-      .pCode = reinterpret_cast<const uint32_t *>(code.data())
+      .pCode = alignedCode.data()
     };
 
     return vk::raii::ShaderModule(device, createInfo);
   } catch (const std::exception& e) {
-    std::cerr << "Failed to create shader module: " << e.what() << std::endl;
+    LOGE("Failed to create shader module: %s", e.what());
     throw;
   }
 }
@@ -260,12 +330,39 @@ vk::PresentModeKHR Renderer::chooseSwapPresentMode(const std::vector<vk::Present
 
 // Choose swap extent
 vk::Extent2D Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) {
+#if defined(PLATFORM_ANDROID)
+  // On Android, surface currentExtent can sometimes be unreliable or return 0xFFFFFFFF.
+  // Querying the physical window size directly from the platform is often more robust
+  // for filling the entire screen correctly.
+  int width, height;
+  platform->GetWindowSize(&width, &height);
+
+  LOGI("Renderer: chooseSwapExtent (Android). Platform window size: %dx%d. Surface currentExtent: %dx%d",
+       width,
+       height,
+       capabilities.currentExtent.width,
+       capabilities.currentExtent.height);
+
+  vk::Extent2D actualExtent = {
+    static_cast<uint32_t>(width),
+    static_cast<uint32_t>(height)
+  };
+
+  // Clamp to supported range
+  actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+  actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+  return actualExtent;
+#else
   if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+    LOGI("Renderer: Using surface currentExtent: %dx%d", capabilities.currentExtent.width, capabilities.currentExtent.height);
     return capabilities.currentExtent;
   } else {
     // Get framebuffer size
     int width, height;
     platform->GetWindowSize(&width, &height);
+
+    LOGI("Renderer: surface extent is undefined. Using platform window size: %dx%d", width, height);
 
     // Create extent
     vk::Extent2D actualExtent = {
@@ -277,8 +374,11 @@ vk::Extent2D Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabi
     actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
     actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
+    LOGI("Renderer: Clamped extent: %dx%d", actualExtent.width, actualExtent.height);
+
     return actualExtent;
   }
+#endif
 }
 
 // Wait for device to be idle

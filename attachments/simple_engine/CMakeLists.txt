@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.29)
 
 project(SimpleEngine VERSION 1.0.0 LANGUAGES CXX C)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Course modules — optional self-contained feature extensions
+# Each course lives entirely in Courses/ and is linked into the engine target.
+# Disable globally with:  cmake -DENABLE_COURSES=OFF ..
+# ─────────────────────────────────────────────────────────────────────────────
+option(ENABLE_COURSES "Build the Simple Engine course modules" OFF)
+
 # Option to enable/disable Vulkan C++20 module support for this standalone project
 option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan in SimpleEngine" OFF)
 
@@ -30,11 +37,16 @@ if(ENABLE_CPP20_MODULE)
     target_compile_definitions(VulkanCppModule
             PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
     )
-    target_include_directories(VulkanCppModule
-            PUBLIC
-            "${Vulkan_INCLUDE_DIR}"
-            "${VulkanHpp_INCLUDE_DIRS}"
-    )
+    # Build include list — fetched Vulkan-Headers must come before the SDK
+    # include dir when the installed SDK is too old for VK_KHR_opacity_micromap.
+    # This should be reverted when SDK 351 is released.
+    set(_vkmod_incdirs)
+    if (DEFINED VULKAN_FETCHED_HEADERS_INCLUDE AND EXISTS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+        list(APPEND _vkmod_incdirs "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    endif ()
+    list(APPEND _vkmod_incdirs "${Vulkan_INCLUDE_DIR}" "${VulkanHpp_INCLUDE_DIRS}")
+    target_include_directories(VulkanCppModule PUBLIC ${_vkmod_incdirs})
+    unset(_vkmod_incdirs)
     target_link_libraries(VulkanCppModule
             PUBLIC
             Vulkan::Vulkan
@@ -68,7 +80,17 @@ else()
     target_compile_definitions(VulkanCppModule
             INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
     )
-    target_include_directories(VulkanCppModule INTERFACE "${VulkanHpp_INCLUDE_DIRS}")
+    # Same header-ordering logic as the module path: fetched Vulkan-Headers must
+    # come before VulkanHpp_INCLUDE_DIRS so the newer vulkan_core.h is found
+    # first when the installed SDK is too old for VK_KHR_opacity_micromap.
+    # This section should be reverted when SDK 351 is released.
+    set(_vkmod_incdirs)
+    if (DEFINED VULKAN_FETCHED_HEADERS_INCLUDE AND EXISTS "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+        list(APPEND _vkmod_incdirs "${VULKAN_FETCHED_HEADERS_INCLUDE}")
+    endif ()
+    list(APPEND _vkmod_incdirs "${VulkanHpp_INCLUDE_DIRS}")
+    target_include_directories(VulkanCppModule INTERFACE ${_vkmod_incdirs})
+    unset(_vkmod_incdirs)
 endif()
 
 
@@ -92,6 +114,7 @@ list(FILTER SLANG_SHADER_SOURCES EXCLUDE REGEX ".*/(common_types|pbr_utils|light
 
 # Find slangc executable (optional)
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin)
+find_program(SPIRV_OPT_EXECUTABLE spirv-opt HINTS $ENV{VULKAN_SDK}/bin)
 
 if(SLANGC_EXECUTABLE)
     # Ensure the output directory for compiled shaders exists
@@ -102,16 +125,49 @@ if(SLANGC_EXECUTABLE)
         get_filename_component(SHADER_NAME ${SHADER} NAME)
         get_filename_component(SHADER_NAME_WE ${SHADER_NAME} NAME_WE)
         string(REGEX REPLACE "\.slang$" "" OUTPUT_NAME ${SHADER_NAME})
-        add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-            COMMAND ${SLANGC_EXECUTABLE} ${SHADER} -target spirv -profile spirv_1_4 -emit-spirv-directly -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv
-            DEPENDS ${SHADER}
-            COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
-        )
-        list(APPEND SHADER_SPVS ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
+        set(OUTPUT_SPV ${CMAKE_CURRENT_BINARY_DIR}/shaders/${OUTPUT_NAME}.spv)
+
+        set(SLANGC_FLAGS -target spirv -profile spirv_1_3 -g0 -O3)
+        if (ANDROID)
+            list(APPEND SLANGC_FLAGS -DPLATFORM_ANDROID=1)
+        endif ()
+
+        if (SPIRV_OPT_EXECUTABLE)
+            add_custom_command(
+                    OUTPUT ${OUTPUT_SPV}
+                    COMMAND ${SLANGC_EXECUTABLE} ${SHADER} ${SLANGC_FLAGS} -o ${OUTPUT_SPV}.tmp
+                    COMMAND ${SPIRV_OPT_EXECUTABLE} --strip-debug --strip-nonsemantic -Os ${OUTPUT_SPV}.tmp -o ${OUTPUT_SPV}
+                    COMMAND ${CMAKE_COMMAND} -E remove ${OUTPUT_SPV}.tmp
+                    DEPENDS ${SHADER}
+                    COMMENT "Compiling and optimizing Slang shader ${SHADER_NAME}"
+            )
+        else ()
+            add_custom_command(
+                    OUTPUT ${OUTPUT_SPV}
+                    COMMAND ${SLANGC_EXECUTABLE} ${SHADER} ${SLANGC_FLAGS} -o ${OUTPUT_SPV}
+                    DEPENDS ${SHADER}
+                    COMMENT "Compiling Slang shader ${SHADER_NAME} with slangc"
+            )
+        endif ()
+        list(APPEND SHADER_SPVS ${OUTPUT_SPV})
     endforeach()
 
     add_custom_target(shaders DEPENDS ${SHADER_SPVS})
+
+    # Copy shaders to the source directory's shaders folder so the app can find them when run from root
+    add_custom_command(TARGET shaders POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_SPVS} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/
+            COMMENT "Copying compiled shaders to source shaders directory"
+    )
+
+    if (ANDROID)
+        # On Android, copy shaders to the Assets directory so Gradle can package them
+        add_custom_command(TARGET shaders POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/Assets/shaders
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_SPVS} ${CMAKE_CURRENT_SOURCE_DIR}/Assets/shaders/
+                COMMENT "Copying compiled shaders to Assets/shaders for Android packaging"
+        )
+    endif ()
 else()
     message(STATUS "slangc not found. Skipping shader compilation step.")
     add_custom_target(shaders)
@@ -161,7 +217,7 @@ set(SOURCES_DESKTOP
 # Create target
 if (ANDROID)
     # Android: build the engine as a library to be linked into the app's `simple_engine_android` SHARED library.
-    add_library(SimpleEngine STATIC ${SOURCES_COMMON})
+    add_library(SimpleEngine STATIC ${SOURCES_COMMON} ${SOURCES_DESKTOP})
 else ()
     # Desktop: build the runnable executable (unchanged behavior vs `HEAD`).
     add_executable(SimpleEngine ${SOURCES_COMMON} ${SOURCES_DESKTOP})
@@ -169,6 +225,19 @@ endif ()
 
 add_dependencies(SimpleEngine shaders)
 set_target_properties (SimpleEngine PROPERTIES CXX_STANDARD 20)
+
+# ── Course modules ────────────────────────────────────────────────────────────
+# Each course is a static library defined in Courses/CMakeLists.txt.
+# The SIMPLE_ENGINE_COURSES_LIB variable is set in that file; it is empty when
+# all course modules are disabled.
+if(ENABLE_COURSES)
+    add_subdirectory(Courses)
+    if(SIMPLE_ENGINE_COURSES_LIB)
+        target_link_libraries(SimpleEngine PUBLIC ${SIMPLE_ENGINE_COURSES_LIB})
+        target_include_directories(SimpleEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Courses)
+        message(STATUS "[SimpleEngine] Course modules linked: ${SIMPLE_ENGINE_COURSES_LIB}")
+    endif()
+endif()
 
 # Enable required defines for GLM experimental extensions and MSVC math constants
 target_compile_definitions(SimpleEngine PRIVATE

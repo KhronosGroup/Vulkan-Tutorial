@@ -1,0 +1,55 @@
+= Seeing the Difference and Knowing When to Use It
+
+== What the Shadows Look Like
+
+Let's start with what you actually see. When you enable Opacity Micromaps in the simple engine and render a scene with dense foliage, the visual result should be indistinguishable from the non-micromap version. The leaf shadows should fall with the same detailed silhouettes. The penumbra gradients under the canopy should have the same softness. The individual leaf shapes should be identifiable in the shadow pattern on the ground below.
+
+This is a feature, not a limitation. Opacity Micromaps are a performance optimization, not an approximation. They are designed to produce exactly the same visual output as the fully shader-driven path, with the exception that the classification boundary (that thin ring of Unknown micro-triangles) relies on the same any-hit shader as before. The visual identity of the output is not a coincidence — it is a design requirement of the extension.
+
+What changes is what your profiler shows. In a scene dominated by foliage — a forest clearing, a garden terrace with broad-leafed plants, a park with dense overhead canopy — the time spent in the any-hit shader should drop dramatically. The reduction depends on the content, the subdivision level, and the fraction of shadow rays that intersect alpha-tested geometry, but reductions of 60 to 90 percent in any-hit invocation counts are common in well-suited scenes. For soft shadows with high sample counts, this translates directly into frame time savings that a GPU profiler will show as reduced time in the ray traversal stage.
+
+For a bistro-style scene — a terrace with wicker chairs, leafy overhead vines, translucent café umbrellas — the frame time improvement from OMMs can be substantial enough to unlock an additional soft-shadow sample tier without regressing the frame budget. That kind of quality-for-free improvement is exactly what well-targeted GPU optimizations feel like.
+
+== When OMMs Earn Their Keep
+
+Opacity Micromaps are most impactful in a specific combination of conditions. The first is **alpha-tested geometry in shadow paths**: the alpha-masked objects must actually be casting shadows that reach the pixels being rendered. A beautiful tree on the far side of the scene, outside the shadow camera frustum or facing away from the light, contributes nothing to shadow ray traffic and gains nothing from OMMs.
+
+The second condition is **high shadow ray counts**. The savings from OMMs are per-ray, so they scale with the number of shadow rays per pixel. Soft shadow configurations with 8, 16, or 32 samples per pixel amplify the benefit proportionally. If you are rendering hard shadows with a single ray per pixel, OMMs still help, but the absolute frame time saving is smaller.
+
+The third condition is **geometric complexity in the shadow path**. A sparse arrangement of a few leaf triangles does not create enough any-hit shader pressure to make the OMM overhead worthwhile. A dense canopy with thousands of overlapping leaf layers, through which many rays must pass before finding a solid hit or exiting, is exactly the case OMMs are designed to address.
+
+Scenes with indoor vegetation, dense forest corridors, parks, jungle environments, and realistic urban greenery are all strong candidates. Scenes with chain-link fencing, industrial gratings, perforated panels, and particle-based effects (where particle quads use alpha masks) also benefit significantly.
+
+== When OMMs Don't Help
+
+For fully opaque geometry — solid walls, floors, vehicles, characters without alpha-tested hair or clothing — the hardware already uses the fast committed-hit path. There are no any-hit shader invocations to eliminate. OMMs have no effect on opaque geometry performance, and you would not attach micromaps to opaque meshes.
+
+Simple scenes with small triangle counts are not good candidates. The overhead of building the micromaps, storing them in GPU memory, and attaching them to the BLAS is real, even if small. For a scene with a dozen leaf triangles, this overhead costs more than it saves.
+
+Scenes where the alpha-tested geometry is rarely in a shadow-casting configuration also see limited benefit. If the sun is behind the camera and the foliage is fully backlit, most of the foliage's alpha-tested triangles are not between any surface point and the light — the shadow rays never reach them. The any-hit shader invocation count for that geometry is already low.
+
+Finally, be aware that OMMs provide no benefit for **partial transparency** in the traditional sense — geometry with intermediate alpha values (like smoke, glass, or translucent foliage shaders) cannot use OMMs because those materials require the any-hit shader to compute physically accurate partial occlusion. OMMs are specifically for binary alpha masking where the correct answer is always fully opaque or fully transparent, never an intermediate value.
+
+== Choosing a Subdivision Level
+
+The subdivision level governs the balance between accuracy and memory consumption. For most foliage textures, starting at level 2 (16 micro-triangles per original triangle) is a good first choice. At this level, the leaf edge is captured with sufficient resolution to keep the Unknown fraction small, and the memory overhead is modest.
+
+If profiling reveals that the any-hit shader is still consuming significant time — indicating a high Unknown fraction — increasing to level 3 (64 micro-triangles) typically improves the classification accuracy enough to make a meaningful difference. Going to level 4 (256 micro-triangles) is rarely necessary and can produce micromap data that exceeds the memory budget for large scenes.
+
+The engine's `OpacityMicromapBuilder` exposes a method to query the Unknown fraction after classification: what percentage of micro-triangles ended up in the Unknown state. If this fraction is above 15 or 20 percent, increasing the subdivision level is likely worthwhile. If it is already below 5 percent, the current level is probably optimal.
+
+`VK_KHR_opacity_micromap` introduces a **lossy build mode**, enabled by setting the `VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR` flag when building the micromap. When this flag is set, the driver is permitted to apply lossy compression internally, and in exchange it may support subdivision levels beyond the standard `maxOpacity4StateSubdivisionLevel` cap — up to the value reported in `maxOpacityLossy4StateSubdivisionLevel`. For content where occasional reclassification of borderline micro-triangles is acceptable, this is a useful lever for pushing classification accuracy further than the standard hardware limits allow, at the cost of the driver taking greater liberties with the stored states.
+
+The hardware also imposes an absolute limit — `maxMicromapTriangles` — on the total number of micro-triangles that may be contained within a single micromap object. For very high-density meshes, such as large terrain patches or extremely detailed foliage clusters with many thousands of base triangles at a high subdivision level, the expanded micro-triangle count may exceed this limit. When that happens, the mesh must be split into multiple submeshes, each with its own micromap, ensuring that no individual micromap exceeds the reported maximum. Checking against this limit during the build-time planning stage avoids surprises at runtime.
+
+== Hardware Requirements and Graceful Fallback
+
+`VK_KHR_opacity_micromap` is the Khronos-ratified promotion of opacity micromap functionality into the core Vulkan extension ecosystem, and as such it is expected to see broad driver support as hardware and drivers mature. Feature availability is tested at device initialization by querying `VkPhysicalDeviceOpacityMicromapFeaturesKHR` — the extension is considered present and usable when the `micromap` field of that structure is `VK_TRUE`. The `OpacityMicromapBuilder` falls back gracefully when the feature is absent.
+
+The fallback behavior is not merely a safety net — it is a first-class configuration. Many users will run the application on hardware without OMM support, and the experience must be correct and acceptable. Because OMMs do not alter the rendered image, the fallback path is visually identical. The only difference is performance, which gracefully degrades to the pre-OMM baseline.
+
+Always design for the fallback. Never assume OMM availability. Use the profiler to measure both paths and document the performance difference for your content. The graceful fallback posture is a hallmark of well-engineered GPU features.
+
+'''
+
+xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/05_implementation_overview.adoc[Previous: Building Opacity Micromaps in the Simple Engine] | xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/07_conclusion.adoc[Next: Conclusion: Bridging Art and Hardware]

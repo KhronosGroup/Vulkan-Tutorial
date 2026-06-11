@@ -375,8 +375,7 @@ class VulkanRaytracingApplication
 		if (!enableValidationLayers)
 			return;
 
-		vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
-		                                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+		vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
 		                                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
 		vk::DebugUtilsMessageTypeFlagsEXT     messageTypeFlags(
             vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);

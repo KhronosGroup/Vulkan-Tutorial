@@ -1,44 +1,56 @@
 :pp: {plus}{plus}
-= Fragment Density Control and VRS Extensions
+= Fragment Density Control & VRS
 
-In legacy pipelines, reducing shading quality often meant rendering to a lower-resolution buffer and upscaling, which introduced blurring and aliasing artifacts. Modern Vulkan provides a much more elegant solution via **Variable Rate Shading (VRS)** extensions.
+Variable Rate Shading (VRS) allows us to reduce shading cost while maintaining geometric sharpness by decoupling the shading rate from the rasterization rate.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+While Vulkan provides the powerful VRS extensions required for foveated shading, the OpenXR standard does not yet mandate their use or coordinate the generation of shading rate maps. You use Vulkan to implement these optimizations to push your engine's performance beyond standard runtime expectations.
 
 == The Concept: Decoupling Rasterization from Shading
 
-To understand VRS, you must distinguish between two parts of the graphics pipeline:
+In legacy pipelines, reducing shading quality often meant rendering to a lower-resolution buffer and upscaling, which introduced blurring. Modern Vulkan provides a much more elegant solution via **Variable Rate Shading (VRS)**.
 
-1.  **Rasterization**: The process of determining which pixels are covered by a triangle.
-2.  **Shading**: The process of running a fragment shader to determine the color of those pixels.
+1.  **Rasterization**: Determining which pixels are covered by a triangle.
+2.  **Shading**: Running a fragment shader to determine the color of those pixels.
 
-In a standard pipeline, they are 1:1. For every pixel covered, you run one fragment shader. With **VRS**, you can run one fragment shader for a *group* of pixels (e.g., a 2x2 or 4x4 block) while still keeping the high-resolution edges and depth data from the rasterizer.
-
-This allows us to maintain **Geometric Sharpness** (no aliasing on object edges) while significantly reducing the **ALU** (Arithmetic Logic Unit) cost of complex lighting and materials in areas where detail isn't needed.
+With **VRS**, you can run one fragment shader for a *group* of pixels (e.g., a 2x2 or 4x4 block) while still keeping the high-resolution edges and depth data from the rasterizer. This maintains **Geometric Sharpness** while significantly reducing the **ALU** cost of complex lighting.
 
 == Shading Rate Images: The Density Map
 
-In a spatial pipeline, we use a **Shading Rate Image**. This is a low-resolution attachment (usually 1/16th the size of the main view) where each "pixel" represents a tile of the screen.
-
-*   **Value 0x0**: 1x1 shading (Full quality).
-*   **Value 0x5**: 2x2 shading (1/4th the cost).
-*   **Value 0xA**: 4x4 shading (1/16th the cost).
+In a spatial pipeline, we use a **Shading Rate Image**. This is a low-resolution attachment where each "pixel" represents a tile of the screen (e.g., 8x8 or 16x16).
 
 [source,cpp]
 ----
-// Configuring the shading rate state for a spatial pipeline
-vk::PipelineFragmentShadingRateStateCreateInfoKHR shadingRateState{};
-shadingRateState.fragmentSize = {1, 1}; // Default fallback
-// We "Replace" the pipeline rate with the rate from our density image
-shadingRateState.combinerOps[0] = vk::FragmentShadingRateCombinerOpKHR::eReplace;
-shadingRateState.combinerOps[1] = vk::FragmentShadingRateCombinerOpKHR::eKeep;
+// Configuring the shading rate state using designated initializers
+vk::PipelineFragmentShadingRateStateCreateInfoKHR shadingRateState{
+    .fragmentSize = {1, 1}, // Default fallback
+    .combinerOps = {
+        vk::FragmentShadingRateCombinerOpKHR::eReplace, // Use the image's rate
+        vk::FragmentShadingRateCombinerOpKHR::eKeep
+    }
+};
 
-vk::GraphicsPipelineCreateInfo pipelineInfo{};
-pipelineInfo.pNext = &shadingRateState;
+vk::GraphicsPipelineCreateInfo pipelineInfo{
+    .pNext = &shadingRateState
+};
 ----
+
+The runtime checks your hardware's supported tile sizes and ensures your density map matches these limits. It may even "warp" your density map during reprojection to keep the high-resolution "Sweet Spot" aligned with the lens optics.
+
+== Advanced: Temporal Stability and Async Compute
+
+Vulkan allows us to push VRS further than the OpenXR standard:
+
+*   **Temporal Shading Stability**: You can use Vulkan's **Subgroup Operations** in a compute shader to analyze the previous frame's depth and motion vectors, generating a refined density map that prevents "shimmering" artifacts in the periphery.
+*   **Async Compute Coordination**: You can use Vulkan to perform heavy compute work that respects the shading rate map of the primary graphics pass, ensuring your volumetric or lighting calculations are optimized alongside your geometry.
 
 == Fixed Vignette Shading
 
-Because XR lenses are naturally bluer and more distorted at the edges, we can pre-calculate a "Vignette" map. The center of the lens (the "Sweet Spot") is set to 1x1, while the outer rings are set to 2x2 or 4x4. Since the user rarely looks at the extreme edges of the lens, this is essentially "Free Performance."
+Because XR lenses are naturally bluer and more distorted at the edges, we can pre-calculate a "Vignette" map. The center of the lens is set to 1x1, while the outer rings are set to 2x2 or 4x4. Since the user rarely looks at the extreme edges, this is essentially "Free Performance."
 
-When combined with **Multiview**, a single shading rate map can be applied to both eyes simultaneously, saving massive amounts of GPU time without affecting the user's immersion.
+TIP: For more information on VRS and density maps, consult the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#primsrast-fragment-shading-rate[Vulkan Specification on VRS], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/03_gaze_driven_logic.adoc[Next]

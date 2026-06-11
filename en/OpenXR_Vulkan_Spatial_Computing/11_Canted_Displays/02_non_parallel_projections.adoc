@@ -1,29 +1,37 @@
 :pp: {plus}{plus}
-= Calculating Asymmetric Frustums for Wide-FOV Lenses
+= Asymmetric Frustums for Canted Displays
 
-When you query `xrLocateViews`, the OpenXR runtime returns two pieces of information for each eye: a `pose` (position and orientation) and a `fov` (field of view). While many developers are tempted to simply use a fixed FOV and an eye-offset, this approach will fail on headsets with canted lenses.
+When you query `xrLocateViews`, OpenXR returns a `pose` and a `fov` for each eye. On headsets with canted (rotated) lenses, these values are unique per eye and require specialized matrix construction.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
+
+Correctly calculating projection matrices from runtime-provided FOV tangents is a mandatory step for supporting modern wide-FOV headsets. You must use the runtime's view metadata to ensure your Vulkan renders align with the physical hardware.
 
 == The Tangent Frustum: Mapping Angles to Pixels
 
-To understand why OpenXR uses tangents, we must look at how a camera sees the world. A standard field of view is just an angle. But GPUs work with **Clip Space**—a box from -1 to 1. To get from a 3D world to a 2D box, we need the tangents of the FOV angles.
+To understand why OpenXR uses tangents, we must look at how a camera sees the world. GPUs work with **Clip Space**—a box from -1 to 1. To get from a 3D world to a 2D box, we need the tangents of the FOV angles.
 
-The `fov` provided by OpenXR is expressed as four tangents: `angleLeft`, `angleRight`, `angleUp`, and `angleDown`.
+The `fov` provided by `xrLocateViews` is expressed as four tangents: `angleLeft`, `angleRight`, `angleUp`, and `angleDown`.
 
 *   **Symmetric (Desktop)**: Left = -Right, Up = -Down. The optical center is in the middle.
 *   **Asymmetric (XR)**: Left != -Right. The optical center is shifted to align with the physical lens.
 
+The runtime calculates these tangents based on the precise factory calibration of the headset, accounting for display panel tilt and lens-eye distance.
+
 == Building the Matrix
 
-To build a proper 4x4 projection matrix from these tangents using `vulkan-hpp`, we use the following logic:
+To build a proper 4x4 projection matrix from these tangents, we use the following logic:
 
 [source,cpp]
 ----
 // Constructing an asymmetric projection matrix from OpenXR FOV tangents
 glm::mat4 createProjectionMatrix(const XrFovf& fov, float zNear, float zFar) {
-    const float tanLeft = tan(fov.angleLeft);
-    const float tanRight = tan(fov.angleRight);
-    const float tanUp = tan(fov.angleUp);
-    const float tanDown = tan(fov.angleDown);
+    const float tanLeft = std::tan(fov.angleLeft);
+    const float tanRight = std::tan(fov.angleRight);
+    const float tanUp = std::tan(fov.angleUp);
+    const float tanDown = std::tan(fov.angleDown);
 
     const float tanWidth = tanRight - tanLeft;
     const float tanHeight = tanUp - tanDown;
@@ -32,7 +40,7 @@ glm::mat4 createProjectionMatrix(const XrFovf& fov, float zNear, float zFar) {
     projection[0][0] = 2.0f / tanWidth;
     projection[1][1] = 2.0f / tanHeight;
 
-    // The "Shift" components: These align the frustum with the lens optical center
+    // The "Shift" components align the frustum with the lens optical center
     projection[2][0] = (tanRight + tanLeft) / tanWidth;
     projection[2][1] = (tanUp + tanDown) / tanHeight;
 
@@ -45,8 +53,17 @@ glm::mat4 createProjectionMatrix(const XrFovf& fov, float zNear, float zFar) {
 
 == Canted Displays: The Rotation Problem
 
-On headsets like the Valve Index or Pimax, the display panels themselves are rotated outward (canted). This means your **View Matrices** (the eye's position and rotation) are also different for each eye.
+On headsets like the Valve Index, the display panels are rotated outward (canted). This means your **View Matrices** are also different for each eye.
 
-When you use **Multiview**, you must push an array of projection matrices and an array of view matrices to your Slang shaders. If you try to use a single "stereo" matrix with a fixed offset, the world will appear warped and uncomfortable because the GPU is drawing a rectilinear world for a non-rectilinear display.
+When you use **Multiview**, you must push unique projection and view matrices to your shaders. If you try to use a single "stereo" matrix with a fixed offset, the world will appear warped because the GPU is drawing a rectilinear world for a non-rectilinear display.
+
+== Advanced: Perspective-Correct Interpolation and Dynamic FOV
+
+Vulkan allows for geometric precision that raw OpenXR data does not manage:
+
+*   **Perspective-Correct Interpolation**: Using Vulkan's **Dynamic State** and **Push Constants**, you can pass eye-specific clip-plane data to your shaders, ensuring lighting and shadow calculations remain stable even on headsets with extreme panel rotation.
+*   **Viewport Swizzling**: You can use Vulkan's **Viewport Swizzling** to dynamically adjust the rendered area for each eye based on real-time optical changes, providing a more responsive experience than the fixed OpenXR view configuration.
+
+TIP: For more information on asymmetric projections, check out the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#projection-matrices[OpenXR Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/11_Canted_Displays/03_viewport_swizzling.adoc[Next]

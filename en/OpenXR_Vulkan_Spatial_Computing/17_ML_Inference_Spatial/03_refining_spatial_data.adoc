@@ -1,21 +1,47 @@
 :pp: {plus}{plus}
-= Refining Spatial Data: From Messy to Clean
+= Refining Spatial Data
 
-The environmental meshes we ingested in Chapter 16 are often "noisy." They contain holes where the LiDAR sensor couldn't reach, jagged edges on curved surfaces, and floating artifacts caused by reflections or moving objects. To turn these into clean, interactive geometry, we use ML-driven refinement.
+Environmental meshes ingested from sensors often contain noise and holes. We use ML-driven refinement to turn these raw scans into clean, interactive geometry.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+While OpenXR provides environmental meshes, the standard does not manage the geometric quality or topological integrity of the scan. You use Vulkan's compute shaders and ray-tracing acceleration structures to implement real-time mesh repair and mirror-aware refinement, providing a level of physical interaction that the standard OpenXR ingestion doesn't natively coordinate.
 
 == The Concept: Topology Inference
 
-Standard mesh smoothing algorithms (like Laplacian or Gaussian smoothing) can remove noise, but they are "dumb"—they can't fill large holes or "guess" missing geometry. **Topology Inference** uses a neural network trained on millions of real-world scans to predict the missing parts of a scene.
+Standard mesh smoothing removal noise but cannot fill holes or "guess" missing geometry. **Topology Inference** uses neural networks to predict missing parts of a scene.
 
-1.  **Denoising**: The model identifies small floating vertices or "geometry dust" that doesn't belong to any major surface and marks them for removal.
-2.  **Infilling**: The model predicts the curvature of a surface (like a wall behind a plant) and generates new triangles to bridge gaps in the scan.
-3.  **Primitive Approximation**: For optimal performance, the model can suggest replacing a complex, high-poly "Table" mesh with a clean, low-poly box primitive that has the same physical bounds.
+1.  **Denoising**: Identifying and removing "geometry dust."
+2.  **Infilling**: Predicting curvature (e.g., a wall behind a plant) to bridge gaps.
+3.  **Primitive Approximation**: Suggesting low-poly primitives (like a box for a table) to replace complex, noisy meshes.
+
+The runtime handles the LiDAR-to-mesh conversion and temporal smoothing (SLAM), ensuring the refined geometry stays anchored in physical space.
 
 == Implementation: ML-Aided Surface Reconstruction
 
-In our engine, we use a compute shader to feed the raw spatial vertices into our ML model (processed via cooperative matrices). The model outputs a **Saliency Map**—a probability grid that tells us which regions are likely solid, high-confidence surfaces and which are noise.
+In our engine, we use a compute shader to feed raw spatial vertices into our ML model. The model outputs a **Saliency Map**—a probability grid that guides the reconstruction.
 
-We author this reconstruction logic in **Slang**, using structured buffers to manage our dynamic mesh data.
+[source,cpp]
+----
+// Binding the spatial mesh and saliency map using designated initializers
+vk::DescriptorBufferInfo meshInfo{
+    .buffer = *rawMeshBuffer,
+    .offset = 0,
+    .range = VK_WHOLE_SIZE
+};
+
+vk::WriteDescriptorSet meshWrite{
+    .dstSet = *reconstructionSet,
+    .dstBinding = 0,
+    .descriptorCount = 1,
+    .descriptorType = vk::DescriptorType::eStorageBuffer,
+    .pBufferInfo = &meshInfo
+};
+----
+
+In Slang, we use the probability data to "snap" vertices to clean planes or cull artifacts:
 
 [source,slang]
 ----
@@ -23,29 +49,27 @@ We author this reconstruction logic in **Slang**, using structured buffers to ma
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void reconstructSurfaces(uint3 dtid : SV_DispatchThreadID) {
-    // 1. Query the ML saliency map for this vertex's region
+    // Query the ML saliency map for this vertex's region
     float surfaceProbability = mlSaliencyMap.Load(dtid.xy);
 
     if (surfaceProbability > 0.95) {
-        // 2. High confidence: Snap the vertex to the predicted "clean" plane
+        // High confidence: Snap to the predicted "clean" plane
         float3 refinedPos = predictCleanSurface(dtid.xyz);
         updateMeshVertex(dtid.x, refinedPos);
     } else if (surfaceProbability < 0.1) {
-        // 3. Low confidence: This is likely a sensor artifact (e.g., a mirror reflection)
-        // Mark the vertex as "degenerate" to prevent it from rendering
+        // Low confidence: This is likely a sensor artifact (e.g., a mirror reflection)
         degenerateMeshVertex(dtid.x);
     }
 }
 ----
 
-== Interactive Geometry: The Final Goal
+== Advanced: Real-Time Mesh Repair and Mirror Estimation
 
-By refining the spatial data, we move from simple "Visual Passthrough" to true **Physical Interaction**.
+Vulkan allows for a level of geometric cleanup beyond standard feeds:
 
-*   **Pixel-Perfect Occlusion**: A clean, refined wall mesh allows for perfect depth-aware occlusion of virtual objects, preventing them from "leaking" through the edges of physical furniture.
-*   **Realistic Shadows**: We can cast virtual shadows onto a refined "Table" mesh. Because the mesh is clean, the shadows look crisp and "grounded," making virtual objects feel like they truly exist in the room.
-*   **Robust Physics**: A refined floor mesh prevents virtual objects from falling through small "cracks" in the raw spatial scan, ensuring a stable simulation.
+*   **Real-Time Mesh Repair**: Using Vulkan's **Ray Tracing Acceleration Structures**, you can implement real-time mesh decimation and repair on-the-fly, filling holes that the standard OpenXR feed does not manage.
+*   **Reflective Surface Estimation**: Sensor-based meshes often fail on mirrors or glass. You can use Vulkan **Ray Tracing** to identify potential reflective surfaces by tracing rays against the scanned room and adjusting the OpenXR geometry to account for windows.
 
-By using on-GPU ML to polish our spatial data, we bridge the final gap between the messy physical world and the digital precision required for high-end XR. In the next chapter, we will see how to combine these refined meshes with our rendering to achieve **Semantic Occlusion**.
+TIP: For more information on scene understanding and mesh refinement, consult the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#XR_EXT_scene_understanding[XR_EXT_scene_understanding Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/02_on_gpu_inference.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/04_incorporating_into_the_engine.adoc[Next]

@@ -156,15 +156,18 @@ In `Renderer::createLogicalDevice`, we must explicitly enable the Vulkan 1.3 fea
 // renderer_core.cpp
 bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     // ...
-    // Enable Vulkan 1.3 features
-    vk::PhysicalDeviceVulkan13Features vulkan13Features;
-    vulkan13Features.dynamicRendering = vk::True;
-    vulkan13Features.synchronization2 = vk::True;
 
-    // Enable Multiview (if in XR mode)
-    vk::PhysicalDeviceMultiviewFeatures multiviewFeatures;
-    multiviewFeatures.multiview = xrMode ? vk::True : vk::False;
-    multiviewFeatures.pNext = &vulkan13Features;
+    // Enable Vulkan 1.3 features using designated initializers
+    vk::PhysicalDeviceVulkan13Features vulkan13Features{
+        .synchronization2 = vk::True,
+        .dynamicRendering = vk::True
+    };
+
+    // Enable Multiview (if in XR mode) using designated initializers
+    vk::PhysicalDeviceMultiviewFeatures multiviewFeatures{
+        .pNext = &vulkan13Features,
+        .multiview = xrMode ? vk::True : vk::False
+    };
 
     // ... create vk::raii::Device with multiviewFeatures in pNext ...
 }

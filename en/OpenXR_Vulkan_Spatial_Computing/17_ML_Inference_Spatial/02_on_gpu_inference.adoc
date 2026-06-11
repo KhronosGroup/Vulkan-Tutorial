@@ -1,54 +1,64 @@
 :pp: {plus}{plus}
 = On-GPU Inference with Cooperative Matrices
 
-To process the flood of real-world data coming from our zero-copy sensor hand-offs, our engine needs a way to "understand" geometry and motion instantly. Standard compute shaders are excellent for general-purpose parallel tasks, but neural networks rely on heavy matrix multiplication—a task that standard **ALU** (Arithmetic Logic Unit) pipelines can find inefficient.
+Neural networks rely on heavy matrix multiplication. To process sensor data at spatial frequencies, we use **Cooperative Matrices** (detailed in our Advanced Compute series) to tap into the GPU's dedicated ML hardware.
 
-To solve this, we use **Cooperative Matrices** (as detailed in our Advanced Compute series), which tap into the GPU's dedicated hardware for high-speed matrix math.
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+Standard OpenXR runtimes perform sensor ingestion but do not mandate how that data is processed. You use Vulkan's Cooperative Matrix extensions to implement high-speed ML inference on-GPU, enabling predictive filtering and object recognition that the standard OpenXR frame loop does not natively coordinate.
 
 == The Concept: Specialized ML Hardware
 
-In a spatial engine, we use ML (Machine Learning) for tasks like **Hand Tracking** and **Object Recognition**. These tasks involve multiplying massive matrices of weights against input sensor data to produce probabilities or coordinates.
+Neural networks rely on heavy matrix multiplication. Standard compute shaders are excellent for general-purpose tasks, but for ML, we use **Cooperative Matrices** (detailed in our Advanced Compute series). This allows a whole **Subgroup** (32 or 64 threads) to work as a single unit to multiply large matrix tiles in one operation, bypassing traditional cache levels for maximum throughput:
 
-*   **Standard Compute**: Each thread works independently on a single scalar or vector operation. To multiply a large matrix, threads must coordinate manually via shared memory, often hitting bandwidth bottlenecks.
-*   **Cooperative Matrices**: A whole **Subgroup** (32 or 64 threads) works as a single unit to multiply a large matrix tile in one operation. This "cooperation" allows the hardware to bypass traditional cache levels and use high-speed internal paths (like **Tensor Cores** on NVIDIA or **Matrix Accelerators** on AMD).
+[source,cpp]
+----
+// Enabling cooperative matrix features using designated initializers
+vk::PhysicalDeviceCooperativeMatrixFeaturesKHR coopMatrixFeatures{
+    .cooperativeMatrix = VK_TRUE
+};
 
-== Implementing Hand-Pose Refinement
+vk::DeviceCreateInfo deviceCreateInfo{
+    .pNext = &coMatrixFeatures
+};
+----
 
-Consider raw hand-tracking data from a headset. It is often noisy—your virtual fingers might "jitter" as the sensor loses sight of them. We can use a small neural network to **Refine** these poses, using the previous 5 frames of movement to predict the most likely "smooth" position of each joint.
-
-By performing this inference on the GPU, we can use **GEMM** (General Matrix Multiply) operations to process all joint refinements in parallel.
+In Slang, we use the `cooperative_matrix` type to tap into dedicated hardware:
 
 [source,slang]
 ----
 // Using Slang's Matrix fragments for cooperative ML inference
-// Note: Requires Vulkan 1.3 with VK_KHR_cooperative_matrix
 [shader("compute")]
-[numthreads(32, 1, 1)] // Subgroup-sized for optimal matrix math
+[numthreads(32, 1, 1)]
 void performHandRefinement() {
-    // 1. Load raw joint data and neural network weights into fragments
-    // These matrices represent a 16x16 tile of the larger network
     cooperative_matrix<float16_t, id_Subgroup, 16, 16> input;
     cooperative_matrix<float16_t, id_Subgroup, 16, 16> weights;
 
     input.load(rawJointBuffer, jointOffset);
     weights.load(weightBuffer, weightOffset);
 
-    // 2. Perform high-speed Matrix-Multiply-Accumulate (MMA)
-    // The hardware handles the subgroup-wide synchronization automatically
+    // High-speed Matrix-Multiply-Accumulate (MMA)
     auto result = mul(input, weights);
 
-    // 3. Store the "Refined" joint positions directly back to the Action Space buffer
     result.store(refinedPoseBuffer, poseOffset);
 }
 ----
 
+== Advanced: Predictive Gaze and Multi-GPU Inference
+
+Vulkan allows us to push ML performance beyond standard ingestion:
+
+*   **Predictive Gaze Smoothing**: Using **Cooperative Matrix** and **Subgroup Operations**, you can run a small neural network directly in your frame loop to predict the user's future gaze point based on recent OpenXR telemetry, faster than the extension can report.
+*   **Multi-GPU Inference**: You can use Vulkan's **Device Groups** to distribute ML inference workloads (like object recognition) across multiple GPUs, aggregating results before the OpenXR composition pass.
+
 == Why On-GPU? Latency and Power
 
-Performing ML inference on the GPU is critical for spatial computing for two primary reasons:
+Performing ML inference on the GPU is critical for spatial computing:
+1.  **Latency**: Sending sensor data to the CPU for ML processing causes visible lag, breaking the feeling of **Presence**.
+2.  **Power Efficiency**: Matrix accelerators are significantly more energy-efficient than general-purpose ALUs. For mobile headsets, this reduces thermal throttling.
 
-1.  **Latency**: If we sent sensor data to the CPU for ML processing, the finger movement would visibly lag behind the user's physical hand. This breaks the feeling of **Presence**.
-2.  **Power Efficiency**: Matrix accelerators are significantly more energy-efficient than general-purpose ALUs for these specific tasks. For mobile headsets, this translates directly to longer sessions and reduced thermal throttling.
-
-By integrating ML directly into our spatial compute pipeline, we turn raw, noisy sensor data into clean, interactive inputs with the same low-latency performance as our main rendering path.
+TIP: For more information on cooperative matrices and ML inference, consult the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VK_KHR_cooperative_matrix[Vulkan Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/17_ML_Inference_Spatial/03_refining_spatial_data.adoc[Next]

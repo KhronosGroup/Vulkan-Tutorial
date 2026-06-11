@@ -1,44 +1,55 @@
 :pp: {plus}{plus}
 = High-Density View Arrays
 
-Managing a 4D lightfield poses a significant memory challenge. Even at modest resolutions, the total number of color samples can quickly reach gigabytes.
+Managing a 4D lightfield requires optimizing both storage and access to handle datasets that can easily reach gigabytes in size.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+Standard OpenXR runtimes are focused on fixed-resolution projection layers. You use Vulkan's Buffer Device Address (BDA) and Sparse Residency to manage the high-density view arrays required for plenoptic data, allowing for spatial detail that exceeds the standard OpenXR buffer model.
 
 == The Gigabyte Problem
 
-Consider a modest lightfield:
-*   **Spatial**: latexmath:[1024 \times 1024] entry points.
-*   **Directional**: latexmath:[32 \times 32] angles.
-*   **Data**: latexmath:[1024 \times 1024 \times 32 \times 32 \approx 1 \text{ billion rays}].
+Managing a 4D lightfield poses a significant memory challenge. A modest lightfield with latexmath:[1024 \times 1024] entry points and latexmath:[32 \times 32] angles contains roughly 1 billion rays. At 16 bytes per ray (RGBA FP32), that is **16 GB of VRAM**—exceeding the capacity of many consumer GPUs.
 
-At 16 bytes per ray (RGBA FP32), that is **16 GB of VRAM**. This exceeds the capacity of many consumer GPUs. To make this work, we must optimize both storage and access.
+The runtime work closely with the OS to "Pin" these massive buffers in VRAM, often using **Sparse Residency** (via `VK_KHR_sparse_binding`) to load only the visible tiles.
 
 == FP16 and Quantization: Bandwidth Savings
 
-The first step is reducing the precision of each ray. Because lightfields often exhibit high directional redundancy (adjacent rays are very similar), we can compress the color data.
-
-In Slang, we can use `half4` instead of `float4`. This immediately halves the VRAM footprint to **8 GB**.
+Reducing precision is the first step in optimization. Using `half4` instead of `float4` in Slang immediately halves the VRAM footprint. Adjacent rays in a lightfield are often very similar, allowing for high-quality compression without significant visual loss.
 
 == Buffer Device Address (BDA): Pointer-Based Access
 
-With such large datasets, the overhead of standard Vulkan Descriptor Sets can become a bottleneck. By using **Buffer Device Address**, we can pass a raw 64-bit pointer to our lightfield data directly into our shaders.
+With such large datasets, the overhead of standard Vulkan Descriptor Sets can become a bottleneck. By using **Buffer Device Address**, we can pass a raw 64-bit pointer to our data directly into our shaders.
 
 [source,cpp]
 ----
-// Using BDA to get a raw pointer to a high-density buffer
+// Using BDA to get a raw pointer using designated initializers
 vk::BufferDeviceAddressInfo addressInfo{
     .buffer = *lightFieldBuffer
 };
+uint64_t gpuAddress = device.getBufferAddress(addressInfo);
 
-uint64_t bufferPointer = device.getBufferAddress(addressInfo);
+// Passing the pointer to a Slang shader via Push Constants
+struct PushConstants {
+    uint64_t lightFieldPtr;
+    uint2 stRes;
+    uint2 uvRes;
+};
+commandBuffer.pushConstants<PushConstants>(*pipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, pc);
 ----
 
-This is particularly useful for **N-View** systems where we might be accessing dozens of different view layers in a single pass. We can simply pass the pointer once and calculate offsets mathematically.
+== Advanced: Neural Compression and 4D Cache Locality
+
+Vulkan allows for memory optimizations beyond standard linear buffer models:
+
+*   **Neural Lightfield Compression**: Using Vulkan's **Video Decode** and **Compression** extensions, you can implement custom compute-based decompressors. This allows you to fit significantly more spatial detail into the same VRAM footprint.
+*   **4D Tiling and Swizzling**: You can use compute shaders to implement custom swizzling (like Morton-order indexing), keeping GPU caches efficient when sampling high-density lightfield arrays.
 
 == Cache Locality: Spatial-Directional Tiling
 
-A standard 4D array layout is terrible for GPU caches. If the shader samples a ray and then its neighbor, the neighbor might be megabytes away in linear memory, causing a "Cache Miss."
-
-To fix this, we implement **4D Tiling**. We reorganize the data so that a latexmath:[4 \times 4 \times 4 \times 4] block of spatial and directional rays are stored contiguously. This ensures that when a Compute Unit (CU) fetches one sample, the neighboring rays are already in the L1/L2 cache.
+A standard 4D array layout is terrible for GPU caches. To fix this, we implement **4D Tiling**, reorganizing data so that small spatial and directional blocks are contiguous.
 
 [source,slang]
 ----
@@ -54,8 +65,6 @@ uint getTiledIndex(uint2 st, uint2 uv) {
 }
 ----
 
-By combining data compression, raw pointer flexibility via BDA, and tiled memory layouts, we can manage massive lightfield datasets that would otherwise be impossible to store.
-
-In the next chapter, we will see how to turn these rays back into images using **Plenoptic Synthesis**.
+TIP: For more information on BDA and sparse resources, check out the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#memory-device-address[Vulkan Specification on Device Addresses], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/02_4d_lightfield_representation.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/04_incorporating_into_the_engine.adoc[Next]

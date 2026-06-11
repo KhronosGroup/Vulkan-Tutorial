@@ -3,6 +3,12 @@
 
 Transitioning our engine's main loop to the OpenXR lifecycle involves three primary functions: `xrWaitFrame`, `xrBeginFrame`, and `xrEndFrame`. These functions act as the "heartbeat" of our spatial application, replacing the standard unthrottled loop or legacy `glfwPollEvents` based pacing.
 
+== Ecosystem Perspective
+
+This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
+
+Synchronizing your engine's main loop with the OpenXR lifecycle is mandatory for photons-to-motion alignment. You must use the predicted display time provided by the runtime to ensure a smooth, stable experience.
+
 == The Temporal Paradox: Rendering the Future
 
 To understand the XR lifecycle, you must first accept a fundamental truth: **You are always rendering a future that hasn't happened yet.**
@@ -13,17 +19,19 @@ The XR lifecycle is designed to solve this by providing a **Predicted Display Ti
 
 == 1. `xrWaitFrame`: The Pacing Heartbeat
 
-The `xrWaitFrame` function is our engine's synchronization point with the XR runtime. When we call this, the runtime may block our execution until it is the optimal time for us to begin processing the next frame.
+The `xrWaitFrame` function is our engine's primary synchronization point. When we call this, the runtime may block our execution to keep us synced with the headset's refresh rate (e.g., 90Hz).
 
 [source,cpp]
 ----
-XrFrameWaitInfo frameWaitInfo{XR_TYPE_FRAME_WAIT_INFO};
+// Sync with the runtime heartbeat and retrieve the predicted display time
 XrFrameState frameState{XR_TYPE_FRAME_STATE};
+XrFrameWaitInfo frameWaitInfo{
+    .type = XR_TYPE_FRAME_WAIT_INFO
+};
 xrWaitFrame(xrSession, &frameWaitInfo, &frameState);
 ----
 
-*   **Throttling**: If your engine is too fast, `xrWaitFrame` will block to keep you synced with the headset's refresh rate (e.g., 90Hz).
-*   **The Prediction**: The `frameState` object returned by this call contains the `predictedDisplayTime`. This is the exact nanosecond when the pixels we are about to render will actually be shown on the headset's display.
+*   **Prediction**: The `frameState` contains the `predictedDisplayTime`. This is the exact nanosecond when the pixels we are about to render will actually be shown on the headset's display.
 *   **Should We Render?**: `frameState.shouldRender` tells us if the runtime actually wants a frame. If the headset is off or the user is in a system menu, we might still "wait" but skip the "render" work to save power.
 
 == 2. `xrBeginFrame`: Opening the Window
@@ -32,29 +40,38 @@ Once the wait is satisfied, we call `xrBeginFrame`. This signals the start of ou
 
 [source,cpp]
 ----
-XrFrameBeginInfo frameBeginInfo{XR_TYPE_FRAME_BEGIN_INFO};
+XrFrameBeginInfo frameBeginInfo{
+    .type = XR_TYPE_FRAME_BEGIN_INFO
+};
 xrBeginFrame(xrSession, &frameBeginInfo);
 ----
 
-This is our engine's cue to start recording command buffers. It is important to keep the time between `xrWaitFrame` and `xrBeginFrame` as short as possible, as this is when we perform our simulation updates and view predictions.
+It is important to keep the time between `xrWaitFrame` and `xrBeginFrame` as short as possible, as this is when we perform our simulation updates and view predictions.
 
 == 3. `xrEndFrame`: Submitting to the Compositor
 
-The final step is `xrEndFrame`. This is the counterpart to `vkQueuePresentKHR`.
+The final step is `xrEndFrame`, the spatial counterpart to `vkQueuePresentKHR`.
 
 [source,cpp]
 ----
-XrFrameEndInfo frameEndInfo{XR_TYPE_FRAME_END_INFO};
-frameEndInfo.displayTime = frameState.predictedDisplayTime;
-frameEndInfo.layerCount = 1;
-frameEndInfo.pLayers = &layerPtr;
+XrFrameEndInfo frameEndInfo{
+    .type = XR_TYPE_FRAME_END_INFO,
+    .displayTime = frameState.predictedDisplayTime,
+    .environmentBlendMode = chosenBlendMode,
+    .layerCount = 1,
+    .layers = &layerPtr
+};
 xrEndFrame(xrSession, &frameEndInfo);
 ----
 
-Instead of just "presenting" a single image, `xrEndFrame` takes an array of **Composition Layers**.
+Instead of just "presenting" a single image, `xrEndFrame` takes an array of **Composition Layers**. The runtime's compositor will stack these together at the very last microsecond, and can even perform **Late-Stage Reprojection (LSR)** to "tweak" your final image if the user's head moved after you finished rendering.
 
-*   **Layers**: These are separate planes of imagery (like the 3D scene, a 2D HUD, or a curved menu) that the runtime's compositor will stack together at the very last microsecond using its own high-priority GPU pass.
-*   **Pacing**: `xrEndFrame` tells the runtime: "My GPU work is queued. Use the synchronization we agreed upon in the handshake to know when it's safe to show this frame."
+== Advanced: Sub-Frame Workloads and Latency Monitoring
+
+While OpenXR handles the frame pacing, Vulkan allows you to implement more granular control:
+
+*   **Coordinating Sub-Frame Workloads**: You can use Vulkan's **Timeline Semaphores** to implement workloads that run asynchronously from the main XR lifecycle. For example, you can kick off a complex visibility or light-baking compute pass before calling `xrWaitFrame`, ensuring the GPU is busy while the CPU waits for the heartbeat.
+*   **Predicting GPU-side Latency**: The runtime provides the display time, but you can use Vulkan **Query Pools** to measure your own GPU-side latency. This data allows you to dynamically adjust your engine's internal prediction offset, providing a tighter alignment than generic runtime prediction.
 
 == The Engine Loop Summary
 
@@ -66,6 +83,6 @@ Our engine's main loop now follows this precise rhythm:
 4.  **Render**: Use the future time to predict poses, record Vulkan commands, and submit them.
 5.  **End**: Hand the finished (or queued) layers back to the runtime for display.
 
-By following this rhythm, we ensure our engine is perfectly synchronized with the headset's hardware, providing the smooth and stable experience required for spatial computing.
+TIP: For more details, consult the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#xrWaitFrame[OpenXR Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/05_Predictive_Frame_Loop/03_display_time_prediction.adoc[Next]

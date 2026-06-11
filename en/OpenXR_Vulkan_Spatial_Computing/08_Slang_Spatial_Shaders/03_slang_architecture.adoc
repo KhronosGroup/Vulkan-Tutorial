@@ -1,13 +1,19 @@
 :pp: {plus}{plus}
 = Slang Architecture for N-View Shaders
 
-Authoring multiview-aware shaders is a unique challenge. While the GPU's hardware handles the duplication of draw commands, it's our job as shader developers to ensure that we're accessing our eye-specific data—like view and projection matrices—in a way that is both efficient and organized. This is where the **Slang** language really shines.
+Authoring multiview-aware shaders is a unique challenge. While the GPU's hardware handles the duplication of draw commands, it's our job to ensure we're accessing our eye-specific data—like view and projection matrices—efficiently.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
+
+Using modern shader languages like Slang to manage the multiple views required by OpenXR is a standard practice for high-performance engines. This architecture allows you to handle an arbitrary number of views (mono, stereo, or quad) with a single, unified shader codebase.
 
 == The N-View Mindset: Agnostic Shaders
 
-In a traditional shader, you might pass a single `viewMatrix`. In an XR-aware engine, we must adopt an **N-View Mindset**. We write our shaders once, assuming they might be used for mono, stereo, or even "Quad-Views" (4 eyes).
+In a traditional shader, you might pass a single `viewMatrix`. In an XR-aware engine, we adopt an **N-View Mindset**, writing our shaders to handle mono, stereo, or even "Quad-Views" (4 eyes) dynamically.
 
-Slang's powerful type system and **StructuredBuffers** allow us to pass an array of view data that the shader can index into dynamically based on which eye is currently being processed.
+Slang's powerful type system and **StructuredBuffers** allow us to pass an array of view data that the shader can index into based on the `SV_ViewID`.
 
 [source,slang]
 ----
@@ -19,12 +25,7 @@ struct SpatialView {
 };
 
 // 2. Accessing N-Views in a Structured Buffer
-// This buffer contains data for all active views (e.g., Left, Right, Inset Left, Inset Right)
 StructuredBuffer<SpatialView> eyeViews;
-
-struct VertexInput {
-    float3 position : POSITION;
-};
 
 struct VertexOutput {
     float4 position : SV_Position;
@@ -34,8 +35,7 @@ struct VertexOutput {
 VertexOutput main(VertexInput input, uint viewID : SV_ViewID) {
     VertexOutput output;
 
-    // Slang makes it easy to access the current eye view data
-    // The compiler and hardware ensure that 'viewID' matches the current broadcast layer
+    // Index into our views using the hardware-provided viewID
     SpatialView currentView = eyeViews[viewID];
 
     output.position = mul(currentView.viewProjection, float4(input.position, 1.0));
@@ -44,18 +44,44 @@ VertexOutput main(VertexInput input, uint viewID : SV_ViewID) {
 }
 ----
 
+On the C++ side, we use designated initializers to bind these buffers to our descriptors:
+
+[source,cpp]
+----
+vk::DescriptorBufferInfo bufferInfo{
+    .buffer = *eyeViewsBuffer,
+    .offset = 0,
+    .range = sizeof(SpatialView) * maxViews
+};
+
+vk::WriteDescriptorSet descriptorWrite{
+    .dstSet = *descriptorSet,
+    .dstBinding = 0,
+    .descriptorCount = 1,
+    .descriptorType = vk::DescriptorType::eStructuredBuffer,
+    .pBufferInfo = &bufferInfo
+};
+----
+
 == Propagation to the Fragment Shader
 
-The `SV_ViewID` isn't just for the vertex shader. You can propagate it down to the **Fragment Shader** to perform eye-specific logic.
+The `SV_ViewID` isn't just for the vertex shader. You can propagate it to the **Fragment Shader** to perform eye-specific logic, such as calculating specular highlights based on each eye's physical location.
 
-Why would you do this? Consider **Specular Highlights**. Since each eye is at a slightly different physical location, the reflections on a shiny surface should be slightly different for each eye. By using the `eyePosition` from our `SpatialView` structure (indexed by `viewID`), we can calculate the correct view-dependent lighting for each eye in a single pass.
+The runtime handles the view mask routing and viewport array management, ensuring each fragment shader invocation targets the correct layer of your multiview broadcast. Many runtimes will also optimize small buffers by keeping them in the GPU's "Constant Cache," making per-view indexing extremely efficient.
+
+== Advanced: Cooperative Shading and Dynamic Projection
+
+Vulkan allows us to push the "N-View" mindset further than the standard:
+
+*   **Cooperative View Shading**: While you can branch on `viewID`, doing so can lead to GPU divergence. You can use Vulkan's **Subgroup Operations** to share information between views, maintaining high GPU occupancy.
+*   **Dynamic Projection Models**: By using **Shader Objects** (`VK_EXT_shader_object`), you can dynamically swap view-projection logic without re-creating the entire pipeline, allowing for real-time adjustments to lens-specific projection models.
 
 == Modular Spatial Shaders
 
-Slang's support for **Generics** and **Interfaces** means we can write shaders that are completely agnostic of the number of views. We can define our spatial logic once and then let the compiler handle the underlying details of the multiview integration.
+Slang's support for **Generics** and **Interfaces** means we can write shaders that are completely agnostic of the number of views. We define our spatial logic once and let the compiler handle the underlying multiview integration.
 
-This significantly reduces the chances of errors. For example, if you add a third view for a "Spectator Camera" or a "Rear View Mirror," you don't need to change your shader code—you just update your view mask and the size of your `eyeViews` buffer.
+This significantly reduces the chances of errors. If you add a third view for a "Spectator Camera," you don't need to change your shader code—just update your view mask and the size of your `eyeViews` buffer.
 
-In the next chapter, we'll see how to push this "N-View" mindset even further by looking at **Quad-Views** and **Foveated Rendering**.
+TIP: For more information on Slang and Vulkan integration, check out the official link:https://shader-slang.com/slang/user-guide/index.html[Slang User Guide], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/02_native_multiview.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/04_incorporating_into_the_engine.adoc[Next]

@@ -1,51 +1,71 @@
 :pp: {plus}{plus}
-= ML-Driven Segmentation: Understanding Reality
+= ML-Driven Segmentation
 
-In standard Augmented Reality (AR), virtual objects are often drawn directly on top of the camera feed. This is known as **Naïve Compositing**, and it frequently leads to a jarring "Ghosting Effect"—where a virtual robot appears to float in front of a real table that should logically be occluding it. To fix this, we use **Semantic Segmentation**.
+Semantic segmentation labels every pixel in the camera feed with a category, providing the pixel-perfect understanding required to blend virtual and physical content realistically.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+While OpenXR provides basic environment blending, the standard does not manage pixel-perfect semantic labels or edge refinement. You use Vulkan's compute shaders and subgroup operations to implement advanced temporal edge refining and occlusion logic that the standard OpenXR alpha-blending model does not natively manage.
 
 == The Concept: Pixel-Wise Understanding
 
-Semantic segmentation is the process of labeling every pixel in the camera feed with a category. Unlike simple object detection, which just places a box around an item, segmentation provides a high-resolution, pixel-perfect understanding of the scene.
+Semantic segmentation labels every pixel in the camera feed with a category (e.g., 0 for Background, 1 for Table, 2 for Human Hand). This provides a pixel-perfect understanding of the scene, allowing the engine to make intelligent blending decisions.
 
-1.  **Input**: A raw RGB camera frame captured by the headset.
-2.  **ML Pass**: A neural network (often a **U-Net** or **Transformer** architecture) processes the frame.
-3.  **Output**: A **Segmentation Mask** where each pixel value corresponds to a category: 0 for Background, 1 for Table, 2 for Human Hand, etc.
-
-By understanding *what* occupies every pixel in the real world, our engine can make intelligent decisions about *how* to blend virtual content, ensuring that digital objects respect the physical boundaries of the user's room.
+The runtime generates these masks from the camera feed, often performing latency compensation by "warping" the mask to match the user's latest head pose before the hand-off.
 
 == Implementing the Occlusion Mask
 
-In our Vulkan engine, we treat the output of this ML pass as a specialized texture: the **Occlusion Mask**. This texture is used in our final composite shader to gate the visibility of virtual pixels.
+In our Vulkan engine, we treat the ML output as an **Occlusion Mask** texture. We use designated initializers to bind this mask in our composite pass:
 
-Authoring this in **Slang**, we can efficiently sample the mask and perform conditional logic to handle complex real-world occlusion.
+[source,cpp]
+----
+// Binding the semantic mask using designated initializers
+vk::DescriptorImageInfo maskInfo{
+    .sampler = *pointSampler,
+    .imageView = *semanticMaskView,
+    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+};
+
+vk::WriteDescriptorSet maskWrite{
+    .dstSet = *compositeSet,
+    .dstBinding = 1,
+    .descriptorCount = 1,
+    .descriptorType = vk::DescriptorType::eSampledImage,
+    .pImageInfo = &maskInfo
+};
+----
+
+In Slang, we use the labels to gate the visibility of virtual pixels:
 
 [source,slang]
 ----
 // A Slang fragment shader utilizing a semantic mask for occlusion
 [shader("pixel")]
 float4 fragmentMain(V2P input) : SV_Target {
-    // 1. Sample the virtual scene color
     float4 virtualColor = sceneTexture.Sample(input.uv);
-
-    // 2. Sample the ML-generated semantic mask (using integer labels)
     uint label = semanticMask.Sample(input.uv).r;
 
-    // 3. Perform Semantic Occlusion
-    // If the pixel is labeled as "Human Hand", we hide the virtual object
-    // to allow the user's physical hand to appear "in front" of the digital content.
+    // If the pixel is labeled as "Hand", we hide the virtual object
     if (label == SEMANTIC_LABEL_HAND) {
-        // Transparent output allows the passthrough camera feed to show through
-        return float4(0, 0, 0, 0);
+        return float4(0, 0, 0, 0); // Transparent output
     }
-
     return virtualColor;
 }
 ----
 
+== Advanced: Temporal Edge Refining and Atomic Depth
+
+Vulkan allows for a level of compositing quality beyond standard mask feeds:
+
+*   **Temporal Edge Refining**: Using Vulkan's **Subgroup Operations**, you can analyze the segmentation mask over multiple frames to "refine" noisy edges into a smooth alpha channel, providing much higher quality than the raw OpenXR feed.
+*   **Depth-Aware Semantic Composite**: You can use Vulkan's **Atomic Operations** to combine OpenXR labels with your engine's depth data, resolving complex overlaps that the standard OpenXR alpha-blending model does not natively coordinate.
+
 == The Depth Buffer of Reality
 
-While semantic labels tell us *what* an object is, they don't always provide its exact distance. High-end spatial engines combine these labels with raw depth data from **LiDAR**. This enables **Depth-Aware Semantic Occlusion**, where a virtual robot can hide behind a real chair but still appear in front of a real-world wall further back in the room.
+Semantic labels tell us *what* an object is, but combining them with **LiDAR** data enables **Depth-Aware Semantic Occlusion**. A virtual robot can hide behind a real chair while appearing in front of a real wall further back. By utilizing on-GPU inference, we generate these masks with minimal latency, ensuring the virtual world responds to physical movement instantly.
 
-By utilizing on-GPU inference, we generate these masks with minimal latency, ensuring that as the user moves their hand, the virtual world responds and "tucks behind" it instantly.
+TIP: For more information on semantic segmentation and image blending, consult the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#XR_FB_semantic_labels[XR_FB_semantic_labels Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/18_Semantic_Occlusion/03_per_pixel_masking.adoc[Next]

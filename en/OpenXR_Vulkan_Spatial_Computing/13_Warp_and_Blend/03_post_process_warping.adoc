@@ -1,14 +1,21 @@
 :pp: {plus}{plus}
 = Post-Process Warping and Lens Distortion
 
-While the previous section focused on external physical surfaces like CAVE walls, **Warping** is also a fundamental part of head-mounted displays (HMDs). In a headset, the lenses themselves introduce significant **Pin-Cushion Distortion**. To counteract this, the engine must apply a **Barrel Distortion** post-process so that the final image looks rectilinear to the user.
+Warping is fundamental to head-mounted displays (HMDs) to counteract the physical **Pin-Cushion Distortion** of the lenses.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **What your OpenXR Runtime is Probably Doing**.
+
+While we teach the underlying mathematics and Vulkan implementation of lens warping, for most commercial HMDs, these operations are handled internally by the runtime's compositor. Understanding this process is critical for developing custom hardware or implementing advanced post-warp effects that go beyond the standard runtime pipeline.
 
 == The Physics of the Lens: Why Warp?
 
-To understand HMD warping, you must look at the glass. VR lenses are designed to take a tiny display and magnify it to cover your entire field of view. This magnification is not uniform.
+VR lenses are designed to take a tiny display and magnify it to cover your entire field of view. This magnification is not uniform, introducing **Pin-Cushion Distortion**.
 
-1.  **Pin-Cushion Distortion**: The lens physically stretches the image more at the corners than in the center.
-2.  **The Solution**: We pre-distort the image in the opposite direction (**Barrel Distortion**). By "squeezing" the corners in our shader, the lens's physical stretch pulls them back into their correct rectilinear positions.
+To counteract this, the engine must apply a **Barrel Distortion** post-process. By "squeezing" the corners in our shader, the lens's physical stretch pulls them back into their correct rectilinear positions.
+
+While most runtimes apply this distortion implicitly, you can implement your own for custom hardware or advanced effects like **Chromatic Aberration Correction**.
 
 == Mathematical Models of Distortion
 
@@ -23,19 +30,43 @@ float2 ApplyDistortion(float2 uv, float2 k)
     float2 d = uv - center;
     float r2 = dot(d, d);
 
-    // Barrel distortion: k[0] and k[1] are typically positive
-    // This shifts pixels towards the center based on their distance
+    // Barrel distortion: shifts pixels towards the center based on distance
     float2 distortedD = d * (1.0 + k.x * r2 + k.y * r2 * r2);
 
     return center + distortedD;
 }
 ----
 
+On the C++ side, we use designated initializers to bind our source renders for these post-process passes:
+
+[source,cpp]
+----
+// Binding the source render for post-process warping using designated initializers
+vk::DescriptorImageInfo sourceInfo{
+    .sampler = *linearSampler,
+    .imageView = *sourceView,
+    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+};
+
+vk::WriteDescriptorSet write{
+    .dstSet = *postProcessSet,
+    .dstBinding = 0,
+    .descriptorCount = 1,
+    .descriptorType = vk::DescriptorType::eSampledImage,
+    .pImageInfo = &sourceInfo
+};
+----
+
+== Advanced: DLSS and Custom Distortion Kernels
+
+Vulkan allow us to push the boundaries of HMD post-processing:
+
+*   **DLSS and Super Resolution**: You can implement your own **Deep Learning Super Sampling** pass before the runtime's warp. This ensures the compositor receives a high-detail image even from a lower-resolution source, providing visual clarity beyond standard OpenXR pipelines.
+*   **Custom Post-Warp Effects**: Using Vulkan's **Shader Objects**, you can dynamically inject effects like localized lens flare or optical film grain directly into the final composition pass, bypassing the runtime's "black box" compositor.
+
 == Chromatic Aberration: The Rainbow Effect
 
-Lenses also refract different wavelengths of light at different angles. This causes Red, Green, and Blue light to hit the user's eye at slightly different positions, creating "color fringing" or **Chromatic Aberration**.
-
-To fix this, we apply a slightly different warp to each color channel. In our Vulkan compute shader, this is as simple as performing three samples instead of one:
+Lenses also refract different wavelengths of light at different angles, creating "color fringing." To fix this, we apply a slightly different warp to each color channel.
 
 [source,slang]
 ----
@@ -49,8 +80,8 @@ color.a = 1.0;
 
 == Rendering 1.2x: The Oversampling Tax
 
-Because warping "squeezes" the image, some areas of your render will be scaled down while others are scaled up. To prevent the center of your view from looking blurry after the warp, you must render your 3D scene at a **Higher Resolution** than the physical display (typically 1.2x to 1.4x the panel resolution). This ensures that even after the distortion is applied, you still have 1:1 pixel mapping in the most critical areas.
+Because warping "squeezes" the image, some areas are scaled down while others are scaled up. To prevent blurring in the center of your view, you must render your 3D scene at a **Higher Resolution** than the display (typically 1.2x to 1.4x).
 
-In the next chapter, we will move from pixels to 4D functions by exploring **LightField Theory**.
+TIP: For more information on post-process warping, check out the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#distortion[OpenXR Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/02_geometric_correction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/04_incorporating_into_the_engine.adoc[Next]

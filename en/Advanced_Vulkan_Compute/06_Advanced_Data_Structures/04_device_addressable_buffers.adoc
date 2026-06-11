@@ -98,4 +98,4 @@ By combining 64-bit atomics, subgroup operations, and raw buffer device addresse
 
 In the next chapter, we'll see how to take this a step further and use these structures to drive the entire rendering pipeline directly from the GPU: **Indirect Dispatch and GPU-Driven Pipelines**.
 
-xref:03_global_atomic_management.adoc[Previous: Global Atomic Management] | xref:../07_GPU_Driven_Pipelines/01_introduction.adoc[Next: Indirect Dispatch]
+xref:Advanced_Vulkan_Compute/06_Advanced_Data_Structures/03_global_atomic_management.adoc[Previous: Global Atomic Management] | xref:Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/01_introduction.adoc[Next: Indirect Dispatch]

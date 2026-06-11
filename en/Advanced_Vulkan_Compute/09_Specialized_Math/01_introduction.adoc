@@ -9,4 +9,4 @@ Whether you're building a fluid simulation that requires solving large systems o
 
 In this chapter, we're going to dive into how these specialized math units work. We'll explore how to use the `cooperative_matrix` types in Slang and GLSL, and we'll see how to leverage **Mixed Precision**—using FP16 or Int8 for calculations while maintaining accuracy where it counts. This is about more than just speed; it's about utilizing the full potential of modern GPU silicon for high-performance computing tasks.
 
-xref:../08_Asynchronous_Compute/04_queue_priority.adoc[Previous: Queue Priority] | xref:02_cooperative_matrices.adoc[Next: Cooperative Matrices]
+xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/04_queue_priority.adoc[Previous: Queue Priority] | xref:Advanced_Vulkan_Compute/09_Specialized_Math/02_cooperative_matrices.adoc[Next: Cooperative Matrices]

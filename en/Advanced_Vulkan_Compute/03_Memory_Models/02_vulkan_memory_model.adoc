@@ -65,4 +65,4 @@ In Vulkan, data races result in **Undefined Behavior**. This doesn't just mean y
 
 Next, we'll see how to apply these concepts to **Shared Memory (LDS)**, which is much faster than global VRAM.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_shared_memory_lds.adoc[Next: Shared Memory (LDS)]
+xref:Advanced_Vulkan_Compute/03_Memory_Models/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/03_Memory_Models/03_shared_memory_lds.adoc[Next: Shared Memory (LDS)]

@@ -25,4 +25,4 @@ By the end of this chapter, you'll be equipped with the methodology to move from
 2. **The Divergence Audit**: Techniques for visualizing and refactoring divergent branching logic.
 
 [horizontal]
-*Previous:* xref:../09_Specialized_Math/03_mixed_precision.adoc[Mastering Mixed Precision] | *Next:* xref:02_instruction_throughput.adoc[Instruction Throughput Analysis]
+*Previous:* xref:Advanced_Vulkan_Compute/09_Specialized_Math/03_mixed_precision.adoc[Mastering Mixed Precision] | *Next:* xref:Advanced_Vulkan_Compute/10_Performance_Optimization/02_instruction_throughput.adoc[Instruction Throughput Analysis]

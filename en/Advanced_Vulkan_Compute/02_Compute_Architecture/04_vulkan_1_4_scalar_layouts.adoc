@@ -117,4 +117,4 @@ By understanding these low-level architectural details, you've moved beyond "wri
 
 In the next chapter, we'll take these concepts even further by looking at the **Vulkan Memory Model** and how to safely synchronize data between thousands of threads.
 
-xref:03_occupancy_and_latency_hiding.adoc[Previous: Occupancy and Latency Hiding] | xref:../03_Memory_Models/01_introduction.adoc[Next: Memory Models and Consistency]
+xref:Advanced_Vulkan_Compute/02_Compute_Architecture/03_occupancy_and_latency_hiding.adoc[Previous: Occupancy and Latency Hiding] | xref:Advanced_Vulkan_Compute/03_Memory_Models/01_introduction.adoc[Next: Memory Models and Consistency]

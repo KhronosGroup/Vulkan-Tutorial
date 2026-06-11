@@ -73,4 +73,4 @@ While it's tempting to use subgroup operations everywhere, remember that they on
 
 However, a "subgroup-first" approach is often the fastest. Perform as much work as possible within the subgroup, and only use LDS when you absolutely must communicate with another subgroup.
 
-xref:01_introduction.adoc[Previous: Introduction to Subgroups] | xref:03_subgroup_partitioning.adoc[Next: Subgroup Partitioning]
+xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/01_introduction.adoc[Previous: Introduction to Subgroups] | xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/03_subgroup_partitioning.adoc[Next: Subgroup Partitioning]

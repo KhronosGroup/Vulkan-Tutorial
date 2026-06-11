@@ -80,4 +80,4 @@ Note the use of "rounding up" (`(width + 15) / 16`). This ensures that if your i
 
 Understanding how workgroups map to hardware is the foundation of GPU compute. But mapping work to hardware is only part of the story; we also need to keep that hardware busy. In the next section, we'll talk about **Occupancy** and how to hide the massive latency of VRAM.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_occupancy_and_latency_hiding.adoc[Next: Occupancy and Latency Hiding]
+xref:Advanced_Vulkan_Compute/02_Compute_Architecture/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/02_Compute_Architecture/03_occupancy_and_latency_hiding.adoc[Next: Occupancy and Latency Hiding]

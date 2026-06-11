@@ -61,4 +61,4 @@ If your divergence is caused by processing different types of data (e.g., in a r
 
 By conducting regular divergence audits, you can identify the "hidden" costs in your compute kernels and refactor them into more efficient, SIMD-friendly patterns. This is the difference between code that "just runs" and code that truly masters the GPU's architecture.
 
-xref:02_instruction_throughput.adoc[Previous: Instruction Throughput Analysis] | xref:../11_Diagnostics_and_Refinement/01_introduction.adoc[Next: Diagnostics and Refinement]
+xref:Advanced_Vulkan_Compute/10_Performance_Optimization/02_instruction_throughput.adoc[Previous: Instruction Throughput Analysis] | xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/01_introduction.adoc[Next: Diagnostics and Refinement]

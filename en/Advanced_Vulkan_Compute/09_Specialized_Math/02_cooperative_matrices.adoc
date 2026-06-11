@@ -119,4 +119,4 @@ The physical dimensions (latexmath:[M, N, K]) are not arbitrary. You must query 
 
 By leveraging these specialized units, you can achieve throughput that is often an order of magnitude higher than what's possible with standard floating-point units. This makes cooperative matrices essential for any performance-critical linear algebra on the GPU.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_mixed_precision.adoc[Next: Mastering Mixed Precision]
+xref:Advanced_Vulkan_Compute/09_Specialized_Math/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/09_Specialized_Math/03_mixed_precision.adoc[Next: Mastering Mixed Precision]

@@ -64,4 +64,4 @@ It's crucial to remember that an AI assistant is just that—an **assistant**. W
 
 As we move toward the final conclusion of this series, we've seen how modern tools like GPU-Assisted Validation and AI-led refactoring can transform the compute development workflow. In the next section, we'll summarize everything we've learned and look ahead to the future of high-performance Vulkan compute.
 
-xref:02_compute_validation.adoc[Previous: Compute Validation] | xref:../conclusion.adoc[Next: Series Conclusion]
+xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/02_compute_validation.adoc[Previous: Compute Validation] | xref:Advanced_Vulkan_Compute/conclusion.adoc[Next: Series Conclusion]

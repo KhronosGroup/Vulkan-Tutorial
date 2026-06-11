@@ -94,4 +94,4 @@ This approach is much more efficient than always dispatching for the "maximum" n
 
 In the next section, we'll look at how the GPU can go beyond just changing its dispatch size and start generating its own **Command Chains**.
 
-xref:01_introduction.adoc[Previous: Introduction to GPU-Driven Pipelines] | xref:03_gpu_side_command_generation.adoc[Next: GPU-Side Command Generation]
+xref:Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/01_introduction.adoc[Previous: Introduction to GPU-Driven Pipelines] | xref:Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/03_gpu_side_command_generation.adoc[Next: GPU-Side Command Generation]

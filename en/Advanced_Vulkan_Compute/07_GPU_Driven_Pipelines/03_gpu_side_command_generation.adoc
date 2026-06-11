@@ -38,4 +38,4 @@ This is the standard architecture for many modern, high-end rendering engines. I
 
 In the next section, we'll look at the final piece of the puzzle: **Multi-Draw Indirect (MDI)**, which bridges our compute analysis to the graphics pipeline.
 
-xref:02_indirect_dispatch.adoc[Previous: Indirect Dispatch] | xref:04_multi_draw_indirect_mdi.adoc[Next: Multi-Draw Indirect (MDI)]
+xref:Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/02_indirect_dispatch.adoc[Previous: Indirect Dispatch] | xref:Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/04_multi_draw_indirect_mdi.adoc[Next: Multi-Draw Indirect (MDI)]

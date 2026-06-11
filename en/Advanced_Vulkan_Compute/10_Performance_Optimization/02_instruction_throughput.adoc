@@ -46,4 +46,4 @@ However, be careful! Higher occupancy isn't always better. If your occupancy is 
 
 Optimization is an iterative process. You profile, identify the bottleneck, apply a targeted fix, and then profile again. This is how you eventually arrive at a truly optimized solution that makes the most of the GPU's massive parallel potential.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_divergence_audit.adoc[Next: Divergence Audit]
+xref:Advanced_Vulkan_Compute/10_Performance_Optimization/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/10_Performance_Optimization/03_divergence_audit.adoc[Next: Divergence Audit]

@@ -37,6 +37,6 @@ Since the actual computation happens in the native Vulkan driver, the primary co
 
 `clvk` supports most of the OpenCL 3.0 specification. However, its compatibility depends on the features supported by your Vulkan driver. If your driver supports Vulkan 1.4 with **Descriptor Indexing**, **Variable Pointers**, and **Buffer Device Address**, `clvk` will be able to support almost all OpenCL features.
 
-In the next chapter, we'll move from the OpenCL ecosystem to **Advanced Data Structures on the GPU** — GPU-resident trees, lock-free linked lists, and raw Buffer Device Addresses.
+In the next section, we'll put both tools to work in a single, self-contained sample that runs the **same OpenCL kernel two ways onto Vulkan** — once via `clspv` ahead-of-time, once via `clvk` at run time — and proves they produce identical results.
 
-xref:04_kernel_portability.adoc[Previous: Kernel Portability] | xref:../06_Advanced_Data_Structures/01_introduction.adoc[Next: Advanced Data Structures]
+xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/04_kernel_portability.adoc[Previous: Kernel Portability] | xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/06_a_practical_sample.adoc[Next: A Practical Sample]

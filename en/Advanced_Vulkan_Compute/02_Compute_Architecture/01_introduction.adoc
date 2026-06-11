@@ -42,4 +42,4 @@ Throughout this section, we will focus on two key metrics that determine how wel
 
 We'll start by diving into the 3D grid system and seeing exactly how it maps to physical hardware. From there, we'll learn how to calculate theoretical occupancy and use engine tools to monitor real-world utilization. Finally, we'll master the scalar block layouts to maximize your data throughput.
 
-xref:../introduction.adoc[Previous: Introduction] | xref:02_workgroups_and_invocations.adoc[Next: Workgroups and Invocations]
+xref:Advanced_Vulkan_Compute/introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/02_Compute_Architecture/02_workgroups_and_invocations.adoc[Next: Workgroups and Invocations]

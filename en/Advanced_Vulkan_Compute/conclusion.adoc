@@ -49,4 +49,4 @@ Thank you for following along with this series. We've moved from "making pixels 
 
 Happy Hacking!
 
-xref:11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Previous: Assistant-Led Optimization] | xref:../00_Introduction.adoc[Back to Home]
+xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Previous: Assistant-Led Optimization] | xref:00_Introduction.adoc[Back to Home]

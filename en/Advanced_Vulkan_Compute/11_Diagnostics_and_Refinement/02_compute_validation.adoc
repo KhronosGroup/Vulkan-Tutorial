@@ -70,4 +70,4 @@ When a validation error or a `printf` occurs, the output can be verbose. Look fo
 
 While GAV and `printf` have a significant performance cost, they are indispensable for development. They turn the "black box" of the GPU into a transparent environment where you can build complex, reliable compute pipelines with confidence.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_assistant_led_optimization.adoc[Next: AI-Assisted Optimization]
+xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Next: AI-Assisted Optimization]

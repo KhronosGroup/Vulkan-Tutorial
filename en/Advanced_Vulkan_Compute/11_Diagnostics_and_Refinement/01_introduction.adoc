@@ -25,4 +25,4 @@ Whether you're struggling to vectorize a naive loop or looking for a more effici
 1.  **Compute Validation**: Setting up and using GPU-Assisted Validation to catch memory errors and using `printf` for shader debugging.
 2.  **Assistant-Led Optimization**: Leveraging AI to refactor naive compute kernels into wave-aware, high-performance patterns.
 
-xref:../10_Performance_Optimization/03_divergence_audit.adoc[Previous: Divergence Audit] | xref:02_compute_validation.adoc[Next: Compute Validation]
+xref:Advanced_Vulkan_Compute/10_Performance_Optimization/03_divergence_audit.adoc[Previous: Divergence Audit] | xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/02_compute_validation.adoc[Next: Compute Validation]

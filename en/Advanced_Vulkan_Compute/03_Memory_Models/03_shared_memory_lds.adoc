@@ -99,4 +99,4 @@ Crucially, **shared memory is not coherent between workgroups**. If you need to 
 
 In the next section, we'll see how to balance these barriers to keep your pipeline as full as possible.
 
-xref:02_vulkan_memory_model.adoc[Previous: The Vulkan Memory Model] | xref:04_memory_consistency.adoc[Next: Memory Consistency]
+xref:Advanced_Vulkan_Compute/03_Memory_Models/02_vulkan_memory_model.adoc[Previous: The Vulkan Memory Model] | xref:Advanced_Vulkan_Compute/03_Memory_Models/04_memory_consistency.adoc[Next: Memory Consistency]

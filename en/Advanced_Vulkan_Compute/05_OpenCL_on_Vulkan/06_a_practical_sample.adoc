@@ -1,0 +1,139 @@
+:pp: {plus}{plus}
+
+= A Practical Sample: Vulkan Rendering Powered by OpenCL
+
+The previous sections introduced the two tools in the OpenCL-on-Vulkan toolchain:
+`clspv` (Ahead-of-Time compilation) and `clvk` (runtime layering). This section
+ties them together with a real-time, interactive sample.
+
+It is important to get the framing right. This is **not** "an OpenCL program that
+happens to run on Vulkan". It is the opposite: a normal **Vulkan application** —
+window, swapchain, present loop, free-fly camera — that **draws its scene with an
+OpenCL kernel**. In the default mode the kernel is compiled by `clspv` and runs as
+the Vulkan engine's own compute shader, writing the presented buffer directly with
+no copy. That is the real value of the layered ecosystem: a Vulkan engine can tap
+into the huge body of existing OpenCL kernels and run them as first-class shaders.
+
+The complete sources live in `attachments/compute`:
+
+- `05_opencl_on_vulkan.cl` — the OpenCL C kernel (a raymarched *instanced forest*)
+- `05_opencl_on_vulkan.cpp` — the windowed Vulkan host application
+- `CMakeLists.txt` — wires up the optional `clspv` and OpenCL detection
+
+The scene is a small lesson in instancing: a *single* tree distance field is
+repeated across an infinite grid (`round(p.xz / cell)`), and a per-cell hash gives
+every instance its own height, canopy size, colour, and the occasional clearing.
+You fly through it in real time with `WASD`/`EQ` and mouse-drag to look around.
+
+== The Two Backends
+
+The application can drive the kernel through either backend, chosen at startup
+(override with `--backend=aot` or `--backend=clvk`):
+
+[cols="1,3"]
+|===
+|Backend |How the OpenCL kernel reaches the screen
+
+|**clspv AOT** (default, zero-copy)
+|The OpenCL C kernel is compiled by `clspv` to `forest.spv` at build time and run
+as the Vulkan engine's *own* compute shader. It writes straight into the Vulkan
+storage buffer that is presented — the OpenCL kernel is literally "just another
+shader" in the Vulkan pipeline, with no copies and no second API at run time.
+
+|**clvk runtime** (`--backend=clvk`)
+|The same `.cl` is compiled at run time by `clvk` (OpenCL 3.0 layered on Vulkan).
+clvk does not implement `cl_khr_external_memory`, so its result is bridged into the
+Vulkan buffer with a per-frame `clEnqueueReadBuffer`. It showcases the runtime
+layering tool at the cost of one copy per frame.
+|===
+
+== The Kernel as a Vulkan Shader (zero-copy)
+
+The default path is the cleanest demonstration of "Vulkan using OpenCL". Because
+`clspv` turns the OpenCL C kernel into ordinary Vulkan SPIR-V, the Vulkan app
+loads it like any compute shader and points it at the buffer it is about to
+present — the kernel writes the final pixels directly into Vulkan-owned memory:
+
+[source,cpp]
+----
+// forest.spv was produced from 05_opencl_on_vulkan.cl by clspv at build time.
+vk::PipelineShaderStageCreateInfo stage{
+    .stage  = vk::ShaderStageFlagBits::eCompute,
+    .module = *shaderModule,
+    .pName  = "render"};               // clspv names the entry point after the kernel
+// binding 0 = Params, binding 1 = the storage buffer that present() copies to screen
+cb.dispatch((W + 15) / 16, (H + 15) / 16, 1);
+----
+
+There is no interop layer, no FD export, no second device: the OpenCL kernel runs
+inside the same Vulkan command buffer flow as the rest of the engine.
+
+== The clvk Runtime Path
+
+Why not share the buffer zero-copy with `clvk` too? Because mainline `clvk` does
+not expose `cl_khr_external_memory`, so there is no way to import a `VkBuffer` into
+its OpenCL context. The runtime path therefore computes into an ordinary OpenCL
+buffer and reads it back into the Vulkan-visible memory each frame:
+
+[source,cpp]
+----
+clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, global, local, 0, nullptr, nullptr);
+clEnqueueReadBuffer(queue, outMem, CL_TRUE, 0, bytes, hostMappedVkBuffer, 0, nullptr, nullptr);
+// ... vkCmdCopyBufferToImage(vkBuffer -> intermediate) ; blit -> swapchain ; present
+----
+
+This is the state of the tooling today: `clspv` gives you true zero-copy
+integration, while `clvk` gives you runtime compilation of unmodified OpenCL host
+code at the cost of a bridge copy.
+
+== The Portable Kernel
+
+The kernel still follows the portability rules from the previous sections so its
+descriptor mapping is deterministic and it runs unchanged on both backends:
+
+[source,c]
+----
+typedef struct {
+    int   width, height;
+    float camX, camY, camZ;     // free-fly camera position
+    float camYaw, camPitch, fog;
+} Params;
+
+#define MAX_STEPS 128           // compile-time constant — see the note below
+
+__attribute__((reqd_work_group_size(16, 16, 1)))
+__kernel void render(__global const Params* P, __global uint* outRGBA) {
+    const int x = get_global_id(0), y = get_global_id(1);
+    if (x >= P->width || y >= P->height) return;     // guard the rounded-up global size
+    for (int i = 0; i < MAX_STEPS; ++i) { /* raymarch the instanced-forest SDF */ }
+    // ... shade, then:
+    outRGBA[y * P->width + x] = r | (g << 8) | (b << 16) | (0xFFu << 24);
+}
+----
+
+[NOTE]
+====
+The raymarch step count is a **compile-time constant**, not a kernel parameter.
+`clspv` miscompiles a raymarch loop whose bound is loaded from a storage buffer —
+its structured-control-flow pass cannot prove the loop terminates, and the
+resulting shader hangs the GPU. A native OpenCL driver compiles the same dynamic
+bound fine, so this is a portability gotcha worth knowing: keep loop bounds
+constant in kernels you intend to run through `clspv`/`clvk`.
+====
+
+*   **Only buffer arguments** → `clspv` maps the two `__global` pointers to a
+    predictable layout (`set=0,binding=0` = Params, `set=0,binding=1` = output),
+    which the AOT path's hand-built `VkDescriptorSetLayout` matches exactly.
+*   **A `uint` output** (packed RGBA8) keeps everything to 32-bit storage access,
+    so no special 8-bit-storage Vulkan feature is needed.
+*   **A pinned work-group size** plus host round-up keeps the NDRange uniform.
+*   **No cross-invocation state** — each invocation raymarches one pixel — so the
+    same kernel runs unchanged on both backends (any difference between them is
+    just float rounding between two different GPUs).
+
+Fly through the forest with `WASD` (move), `E`/`Q` (up/down), mouse-drag (look),
+`Shift` (boost), `R` (reset), `ESC` (quit). With the default backend every pixel
+you see was produced by an OpenCL kernel running as the Vulkan engine's own
+compute shader — no copies, no second API.
+
+xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/05_clvk_and_layering.adoc[Previous: clvk and Layering] | xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/07_clspv_for_production.adoc[Next: Developing with clspv]

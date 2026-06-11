@@ -61,4 +61,4 @@ The real "magic" happens when we use **Semaphore-based synchronization** (using 
 
 Remember, though, that not all hardware is created equal. Some mobile GPUs have unified hardware for compute and graphics, where "concurrency" might just mean the scheduler interleaved the tasks. High-end desktop GPUs, on the other hand, often have dedicated compute pipes that can run entirely in parallel with the graphics engines. Profiling is your only way to know if your orchestration is truly delivering the performance gains you expect.
 
-xref:01_introduction.adoc[Previous: Introduction] | xref:03_timeline_semaphores.adoc[Next: Timeline Semaphores]
+xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/03_timeline_semaphores.adoc[Next: Timeline Semaphores]

@@ -47,4 +47,4 @@ In an asynchronous compute setup, you often have multiple streams of work with c
 
 Using binary semaphores for this would require a complex web of "Signal A -> Wait A -> Signal B -> Wait B". With timeline semaphores, you simply have a single "Engine Timeline". Every task signals its completion by incrementing the counter, and every dependent task waits for its specific prerequisite value. This drastically simplifies the orchestration logic and reduces the overhead of semaphore management.
 
-xref:02_concurrent_execution.adoc[Previous: Concurrent Execution] | xref:04_queue_priority.adoc[Next: Queue Priority]
+xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/02_concurrent_execution.adoc[Previous: Concurrent Execution] | xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/04_queue_priority.adoc[Next: Queue Priority]

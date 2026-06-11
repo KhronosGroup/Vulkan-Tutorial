@@ -36,4 +36,4 @@ Another critical consideration is **Queue Family** (a group of queues with simil
 
 In practice, managing queue priorities is a balancing act. Used correctly, it's a powerful tool for ensuring that your engine remains responsive and that the most critical tasks are always handled with the urgency they require. This orchestration is the hallmark of a truly advanced Vulkan engine—moving beyond just "doing the work" to "doing the work in the right order at the right time."
 
-xref:03_timeline_semaphores.adoc[Previous: Timeline Semaphores] | xref:../09_Specialized_Math/01_introduction.adoc[Next: Specialized Math]
+xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/03_timeline_semaphores.adoc[Previous: Timeline Semaphores] | xref:Advanced_Vulkan_Compute/09_Specialized_Math/01_introduction.adoc[Next: Specialized Math]

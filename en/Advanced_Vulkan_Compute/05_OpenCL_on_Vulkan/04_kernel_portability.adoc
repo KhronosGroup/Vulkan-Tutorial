@@ -43,4 +43,4 @@ The real power of this pipeline is its ability to handle legacy code. Many produ
 
 In the next section, we'll explore **clvk**, which takes this a step further by providing a full OpenCL 3.0 API implementation on top of Vulkan.
 
-xref:03_clspv_pipeline.adoc[Previous: The clspv Pipeline] | xref:05_clvk_and_layering.adoc[Next: clvk and Layering]
+xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/03_clspv_pipeline.adoc[Previous: The clspv Pipeline] | xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/05_clvk_and_layering.adoc[Next: clvk and Layering]

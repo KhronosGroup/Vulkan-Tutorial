@@ -49,15 +49,15 @@ Let's dive into the world of high-performance GPU computing!
 
 == Chapters
 
-* xref:02_Compute_Architecture/01_introduction.adoc[The Compute Architecture and Execution Model]
-* xref:03_Memory_Models/01_introduction.adoc[Memory Models and Consistency]
-* xref:04_Subgroup_Operations/01_introduction.adoc[Subgroup Operations: The Hidden Power]
-* xref:05_OpenCL_on_Vulkan/01_introduction.adoc[Heterogeneous Ecosystem: OpenCL on Vulkan]
-* xref:06_Advanced_Data_Structures/01_introduction.adoc[Advanced Data Structures on the GPU]
-* xref:07_GPU_Driven_Pipelines/01_introduction.adoc[Indirect Dispatch and GPU-Driven Pipelines]
-* xref:08_Asynchronous_Compute/01_introduction.adoc[Asynchronous Compute Orchestration]
-* xref:09_Specialized_Math/01_introduction.adoc[Cooperative Matrices and Specialized Math]
-* xref:10_Performance_Optimization/01_introduction.adoc[Performance Auditing and Optimization]
-* xref:11_Diagnostics_and_Refinement/01_introduction.adoc[Diagnostics and AI-Assisted Compute Refinement]
+* xref:Advanced_Vulkan_Compute/02_Compute_Architecture/01_introduction.adoc[The Compute Architecture and Execution Model]
+* xref:Advanced_Vulkan_Compute/03_Memory_Models/01_introduction.adoc[Memory Models and Consistency]
+* xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/01_introduction.adoc[Subgroup Operations: The Hidden Power]
+* xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/01_introduction.adoc[Heterogeneous Ecosystem: OpenCL on Vulkan]
+* xref:Advanced_Vulkan_Compute/06_Advanced_Data_Structures/01_introduction.adoc[Advanced Data Structures on the GPU]
+* xref:Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/01_introduction.adoc[Indirect Dispatch and GPU-Driven Pipelines]
+* xref:Advanced_Vulkan_Compute/08_Asynchronous_Compute/01_introduction.adoc[Asynchronous Compute Orchestration]
+* xref:Advanced_Vulkan_Compute/09_Specialized_Math/01_introduction.adoc[Cooperative Matrices and Specialized Math]
+* xref:Advanced_Vulkan_Compute/10_Performance_Optimization/01_introduction.adoc[Performance Auditing and Optimization]
+* xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/01_introduction.adoc[Diagnostics and AI-Assisted Compute Refinement]
 
-xref:11_Compute_Shader.adoc[Previous: Basic Compute Shaders] | xref:02_Compute_Architecture/01_introduction.adoc[Next: Compute Architecture]
+xref:11_Compute_Shader.adoc[Previous: Basic Compute Shaders] | xref:Advanced_Vulkan_Compute/02_Compute_Architecture/01_introduction.adoc[Next: Compute Architecture]

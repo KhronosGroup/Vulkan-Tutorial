@@ -55,4 +55,4 @@ Vulkan 1.4's improved support for **Buffer Device Address** has made this even e
 
 In the next section, we'll look at how to handle **Kernel Portability** and ensure your code runs correctly across different vendors.
 
-xref:02_setup_and_installation.adoc[Previous: Setup and Installation] | xref:04_kernel_portability.adoc[Next: Kernel Portability]
+xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/02_setup_and_installation.adoc[Previous: Setup and Installation] | xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/04_kernel_portability.adoc[Next: Kernel Portability]

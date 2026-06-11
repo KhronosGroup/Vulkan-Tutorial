@@ -67,4 +67,4 @@ By tracking metrics like **ValuUtilization** (AMD) or **SM Active** (NVIDIA), yo
 
 Now that we know how to keep the GPU busy, we need to make sure that when it *is* busy, it's being efficient. In the final section of this chapter, we'll look at **Scalar Layouts**—a Vulkan 1.4 feature that allows us to pack our data tightly and maximize the bandwidth we've worked so hard to hide.
 
-xref:02_workgroups_and_invocations.adoc[Previous: Workgroups and Invocations] | xref:04_vulkan_1_4_scalar_layouts.adoc[Next: Vulkan 1.4 Scalar Layouts]
+xref:Advanced_Vulkan_Compute/02_Compute_Architecture/02_workgroups_and_invocations.adoc[Previous: Workgroups and Invocations] | xref:Advanced_Vulkan_Compute/02_Compute_Architecture/04_vulkan_1_4_scalar_layouts.adoc[Next: Vulkan 1.4 Scalar Layouts]

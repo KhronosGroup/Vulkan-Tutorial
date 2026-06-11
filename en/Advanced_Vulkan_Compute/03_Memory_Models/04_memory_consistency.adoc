@@ -63,4 +63,4 @@ We've covered the fundamentals of how GPUs execute code and how they manage memo
 
 In the next chapter, we'll dive into **Subgroup Operations**. By learning how to communicate between threads *within* a bundle, we can bypass shared memory altogether and perform high-speed data exchange directly through registers.
 
-xref:03_shared_memory_lds.adoc[Previous: Shared Memory (LDS)] | xref:../04_Subgroup_Operations/01_introduction.adoc[Next: Why Subgroups Matter]
+xref:Advanced_Vulkan_Compute/03_Memory_Models/03_shared_memory_lds.adoc[Previous: Shared Memory (LDS)] | xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/01_introduction.adoc[Next: Why Subgroups Matter]

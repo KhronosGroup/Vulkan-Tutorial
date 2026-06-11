@@ -101,4 +101,4 @@ uint allocateNode() {
 
 While this works, it can be slow if thousands of threads are all hitting the same counter. In the next section, we'll look at how **64-bit Atomics** and **Global Atomic Management** can optimize this process for massive scale.
 
-xref:01_introduction.adoc[Previous: Introduction to Advanced Data Structures] | xref:03_global_atomic_management.adoc[Next: Global Atomic Management]
+xref:Advanced_Vulkan_Compute/06_Advanced_Data_Structures/01_introduction.adoc[Previous: Introduction to Advanced Data Structures] | xref:Advanced_Vulkan_Compute/06_Advanced_Data_Structures/03_global_atomic_management.adoc[Next: Global Atomic Management]

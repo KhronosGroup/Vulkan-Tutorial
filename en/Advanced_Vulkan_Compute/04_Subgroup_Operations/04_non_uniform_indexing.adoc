@@ -70,4 +70,4 @@ Subgroup operations represent a paradigm shift in GPU programming. By moving fro
 
 In the next chapter, we'll step back and look at how these Vulkan compute concepts interact with the broader ecosystem, starting with **OpenCL on Vulkan**.
 
-xref:03_subgroup_partitioning.adoc[Previous: Subgroup Partitioning] | xref:../05_OpenCL_on_Vulkan/01_introduction.adoc[Next: OpenCL on Vulkan]
+xref:Advanced_Vulkan_Compute/04_Subgroup_Operations/03_subgroup_partitioning.adoc[Previous: Subgroup Partitioning] | xref:Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/01_introduction.adoc[Next: OpenCL on Vulkan]

@@ -125,4 +125,4 @@ As we discussed in Chapter 4, you can use **Subgroup Operations** to **coalesce*
 
 This simple optimization can improve the throughput of global atomics by 32x or 64x, making complex data structures viable for even the most demanding real-time applications.
 
-xref:02_gpu_resident_trees.adoc[Previous: GPU-Resident Trees] | xref:04_device_addressable_buffers.adoc[Next: Device-Addressable Buffers]
+xref:Advanced_Vulkan_Compute/06_Advanced_Data_Structures/02_gpu_resident_trees.adoc[Previous: GPU-Resident Trees] | xref:Advanced_Vulkan_Compute/06_Advanced_Data_Structures/04_device_addressable_buffers.adoc[Next: Device-Addressable Buffers]

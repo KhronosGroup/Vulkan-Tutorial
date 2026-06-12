@@ -209,10 +209,10 @@ static int buildBVH(std::vector<BVHNode>& nodes,
         return nodeIdx;
     }
 
-    // Reserve this node's slot, recurse for children
-    // Children must be created after this node, so indices are nodeIdx+1... etc.
-    node.leftChild  = buildBVH(nodes, tris, offset,             leftCount,  depth + 1);
-    // Re-fetch reference since nodes may have been reallocated:
+    // Use nodes[nodeIdx] (stable index) for both children — the 'node' reference
+    // becomes dangling after push_back reallocates the vector during the left
+    // child's recursive call.
+    nodes[nodeIdx].leftChild  = buildBVH(nodes, tris, offset,             leftCount,  depth + 1);
     nodes[nodeIdx].rightChild = buildBVH(nodes, tris, offset + leftCount, rightCount, depth + 1);
     nodes[nodeIdx].triOffset  = -1;
     nodes[nodeIdx].triCount   = 0;

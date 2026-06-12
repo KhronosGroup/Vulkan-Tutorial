@@ -958,11 +958,11 @@ class HeatmapApp
         }
 
         const char *names[4] = {"Divergent", "Non-divergent", "LDS-reduce", "Wave-reduce"};
-        std::cout << "[frame " << m_frameCount << "] avg tile GPU time (µs):\n";
+        std::cout << "[frame " << m_frameCount << "] avg tile GPU time (us):\n";
         for (int q = 0; q < 4; ++q)
         {
             double avgUs = (cnt[q] > 0) ? sumTime[q] / cnt[q] / 1000.0 : 0.0;
-            std::cout << "  Q" << q << " " << names[q] << ": " << avgUs << " µs\n";
+            std::cout << "  Q" << q << " " << names[q] << ": " << avgUs << " us\n";
         }
     }
 

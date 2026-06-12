@@ -61,6 +61,7 @@
 ** xref:courses/18_Ray_tracing/05_Shadow_transparency.adoc[Shadow transparency]
 ** xref:courses/18_Ray_tracing/06_Reflections.adoc[Reflections]
 ** xref:courses/18_Ray_tracing/07_Conclusion.adoc[Conclusion]
+* xref:courses/siggraph2026_vk_tutorial/00_Overview.adoc[How to write a Vulkan application in 2026]
 * xref:90_FAQ.adoc[FAQ]
 * link:https://github.com/KhronosGroup/Vulkan-Tutorial[GitHub Repository, window=_blank]
 

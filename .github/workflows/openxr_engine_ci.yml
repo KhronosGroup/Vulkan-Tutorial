@@ -66,16 +66,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ${{ runner.os }}-openxr-ccache-${{ github.sha }}
-          restore-keys: ${{ runner.os }}-openxr-ccache-
+          key: ${{ runner.os }}-openxr-ccache-${{ hashFiles('attachments/simple_engine/imgui/**') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-openxr-ccache-${{ hashFiles('attachments/simple_engine/imgui/**') }}-
 
       - name: sccache (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v4
         with:
           path: ${{ env.SCCACHE_DIR }}
-          key: ${{ runner.os }}-openxr-sccache-${{ github.sha }}
-          restore-keys: ${{ runner.os }}-openxr-sccache-
+          key: ${{ runner.os }}-openxr-sccache-${{ hashFiles('attachments/simple_engine/imgui/**') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-openxr-sccache-${{ hashFiles('attachments/simple_engine/imgui/**') }}-
 
       - name: Cache Vulkan SDK (Windows)
         if: runner.os == 'Windows'

@@ -1,0 +1,325 @@
+name: Advanced Vulkan Compute CI
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    paths:
+      - 'attachments/compute/**'
+      - '.github/workflows/compute_ci.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'attachments/compute/**'
+      - '.github/workflows/compute_ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            ccache: ccache
+            vulkan-install: |
+              VULKAN_VERSION=$(curl -s https://vulkan.lunarg.com/sdk/latest/linux.txt)
+              echo "Using Vulkan SDK version: $VULKAN_VERSION"
+
+              mkdir -p vulkan-sdk
+              cd vulkan-sdk
+
+              curl -O "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
+
+              tar -xJf vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz
+
+              ln -sfn "$PWD/$VULKAN_VERSION" "$PWD/latest"
+
+              echo "VULKAN_SDK=$PWD/latest/x86_64" >> $GITHUB_ENV
+              echo "PATH=$PWD/latest/x86_64/bin:$PATH" >> $GITHUB_ENV
+              echo "LD_LIBRARY_PATH=$PWD/latest/x86_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+              echo "VK_LAYER_PATH=$PWD/latest/x86_64/etc/vulkan/explicit_layer.d" >> $GITHUB_ENV
+
+              cd ..
+            deps-install: |
+              chmod +x attachments/compute/install_dependencies_linux.sh
+              ./attachments/compute/install_dependencies_linux.sh
+            test-cmd: |
+              for sample in \
+                02_compute_architecture/02_compute_architecture \
+                03_memory_models/03_memory_models \
+                04_subgroup_operations/04_subgroup_operations \
+                05_opencl_on_vulkan/05_opencl_on_vulkan \
+                06_advanced_data_structures/06_advanced_data_structures \
+                07_gpu_driven_pipelines/07_gpu_driven_pipelines \
+                08_async_compute/08_async_compute \
+                09_specialized_math/09_specialized_math \
+                10_performance_optimization/10_performance_optimization; do
+                if [ -f "$sample" ]; then
+                  echo "$sample built successfully"
+                else
+                  echo "$sample build failed"
+                  exit 1
+                fi
+              done
+
+          - os: windows-latest
+            ccache: sccache
+            vulkan-install: |
+              if (Test-Path "C:\VulkanSDK") {
+                Write-Host "Using cached Vulkan SDK"
+              } else {
+                Write-Host "Downloading Vulkan SDK..."
+                choco install -y aria2
+                aria2c --split=16 --max-connection-per-server=16 --min-split-size=1M --dir="$env:TEMP" --out="vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe"
+
+                Write-Host "Installing minimal Vulkan SDK components..."
+                try {
+                    Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install --components VulkanRT,VulkanSDK64,VulkanDXC,VulkanTools" -Wait -NoNewWindow
+                    if (-not (Test-Path "C:\VulkanSDK")) {
+                        Write-Host "Vulkan SDK installation failed: C:\VulkanSDK directory not found"
+                        Write-Host "Attempting to install without specifying components..."
+                        Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+                    }
+                } catch {
+                    Write-Host "Error installing Vulkan SDK: $_"
+                    Start-Process -FilePath "$env:TEMP\vulkan-sdk.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+                }
+              }
+
+              $vulkanPath = ""
+              if (Test-Path "C:\VulkanSDK") {
+                if (Test-Path "C:\VulkanSDK\Latest") {
+                  $vulkanPath = "C:\VulkanSDK\Latest"
+                } elseif (Test-Path "C:\VulkanSDK\latest") {
+                  $vulkanPath = "C:\VulkanSDK\latest"
+                } else {
+                  $vulkanPath = Get-ChildItem "C:\VulkanSDK" | Where-Object { $_.PSIsContainer } | Sort-Object -Property Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+                }
+              }
+              if (-not $vulkanPath) {
+                Write-Host "Warning: Vulkan SDK not found. Creating a temporary directory structure."
+                New-Item -ItemType Directory -Force -Path "C:\VulkanSDK\latest\Include\vulkan" | Out-Null
+                New-Item -ItemType Directory -Force -Path "C:\VulkanSDK\latest\Lib" | Out-Null
+                New-Item -ItemType Directory -Force -Path "C:\VulkanSDK\latest\Bin" | Out-Null
+                New-Item -ItemType File -Force -Path "C:\VulkanSDK\latest\Include\vulkan\vulkan.h" | Out-Null
+                New-Item -ItemType File -Force -Path "C:\VulkanSDK\latest\Lib\vulkan-1.lib" | Out-Null
+                $vulkanPath = "C:\VulkanSDK\latest"
+              }
+
+              echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "$vulkanPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              echo "CMAKE_PREFIX_PATH=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "Vulkan_INCLUDE_DIR=$vulkanPath\Include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "Vulkan_LIBRARY=$vulkanPath\Lib\vulkan-1.lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+              Write-Host "Vulkan SDK path: $vulkanPath"
+            deps-install: |
+              .\attachments\compute\install_dependencies_windows.bat
+              echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+            test-cmd: |
+              $samples = @(
+                "02_compute_architecture",
+                "03_memory_models",
+                "04_subgroup_operations",
+                "05_opencl_on_vulkan",
+                "06_advanced_data_structures",
+                "07_gpu_driven_pipelines",
+                "08_async_compute",
+                "09_specialized_math",
+                "10_performance_optimization"
+              )
+              foreach ($s in $samples) {
+                if (Test-Path "$s/Release/$s.exe") {
+                  echo "$s built successfully"
+                } else {
+                  echo "$s build failed"
+                  exit 1
+                }
+              }
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache vcpkg packages (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/packages
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/buildtrees
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/downloads
+            ${{ runner.temp }}/vcpkg-cache
+          key: ${{ runner.os }}-vcpkg-compute-${{ hashFiles('attachments/compute/install_dependencies_windows.bat', 'attachments/compute/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-compute-
+            ${{ runner.os }}-vcpkg-
+
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk-compute-${{ hashFiles('attachments/compute/CMakeLists.txt', 'attachments/compute/**/*.cpp') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-compute-
+            ${{ runner.os }}-vulkan-sdk-
+
+      - name: Cache apt packages (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-compute-${{ hashFiles('.github/workflows/compute_ci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-compute-
+            ${{ runner.os }}-apt-
+
+      - name: Cache ccache files
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.ccache
+            ~/.cache/sccache
+          key: ${{ runner.os }}-${{ matrix.ccache }}-compute-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.ccache }}-compute-
+            ${{ runner.os }}-${{ matrix.ccache }}-
+
+      - name: Cache Vulkan SDK (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/vulkan-sdk
+          key: ${{ runner.os }}-vulkan-sdk-compute-${{ hashFiles('attachments/compute/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-compute-
+            ${{ runner.os }}-vulkan-sdk-
+
+      - name: Install ccache (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache
+          ccache --max-size=2G
+          ccache -z
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+
+      - name: Cache sccache binary (Windows)
+        if: runner.os == 'Windows'
+        id: cache-sccache
+        uses: actions/cache@v3
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: ${{ runner.os }}-sccache-0.5.4
+
+      - name: Install sccache (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\sccache\sccache.exe") {
+            Write-Host "Using cached sccache binary"
+            $sccachePath = "$env:RUNNER_TEMP\sccache"
+          } else {
+            Write-Host "Downloading and installing sccache..."
+            New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\sccache"
+            aria2c --split=8 --max-connection-per-server=8 --min-split-size=1M --dir="$env:RUNNER_TEMP" --out="sccache.tar.gz" "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz"
+            tar -xzf "$env:RUNNER_TEMP\sccache.tar.gz" --strip-components=1 -C "$env:RUNNER_TEMP\sccache" "sccache-v0.5.4-x86_64-pc-windows-msvc/sccache.exe"
+            $sccachePath = "$env:RUNNER_TEMP\sccache"
+          }
+
+          echo "$sccachePath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "SCCACHE_DIR=$HOME/.cache/sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_ERROR_LOG=$HOME/.cache/sccache/sccache.log" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "SCCACHE_LOG=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "RUST_LOG=sccache=info" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          New-Item -ItemType Directory -Force -Path "$HOME/.cache/sccache"
+          & "$sccachePath\sccache.exe" --version
+
+      - name: Install dependencies
+        run: ${{ matrix.deps-install }}
+
+      - name: Install Vulkan SDK
+        run: ${{ matrix.vulkan-install }}
+
+      - name: Verify Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if [ -d "$VULKAN_SDK" ]; then
+            echo "Vulkan SDK found at: $VULKAN_SDK"
+            slangc --version || echo "Warning: slangc not found in PATH"
+          else
+            echo "Vulkan SDK not found!"
+            exit 1
+          fi
+
+      - name: Verify Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path $env:VULKAN_SDK) {
+            echo "Vulkan SDK found at: $env:VULKAN_SDK"
+            $criticalPaths = @(
+              "$env:VULKAN_SDK\Include",
+              "$env:VULKAN_SDK\Lib",
+              "$env:VULKAN_SDK\Bin",
+              "$env:VULKAN_SDK\Include\vulkan\vulkan.h",
+              "$env:VULKAN_SDK\Lib\vulkan-1.lib"
+            )
+            $allPathsExist = $true
+            foreach ($path in $criticalPaths) {
+              if (Test-Path $path) { echo "Found: $path" }
+              else { echo "Missing: $path"; $allPathsExist = $false }
+            }
+            if (-not $allPathsExist) {
+              echo "Warning: Vulkan SDK installation is incomplete, but continuing."
+            }
+          } else {
+            echo "Warning: Vulkan SDK not found."
+          }
+
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        working-directory: ${{ github.workspace }}/attachments/compute
+        run: |
+          export CC="clang"
+          export CXX="clang++"
+          rm -rf build
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}/attachments/compute
+        run: |
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+          cmake -B build -DCMAKE_BUILD_TYPE=Release `
+            -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR" `
+            -DVulkan_LIBRARY="$env:Vulkan_LIBRARY" `
+            -DCMAKE_PREFIX_PATH="$env:VULKAN_SDK" `
+            -DCMAKE_PROGRAM_PATH="$env:VULKAN_SDK\Bin" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_FLAGS="/MP /EHsc /W3 /O2"
+
+      - name: Build
+        working-directory: ${{ github.workspace }}/attachments/compute
+        run: cmake --build build --config Release --parallel 4
+
+      - name: ccache statistics
+        if: runner.os == 'Linux'
+        run: ccache -s
+
+      - name: sccache statistics
+        if: runner.os == 'Windows'
+        run: sccache -s
+
+      - name: Test Build Output
+        working-directory: ${{ github.workspace }}/attachments/compute/build
+        run: ${{ matrix.test-cmd }}

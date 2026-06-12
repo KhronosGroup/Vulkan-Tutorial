@@ -1,0 +1,56 @@
+:pp: {plus}{plus}
+= Fragment Density Control & VRS
+
+Variable Rate Shading (VRS) allows us to reduce shading cost while maintaining geometric sharpness by decoupling the shading rate from the rasterization rate.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+While Vulkan provides the powerful VRS extensions required for foveated shading, the OpenXR standard does not yet mandate their use or coordinate the generation of shading rate maps. You use Vulkan to implement these optimizations to push your engine's performance beyond standard runtime expectations.
+
+== The Concept: Decoupling Rasterization from Shading
+
+In legacy pipelines, reducing shading quality often meant rendering to a lower-resolution buffer and upscaling, which introduced blurring. Modern Vulkan provides a much more elegant solution via **Variable Rate Shading (VRS)**.
+
+1.  **Rasterization**: Determining which pixels are covered by a triangle.
+2.  **Shading**: Running a fragment shader to determine the color of those pixels.
+
+With **VRS**, you can run one fragment shader for a *group* of pixels (e.g., a 2x2 or 4x4 block) while still keeping the high-resolution edges and depth data from the rasterizer. This maintains **Geometric Sharpness** while significantly reducing the **ALU** cost of complex lighting.
+
+== Shading Rate Images: The Density Map
+
+In a spatial pipeline, we use a **Shading Rate Image**. This is a low-resolution attachment where each "pixel" represents a tile of the screen (e.g., 8x8 or 16x16).
+
+[source,cpp]
+----
+// Configuring the shading rate state using designated initializers
+vk::PipelineFragmentShadingRateStateCreateInfoKHR shadingRateState{
+    .fragmentSize = {1, 1}, // Default fallback
+    .combinerOps = {
+        vk::FragmentShadingRateCombinerOpKHR::eReplace, // Use the image's rate
+        vk::FragmentShadingRateCombinerOpKHR::eKeep
+    }
+};
+
+vk::GraphicsPipelineCreateInfo pipelineInfo{
+    .pNext = &shadingRateState
+};
+----
+
+The runtime checks your hardware's supported tile sizes and ensures your density map matches these limits. It may even "warp" your density map during reprojection to keep the high-resolution "Sweet Spot" aligned with the lens optics.
+
+== Advanced: Temporal Stability and Async Compute
+
+Vulkan allows us to push VRS further than the OpenXR standard:
+
+*   **Temporal Shading Stability**: You can use Vulkan's **Subgroup Operations** in a compute shader to analyze the previous frame's depth and motion vectors, generating a refined density map that prevents "shimmering" artifacts in the periphery.
+*   **Async Compute Coordination**: You can use Vulkan to perform heavy compute work that respects the shading rate map of the primary graphics pass, ensuring your volumetric or lighting calculations are optimized alongside your geometry.
+
+== Fixed Vignette Shading
+
+Because XR lenses are naturally bluer and more distorted at the edges, we can pre-calculate a "Vignette" map. The center of the lens is set to 1x1, while the outer rings are set to 2x2 or 4x4. Since the user rarely looks at the extreme edges, this is essentially "Free Performance."
+
+TIP: For more information on VRS and density maps, consult the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#primsrast-fragment-shading-rate[Vulkan Specification on VRS], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/03_gaze_driven_logic.adoc[Next]

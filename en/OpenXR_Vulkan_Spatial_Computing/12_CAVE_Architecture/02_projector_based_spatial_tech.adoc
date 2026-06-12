@@ -1,0 +1,66 @@
+:pp: {plus}{plus}
+= Projector-Based Spatial Architecture
+
+When transitioning from a headset to a **CAVE** (Cave Automatic Virtual Environment), the "cameras" become fixed physical surfaces—the walls—and the user moves *within* them. This requires highly specialized **Off-Axis Projection** logic.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+Standard HMD runtimes are not designed for fixed-surface CAVE environments. You use Vulkan's low-level control over frustums and multi-device synchronization to implement these specialized spatial architectures, often bypassing standard HMD tracking models in favor of custom cluster-based rendering.
+
+== The Observer Paradox: One Perspective, Many Screens
+
+To understand CAVE rendering, you must accept a paradox: **The 3D scene is only correct for one person.**
+
+Because the physical walls are fixed, if the user moves to the left, the image on the front wall must be skewed to maintain the illusion of depth from their new perspective. This is known as **Off-Axis Projection**.
+
+1.  **Fixed Display**: The projection surface (the wall) never moves.
+2.  **Moving Eye**: The user's eye (the viewpoint) moves constantly.
+3.  **Result**: The "Pyramid of Vision" (the frustum) is highly asymmetric and changes its skew every frame based on the user's location.
+
+== Calculating the Off-Axis Frustum
+
+To calculate this, we treat the physical wall as the "Near Plane" of our camera. We calculate the frustum that passes from the tracked eye through the four corners of the wall.
+
+[source,cpp]
+----
+// A representation of a physical projection wall in our engine using designated initializers
+struct ProjectionWall {
+    glm::vec3 bottomLeft;
+    glm::vec3 bottomRight;
+    glm::vec3 topLeft;
+};
+
+// Configure the rendering info for a specific wall view
+vk::RenderingInfo wallRenderingInfo{
+    .renderArea = {{0, 0}, {wallWidth, wallHeight}},
+    .layerCount = 1,
+    .colorAttachmentCount = 1,
+    .pColorAttachments = &colorAttachment
+};
+----
+
+The runtime (or a wrapper like Monado) ensures each node only renders the specific `viewID` it is responsible for, while correcting for projector keystoning via a "Warp and Blend" mesh.
+
+== The Distributed Rendering Model: Leader and Follower
+
+Driving a 5-sided CAVE at 4K resolution requires immense GPU power, typically using a **Cluster** of computers.
+
+*   **Leader Node**: Runs the main simulation, physics, and input processing, broadcasting the world state to followers.
+*   **Follower Nodes**: Perform **Deterministic Simulation**, updating their world state to match the leader and rendering only their assigned wall.
+
+== Advanced: Multi-Device Sync and Color Balancing
+
+Vulkan allows for a level of coordination that standard XR APIs do not natively manage:
+
+*   **Multi-Device Buffer Swaps**: Using Vulkan's **External Semaphores** and **Fences**, you can synchronize rendering across a multi-GPU projector cluster, ensuring all GPUs swap buffers at the exact same hardware clock cycle.
+*   **Global Illuminant Consistency**: You can use Vulkan's **Query Pools** to sample the brightness of each projector and dynamically adjust your engine's lighting, ensuring a uniform visual environment across all walls.
+
+== Determinism is Mandatory
+
+In a cluster, every computer must agree on the world state. If a particle system uses a random seed that differs between nodes, the immersion breaks. Every "Random" or "Time-based" element must be synchronized across the network.
+
+TIP: For more information on CAVE and large-scale spatial systems, consult the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#spaces[OpenXR Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/12_CAVE_Architecture/03_hardware_sync.adoc[Next]

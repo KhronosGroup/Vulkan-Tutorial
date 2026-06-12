@@ -1,0 +1,85 @@
+:pp: {plus}{plus}
+= The OpenXR Action System
+
+The OpenXR input system is built around three core concepts: **Action Sets**, **Actions**, and **Interaction Profiles**. By separating our engine's logic from the physical hardware, we ensure that our application remains robust across a vast ecosystem of controllers.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
+
+Defining input through an action-based system is a mandatory architectural pattern in OpenXR. You must use these abstractions to ensure your application can run on the wide variety of controllers supported by the OpenXR ecosystem.
+
+== The Hardware Abstraction Layer: Thinking in Actions
+
+In a legacy input system, you might write code like `if (buttonA.isPressed()) { jump(); }`. This is a fragile approach in XR, where hardware varies wildly. OpenXR uses an **Action-Based** model. Instead of looking for buttons, your engine defines what the user can *do*:
+
+1.  **Define the Action**: "I need an action called 'Jump'."
+2.  **Assign the Type**: Is it a boolean (on/off), a float (analog trigger), or a pose (hand position)?
+3.  **Suggest the Binding**: The XR runtime handles the translation at the last possible second, giving your engine a unified stream of events.
+
+While the runtime acts as a translation layer—resolving paths like `/user/hand/right/input/grip/pose` to physical sensors—your engine remains focused on intent.
+
+== 1. Action Sets: Contextual Input
+
+An **Action Set** is a container for related actions. This allows you to enable or disable groups of inputs based on what the user is doing (e.g., "Gameplay" vs. "Menu").
+
+[source,cpp]
+----
+// 1. Create an Action Set using designated initializers
+XrActionSetCreateInfo actionSetInfo{
+    .type = XR_TYPE_ACTION_SET_CREATE_INFO,
+    .actionSetName = "gameplay",
+    .localizedActionSetName = "Main Gameplay",
+    .priority = 0
+};
+XrActionSet gameplayActionSet;
+xrCreateActionSet(instance, &actionSetInfo, &gameplayActionSet);
+----
+
+== 2. Actions: Defining Intent
+
+Within an action set, we define our individual **Actions**.
+
+[source,cpp]
+----
+// 2. Create a Pose Action for hand tracking
+XrActionCreateInfo actionInfo{
+    .type = XR_TYPE_ACTION_CREATE_INFO,
+    .actionName = "hand_pose",
+    .actionType = XR_ACTION_TYPE_POSE_INPUT,
+    .localizedActionName = "Hand Pose"
+};
+XrAction handPoseAction;
+xrCreateAction(gameplayActionSet, &actionInfo, &handPoseAction);
+----
+
+== 3. Interaction Profiles: Suggesting the Map
+
+Finally, we provide "Suggested Bindings" for known controller types.
+
+[source,cpp]
+----
+// 3. Map the action to a specific controller path using designated initializers
+std::vector<XrActionSuggestedBinding> bindings = {
+    { .action = handPoseAction, .binding = xrPathToString(instance, "/user/hand/right/input/grip/pose") }
+};
+
+XrInteractionProfileSuggestedBinding profileBinding{
+    .type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING,
+    .interactionProfile = xrPathToString(instance, "/interaction_profiles/oculus/touch_controller"),
+    .countSuggestedBindings = static_cast<uint32_t>(bindings.size()),
+    .suggestedBindings = bindings.data()
+};
+xrSuggestInteractionProfileBindings(instance, &profileBinding);
+----
+
+== Advanced: GPU-Based Input Filtering and Haptic Synthesis
+
+Vulkan allows you to implement complex input logic that the OpenXR standard does not natively provide:
+
+*   **GPU-Based Input Filtering**: You can use Vulkan's **Compute Shaders** to process high-frequency pose data streams from OpenXR, performing real-time signal analysis (like noise reduction or gesture intent prediction) directly on the GPU for maximum responsiveness.
+*   **Physics-Driven Haptics**: While OpenXR haptics are simple vibration commands, you can use Vulkan's **Storage Buffers** to generate complex, physics-driven haptic waveforms in your shaders and stream them to the runtime, creating a tighter link between visual effects and physical feedback.
+
+TIP: For more details, consult the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#input[OpenXR Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/07_Action_Spaces_Input/03_space_manifolds.adoc[Next]

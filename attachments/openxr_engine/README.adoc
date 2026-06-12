@@ -1,0 +1,13 @@
+= OpenXR Engine
+
+This directory contains a variant of the Simple Engine that incorporates OpenXR support for Vulkan.
+
+== Dependency
+
+This project depends on the `simple_engine` located in the sibling directory `../simple_engine`.
+The `CMakeLists.txt` is configured to pull shared source files, headers, and assets directly from the `simple_engine` directory to avoid redundancy.
+
+== Building
+
+To build this project, ensure that you have the Vulkan SDK and OpenXR SDK installed.
+Since it references files from `simple_engine`, do not move this directory relative to the `simple_engine` directory.

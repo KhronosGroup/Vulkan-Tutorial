@@ -1,0 +1,58 @@
+:pp: {plus}{plus}
+= Zero-Copy Hand-off for Sensor Data
+
+Real-time scene understanding requires moving sensor data (like depth maps or camera feeds) directly to the GPU without CPU intervention to minimize latency.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
+
+Importing runtime-allocated sensor buffers using Vulkan's external memory extensions is a standard way to achieve high-performance Mixed Reality. You must use these extensions to enable direct memory access (DMA) between the headset's sensors and your compute shaders.
+
+== The Concept: Direct Memory Access (DMA)
+
+In a zero-copy hand-off, the OpenXR runtime captures sensor data directly into a GPU buffer that our Vulkan engine can see, bypassing the host processor entirely via **DMA** (Direct Memory Access).
+
+1.  **VRAM Allocation**: The runtime or OS driver allocates VRAM for the sensor data.
+2.  **External Memory Handle**: OpenXR provides a handle to this memory (e.g., via `VK_KHR_external_memory`).
+3.  **Engine Import**: Our engine imports this handle, wrapping it in a `vk::raii::DeviceMemory` object.
+4.  **Compute Access**: Our compute shaders process this raw data in-place.
+
+== Implementation: Piping Data to Compute
+
+By bypassing the CPU, sensor data moves at the speed of the GPU's internal bus, keeping **Motion-to-Photon Latency** below the threshold of human perception. we use designated initializers to configure the memory allocation and import:
+
+[source,cpp]
+----
+// Importing external sensor memory using designated initializers
+vk::ImportMemoryBufferInfoKHR importInfo{
+    .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd, // OpaqueFd for Linux/Android
+    .handle = sensorMemoryHandle
+};
+
+vk::MemoryAllocateInfo allocInfo{
+    .pNext = &importInfo,
+    .allocationSize = sensorDataSize,
+    .memoryTypeIndex = findSensorCompatibleMemoryType()
+};
+
+// RAII handle automatically manages the lifetime of the imported memory
+vk::raii::DeviceMemory importedMemory(device, allocInfo);
+----
+
+The runtime coordinates the DMA transfer and may "alias" physical memory so both the tracking service and your engine can see the same frame simultaneously without duplication.
+
+== Why Zero-Copy is Critical for MR
+
+In Mixed Reality (MR), users view the real world through **Passthrough**. Even a 20ms delay creates a nauseating disconnect. Zero-copy hand-offs ensure that sensor data arrives with minimum latency, maintaining the illusion that virtual and physical worlds occupy the same space.
+
+== Advanced: Sensor Denoising and High-Frequency Injection
+
+Vulkan allow us to refine sensor data beyond standard streams:
+
+*   **On-the-Fly Processing**: Using Vulkan's **Hardware Accelerators**, you can run specialized denoising or depth-completion shaders on raw sensor data, providing a cleaner "Digital Twin" than the raw OpenXR stream.
+*   **High-Frequency Injection**: You can use Vulkan's **Asynchronous Transfer Queues** to interpolate sensor data in parallel with your 90Hz rendering loop, ensuring virtual occluders stay perfectly aligned even if sensors report at a lower frequency (e.g., 30Hz).
+
+TIP: For more information on external memory and zero-copy transfers, consult the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#external-memory[Vulkan Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/02_environmental_ingestion.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/04_incorporating_into_the_engine.adoc[Next]

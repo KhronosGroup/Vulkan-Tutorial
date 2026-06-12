@@ -1,0 +1,14 @@
+:pp: {plus}{plus}
+= Quad-Views and Foveated Rendering: High-Fidelity Spatial Computing
+
+As spatial computing hardware continues to advance, we're seeing headsets that push the boundaries of resolution and field-of-view (FOV). To maintain high performance while delivering incredible detail, many modern systems utilize **Quad-Views** and **Foveated Rendering**. These techniques move beyond simple two-eye stereo to a more sophisticated "N=4" model of rendering.
+
+The core idea is simple: the human eye only sees high detail in a very small central area called the **fovea**. Outside of that area, our vision is much lower resolution. By dedicating more rendering power to the foveal region and less to the peripheral area, we can significantly reduce the overall GPU workload without the user noticing a loss in quality. This is the essence of **Foveated Rendering**.
+
+In this chapter, we're going to explore how to architect our spatial engine to handle these multi-layer rendering setups. We'll start by looking at **Quad-Views**, where each eye receives two distinct views: a high-resolution "inset" (the foveal view) and a lower-resolution "base" (the peripheral view). This results in a total of four views (N=4) that need to be synchronized and composed.
+
+We'll define some key terms like **PPS** (Pixel per Degree) and see how to manage the **Swapchain** submission for these multiple layers in OpenXR. Whether you're targeting high-end PC VR or the latest mobile spatial systems, understanding how to manage multi-layer composition is a vital skill for any advanced spatial developer.
+
+In the following sections, we'll dive into the details of architecting these primary and inset view layers, and we'll see how to efficiently submit them to the OpenXR compositor for the final image.
+
+xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/02_primary_stereo_with_insets.adoc[Next]

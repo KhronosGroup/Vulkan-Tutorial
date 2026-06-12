@@ -1,0 +1,69 @@
+:pp: {plus}{plus}
+= 4D LightField Representation
+
+Representing a lightfield requires mapping a 4D light ray into a linear memory address that the GPU can process efficiently.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+Standard OpenXR runtimes are focused on 2D projection layers. You use Vulkan's raw buffer management and custom shader indexing to implement high-dimensional 4D lightfields, which allows for true holographic representations that go beyond the standard spatial rendering model.
+
+== The 7D Plenoptic Function: The Starting Point
+
+To understand lightfields, we must first look at the **Plenoptic Function** (from the Latin *plenus* meaning full). This is a 7D function latexmath:[P(x, y, z, \theta, \phi, \lambda, t)] that describes every photon in the universe.
+
+Storing 7 dimensions is impossible. For a GPU, we make three assumptions:
+1.  **Static Scene**: We ignore time.
+2.  **RGB Color**: We reduce wavelength to three channels.
+3.  **Empty Space**: We assume light doesn't change color in air, only needing to know where a ray enters and leaves a "Light Box."
+
+This leaves us with **4 Dimensions**: two for the entry point (**ST plane**) and two for the entry direction (**UV plane**).
+
+== Mapping to Vulkan Memory
+
+In Vulkan, we represent this 4D structure as a massive `vk::raii::Buffer`. We use designated initializers to configure this high-bandwidth storage:
+
+[source,cpp]
+----
+// Initializing a 4D LightField buffer using designated initializers
+vk::BufferCreateInfo bufferInfo{
+    .size = spatialRes * directionalRes * sizeof(glm::vec4),
+    .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+    .sharingMode = vk::SharingMode::eExclusive
+};
+vk::raii::Buffer lightFieldBuffer(device, bufferInfo);
+----
+
+The runtime ensures that your "Light Box" remains perfectly stationary in physical space (the Stage Space), allowing the lightfield to maintain its directional integrity even as the user's head moves.
+
+== Indexing the 4th Dimension
+
+In our Slang shaders, we map 4D coordinates to a linear index in this buffer:
+
+[source,slang]
+----
+struct LightFieldRay {
+    float4 color;
+};
+
+RWStructuredBuffer<LightFieldRay> lightFieldData;
+
+// Mapping 4D coordinates to a linear index
+uint getLinearIndex(uint2 st, uint2 uv, uint2 stRes, uint2 uvRes) {
+    return st.x + st.y * stRes.x +
+           uv.x * (stRes.x * stRes.y) +
+           uv.y * (stRes.x * stRes.y * uvRes.x);
+}
+----
+
+== Advanced: Sparse LightField Residency
+
+Vulkan allows you to manage gigabyte-scale lightfields beyond standard buffer limits:
+
+*   **Holographic Virtual Texturing**: Using Vulkan's **Sparse Resident Resources**, you can keep only the currently visible rays resident in VRAM. This allows you to swap data in and out of the GPU based on the user's predicted movement.
+*   **Real-Time Generation**: You can use Vulkan's **Mesh Shaders** to "bake" lightfield updates in real-time for dynamic objects, ensuring moving actors and changing lighting are captured in your plenoptic representation.
+
+TIP: For more information on lightfield theory and buffer management, consult the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#resources-buffers[Vulkan Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/03_high_density_view_arrays.adoc[Next]

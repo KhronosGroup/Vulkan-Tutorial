@@ -25,7 +25,7 @@ Co-authors:
 
 Attribution:
 
-- The instructional flow and lab content here are adapted from the above SIGGRAPH 2026 lab. Please cite the authors above when referencing or reusing this material.
-- Portions of the code and guidance build upon the open-source Khronos Vulkan Tutorial and use helper libraries like Vulkan-RAII, as referenced in the lab description.
+- The instructional flow and course content here are adapted from the above SIGGRAPH 2026 course. Please cite the authors above when referencing or reusing this material.
+- We would like to thank all Khronos Group members and the countless open source contributors to the Vulkan ecosystem, including libraries like vk-bootstrap and Vulkan-Hpp that made this course possible.
 
 If you notice any discrepancy with the official SIGGRAPH listing (title, time, location, or presenters), please open an issue so we can correct the attribution promptly.

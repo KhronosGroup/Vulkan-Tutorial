@@ -129,6 +129,7 @@
 *** xref:Building_a_Simple_Engine/Mobile_Development/05_vulkan_extensions.adoc[Vulkan extensions]
 *** xref:Building_a_Simple_Engine/Mobile_Development/06_conclusion.adoc[Conclusion]
 ** Extra Courses
+*** xref:Building_a_Simple_Engine/Courses/00_courses_overview.adoc[Building with Course Modules]
 *** Opacity Micromaps
 **** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Introduction]
 **** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/01_the_shadow_problem.adoc[The shadow problem]

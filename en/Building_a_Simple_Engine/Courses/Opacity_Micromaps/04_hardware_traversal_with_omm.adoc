@@ -53,7 +53,7 @@ In `VK_KHR_opacity_micromap`, the hardware micromap fast-path for ray queries is
 layout(constant_id = N) gl_EnableOpacityMicromapExt;
 ----
 
-where `N` is a specialisation constant ID. This is a one-line addition to the shader — not a logical change — but without it, the hardware silently ignores all micromap data during ray query traversal and falls back to the full any-hit shader path on every intersection, as if no micromaps were attached at all. This was a deliberate design change from `VK_EXT_opacity_micromap`, where the optimisation was implicit for ray queries. The explicit declaration makes the hardware intent unambiguous and allows compilers to reason about it correctly.
+where `N` is a specialisation constant ID. This declaration is required by the `SPV_KHR_opacity_micromap` SPIR-V extension: if a ray query shader traverses acceleration structures that contain opacity micromaps but does not declare `OpacityMicromapKHR` with a value of `true`, the SPIR-V specification mandates **undefined behavior** — not a graceful fallback to the any-hit path. Do not rely on any particular outcome from omitting the declaration. The declaration makes the hardware intent unambiguous and allows drivers and compilers to reason about traversal behavior correctly.
 
 == The Cascade Effect on Warp Efficiency
 
@@ -77,7 +77,7 @@ image::images/omm_shadow_ray_lifecycle.svg[Flowchart showing the lifecycle of a 
 
 The complete lifecycle of a shadow ray in an OMM-enabled scene can be summarized as a decision tree. The ray enters BVH traversal. For each candidate triangle intersection, the hardware checks for an attached micromap. If no micromap is present (non-alpha-tested geometry), it uses the standard opaque-geometry path: commit the hit immediately. If a micromap is present, it looks up the micro-triangle state. Opaque: commit, no shader. Transparent: discard, no shader. Unknown: invoke the any-hit shader and let the shader make the final call.
 
-This decision tree lives entirely in fixed-function hardware for the Opaque and Transparent branches. Only the Unknown branch enters programmable execution. The result is that the GPU's shader execution units are freed from the overwhelming majority of alpha-testing work and can focus on the cases that genuinely require a shader. In `VK_KHR_opacity_micromap`, reaching this optimized path also depends on the shader having declared the `OpacityMicromapKHR` execution mode — the hardware and the shader must both be in agreement for the optimization to take effect.
+This decision tree lives entirely in fixed-function hardware for the Opaque and Transparent branches. Only the Unknown branch enters programmable execution. The result is that the GPU's shader execution units are freed from the overwhelming majority of alpha-testing work and can focus on the cases that genuinely require a shader. In `VK_KHR_opacity_micromap`, reaching this optimized path also requires that the shader has declared the `OpacityMicromapKHR` execution mode. Omitting that declaration when the acceleration structures contain opacity micromaps results in undefined behavior per the SPIR-V specification — the hardware and the shader must both be in agreement for correct results.
 
 '''
 

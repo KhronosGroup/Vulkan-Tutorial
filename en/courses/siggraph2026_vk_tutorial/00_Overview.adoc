@@ -1,0 +1,38 @@
+= SIGGRAPH 2026: How to write a Vulkan application in 2026
+
+== Overview
+
+Welcome! In this series, we will explain how to write a Vulkan renderer using new Vulkan extensions and the recommended best practices from Khronos as of 2026. This tutorial uses shader objects, dynamic rendering, and descriptor heap techniques, and is based on our SIGGRAPH 2026 course "How to write a Vulkan application in 2026".
+
+Slides available: Coming soon.
+Source code available: Coming soon.
+
+By the end, you'll learn how to:
+
+- Design and implement 2026 Vulkan applications using up-to-date extensions.
+- Modernize existing Vulkan applications by identifying legacy Vulkan 1.0 patterns and replacing them with simpler alternatives.
+- Evaluate which Vulkan extensions are appropriate for simplifying application design and improving developer productivity.
+- Distinguish between legacy and recommended Vulkan approaches, understanding which techniques to avoid and why.
+- Use recent Vulkan features such as descriptor heap, dynamic rendering, and related extensions.
+
+*Please visit us at SIGGRAPH 2026*:
+
+SIGGRAPH page:
+- https://s2026.conference-schedule.org/presentation/?id=gensub_276&sess=sess202
+
+Session details (from the SIGGRAPH listing):
+
+- Course Title: How to write a Vulkan application in 2026
+- Course Date and Time: Wed Jul 22, 9am-12:15pm PDT
+- Course Location: Petree D
+- Interest Areas: Gaming & Interactive
+- Keywords: Education, Games, Real-Time, Rendering
+
+*Prerequisites*:
+This course primarily targets developers with little to no prior Vulkan experience. The intended audience is programmers with some background in computer graphics, possibly including experience with APIs such as OpenGL or DirectX, who are seeking an introduction to Vulkan.
+
+Familiarity with C++ is expected. Some familiarity with graphics programming concepts (e.g., shaders, rendering pipelines) is helpful but not strictly required, as the course will cover these topics in the context of Vulkan.
+
+== Chapters in this series
+
+- Coming soon.

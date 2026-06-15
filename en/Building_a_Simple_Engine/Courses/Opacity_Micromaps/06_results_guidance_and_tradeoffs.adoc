@@ -44,7 +44,7 @@ The hardware also imposes an absolute limit — `maxMicromapTriangles` — on th
 
 == Hardware Requirements and Graceful Fallback
 
-`VK_KHR_opacity_micromap` is the Khronos-ratified promotion of opacity micromap functionality into the core Vulkan extension ecosystem, and as such it is expected to see broad driver support as hardware and drivers mature. Feature availability is tested at device initialization by querying `VkPhysicalDeviceOpacityMicromapFeaturesKHR` — the extension is considered present and usable when the `micromap` field of that structure is `VK_TRUE`. The `OpacityMicromapBuilder` falls back gracefully when the feature is absent.
+Feature availability is tested at device initialization by querying `VkPhysicalDeviceOpacityMicromapFeaturesKHR` — the extension is considered present and usable when the `micromap` field of that structure is `VK_TRUE`. The `OpacityMicromapBuilder` falls back gracefully when the feature is absent.
 
 The fallback behavior is not merely a safety net — it is a first-class configuration. Many users will run the application on hardware without OMM support, and the experience must be correct and acceptable. Because OMMs do not alter the rendered image, the fallback path is visually identical. The only difference is performance, which gracefully degrades to the pre-OMM baseline.
 

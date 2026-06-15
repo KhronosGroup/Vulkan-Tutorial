@@ -18,7 +18,7 @@ Understanding this pattern gives you a transferable skill. The next time you enc
 
 == What You Now Understand
 
-You understand a genuinely modern, hardware-level GPU feature. `VK_KHR_opacity_micromap` is the Khronos-ratified evolution of the micromap concept, and understanding it in this form is significant: the KHR extension deliberately unifies the micromap object into `VkAccelerationStructureKHR` and removes host-side build commands in favor of a pure device-side API. That simplification is not an accident — it reflects what real hardware implementations actually support and removes a class of synchronization ambiguity that existed in the earlier extension. Many experienced graphics developers are not yet familiar with micromaps in this ratified form.
+You understand a genuinely modern, hardware-level GPU feature. `VK_KHR_opacity_micromap` unifies the micromap object into the standard `VkAccelerationStructureKHR` handle and uses a pure device-side API — micromap construction goes through the same `vkCmdBuildAccelerationStructuresKHR` command as every other acceleration structure build. That design keeps lifecycle management simple and consistent. Many graphics developers are not yet familiar with micromaps; understanding this extension well is a meaningful distinction.
 
 You understand not just the API surface, but the reason the API exists. You know what problem it solves, at which level of the hardware it operates, and what the trade-offs are in practice. That depth of understanding is what separates someone who can use a feature from someone who can evaluate it, extend it, and explain it to others.
 
@@ -26,7 +26,7 @@ You understand not just the API surface, but the reason the API exists. You know
 
 Open the `OpacityMicromapBuilder` source files in the `Courses/` attachment folder. Read through the implementation with the conceptual framework from this course fresh in mind. Notice how the three phases — analysis, classification, construction — map to the code structure. Look for the subdivision level heuristic and think about whether it fits the content you are rendering.
 
-When inspecting the ray query shader, look for the `OpacityMicromapKHR` SPIR-V execution mode declaration. With `VK_KHR_opacity_micromap`, shaders that participate in opacity micromap evaluation are required to declare this execution mode explicitly; without it, the driver cannot enable the micromap fast path for that shader. It is a small detail, but an important one to recognise when reading or writing ray query shaders that interact with micromap-enabled geometry.
+When inspecting the ray query shader, look for the `OpacityMicromapKHR` SPIR-V execution mode declaration. Shaders that traverse micromap-enabled acceleration structures must declare this execution mode; omitting it produces **undefined behavior** per the SPIR-V specification. It is a small detail, but an important one to recognise when reading or writing ray query shaders that interact with micromap-enabled geometry.
 
 Enable and disable OMMs in the engine using the configuration flag, and use a GPU profiler — NVIDIA Nsight Graphics or AMD Radeon GPU Profiler — to capture both configurations on a foliage-heavy scene. Look at the any-hit shader invocation count, the time in the BVH traversal stage, and the warp occupancy metrics. The numbers will give you intuition that no amount of explanation can fully replace.
 

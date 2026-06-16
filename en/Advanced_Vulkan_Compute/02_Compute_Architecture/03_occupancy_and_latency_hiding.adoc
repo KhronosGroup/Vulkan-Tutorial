@@ -23,7 +23,7 @@ The GPU's solution is **Concurrency**. Instead of waiting for one bundle, the CU
 *   **100% Occupancy**: The CU is completely packed with bundles. Whenever one waits for memory, there's almost certainly another one ready to go.
 *   **Low Occupancy**: Only a few bundles are active. If they all hit a memory fetch at the same time, the CU will stall.
 
-=== The Resource Tug-of-War
+=== Resource Limits and Occupancy Pressure
 
 You might wonder: "Why not just always dispatch thousands of threads?" The problem is that each Compute Unit has a fixed pool of physical resources. Every thread you add consumes a portion of that pool.
 

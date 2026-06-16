@@ -62,7 +62,7 @@ This process is handled by the hardware, but it relies on the same subgroup part
 
 *   **Minimize Divergence**: If all 32 threads in a subgroup access the same texture, the hardware only needs to do one load. If all 32 threads access *different* textures, the load operation might take up to 32 times longer.
 *   **Subgroup Sorting**: If you have a large workload, consider sorting it so that threads in the same subgroup are more likely to access the same or nearby resources.
-*   **Vulkan 1.4 Features**: Modern Vulkan 1.4 hardware often has better support for non-uniform access, sometimes even avoiding the full scalarization loop for certain resource types.
+
 
 == Conclusion
 

@@ -19,7 +19,7 @@ When dropping from 32-bit to 16-bit, you have to choose what to sacrifice.
 * **FP16 (IEEE 754)**: 1 sign bit, 5 exponent bits, 10 mantissa bits. This provides decent precision but a very limited range (max value ~65,504).
 * **BFloat16 (Brain Float)**: 1 sign bit, 8 exponent bits, 7 mantissa bits. This has the *same range* as FP32 but much lower precision. It's often preferred for machine learning because it's more robust to overflows.
 
-In Vulkan, FP16 is widely supported via the `VK_KHR_shader_float16_int8` extension, while BFloat16 is typically accessed through the `VK_KHR_shader_float_controls` or vendor-specific extensions.
+In Vulkan, FP16 is widely supported via the `VK_KHR_shader_float16_int8` extension, while BFloat16 support is provided through the `VK_KHR_shader_bfloat16` extension.
 
 == Slang: Natural Mixed Precision
 

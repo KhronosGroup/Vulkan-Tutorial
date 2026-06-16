@@ -331,6 +331,7 @@ class AsteroidFieldApp
     std::vector<vk::raii::Semaphore> acquireSemas;
     std::vector<vk::raii::Semaphore> renderDoneSemas;   // indexed by swapchain image index
     uint32_t                     acquireSemaIdx = 0;
+    std::vector<vk::raii::Fence> inFlightFences;        // guard per-frame resource reuse
 
     int      frameIndex        = 0;
     bool     framebufferResized = false;
@@ -493,7 +494,7 @@ class AsteroidFieldApp
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
             .pEngineName        = "No Engine",
             .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion         = vk::ApiVersion14};
+            .apiVersion         = vk::ApiVersion13};
 
         std::vector<const char *> layers;
         if (kEnableValidation)
@@ -1358,6 +1359,12 @@ class AsteroidFieldApp
         // One renderDone binary semaphore per swapchain image
         for (size_t i = 0; i < swapChainImages.size(); ++i)
             renderDoneSemas.emplace_back(device, vk::SemaphoreCreateInfo{});
+
+        // Per-frame in-flight fences (pre-signaled so frame 0 doesn't deadlock)
+        inFlightFences.clear();
+        for (int i = 0; i < kMaxFrames; ++i)
+            inFlightFences.emplace_back(device,
+                vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
     }
 
     // -----------------------------------------------------------------------
@@ -1365,6 +1372,13 @@ class AsteroidFieldApp
     // -----------------------------------------------------------------------
     void drawFrame()
     {
+        // Wait for the in-flight fence so we don't reuse per-frame resources
+        // (command buffers, descriptor sets, UBO) still in use by the GPU.
+        if (device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX)
+                != vk::Result::eSuccess)
+            throw std::runtime_error("waitForFences failed");
+        device.resetFences(*inFlightFences[frameIndex]);
+
         float t = elapsedSeconds();
         updateUBO(t);
 
@@ -1436,15 +1450,8 @@ class AsteroidFieldApp
                 .pCommandBuffers      = &*commandBuffers[frameIndex],
                 .signalSemaphoreCount = static_cast<uint32_t>(signalSemas.size()),
                 .pSignalSemaphores    = signalSemas.data()};
-            queue.submit(si, nullptr);
-
-            // CPU waits for graphics timeline value so per-frame resources are safe to reuse
-            vk::SemaphoreWaitInfo swi{
-                .semaphoreCount = 1,
-                .pSemaphores    = &*timelineSema,
-                .pValues        = &graphicsSignal};
-            if (device.waitSemaphores(swi, UINT64_MAX) != vk::Result::eSuccess)
-                throw std::runtime_error("semaphore wait failed");
+            // Signal the per-frame fence so the next iteration can reclaim these resources.
+            queue.submit(si, *inFlightFences[frameIndex]);
 
             // Present using the binary renderDone semaphore
             vk::PresentInfoKHR pi{

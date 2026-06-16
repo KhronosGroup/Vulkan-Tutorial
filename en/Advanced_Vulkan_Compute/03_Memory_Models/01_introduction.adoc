@@ -10,7 +10,7 @@ How do you know that a value written by one invocation is visible to another? Wh
 
 === The Explicit Nature of Vulkan
 
-On the CPU, you're used to a world where memory is generally **coherent**. If Thread A writes a value to a variable, Thread B can usually read it shortly after without any special ceremony because the hardware keeps the caches in sync automatically.
+On the CPU, cache coherence hardware ensures that once Thread A completes a store, other CPU cores eventually observe the new value. However, CPU thread programming still requires explicit synchronization — without `std::atomic`, mutexes, or memory fences, the compiler and out-of-order CPU cores are free to reorder or defer operations in ways that produce data races.
 
 On the GPU, this is **not** the case. With thousands of threads executing concurrently across multiple compute units, each with its own hierarchical caches (**L1** - Level 1 and **L2** - Level 2, etc.), keeping everyone's view of memory in sync is an incredibly expensive task. Vulkan's philosophy is simple: **synchronization is never automatic**. If you want a write to be visible to a read, you must explicitly say so.
 

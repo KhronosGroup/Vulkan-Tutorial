@@ -441,7 +441,7 @@ class HeatmapApp
         m_swapExtent    = chooseExtent(caps);
 
         auto fmts       = m_physDev.getSurfaceFormatsKHR(*m_surface);
-        m_swapFormat    = chooseFormat(fmts);
+        m_swapFormat    = chooseFormat(fmts, m_physDev);
 
         auto modes      = m_physDev.getSurfacePresentModesKHR(*m_surface);
         auto presentMode = chooseMode(modes);
@@ -1039,9 +1039,19 @@ class HeatmapApp
         throw std::runtime_error("no suitable memory type");
     }
 
-    static vk::SurfaceFormatKHR chooseFormat(std::vector<vk::SurfaceFormatKHR> const &formats)
+    static vk::SurfaceFormatKHR chooseFormat(std::vector<vk::SurfaceFormatKHR> const &formats,
+                                              vk::raii::PhysicalDevice const &physDev)
     {
         assert(!formats.empty());
+        auto supportsBlitDst = [&](vk::Format fmt) {
+            return !!(physDev.getFormatProperties(fmt).optimalTilingFeatures &
+                      vk::FormatFeatureFlagBits::eBlitDst);
+        };
+        for (auto const &f : formats)
+            if (f.format == vk::Format::eB8G8R8A8Unorm &&
+                f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear &&
+                supportsBlitDst(f.format))
+                return f;
         for (auto const &f : formats)
             if (f.format == vk::Format::eB8G8R8A8Unorm &&
                 f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)

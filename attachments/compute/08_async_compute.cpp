@@ -7,7 +7,7 @@
 //     family is preferred; the code falls back to a second queue from the
 //     graphics family, or to sharing queue 0 if only one queue is available.
 //
-//   - The GRAPHICS QUEUE renders a 64×64 cloth mesh as a lit triangle mesh
+//   - The GRAPHICS QUEUE renders a 32×32 cloth mesh as a lit triangle mesh
 //     plus a collision sphere, reading the vertex positions written by the
 //     compute pass of the *previous* frame.  This is the key overlap: while
 //     the GPU renders frame N it simultaneously solves physics for frame N+1.
@@ -16,17 +16,19 @@
 //     the two queues so that graphics never reads cloth positions while
 //     compute is still writing them.
 //
-// Frame N timeline:
-//   compute : wait  N*2+0  (initial value == 0, so frame 0 proceeds immediately)
-//             → Verlet integrate + 8 constraint iterations
-//             → signal N*2+1
-//   graphics: wait  N*2+1 (eVertexInput stage)
-//             → render cloth mesh + sphere
-//             → signal N*2+2
-//   CPU     : wait  N*2+2 → present
+// Frame N timeline (true async overlap):
+//   compute(N) : wait  lastGraphicsSignal(N-1) [0 for frame 0]
+//                → Verlet integrate, writes clothPositionBuffers[(frameIndex+1)%2]
+//                → signal computeSignal(N)
+//   graphics(N): wait  computeTimeline(N-1)    [0 for frame 0]
+//                → reads clothPositionBuffers[frameIndex] (written by compute(N-1))
+//                → signal graphicsSignal(N)
+// Because the two passes operate on different buffer slots they run concurrently
+// on the GPU: graphics(N) renders frame N-1's cloth while compute(N) solves frame N.
+//   CPU     : present  (inFlightFence guards resource reuse; renderDone sem gates present)
 //
 // The cloth:
-//   • 64×64 grid of vertices (4096 total), pinned at top-left and top-right.
+//   • 32×32 grid of vertices (1024 total), pinned at top-left and top-right.
 //   • Falls under gravity and drapes over a sphere at (0, -0.2, 0).
 //   • Rendered as an indexed triangle list; indices are generated once on the CPU.
 //   • Cloth positions live in two device-local SSBOs (positions + prevPositions).
@@ -68,9 +70,10 @@ import vulkan_hpp;
 constexpr uint32_t WIDTH           = 1280;
 constexpr uint32_t HEIGHT          = 720;
 // Cloth is 32×32 = 1024 vertices so the entire grid fits in ONE compute
-// workgroup (maxComputeWorkGroupInvocations is guaranteed ≥ 1024 across all
-// Vulkan 1.1 devices).  That lets the constraint solver use a real
-// workgroup-wide barrier between relaxation steps – see the shader header.
+// workgroup, letting the constraint solver use a real workgroup-wide barrier
+// between relaxation steps.  maxComputeWorkGroupInvocations minimum is 128
+// (Vulkan 1.0 core) and 256 (Roadmap 2022 / Vulkan 1.4); CLOTH_N=1024 is
+// not guaranteed – isDeviceSuitable enforces it at runtime.
 constexpr uint32_t CLOTH_W         = 32;
 constexpr uint32_t CLOTH_H         = 32;
 constexpr uint32_t CLOTH_N         = CLOTH_W * CLOTH_H;          // 1024
@@ -294,16 +297,30 @@ class AsyncComputeApplication
     // -----------------------------------------------------------------------
     // Synchronisation
     //
-    // One timeline semaphore: compute signals N*2+1, graphics waits on it,
-    // graphics signals N*2+2, CPU waits on it before present.
+    // Two timeline semaphores — one per queue — so each is only ever signalled by
+    // its own queue.  A single shared timeline would require signals from both
+    // queues to arrive in strictly increasing value order, which is not guaranteed
+    // when both start with no GPU-side wait (frame 0).
+    //
+    //   computeTimeline : only the async-compute queue signals this
+    //                     compute[N] signals N+1
+    //   graphicsTimeline: only the graphics queue signals this
+    //                     graphics[N] signals N+1
+    //
+    // Cross-queue waits:
+    //   compute[N]  waits graphicsTimeline >= N   (graphics[N-1] released the write slot)
+    //   graphics[N] waits computeTimeline  >= N   (compute[N-1]  finished the read  slot)
+    // Both start at 0, so frame 0 has no GPU-side wait on either side.
     //
     // Binary semaphores for image acquisition and per-image render-done use.
     // -----------------------------------------------------------------------
-    vk::raii::Semaphore          timelineSemaphore = nullptr;
-    uint64_t                     timelineValue     = 0;
-    std::vector<vk::raii::Semaphore> acquireSemaphores;   // MAX_FRAMES+1 rotating pool
-    std::vector<vk::raii::Semaphore> renderDoneSems;      // one per swapchain image
-    std::vector<vk::raii::Fence>     inFlightFences;      // guard command-buffer reuse
+    vk::raii::Semaphore computeTimeline  = nullptr;  // signalled only by async-compute queue
+    vk::raii::Semaphore graphicsTimeline = nullptr;  // signalled only by graphics queue
+    uint64_t            frameCount       = 0;        // monotonic; drives both timeline values
+    std::vector<vk::raii::Semaphore> acquireSemaphores;      // MAX_FRAMES+1 rotating pool
+    std::vector<vk::raii::Semaphore> renderDoneSems;       // one per swapchain image
+    std::vector<vk::raii::Fence>     inFlightFences;       // guard graphics command-buffer reuse
+    std::vector<vk::raii::Fence>     computeInFlightFences; // guard compute command-buffer reuse
 
     uint32_t acquireSemIdx = 0;  // rotating acquire semaphore index
     uint32_t frameIndex    = 0;
@@ -424,7 +441,7 @@ class AsyncComputeApplication
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
             .pEngineName        = "No Engine",
             .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion         = vk::ApiVersion14};
+            .apiVersion         = vk::ApiVersion13};
 
         std::vector<char const *> requiredLayers;
         if (kEnableValidation)
@@ -509,7 +526,10 @@ class AsyncComputeApplication
             feats.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering  &&
             feats.get<vk::PhysicalDeviceVulkan13Features>().synchronization2;
 
-        return ok13 && hasGraphics && hasExts && okFeats;
+        bool hasWorkgroupSize =
+            pd.getProperties().limits.maxComputeWorkGroupInvocations >= CLOTH_N;
+
+        return ok13 && hasGraphics && hasExts && okFeats && hasWorkgroupSize;
     }
 
     void pickPhysicalDevice()
@@ -1333,10 +1353,11 @@ class AsyncComputeApplication
     // =======================================================================
     void createSyncObjects()
     {
-        // Timeline semaphore for compute↔graphics coordination
+        // Two timeline semaphores — each only signalled by one queue
         vk::SemaphoreTypeCreateInfo stci{.semaphoreType = vk::SemaphoreType::eTimeline, .initialValue = 0};
-        timelineSemaphore = vk::raii::Semaphore(device, {.pNext = &stci});
-        timelineValue = 0;
+        computeTimeline  = vk::raii::Semaphore(device, {.pNext = &stci});
+        graphicsTimeline = vk::raii::Semaphore(device, {.pNext = &stci});
+        frameCount = 0;
 
         // Binary acquire semaphores (MAX_FRAMES+1 rolling pool)
         acquireSemaphores.clear();
@@ -1353,6 +1374,11 @@ class AsyncComputeApplication
         inFlightFences.clear();
         for (int i = 0; i < MAX_FRAMES; ++i)
             inFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
+
+        // Per-frame compute fences (guard compute command-buffer reuse independently of graphics)
+        computeInFlightFences.clear();
+        for (int i = 0; i < MAX_FRAMES; ++i)
+            computeInFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
     }
 
     // =======================================================================
@@ -1412,9 +1438,12 @@ class AsyncComputeApplication
         cb.begin({});
 
         cb.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline);
+        // Write to the slot that graphics(N) will NOT be reading this frame.
+        // Graphics(N) reads clothPositionBuffers[frameIndex]; compute(N) writes
+        // clothPositionBuffers[(frameIndex+1)%MAX_FRAMES] for graphics(N+1) to read.
         cb.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                               computePipelineLayout, 0,
-                              {computeDescSets[frameIndex]}, {});
+                              {computeDescSets[(frameIndex + 1) % MAX_FRAMES]}, {});
 
         // Dispatch a SINGLE workgroup: the shader declares [numthreads(CLOTH_N,1,1)]
         // so all 1024 cloth vertices are solved together with a real workgroup
@@ -1558,10 +1587,12 @@ class AsyncComputeApplication
     // =======================================================================
     // Draw frame
     //
-    // Timeline semaphore sequence:
-    //   compute : wait  N*2   → solve cloth constraints → signal N*2+1
-    //   graphics: wait  N*2+1 (eVertexInput) → render cloth+sphere → signal N*2+2
-    //   CPU     : wait  N*2+2 → present
+    // Timeline semaphore sequence (frame N):
+    //   compute[N] : wait  graphicsTimeline >= N  → solve cloth → signal computeTimeline  = N+1
+    //   graphics[N]: wait  computeTimeline  >= N  → render      → signal graphicsTimeline = N+1
+    // Both waits are >= 0 on frame 0 (initial value), so the first frame starts immediately.
+    // Each semaphore is only ever signalled by one queue, so no out-of-order signal is possible.
+    // CPU: inFlightFences[fi] guards graphics CB reuse; computeInFlightFences[fi] guards compute CB.
     // =======================================================================
     void drawFrame()
     {
@@ -1577,95 +1608,111 @@ class AsyncComputeApplication
         acquireSemIdx = (acquireSemIdx + 1) % (MAX_FRAMES + 1);
 
         auto [acqResult, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *acqSem, nullptr);
+        if (acqResult == vk::Result::eErrorOutOfDateKHR)
+        {
+            device.waitIdle();
+            recreateSwapChain();
+            return;
+        }
+        if (acqResult != vk::Result::eSuccess && acqResult != vk::Result::eSuboptimalKHR)
+            throw std::runtime_error("acquireNextImage failed");
 
-        // Assign monotonically increasing timeline values for this frame.
-        uint64_t computeWaitVal    = timelineValue;          // value to wait before compute
-        uint64_t computeSignalVal  = ++timelineValue;        // compute signals this
-        uint64_t graphicsWaitVal   = computeSignalVal;       // graphics waits on compute
-        uint64_t graphicsSignalVal = ++timelineValue;        // graphics signals this
+        // compute[N] waits graphicsTimeline >= N (graphics[N-1] released the write slot)
+        // graphics[N] waits computeTimeline  >= N (compute[N-1] finished writing the read slot)
+        // Both timelines start at 0, so N=0 imposes no GPU-side wait on either queue.
+        uint64_t N          = frameCount;
+        uint64_t cWaitVal   = N;        // compute waits graphicsTimeline >= N
+        uint64_t cSignalVal = N + 1;    // compute signals computeTimeline  = N+1
+        uint64_t gWaitVal   = N;        // graphics waits computeTimeline  >= N
+        uint64_t gSignalVal = N + 1;    // graphics signals graphicsTimeline = N+1
 
         updateUniformBuffer();
 
         // ------------------------------------------------------------------
         // ASYNC COMPUTE SUBMIT
+        // Wait for the previous use of computeCommandBuffers[frameIndex] before
+        // resetting it.  The graphics inFlightFence only guards the graphics CB;
+        // the async compute CB needs its own fence because the two queues run
+        // independently and compute may outlive the graphics submission it
+        // accompanied two frames ago.
         // ------------------------------------------------------------------
         {
+            auto computeFenceWait = device.waitForFences(*computeInFlightFences[frameIndex], vk::True, UINT64_MAX);
+            if (computeFenceWait != vk::Result::eSuccess)
+                throw std::runtime_error("waitForFences (compute) failed");
+            device.resetFences(*computeInFlightFences[frameIndex]);
+
             recordComputeCommandBuffer();
 
-            vk::TimelineSemaphoreSubmitInfo tssi{
+            // Wait graphicsTimeline >= N (graphics[N-1] released the write buffer slot).
+            // Signal computeTimeline = N+1 so graphics[N] can proceed.
+            vk::TimelineSemaphoreSubmitInfo cTssi{
                 .waitSemaphoreValueCount   = 1,
-                .pWaitSemaphoreValues      = &computeWaitVal,
+                .pWaitSemaphoreValues      = &cWaitVal,
                 .signalSemaphoreValueCount = 1,
-                .pSignalSemaphoreValues    = &computeSignalVal};
-            vk::PipelineStageFlags computeWaitStage = vk::PipelineStageFlagBits::eComputeShader;
-            vk::SubmitInfo si{
-                .pNext                = &tssi,
+                .pSignalSemaphoreValues    = &cSignalVal};
+            vk::PipelineStageFlags cWaitStage = vk::PipelineStageFlagBits::eComputeShader;
+            vk::SubmitInfo cSi{
+                .pNext                = &cTssi,
                 .waitSemaphoreCount   = 1,
-                .pWaitSemaphores      = &*timelineSemaphore,
-                .pWaitDstStageMask    = &computeWaitStage,
+                .pWaitSemaphores      = &*graphicsTimeline,
+                .pWaitDstStageMask    = &cWaitStage,
                 .commandBufferCount   = 1,
                 .pCommandBuffers      = &*computeCommandBuffers[frameIndex],
                 .signalSemaphoreCount = 1,
-                .pSignalSemaphores    = &*timelineSemaphore};
-            asyncComputeQueue.submit(si, nullptr);
+                .pSignalSemaphores    = &*computeTimeline};
+            asyncComputeQueue.submit(cSi, *computeInFlightFences[frameIndex]);
         }
 
         // ------------------------------------------------------------------
         // GRAPHICS SUBMIT
-        // Wait at eVertexInput for compute to signal, so cloth position
-        // buffer is safe to read.  Also wait at eColorAttachmentOutput for
-        // swapchain image acquisition.
+        // Wait at eVertexInput for computeTimeline >= N (compute[N-1] finished
+        // writing clothPositionBuffers[frameIndex]).
+        // Wait at eColorAttachmentOutput for swapchain image acquisition.
+        // Signal computeTimeline is NOT touched here; only graphicsTimeline = N+1.
         // ------------------------------------------------------------------
         {
             recordCommandBuffer(imageIndex);
 
             // Two wait semaphores:
-            //   [0] timeline (computeSignalVal) at eVertexInput
-            //   [1] binary acquire semaphore    at eColorAttachmentOutput
-            std::array<vk::Semaphore,         2> waitSems   = {*timelineSemaphore, *acqSem};
-            std::array<uint64_t,              2> waitVals   = {graphicsWaitVal, 0};
-            std::array<vk::PipelineStageFlags, 2> waitStages = {
+            //   [0] computeTimeline >= N at eVertexInput
+            //   [1] binary acquire semaphore at eColorAttachmentOutput
+            std::array<vk::Semaphore,          2> gWaitSems   = {*computeTimeline, *acqSem};
+            std::array<uint64_t,               2> gWaitVals   = {gWaitVal, 0};
+            std::array<vk::PipelineStageFlags, 2> gWaitStages = {
                 vk::PipelineStageFlagBits::eVertexInput,
                 vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
             // Two signal semaphores:
-            //   [0] timeline (graphicsSignalVal)
+            //   [0] graphicsTimeline = N+1
             //   [1] binary renderDone for this swapchain image
-            std::array<vk::Semaphore, 2> signalSems = {*timelineSemaphore, *renderDoneSems[imageIndex]};
-            std::array<uint64_t,      2> signalVals = {graphicsSignalVal, 0};
+            std::array<vk::Semaphore, 2> gSignalSems = {*graphicsTimeline, *renderDoneSems[imageIndex]};
+            std::array<uint64_t,      2> gSignalVals = {gSignalVal, 0};
 
-            vk::TimelineSemaphoreSubmitInfo tssi{
+            vk::TimelineSemaphoreSubmitInfo gTssi{
                 .waitSemaphoreValueCount   = 2,
-                .pWaitSemaphoreValues      = waitVals.data(),
+                .pWaitSemaphoreValues      = gWaitVals.data(),
                 .signalSemaphoreValueCount = 2,
-                .pSignalSemaphoreValues    = signalVals.data()};
-            vk::SubmitInfo si{
-                .pNext                = &tssi,
+                .pSignalSemaphoreValues    = gSignalVals.data()};
+            vk::SubmitInfo gSi{
+                .pNext                = &gTssi,
                 .waitSemaphoreCount   = 2,
-                .pWaitSemaphores      = waitSems.data(),
-                .pWaitDstStageMask    = waitStages.data(),
+                .pWaitSemaphores      = gWaitSems.data(),
+                .pWaitDstStageMask    = gWaitStages.data(),
                 .commandBufferCount   = 1,
                 .pCommandBuffers      = &*commandBuffers[frameIndex],
                 .signalSemaphoreCount = 2,
-                .pSignalSemaphores    = signalSems.data()};
-            graphicsQueue.submit(si, *inFlightFences[frameIndex]);
+                .pSignalSemaphores    = gSignalSems.data()};
+            graphicsQueue.submit(gSi, *inFlightFences[frameIndex]);
         }
 
         // ------------------------------------------------------------------
-        // CPU waits for graphics to finish (timeline wait), then presents.
-        // Using a timeline CPU wait avoids a vkQueueWaitIdle that would stall
-        // the entire queue and eliminates the need for an extra binary semaphore
-        // for CPU sync.  The binary renderDone semaphore is handed to present.
+        // Present.  The binary renderDoneSems[imageIndex] is signaled by the
+        // graphics submit above; present waits on it.  The inFlightFence
+        // (waited at the top of drawFrame) guards per-frame resource reuse,
+        // so no additional CPU timeline wait is needed here.
         // ------------------------------------------------------------------
         {
-            vk::SemaphoreWaitInfo swi{
-                .semaphoreCount = 1,
-                .pSemaphores    = &*timelineSemaphore,
-                .pValues        = &graphicsSignalVal};
-            auto r = device.waitSemaphores(swi, UINT64_MAX);
-            if (r != vk::Result::eSuccess)
-                throw std::runtime_error("waitSemaphores failed!");
-
             vk::PresentInfoKHR pi{
                 .waitSemaphoreCount = 1,
                 .pWaitSemaphores    = &*renderDoneSems[imageIndex],
@@ -1691,6 +1738,7 @@ class AsyncComputeApplication
             }
         }
 
+        ++frameCount;
         frameIndex = (frameIndex + 1) % MAX_FRAMES;
     }
 

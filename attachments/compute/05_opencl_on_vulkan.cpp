@@ -455,9 +455,16 @@ private:
             ? caps.currentExtent : vk::Extent2D{kWidth, kHeight};
         auto fmts = m_phys.getSurfaceFormatsKHR(*m_surface);
         m_swapFormat = fmts[0];
+        // Prefer B8G8R8A8Unorm with blit-dst support; fall back to it without
         for (auto& f : fmts)
             if (f.format == vk::Format::eB8G8R8A8Unorm &&
-                f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) { m_swapFormat = f; break; }
+                f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear &&
+                !!(m_phys.getFormatProperties(f.format).optimalTilingFeatures &
+                   vk::FormatFeatureFlagBits::eBlitDst)) { m_swapFormat = f; break; }
+        if (m_swapFormat.format != vk::Format::eB8G8R8A8Unorm)
+            for (auto& f : fmts)
+                if (f.format == vk::Format::eB8G8R8A8Unorm &&
+                    f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) { m_swapFormat = f; break; }
         auto modes = m_phys.getSurfacePresentModesKHR(*m_surface);
         auto mode = vk::PresentModeKHR::eFifo;
         for (auto m : modes) if (m == vk::PresentModeKHR::eMailbox) mode = m;

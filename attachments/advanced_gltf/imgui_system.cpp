@@ -577,17 +577,72 @@ void ImGuiSystem::HandleKeyboard(uint32_t key, bool pressed) {
 
   ImGuiIO& io = ImGui::GetIO();
 
-  // Update key state
-  if (key < 512) {
-    io.KeysDown[key] = pressed;
-  }
+  // Map GLFW key codes to ImGuiKey values and feed them through the new
+  // AddKeyEvent() API (Dear ImGui 1.87+).  The old io.KeysDown[] array and
+  // io.KeyCtrl/Shift/Alt/Super fields were removed in 1.87.
+  auto glfwKeyToImGuiKey = [](uint32_t k) -> ImGuiKey {
+    switch (k) {
+      case 32:  return ImGuiKey_Space;
+      case 39:  return ImGuiKey_Apostrophe;
+      case 44:  return ImGuiKey_Comma;
+      case 45:  return ImGuiKey_Minus;
+      case 46:  return ImGuiKey_Period;
+      case 47:  return ImGuiKey_Slash;
+      case 48:  return ImGuiKey_0; case 49: return ImGuiKey_1;
+      case 50:  return ImGuiKey_2; case 51: return ImGuiKey_3;
+      case 52:  return ImGuiKey_4; case 53: return ImGuiKey_5;
+      case 54:  return ImGuiKey_6; case 55: return ImGuiKey_7;
+      case 56:  return ImGuiKey_8; case 57: return ImGuiKey_9;
+      case 59:  return ImGuiKey_Semicolon;
+      case 61:  return ImGuiKey_Equal;
+      case 65:  return ImGuiKey_A; case 66: return ImGuiKey_B;
+      case 67:  return ImGuiKey_C; case 68: return ImGuiKey_D;
+      case 69:  return ImGuiKey_E; case 70: return ImGuiKey_F;
+      case 71:  return ImGuiKey_G; case 72: return ImGuiKey_H;
+      case 73:  return ImGuiKey_I; case 74: return ImGuiKey_J;
+      case 75:  return ImGuiKey_K; case 76: return ImGuiKey_L;
+      case 77:  return ImGuiKey_M; case 78: return ImGuiKey_N;
+      case 79:  return ImGuiKey_O; case 80: return ImGuiKey_P;
+      case 81:  return ImGuiKey_Q; case 82: return ImGuiKey_R;
+      case 83:  return ImGuiKey_S; case 84: return ImGuiKey_T;
+      case 85:  return ImGuiKey_U; case 86: return ImGuiKey_V;
+      case 87:  return ImGuiKey_W; case 88: return ImGuiKey_X;
+      case 89:  return ImGuiKey_Y; case 90: return ImGuiKey_Z;
+      case 256: return ImGuiKey_Escape;
+      case 257: return ImGuiKey_Enter;
+      case 258: return ImGuiKey_Tab;
+      case 259: return ImGuiKey_Backspace;
+      case 260: return ImGuiKey_Insert;
+      case 261: return ImGuiKey_Delete;
+      case 262: return ImGuiKey_RightArrow;
+      case 263: return ImGuiKey_LeftArrow;
+      case 264: return ImGuiKey_DownArrow;
+      case 265: return ImGuiKey_UpArrow;
+      case 266: return ImGuiKey_PageUp;
+      case 267: return ImGuiKey_PageDown;
+      case 268: return ImGuiKey_Home;
+      case 269: return ImGuiKey_End;
+      case 340: return ImGuiKey_LeftShift;
+      case 341: return ImGuiKey_LeftCtrl;
+      case 342: return ImGuiKey_LeftAlt;
+      case 343: return ImGuiKey_LeftSuper;
+      case 344: return ImGuiKey_RightShift;
+      case 345: return ImGuiKey_RightCtrl;
+      case 346: return ImGuiKey_RightAlt;
+      case 347: return ImGuiKey_RightSuper;
+      default:  return ImGuiKey_None;
+    }
+  };
 
-  // Update modifier keys
-  // Using GLFW key codes instead of Windows-specific VK_* constants
-  io.KeyCtrl = io.KeysDown[341] || io.KeysDown[345]; // Left/Right Control
-  io.KeyShift = io.KeysDown[340] || io.KeysDown[344]; // Left/Right Shift
-  io.KeyAlt = io.KeysDown[342] || io.KeysDown[346]; // Left/Right Alt
-  io.KeySuper = io.KeysDown[343] || io.KeysDown[347]; // Left/Right Super
+  ImGuiKey imKey = glfwKeyToImGuiKey(key);
+  if (imKey != ImGuiKey_None)
+    io.AddKeyEvent(imKey, pressed);
+
+  // Update modifier key state via the dedicated API
+  io.AddKeyEvent(ImGuiMod_Ctrl,  io.KeyCtrl);
+  io.AddKeyEvent(ImGuiMod_Shift, io.KeyShift);
+  io.AddKeyEvent(ImGuiMod_Alt,   io.KeyAlt);
+  io.AddKeyEvent(ImGuiMod_Super, io.KeySuper);
 }
 
 void ImGuiSystem::HandleChar(uint32_t c) {

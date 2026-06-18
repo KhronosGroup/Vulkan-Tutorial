@@ -205,6 +205,8 @@ set(SE_SOURCES_COMMON
     ${CMAKE_CURRENT_SOURCE_DIR}/physics_system.cpp
     ${SE_DIR}/imgui/imgui.cpp
     ${SE_DIR}/imgui/imgui_draw.cpp
+    ${SE_DIR}/imgui/imgui_widgets.cpp
+    ${SE_DIR}/imgui/imgui_tables.cpp
     ${SE_DIR}/vulkan_device.cpp
     ${SE_DIR}/pipeline.cpp
     ${SE_DIR}/descriptor_manager.cpp

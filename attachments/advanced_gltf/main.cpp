@@ -74,7 +74,7 @@ void SetupScene(Engine *engine)
 		renderer->SetLoadingPhase(Renderer::LoadingPhase::Textures);
 	}
 	std::thread([engine] {
-		LoadGLTFModel(engine, "../../Assets/bistro/bistro.gltf");
+		LoadGLTFModel(engine, "../../simple_engine/Assets/bistro/bistro.gltf");
 
         // Give the Bistro a moment to settle and position the camera
         std::this_thread::sleep_for(std::chrono::milliseconds(500));

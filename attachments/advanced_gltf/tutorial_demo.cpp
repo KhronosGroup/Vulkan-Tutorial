@@ -462,7 +462,7 @@ void TutorialDemoComponent::Update(std::chrono::milliseconds deltaTime)
     // ImGui input field; skip grab input in that case so text entry still works.
     const ImGuiIO &io      = ImGui::GetIO();
     // GLFW stores raw key codes in KeysDown; 'G' == GLFW_KEY_G == 71 (ASCII).
-    bool           grabKey = ImGui::IsKeyDown(static_cast<int>('G')) && !io.WantCaptureKeyboard;
+    bool           grabKey = ImGui::IsKeyDown(ImGuiKey_G) && !io.WantCaptureKeyboard;
 
     if (grabKey)
     {

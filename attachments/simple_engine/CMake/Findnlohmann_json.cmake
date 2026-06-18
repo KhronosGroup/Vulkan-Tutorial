@@ -60,7 +60,6 @@ if(NOT nlohmann_json_INCLUDE_DIR)
   if(NOT nlohmann_json_POPULATED)
     FetchContent_Populate(nlohmann_json)
 
-    if(ANDROID)
     # Update the minimum required CMake version before including the CMakeLists.txt
     file(READ "${nlohmann_json_SOURCE_DIR}/CMakeLists.txt" NLOHMANN_JSON_CMAKE_CONTENT)
     string(REPLACE "cmake_minimum_required(VERSION 3.1"
@@ -91,7 +90,6 @@ if(NOT nlohmann_json_INCLUDE_DIR)
                    "cmake_minimum_required(VERSION 3.10"
                    NLOHMANN_JSON_CMAKE_CONTENT "${NLOHMANN_JSON_CMAKE_CONTENT}")
     file(WRITE "${nlohmann_json_SOURCE_DIR}/CMakeLists.txt" "${NLOHMANN_JSON_CMAKE_CONTENT}")
-    endif()
 
     # Now add the subdirectory manually
     add_subdirectory(${nlohmann_json_SOURCE_DIR} ${nlohmann_json_BINARY_DIR})

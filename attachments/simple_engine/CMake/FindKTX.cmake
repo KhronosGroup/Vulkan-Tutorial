@@ -51,16 +51,10 @@ else()
       ${CMAKE_SOURCE_DIR}/external/ktx/lib
   )
 
-  include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(KTX
-    REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
-    FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
-  )
-
-  # Debug output if KTX is not found (only on non-Linux platforms)
-  if(NOT KTX_FOUND)
-    message(STATUS "KTX include directory search paths: ${PC_KTX_INCLUDEDIR}, /usr/include, /usr/local/include, $ENV{KTX_DIR}/include, $ENV{VULKAN_SDK}/include, ${CMAKE_SOURCE_DIR}/external/ktx/include")
-    message(STATUS "KTX library search paths: ${PC_KTX_LIBDIR}, /usr/lib, /usr/lib64, /usr/local/lib, /usr/local/lib64, $ENV{KTX_DIR}/lib, $ENV{VULKAN_SDK}/lib, ${CMAKE_SOURCE_DIR}/external/ktx/lib")
+  if (KTX_INCLUDE_DIR AND KTX_LIBRARY)
+    set(KTX_FOUND TRUE)
+  else ()
+    set(KTX_FOUND FALSE)
   endif()
 endif()
 
@@ -102,5 +96,16 @@ else()
     add_library(KTX::ktx ALIAS ktx)
   endif()
 
+  # Set variables to indicate that KTX was found and to satisfy find_package_handle_standard_args
   set(KTX_FOUND TRUE)
+  FetchContent_GetProperties(ktx SOURCE_DIR ktx_SOURCE_DIR)
+  set(KTX_INCLUDE_DIR "${ktx_SOURCE_DIR}/include")
+  set(KTX_LIBRARY ktx)
+  set(KTX_INCLUDE_DIRS ${KTX_INCLUDE_DIR})
+  set(KTX_LIBRARIES ${KTX_LIBRARY})
 endif()
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(KTX
+        REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
+)

@@ -505,10 +505,3 @@ void PhysicsSystem::RegisterStreamingCollider(Entity* entity,
 void PhysicsSystem::CleanupMarkedBodies() {
     // Handled via DestroyRigidBody
 }
-
-void PhysicsSystem::UpdateGPUPhysicsData(std::chrono::milliseconds deltaTime) const {}
-void PhysicsSystem::ReadbackGPUPhysicsData() const {}
-void PhysicsSystem::SimulatePhysicsOnGPU(std::chrono::milliseconds deltaTime) const {}
-void PhysicsSystem::CleanupVulkanResources() {}
-
-void PhysicsSystem::CreateMappedBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& memory, const std::string& errorPrefix) {}

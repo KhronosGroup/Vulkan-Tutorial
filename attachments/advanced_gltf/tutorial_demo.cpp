@@ -266,10 +266,9 @@ void TutorialDemoComponent::DrawPhysicsPanel()
     }
 
     ImGui::Spacing();
-    ImGui::TextWrapped("PhysicsSystem drives a GPU compute pipeline: broadphase, narrowphase, "
-                       "and constraint resolution all run as Vulkan compute dispatches.  "
-                       "ColliderDef and ConstraintDef in node.h describe the per-node physics "
-                       "metadata that add_physics_extras.py injects into a glTF file.");
+    ImGui::TextWrapped("PhysicsSystem drives Jolt Physics for collision and rigid body simulation. "
+                       "Static environment meshes are streamed in and out based on camera distance "
+                       "to maintain high performance in large scenes.");
 }
 
 // ---------------------------------------------------------------------------
@@ -443,8 +442,6 @@ void TutorialDemoComponent::DrawDebugPanel()
     {
         glm::vec3 g = physics->GetGravity();
         ImGui::BulletText("Gravity               : (%.2f, %.2f, %.2f)", g.x, g.y, g.z);
-        ImGui::BulletText("GPU physics           : %s",
-                          physics->IsGPUAccelerationEnabled() ? "enabled" : "disabled");
     }
 }
 

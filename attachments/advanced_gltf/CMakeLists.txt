@@ -85,11 +85,23 @@ set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE ON  CACHE BOOL "" FORCE)
 set(ENABLE_OBJECT_STREAM                ON  CACHE BOOL "" FORCE)
 set(FLOATING_POINT_EXCEPTIONS_ENABLED   ON  CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION        ON  CACHE BOOL "" FORCE)
-set(WARNINGS_AS_ERRORS                  OFF CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS                 OFF CACHE BOOL "" FORCE)
 if(MSVC)
     set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 endif()
 FetchContent_MakeAvailable(JoltPhysics)
+
+# ---------------------------------------------------------------------------
+# JoltPhysics MSVC Fix
+# Suppress C4865: "underlying type of enum will change when /Zc:enumTypes is specified"
+# This warning is triggered in Windows SDK headers when Jolt is built with /Wall.
+# We also disable /WX (Warnings as Errors) for Jolt via ENABLE_ALL_WARNINGS=OFF above.
+# ---------------------------------------------------------------------------
+if(MSVC)
+    if(TARGET Jolt)
+        target_compile_options(Jolt PRIVATE /wd4865)
+    endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # Advanced glTF shader compilation.

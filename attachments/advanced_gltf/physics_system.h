@@ -152,53 +152,6 @@ class RigidBody {
     [[nodiscard]] virtual bool IsKinematic() const = 0;
 };
 
-/**
- * @brief Structure for GPU physics data.
- */
-struct GPUPhysicsData {
-  glm::vec4 position; // xyz = position, w = inverse mass
-  glm::vec4 rotation; // quaternion
-  glm::vec4 linearVelocity; // xyz = velocity, w = restitution
-  glm::vec4 angularVelocity; // xyz = angular velocity, w = friction
-  glm::vec4 force; // xyz = force, w = is kinematic (0 or 1)
-  glm::vec4 torque; // xyz = torque, w = use gravity (0 or 1)
-  glm::vec4 colliderData; // type-specific data (e.g., radius for spheres)
-  glm::vec4 colliderData2; // additional collider data (e.g., box half extents)
-};
-
-/**
- * @brief Structure for GPU collision data.
- */
-struct GPUCollisionData {
-  uint32_t bodyA;
-  uint32_t bodyB;
-  glm::vec4 contactNormal; // xyz = normal, w = penetration depth
-  glm::vec4 contactPoint; // xyz = contact point, w = unused
-};
-
-/**
- * @brief Structure for physics simulation parameters.
- */
-struct PhysicsParams {
-  float deltaTime; // Time step - 4 bytes
-  uint32_t numBodies; // Number of rigid bodies - 4 bytes
-  uint32_t maxCollisions; // Maximum number of collisions - 4 bytes
-  float padding; // Explicit padding to align gravity to 16-byte boundary - 4 bytes
-  glm::vec4 gravity; // Gravity vector (xyz) + padding (w) - 16 bytes
-  // Total: 32 bytes (aligned to 16-byte boundaries for std140 layout)
-};
-
-/**
- * @brief Structure to store collision prediction data for a ray-based collision system.
- */
-struct CollisionPrediction {
-  float collisionTime = -1.0f; // Time within deltaTime when the collision occurs (-1 = no collision)
-  glm::vec3 collisionPoint; // World position where collision occurs
-  glm::vec3 collisionNormal; // Surface normal at collision point
-  glm::vec3 newVelocity; // Predicted velocity after bounce
-  Entity* hitEntity = nullptr; // Entity that was hit
-  bool isValid = false; // Whether this prediction is valid
-};
 
 /**
  * @brief Class for managing physics simulation.
@@ -212,12 +165,12 @@ class PhysicsSystem {
     /**
 	 * @brief Default constructor.
 	 */
-    PhysicsSystem() = default;
-
-    // Constructor-based initialization replacing separate Initialize/Set* calls
-    explicit PhysicsSystem(Renderer* _renderer, bool enableGPU = true) {
-      SetRenderer(_renderer);
-      SetGPUAccelerationEnabled(enableGPU);
+    /**
+	 * @brief Constructor.
+	 * @param _renderer Optional renderer (unused in Jolt implementation).
+	 * @param _enableGPU Optional GPU flag (unused in Jolt implementation).
+	 */
+    explicit PhysicsSystem(Renderer* _renderer = nullptr, bool _enableGPU = true) {
       if (!Initialize()) {
         throw std::runtime_error("PhysicsSystem: initialization failed");
       }
@@ -279,39 +232,6 @@ class PhysicsSystem {
                  glm::vec3* hitNormal,
                  Entity** hitEntity) const;
 
-    /**
-	 * @brief Enable or disable GPU acceleration.
-	 * @param enabled Whether GPU acceleration is enabled.
-	 */
-    void SetGPUAccelerationEnabled(bool enabled) {
-      // Enforce GPU-only policy: disabling GPU acceleration is not allowed in this project.
-      // Ignore attempts to disable and keep GPU acceleration enabled.
-      gpuAccelerationEnabled = true;
-    }
-
-    /**
-	 * @brief Check if GPU acceleration is enabled.
-	 * @return True, if GPU acceleration is enabled, false otherwise.
-	 */
-    [[nodiscard]] bool IsGPUAccelerationEnabled() const {
-      return gpuAccelerationEnabled;
-    }
-
-    /**
-	 * @brief Set the maximum number of objects that can be simulated on the GPU.
-	 * @param maxObjects The maximum number of objects.
-	 */
-    void SetMaxGPUObjects(uint32_t maxObjects) {
-      maxGPUObjects = maxObjects;
-    }
-
-    /**
-	 * @brief Set the renderer to use during GPU acceleration.
-	 * @param _renderer The renderer.
-	 */
-    void SetRenderer(Renderer* _renderer) {
-      renderer = _renderer;
-    }
 
     /**
 	 * @brief Set the current camera position for geometry-relative ball checking.
@@ -341,20 +261,6 @@ class PhysicsSystem {
 	 * @brief Clean up rigid bodies that are marked for removal.
 	 */
     void CleanupMarkedBodies();
-
-    /**
-	 * @brief Helper function to create a mapped buffer with memory allocation.
-	 * @param size The size of the buffer in bytes.
-	 * @param usage The buffer usage flags.
-	 * @param buffer Reference to the buffer RAII object.
-	 * @param memory Reference to the memory RAII object.
-	 * @param errorPrefix Prefix for error messages.
-	 */
-    void CreateMappedBuffer(vk::DeviceSize size,
-                            vk::BufferUsageFlags usage,
-                            vk::raii::Buffer& buffer,
-                            vk::raii::DeviceMemory& memory,
-                            const std::string& errorPrefix);
 
     // Pending rigid body creations queued from background threads
     struct PendingCreation {
@@ -419,73 +325,7 @@ class PhysicsSystem {
     // Whether the physics system is initialized
     bool initialized = false;
 
-    // GPU acceleration
-    bool gpuAccelerationEnabled = false;
-    uint32_t maxGPUObjects = 1024;
-    uint32_t maxGPUCollisions = 4096;
-    Renderer* renderer = nullptr;
-
     // Camera position for geometry-relative ball checking
     mutable std::mutex cameraPositionMutex;
     glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 0.0f);
-
-    // Vulkan resources for physics simulation
-    struct VulkanResources {
-      // Shader modules
-      vk::raii::ShaderModule integrateShaderModule = nullptr;
-      vk::raii::ShaderModule broadPhaseShaderModule = nullptr;
-      vk::raii::ShaderModule narrowPhaseShaderModule = nullptr;
-      vk::raii::ShaderModule resolveShaderModule = nullptr;
-
-      // Pipeline layouts and compute pipelines
-      vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
-      vk::raii::PipelineLayout pipelineLayout = nullptr;
-      vk::raii::Pipeline integratePipeline = nullptr;
-      vk::raii::Pipeline broadPhasePipeline = nullptr;
-      vk::raii::Pipeline narrowPhasePipeline = nullptr;
-      vk::raii::Pipeline resolvePipeline = nullptr;
-
-      // Descriptor pool and sets
-      vk::raii::DescriptorPool descriptorPool = nullptr;
-      std::vector<vk::raii::DescriptorSet> descriptorSets;
-
-      // Buffers for physics data
-      vk::raii::Buffer physicsBuffer = nullptr;
-      vk::raii::DeviceMemory physicsBufferMemory = nullptr;
-      vk::raii::Buffer collisionBuffer = nullptr;
-      vk::raii::DeviceMemory collisionBufferMemory = nullptr;
-      vk::raii::Buffer pairBuffer = nullptr;
-      vk::raii::DeviceMemory pairBufferMemory = nullptr;
-      vk::raii::Buffer counterBuffer = nullptr;
-      vk::raii::DeviceMemory counterBufferMemory = nullptr;
-      vk::raii::Buffer paramsBuffer = nullptr;
-      vk::raii::DeviceMemory paramsBufferMemory = nullptr;
-
-      // Persistent mapped memory pointers for improved performance
-      void* persistentPhysicsMemory = nullptr;
-      void* persistentCounterMemory = nullptr;
-      void* persistentParamsMemory = nullptr;
-
-      // Command buffer for compute operations
-      vk::raii::CommandPool commandPool = nullptr;
-      vk::raii::CommandBuffer commandBuffer = nullptr;
-
-      // Dedicated fence for compute synchronization
-      vk::raii::Fence computeFence = nullptr;
-    };
-
-    VulkanResources vulkanResources;
-
-    // Initialize Vulkan resources for physics simulation
-    bool InitializeVulkanResources();
-    void CleanupVulkanResources();
-
-    // Update physics data on the GPU
-    void UpdateGPUPhysicsData(std::chrono::milliseconds deltaTime) const;
-
-    // Read back physics data from the GPU
-    void ReadbackGPUPhysicsData() const;
-
-    // Perform GPU-accelerated physics simulation
-    void SimulatePhysicsOnGPU(std::chrono::milliseconds deltaTime) const;
 };

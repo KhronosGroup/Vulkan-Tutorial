@@ -28,6 +28,7 @@ class Renderer;
 class AudioSystem;
 class AudioSource;
 struct ImGuiContext;
+struct ImTextureData;
 
 /**
  * @brief Class for managing ImGui integration with Vulkan.
@@ -263,4 +264,10 @@ class ImGuiSystem {
 	 * @brief Update vertex and index buffers.
 	 */
     void updateBuffers(uint32_t frameIndex);
+
+    /**
+	 * @brief Handle dynamic texture updates from ImGui (v1.92+ RendererHasTextures protocol).
+	 * @param tex The texture data to update.
+	 */
+    void UpdateTexture(ImTextureData* tex);
 };

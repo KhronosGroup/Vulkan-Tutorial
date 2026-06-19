@@ -94,11 +94,16 @@ The C++ Vulkan API provides a helper template called `vk::StructureChain` that m
 [,c++]
 ----
 // Create a chain of feature structures
-vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-    {},                               // vk::PhysicalDeviceFeatures2 (empty for now)
-    {.dynamicRendering = true },      // Enable dynamic rendering from Vulkan 1.3
-    {.extendedDynamicState = true }   // Enable extended dynamic state from the extension
-};
+vk::StructureChain<vk::PhysicalDeviceFeatures2,
+                   vk::PhysicalDeviceVulkan11Features,
+                   vk::PhysicalDeviceVulkan13Features,
+                   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+    featureChain = {
+        {},                                    // vk::PhysicalDeviceFeatures2 (empty for now)
+        {.shaderDrawParameters = true},        // Enable shader draw parameters from Vulkan 1.1
+        {.dynamicRendering = true},            // Enable dynamic rendering from Vulkan 1.3
+        {.extendedDynamicState = true}         // Enable extended dynamic state from the extension
+    };
 ----
 
 Here's what's happening in this code:
@@ -106,8 +111,9 @@ Here's what's happening in this code:
 1. We create a `vk::StructureChain` with three different feature structures.
 2. For each structure in the chain, we provide an initializer:
    - The first structure (`vk::PhysicalDeviceFeatures2`) is left empty with `{}`
-   - In the second structure, we enable the `dynamicRendering` feature from Vulkan 1.3
-   - In the third structure, we enable the `extendedDynamicState` feature from an extension
+   - In the second structure, we enable the `shaderDrawParameters` feature from Vulkan 1.1
+   - In the third structure, we enable the `dynamicRendering` feature from Vulkan 1.3
+   - In the fourth structure, we enable the `extendedDynamicState` feature from an extension
 
 The `vk::StructureChain` template automatically connects these structures together by setting up the `pNext` pointers between them. This saves us from having to manually link each structure to the next one.
 
@@ -164,17 +170,18 @@ link:https://docs.vulkan.org/spec/latest/chapters/raytracing.html#extendingvulka
 That means that the `enabledLayerCount` and `ppEnabledLayerNames` fields of
 `vk::DeviceCreateInfo` are ignored by up-to-date implementations.
 
-As mentioned earlier, we need several device-specific extensions for our application to work properly.
+With the `vk::DeviceCreateInfo` filled in, we can now proceed with creating logical device.
 
 [,c++]
 ----
-device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+device = vk::raii::Device(physicalDevice, deviceCreateInfo);
 ----
 
-The parameters are the physical device to interface with, and the usage
-info we just specified. Similarly to the instance creation function, this
-call can throw errors based on enabling non-existent extensions or specifying
-the desired usage of unsupported features.
+Passed parameters are the physical device to interface with, and the create
+info we`ve just specified. Additional and optional parameters include the allocation callbacks pointer and a pointer
+specifying where to store the created logical device handle. In our case, the function call returns the `vk::Device` handle directly.
+Similarly to the instance creation function, this call can throw errors based on enabling non-existent
+extensions or specifying the desired usage of unsupported features.
 
 Logical devices don't interact directly with instances, which is why it's not
 included as a parameter.
@@ -186,7 +193,7 @@ First, add a class member to store a handle to the graphics queue:
 
 [,c++]
 ----
-vk::raii::Queue graphicsQueue;
+vk::raii::Queue graphicsQueue = nullptr;;
 ----
 
 Device queues are implicitly cleaned up when the device is destroyed, so we
@@ -199,7 +206,7 @@ use queue index `0`.
 
 [,c++]
 ----
-graphicsQueue = vk::raii::Queue( device, graphicsIndex, 0 );
+graphicsQueue = vk::raii::Queue(device, graphicsIndex, 0);
 ----
 
 With the logical device and queue handles, we can now actually start using the

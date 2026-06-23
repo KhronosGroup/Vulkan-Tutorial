@@ -11,7 +11,7 @@ As you begin your journey into AI-assisted Vulkan development, you will inevitab
 **Q: "I am working on a proprietary rendering engine. How do I ensure my source code doesn't leak or get used to train other models?"**
 
 **A: The 'Local Gating' Strategy.**
-The only way to maximize privacy is to use **Local Inference Engines** (Ollama, LM Studio) as your primary daily drivers. By running models like **Qwen 3.5 Coder** on your own hardware, your shaders and C{pp} files never leave your machine. A common "Hybrid Rule" is to use local models for **Implementation** while reserving cloud models like Claude or GPT for high-level **System Design**, ensuring you use **API-based access** to prevent your data from being used for future training.
+The only way to maximize privacy is to use **Local Inference Engines** (Ollama, LM Studio) as your primary daily drivers. By running models like **Qwen 3-Coder** on your own hardware, your shaders and C{pp} files never leave your machine. A common "Hybrid Rule" is to use local models for **Implementation** while reserving cloud models like Claude or GPT for high-level **System Design**, ensuring you use **API-based access** to prevent your data from being used for future training.
 
 == Accuracy & Hallucinations
 
@@ -32,7 +32,22 @@ Most Multimodal models downscale images to a small "Vision Buffer" (often 1024x1
 **Q: "My Vulkan app keeps crashing with a 'Device Lost' (TDR) error when the AI starts generating code. Do I need a new GPU?"**
 
 **A: The Resource Contention Trap.**
-You are likely hitting a **Timeout Detection and Recovery (TDR)** event because both the AI and the renderer are competing for 100% of the GPU at once. To mitigate this, use a 4-bit (Q4_K_M) quantization to reduce the AI's VRAM footprint, and set a limit in your inference engine (like Ollama or LM Studio) on the number of GPU layers used by the AI to leave some compute headroom for your desktop and renderer. For professional use, the ultimate solution is a **Dedicated AI GPU**; even an older card in a secondary slot can host an 8B model like **Llama 4**, leaving your primary high-end card entirely free for Vulkan.
+You are likely hitting a **Timeout Detection and Recovery (TDR)** event because both the AI and the renderer are competing for 100% of the GPU at once. To mitigate this, use a 4-bit (Q4_K_M) quantization to reduce the AI's VRAM footprint, and set a limit in your inference engine (like Ollama or LM Studio) on the number of GPU layers used by the AI to leave some compute headroom for your desktop and renderer. For professional use, the ultimate solution is a **Dedicated AI GPU**; even an older card in a secondary slot can host a 17B model like **Llama 4**, leaving your primary high-end card entirely free for Vulkan.
+
+**Q: "I downloaded a model in Ollama, but it fails to run or crashes my system. What happened?"**
+
+**A: The VRAM/GPU RAM Limit.**
+Just because a model is downloaded doesn't mean it can run on your current hardware. If you attempt to load a model (like a 30B Qwen 3-Coder) that exceeds your available VRAM, Ollama may attempt to "offload" layers to your system RAM, which is significantly slower and can lead to a system-wide freeze or a "Device Lost" error in your Vulkan application. Always check the model size against your **VRAM Budgeting Formula** (from xref:03_model_selection_specialization/03_hardware_vram.adoc[Chapter 3.3]) before attempting to run it.
+
+**Q: "Should I use the Ollama WebUI (localhost) or the Windows Native App?"**
+
+**A: Native for Performance, WebUI for Management.**
+While a WebUI (running on `localhost`) provides a familiar browser-based interface for managing models, the **Windows Native App** (or the CLI) is generally preferred for graphics developers. The native app has direct access to Windows' hardware scheduling and often provides lower-latency communication with IDE extensions and agents like Goose. If you find your AI responses are lagging while your Vulkan renderer is active, ensure you are using the native background service rather than a browser-based abstraction.
+
+**Q: "I added an extension (like Filesystem Access) to Goose, but it's not working. How do I enable it?"**
+
+**A: The 'Recipe' Activation.**
+In some versions of Goose, simply adding an extension to the configuration is not enough; it must be explicitly enabled in your active **Recipe**. If you find that your "Filesystem Access" (HPI) extension is not responding, open your Goose settings and ensure the extension is checked or "allowed" within the specific task profile you are using. Without this activation, the agent may "know" the tool exists but lack the permission to use it in your current session.
 
 == Summary: Informed Graphics Engineering
 

@@ -6,7 +6,7 @@
 
 Phase 1 provided the technical specification—a verified roadmap for our post-process system. Now, we enter **Phase 2: The Implementation Loop**. This is where we turn that design into the verbose, high-precision C{pp} and Slang/HLSL code that Vulkan requires.
 
-In **Collaborative Engineering**, this is the "Implementation" phase. We move from high-reasoning Cloud models to **Task-Specialized Models** like **Qwen 3.5 Coder (32B)**. These models excel at the "Syntactic Noise" of Vulkan—the descriptor set updates, the pipeline state objects, and the intricate shader logic—providing near-instant feedback while you type.
+In **Collaborative Engineering**, this is the "Implementation" phase. We move from high-reasoning Cloud models to **Task-Specialized Models** like **Qwen 3-Coder (30B)** or **Mistral-Nemo (12B)**. These models excel at the "Syntactic Noise" of Vulkan—the descriptor set updates, the pipeline state objects, and the intricate shader logic—providing near-instant feedback while you type.
 
 == The Core Concept: Conversational Coding
 
@@ -24,7 +24,7 @@ Implementing a graphics feature requires **Zero Latency**. You will find yoursel
 *   *"Generate the `VkDescriptorImageInfo` array for these mips."*
 *   *"Refactor this shader to use a structured buffer for the bloom weights."*
 
-A local model like **Qwen 3.5 Coder** (running via Ollama) provides the response in milliseconds. It handles the tedious details so you can stay in your "Creative Flow."
+A local model like **Qwen 3-Coder** or **Mistral-Nemo** (running via Ollama) provides the response in milliseconds. It handles the tedious details so you can stay in your "Creative Flow."
 
 == Real-World Experience: Implementing the Bloom Pass
 

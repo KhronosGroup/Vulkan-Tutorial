@@ -28,16 +28,16 @@ Total VRAM - (OS/Desktop + Vulkan Peak + (Model Size * Quantization) + KV Cache)
 
 *   **OS/Desktop:** Typically **1.5 - 2 GB** on Windows/Linux.
 *   **Vulkan Peak:** The maximum VRAM your engine uses during a heavy debug session.
-*   **Model Size * Quantization:** A **32B model** at **4-bit (Q4_K_M)** quantization is ~18GB.
+*   **Model Size * Quantization:** A **30B model** (like **Qwen 3-Coder**) at **4-bit (Q4_K_M)** quantization is ~18GB, while a **12B model** (like **Mistral-Nemo**) is approximately ~8GB.
 *   **KV Cache Tax:** This is the most overlooked part. As you chat with the AI, it needs memory to remember the previous parts of the conversation. At a **16k context window**, this can consume an additional **1-2 GB** of VRAM.
 
 **Real-World Experience: The 24GB VRAM Budget**
 Imagine you are using an **RTX 4090 (24GB)**.
 
 *   **OS + Vulkan App:** 6GB.
-*   **Qwen 3.5 Coder (32B) @ Q4_K_M:** 18GB.
+*   **Qwen 3-Coder (30B) @ Q4_K_M:** 18GB.
 *   **Budget:** `24 - (6 + 18) = 0GB`.
-*   **The Result:** You have **zero** safety margin. As soon as you ask the AI a long question and the KV Cache grows, your system will start swapping. To fix this, you must either use a smaller model (like **Llama 4 8B**) or reduce the AI's context window to **4,096 tokens** to reclaim that 1-2 GB of "breathing room."
+*   **The Result:** You have **zero** safety margin. As soon as you ask the AI a long question and the KV Cache grows, your system will start swapping. To fix this, you must either use a smaller model (like **Mistral-Nemo 12B** or **Llama 4 (17B)**) or reduce the AI's context window to **4,096 tokens** to reclaim that 1-2 GB of "breathing room."
 
 == Quantization: Optimizing the Model Footprint
 

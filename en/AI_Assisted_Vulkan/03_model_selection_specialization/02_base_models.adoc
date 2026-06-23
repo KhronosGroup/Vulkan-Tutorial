@@ -34,31 +34,31 @@ Vulkan engines are large. A model with a small context window (e.g., 4,000 token
 
 While you should use the evaluation criteria above for future models, here are the current leaders that exemplify these traits:
 
-=== 1. Qwen 3.5 Coder (32B): High-Reasoning Model
+=== 1. Qwen 3-Coder (30B): High-Reasoning Model
 
-The **Qwen 3.5 Coder (32B)** model is currently the world's most capable local non-cloud coding model for C{pp}.
+The **Qwen 3-Coder (30B)** model is currently the world's most capable local non-cloud coding model for C{pp}.
 
 **Real-World Experience: The Bindless Transition**
 Imagine you are refactoring your engine to use a **Bindless Texture** system. This requires a deep understanding of Descriptor Set Layout bindings, `descriptorIndexing` features, and the nuances of how GLSL access is translated into SPIR-V.
 
-When you ask Qwen 3.5 Coder to perform this refactor, it doesn't just give you a boilerplate `VkDescriptorSetLayoutCreateInfo`. It analyzes your shader code to see how you're using `sampler2D textures[]` and suggests the exact `DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` flags you need to prevent validation errors. Its reasoning depth allows it to catch synchronization issues that smaller models would completely overlook. This makes it the ideal choice for complex architectural planning and Vulkan 1.3/1.4 feature implementation. However, it requires significant resources—approximately 20GB of VRAM at Q4_K_M quantization—making it most suitable for developers with 24GB GPUs or those working in local server environments.
+When you ask Qwen 3-Coder to perform this refactor, it doesn't just give you a boilerplate `VkDescriptorSetLayoutCreateInfo`. It analyzes your shader code to see how you're using `sampler2D textures[]` and suggests the exact `DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` flags you need to prevent validation errors. Its reasoning depth allows it to catch synchronization issues that smaller models would completely overlook. This makes it the ideal choice for complex architectural planning and Vulkan 1.3/1.4 feature implementation. However, it requires significant resources—approximately 20GB of VRAM at Q4_K_M quantization—making it most suitable for developers with 24GB GPUs or those working in local server environments.
 
-=== 2. Llama 4 (8B): High-Speed Assistant
+=== 2. Llama 4 (17B): High-Speed Assistant
 
-For the "inner loop" of development—where you need near-instant feedback while typing—speed is everything. **Llama 4 (8B)** is the current champion of low-latency coding.
+For the "inner loop" of development—where you need near-instant feedback while typing—speed is everything. **Llama 4 (17B)** is the current champion of low-latency coding.
 
 **The Experience:** You are typing a new `VkPipelineShaderStageCreateInfo` array. Llama 4, running locally on your GPU, predicts the next 10 lines of code before you've even finished the first struct. It correctly identifies that you are using a vertex and fragment shader, automatically pulls in the correct entry point names from your project context, and sets the `pSpecializationInfo` to `nullptr` because it sees you aren't using specialization constants in this pass.
 
 The low VRAM footprint—consuming only ~6GB—allows it to run comfortably alongside a heavy Vulkan application on mid-range hardware (12GB-16GB GPUs), making it perfect for real-time autocomplete, unit tests, and rapid shader iteration.
 
-=== 3. Gemma 4 (27B): Precision-Focused Model
+=== 3. Mistral-Nemo (12B): The "Context King"
 
-Google's **Gemma 4 (27B)** is a precision tool among local models. While Qwen is a broad reasoning model, Gemma is often superior at following rigid, complex instructions without drifting into creative hallucinations.
+**Mistral-Nemo (12B)**, a collaboration between NVIDIA and Mistral AI, is a powerhouse for local development, specifically tuned for high-efficiency reasoning with a massive **128k context window**.
 
-**Real-World Experience: The Shader Permutation Challenge**
-Consider the task of writing a shader pre-processor that must handle hundreds of permutations (e.g., varying light counts, material types, and shadow techniques). You need the model to generate GLSL that is not only syntactically correct but also follows strict "Zero-Overhead" principles—avoiding dynamic branching where constant folding should occur.
+**Real-World Experience: The Engine-Wide Refactor**
+Imagine you are implementing a new **Global Illumination** system that touches dozens of files—from the scene graph to the final post-processing pass. You need an assistant that doesn't just see the current file, but maintains the context of your entire architectural hierarchy.
 
-When tasked with this, Gemma 4 (27B) excels. It adheres strictly to the constraints you provide in your "Contract," ensuring that every generated shader variant is optimized for the Vulkan compiler. It is particularly adept at handling the "nitty-gritty" of SPIR-V decoration rules when you are writing raw assembly or complex macros. This makes it a standout choice for high-precision instruction following, shader optimization, and strict compliance tasks. At ~16GB-18GB of VRAM (Q4), it fits into the "Medium-Heavy" slot, leaving enough room on a 24GB card for a complex Vulkan scene or serving as a high-fidelity local assistant on a dedicated AI workstation.
+Mistral-Nemo (12B) excels in these "Long-Context" scenarios. Because it can hold up to 128,000 tokens in its active memory, it can "read" your entire renderer's header directory and provide suggestions that are architecturally consistent across the whole codebase. It is particularly effective for large-scale refactoring and navigating complex class hierarchies where smaller models would lose the thread. With a slim VRAM footprint of only ~8GB-10GB (Q4), it provides a perfect middle-ground between the ultra-fast 17B models and the resource-heavy 30B+ models, making it an ideal choice for developers working on complex, multi-file Vulkan systems.
 
 == Interaction Styles: Intent vs. Explicit Instructions
 
@@ -70,7 +70,7 @@ Cloud models like **Claude 4.6** or **GPT-5.3** are designed to handle high leve
 
 === The Local Model: Explicit Instructions (Instruction-Following Model)
 
-Local models, even advanced ones like **Qwen 3.5 Coder (32B)**, generally require more specific and verbose instructions. They are less capable of inferring intent from a casual sentence and more effective when treated as a highly skilled implementer following a detailed technical specification. A more effective prompt for a local model would be: *"I am experiencing Z-fighting. Analyze the following projection matrix calculation. Check if the near plane is too close (currently 0.01) or if the far plane is too distant (10000.0). Suggest a logarithmic depth buffer implementation if the ratio exceeds 1:1,000,000. Provide the GLSL for the vertex shader update."* By providing these explicit constraints, you ensure the local model remains focused and accurate, as it thrives on technical detail rather than conversational abstraction.
+Local models, even advanced ones like **Qwen 3-Coder (30B)**, generally require more specific and verbose instructions. They are less capable of inferring intent from a casual sentence and more effective when treated as a highly skilled implementer following a detailed technical specification. A more effective prompt for a local model would be: *"I am experiencing Z-fighting. Analyze the following projection matrix calculation. Check if the near plane is too close (currently 0.01) or if the far plane is too distant (10000.0). Suggest a logarithmic depth buffer implementation if the ratio exceeds 1:1,000,000. Provide the GLSL for the vertex shader update."* By providing these explicit constraints, you ensure the local model remains focused and accurate, as it thrives on technical detail rather than conversational abstraction.
 
 == The Translation Strategy: Cloud to Local Pipeline
 
@@ -78,7 +78,7 @@ One of the most powerful workflows in the "Collaborative Engineering" paradigm i
 
 === Creating the "Contract" (LLM_NOTES.md)
 
-When you are in the planning phase with a model like **Claude 4.6**, don't just ask it for code. Ask it to generate a "Contract" or an instruction set specifically optimized for a local model like **Qwen 3.5 Coder** or **Gemma 4**.
+When you are in the planning phase with a model like **Claude 4.6**, don't just ask it for code. Ask it to generate a "Contract" or an instruction set specifically optimized for a local model like **Qwen 3-Coder** or **Mistral-Nemo**.
 
 *   **The Workflow:**
     1.  **Converse with the Cloud:** Discuss your high-level architectural goals (e.g., "I want to implement a GPU-driven culling system").
@@ -99,11 +99,11 @@ This strategy is best for large tasks that take multiple iterations of implement
 
 How do you choose between these powerhouses? We recommend a **Hybrid Strategy** based on your development phase, but remember that these roles are fluid. The "best" model is the one that fits your current task without starving your Vulkan application of resources.
 
-During the **Planning & System Design Phase**, use high-reasoning **Cloud Models** or **Qwen 3.5 Coder (32B)** for architectural brainstorming—like designing a cross-platform frame graph or a thread-safe memory allocator. These provide maximum reasoning depth with zero VRAM cost (in the case of cloud models). In the **Implementation & Verification Phase**, switch to **Gemma 4 (27B)** or **Qwen 3.5 Coder** to translate your architecture into code that meets strict validation requirements. Their precision significantly reduces the time spent in the fix-loop. Finally, for the **Rapid Iteration Phase**, use **Llama 4 (8B)** or a cloud-based "Flash" model like **Gemini 3.1 Flash**. Their high speed allows you to keep your Vulkan renderer running at high frame rates while the AI assists with implementation details, unit tests, or simple refactors.
+During the **Planning & System Design Phase**, use high-reasoning **Cloud Models** or **Qwen 3-Coder (30B)** for architectural brainstorming—like designing a cross-platform frame graph or a thread-safe memory allocator. These provide maximum reasoning depth with zero VRAM cost (in the case of cloud models). In the **Implementation & Verification Phase**, switch to **Mistral-Nemo (12B)** or **Qwen 3-Coder** to translate your architecture into code that meets strict validation requirements. Their precision significantly reduces the time spent in the fix-loop. Finally, for the **Rapid Iteration Phase**, use **Llama 4 (17B)** or a cloud-based "Flash" model like **Gemini 3.1 Flash**. Their high speed allows you to keep your Vulkan renderer running at high frame rates while the AI assists with implementation details, unit tests, or simple refactors.
 
 == Summary: Integrated Model Strategy
 
-Selecting a base model is about managing your **"Intelligence-to-VRAM" ratio** and knowing when to leverage the cloud. By utilizing Cloud models for "Deep Planning," specialized local models like Gemma or Qwen for "Precision Refactoring," and Llama for the "Daily Inner-Loop," you create a development environment that is both deeply knowledgeable and highly responsive.
+Selecting a base model is about managing your **"Intelligence-to-VRAM" ratio** and knowing when to leverage the cloud. By utilizing Cloud models for "Deep Planning," specialized local models like Nemo or Qwen for "Precision Refactoring," and Llama for the "Daily Inner-Loop," you create a development environment that is both deeply knowledgeable and highly responsive.
 
 The most successful developers are those who treat their AI models as a dynamic resource—scaling their "intelligence" up or down and switching between local and cloud providers as the complexity of the graphics task, budget, and hardware constraints dictate.
 

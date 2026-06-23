@@ -40,7 +40,7 @@ the current offset and buffer size.
 ----
 
 === Step 3: Local Private Specialist (Continue)
-For privacy-sensitive rendering logic, configure the **Continue** extension to use a local **Qwen 3.5 Coder** model and the **Vulkan MCP**.
+For privacy-sensitive rendering logic, configure the **Continue** extension to use a local **Qwen 3-Coder** model and the **Vulkan MCP**.
 
 [source,json]
 ----

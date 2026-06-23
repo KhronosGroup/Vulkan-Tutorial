@@ -52,7 +52,7 @@ for an implementation model and save it to LLM_NOTES.md.
 ----
 
 === Step 3: Implementation and Refactoring
-Once the design is reviewed and your `LLM_NOTES.md` is ready, task your local specialist (like **Qwen 3.5 Coder**) to generate the `BlurRenderer` header and implementation. By providing the notes as direct context, you ensure the local model follows the established architectural contract without needing high-reasoning cloud access for the bulk implementation phase.
+Once the design is reviewed and your `LLM_NOTES.md` is ready, task your local specialist (like **Qwen 3-Coder**) to generate the `BlurRenderer` header and implementation. By providing the notes as direct context, you ensure the local model follows the established architectural contract without needing high-reasoning cloud access for the bulk implementation phase.
 
 [source,bash]
 ----

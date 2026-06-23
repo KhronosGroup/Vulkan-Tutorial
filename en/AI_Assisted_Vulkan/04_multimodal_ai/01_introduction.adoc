@@ -10,7 +10,7 @@ Until recently, AI assistants were limited to text-based inputs. You had to desc
 
 == The Core Concept: Pixels to State
 
-A **Multimodal Model** (like **Qwen 3.5-VL** or **GPT-5.3**) has been trained on both images and text simultaneously. It doesn't just "see" an image as a collection of pixels; it understands the relationship between those pixels and the underlying concepts of graphics engineering.
+A **Multimodal Model** (like **Qwen 3-VL** or **GPT-5.3**) has been trained on both images and text simultaneously. It doesn't just "see" an image as a collection of pixels; it understands the relationship between those pixels and the underlying concepts of graphics engineering.
 
 Consider the case where you are implementing shadow maps for the first time and your shadows are covered in strange, self-shadowing stripes. A generic AI might suggest a shader error or a texture sampling problem if you describe it as "stripes on the floor." However, with a multimodal solution, you can upload a screenshot and the AI immediately identifies the pattern as **Shadow Acne**. It doesn't just give you a generic fix; it explains that your `depthBiasConstantFactor` is too low for your current shadow map resolution and suggests a specific range of values based on the "stair-stepping" it sees in the image.
 
@@ -24,7 +24,7 @@ A multimodal assistant acts as a **Visual Analysis Tool**. It analyzes the artif
 
 In the following chapters, we will explore how to integrate visual reasoning into your development loop:
 
-1.  **xref:02_multimodal_models.adoc[The Vision Specialist Models]:** We will introduce the models designed for visual reasoning, such as **Qwen 3.5-VL** and **Gemma 4-Vision**. We'll discuss how these models differ from the coding-only models we explored in the previous section.
+1.  **xref:02_multimodal_models.adoc[The Vision Specialist Models]:** We will introduce the models designed for visual reasoning, such as **Qwen 3-VL** and **Gemma 4**. We'll discuss how these models differ from the coding-only models we explored in the previous section.
 2.  **xref:03_visual_bug_diagnosis.adoc[Visual Bug Diagnosis (The Experience)]:** This is the heart of the section. We will show you how to provide screenshots of common Vulkan errors—like **Shadow Acne**, **Texture Bleeding**, and **Z-fighting**—and how to prompt the AI to identify the underlying Vulkan state mismatch.
 3.  **xref:04_expectations_limits.adoc[Expectations & Limits]:** AI is not an automated "fix-it" tool for hardware. We will discuss the diagnostic role, the limits of sub-pixel resolution, and why the AI still needs your code context to verify its visual analysis.
 

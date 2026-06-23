@@ -20,7 +20,7 @@ Imagine you have a high-performance desktop engine using **KosmicKrisp** to leve
 
 With the release of **Xcode 26**, the Apple ecosystem has moved from a "Sidecar" necessity to a "Native-First" AI environment. Apple's integration of **Predictive Code Completion** and **Swift Assist** provides high-reasoning, on-device models that understand the unique constraints of the Apple Silicon architecture.
 
-This native advantage is clear when implementing complex compute shaders that use `VK_EXT_scalar_block_layout`; Xcode 26's native AI can refactor your data structures for optimal caching on an M4 Max chip, leveraging its deep understanding of the Metal-layer translation. While Xcode provides integrated "Inner Loop" assistance, we still leverage standalone agents like **Goose** for the "Outer Loop." This creates a "Native-and-Agentic" setup: you use Xcode's built-in models for real-time coding and its integrated **Instruments** profiler, while calling upon an external agent for complex, multi-file refactors or autonomous "Compile-Fix" cycles that require specific models like **Qwen 3.5 Coder**.
+This native advantage is clear when implementing complex compute shaders that use `VK_EXT_scalar_block_layout`; Xcode 26's native AI can refactor your data structures for optimal caching on an M4 Max chip, leveraging its deep understanding of the Metal-layer translation. While Xcode provides integrated "Inner Loop" assistance, we still leverage standalone agents like **Goose** for the "Outer Loop." This creates a "Native-and-Agentic" setup: you use Xcode's built-in models for real-time coding and its integrated **Instruments** profiler, while calling upon an external agent for complex, multi-file refactors or autonomous "Compile-Fix" cycles that require specific models like **Qwen 3-Coder**.
 
 == Tutorial: Setting up the Xcode Hybrid Lab
 
@@ -61,21 +61,24 @@ using the new KosmicKrisp Metal 4 features.
 ----
 
 === Step 3: Local Inference via MLX
-Leverage your Mac's Unified Memory by running a high-reasoning **Qwen 3.5 Coder (32B)** model locally via Ollama. This allows the AI to access up to 48GB+ of VRAM on an M-series Max/Ultra chip.
+Leverage your Mac's Unified Memory by running a high-reasoning **Qwen 3-Coder (30B)** model locally via Ollama. This allows the AI to access up to 48GB+ of VRAM on an M-series Max/Ultra chip.
 
 [source,bash]
 ----
-# Run the 32B model locally on Apple Silicon
-ollama run qwen3.5-coder:32b
+# Run the 30B model locally on Apple Silicon
+ollama run qwen3-coder:30b
 ----
 
 By using this **Native-Agent Synergy**, you ensure that the integrated AI handles the platform-specific "Glue Code" (Swift/C{pp}) while the autonomous agents handle the heavy Vulkan lift.
+
+=== Step 4: Efficiency on Base Models (Mistral-Nemo)
+If you are working on a base M3 or M4 with 16GB or 24GB of RAM, you might find the 30B models a bit heavy. In these cases, use **Mistral-Nemo (12B)** or **Llama 4 (17B)**. These models are highly efficient on Apple's Neural Engine and leave more Unified Memory available for your Vulkan framebuffers and texture streaming.
 
 == The Local Inference Advantage: UMA Power
 
 Apple Silicon is uniquely suited for local AI because of its **Unified Memory**. In a traditional PC, your AI model is restricted to the VRAM of your GPU. On a Mac with 64GB of RAM, your AI can access almost the entire pool of memory.
 
-**Technical Deep Dive:** You can run a high-reasoning **Qwen 3.5 Coder (32B)** model locally via Ollama while still leaving enough headroom for your Vulkan application's massive texture arrays. This is difficult on a desktop PC with a 12GB or even a 16GB GPU. By leveraging tools like **MLX** (Apple's native machine learning framework), your AI assistant can run efficiently directly on the Neural Engine, providing quick responses to your graphics queries.
+**Technical Deep Dive:** You can run a high-reasoning **Qwen 3-Coder (30B)** model locally via Ollama while still leaving enough headroom for your Vulkan application's massive texture arrays. This is difficult on a desktop PC with a 12GB or even a 16GB GPU. By leveraging tools like **MLX** (Apple's native machine learning framework), your AI assistant can run efficiently directly on the Neural Engine, providing quick responses to your graphics queries.
 
 == Drawbacks and Incremental Wins
 
@@ -89,7 +92,7 @@ The biggest "Quality of Life" win is diagnosing **Shader Translation Errors**. W
 
 === Reaching the "Common Point"
 
-To reach the **Common Point** required for the rest of this tutorial, your Apple environment should be configured with a **Native-Agent Hybrid Strategy**. This setup uses Xcode 26's native AI for real-time Predictive Code Completion and Swift-to-C{pp} bridging, an autonomous agent like **Goose** (powered by Claude 4.6) for high-level reasoning and complex cross-file refactoring of translation layers, and an MLX-optimized local model like **Qwen 3.5 Coder** via Ollama to leverage your Mac's Unified Memory for free, high-speed iteration.
+To reach the **Common Point** required for the rest of this tutorial, your Apple environment should be configured with a **Native-Agent Hybrid Strategy**. This setup uses Xcode 26's native AI for real-time Predictive Code Completion and Swift-to-C{pp} bridging, an autonomous agent like **Goose** (powered by Claude 4.6) for high-level reasoning and complex cross-file refactoring of translation layers, and an MLX-optimized local model like **Qwen 3-Coder** via Ollama to leverage your Mac's Unified Memory for free, high-speed iteration.
 
 Once these are active, you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to the **Common Point**: xref:05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
 

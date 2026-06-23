@@ -14,7 +14,7 @@ This is **Collaborative Engineering**, and it is the future of high-performance 
 
 Vulkan is a powerful but notoriously verbose API. Historically, the "barrier to entry" was not just mathematical or architectural—it was the sheer volume of boilerplate and the cognitive load of managing explicit GPU state.
 
-With the rise of Large Language Models (LLMs) like **Qwen 3.5 Coder** and autonomous agents like **Goose**, the role of the graphics programmer is evolving. We are shifting from "Code Writers" to "System Designers." The AI doesn't replace your expertise; it amplifies it by managing the "Syntactic Noise" so you can focus on "Semantic Innovation."
+With the rise of Large Language Models (LLMs) like **Qwen 3-Coder** and autonomous agents like **Goose**, the role of the graphics programmer is evolving. We are shifting from "Code Writers" to "System Designers." The AI doesn't replace your expertise; it amplifies it by managing the "Syntactic Noise" so you can focus on "Semantic Innovation."
 
 == Who is the Audience?
 
@@ -30,7 +30,7 @@ Vulkan's unique properties make it the perfect candidate for AI assistance:
 
 == The 2026 AI Strategy
 
-In this series, we move beyond generic chat-bots. We will build a specialized **AI Toolbelt** that leverages high-reasoning **Cloud Models** (like **Claude 4.6** or **GPT-5.3**) for structural planning and complex math, alongside privacy-first, ultra-fast **Local Models** (like **Qwen 3.5 Coder** or **Llama 4**) running on your local GPU via **Ollama**. This strategy is anchored by the **Context Bridge** (MCP & RAG), which connects your IDE to the live Vulkan ecosystem, ensuring your assistant knows your engine's specific coding standards and the latest API specifications.
+In this series, we move beyond generic chat-bots. We will build a specialized **AI Toolbelt** that leverages high-reasoning **Cloud Models** (like **Claude 4.6** or **GPT-5.3**) for structural planning and complex math, alongside privacy-first, ultra-fast **Local Models** (like **Qwen 3-Coder**, **Mistral-Nemo**, or **Llama 4**) running on your local GPU via **Ollama**. This strategy is anchored by the **Context Bridge** (MCP & RAG), which connects your IDE to the live Vulkan ecosystem, ensuring your assistant knows your engine's specific coding standards and the latest API specifications.
 
 == The Roadmap: What We Will Build
 

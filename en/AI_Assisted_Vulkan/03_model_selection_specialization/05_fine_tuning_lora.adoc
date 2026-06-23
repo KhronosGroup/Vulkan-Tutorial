@@ -6,7 +6,7 @@
 
 Imagine you have a new hire on your graphics team. They are a brilliant C{pp} programmer and they know the Vulkan spec by heart. However, on their first day, they start writing raw `vkCreateBuffer` calls and using `std::vector` for vertex data. Your engine, however, uses the **Vulkan Memory Allocator (VMA)** and a custom `FixedArray` type for performance. You have to spend the next week "correcting" their style to match your engine's architectural laws.
 
-This is the same challenge we face with even the best base models like **Qwen 3.5 Coder**. They know Vulkan, but they don't know *your* Vulkan. To solve this, we use **Fine-Tuning**, specifically a technique called **Low-Rank Adaptation (LoRA)**.
+This is the same challenge we face with even the best base models like **Qwen 3-Coder**. They know Vulkan, but they don't know *your* Vulkan. To solve this, we use **Fine-Tuning**, specifically a technique called **Low-Rank Adaptation (LoRA)**.
 
 == The Core Concept: The "Style Patch"
 
@@ -14,7 +14,7 @@ Traditional fine-tuning requires retraining all billions of parameters in a mode
 
 == The Teacher-Student Pipeline: Cloud-Powered Specialization
 
-To transform a general-purpose 8B or 14B model into a **Specialized SLM**, you need a high-quality "Instruction-Response" dataset. Manually writing thousands of these pairs is impractical for a small team. Instead, we use a high-reasoning Cloud LLM (like **Claude 4.6** or **GPT-5.3**) to "teach" the local model by synthesizing training data from your engine's source code.
+To transform a general-purpose 17B or 12B model into a **Specialized SLM**, you need a high-quality "Instruction-Response" dataset. Manually writing thousands of these pairs is impractical for a small team. Instead, we use a high-reasoning Cloud LLM (like **Claude 4.6** or **GPT-5.3**) to "teach" the local model by synthesizing training data from your engine's source code.
 
 This is the **Teacher-Student** paradigm:
 
@@ -23,7 +23,7 @@ This is the **Teacher-Student** paradigm:
 3.  **Local Retraining**: You use this "Cloud-generated Textbook" to fine-tune your local model.
 
 **The "Specialized SLM" Advantage**
-By using a Cloud model as a "Teacher," your local 8B model doesn't just memorize snippets; it learns the **logic** of your engine. It becomes a specialized tool that knows exactly how to use your custom synchronization primitives or memory allocators, often outperforming much larger models that only have general Vulkan knowledge.
+By using a Cloud model as a "Teacher," your local 17B model doesn't just memorize snippets; it learns the **logic** of your engine. It becomes a specialized tool that knows exactly how to use your custom synchronization primitives or memory allocators, often outperforming much larger models that only have general Vulkan knowledge.
 
 == Why LoRA? (The "VMA" Problem)
 
@@ -33,7 +33,7 @@ Without LoRA, you have to constantly use **RAG** or manual prompts to remind the
 
 == Real-World Experience: Training the "Style Patch"
 
-You do not need a supercomputer to train a LoRA. A single high-end GPU (like an RTX 3090 or 4090) can train a LoRA for an 8B model (like **Llama 4**) in less than an hour.
+You do not need a supercomputer to train a LoRA. A single high-end GPU (like an RTX 3090 or 4090) can train a LoRA for a 17B model (like **Llama 4**) in less than an hour.
 
 **The Workflow:**
 
@@ -43,7 +43,7 @@ You do not need a supercomputer to train a LoRA. A single high-end GPU (like an 
 
 == Practical Tutorial: Training a LoRA Adapter
 
-To specialize an 8B SLM (Small Language Model) like **Llama 4** on your graphics engine, follow this pipeline to curate your dataset and execute the training loop.
+To specialize a 17B SLM (Small Language Model) like **Llama 4** on your graphics engine, follow this pipeline to curate your dataset and execute the training loop.
 
 === Step 1: Curate the Synthetic Dataset
 You need a "Synthetic Textbook" of **Instruction-Response pairs**. Use a high-reasoning Cloud model (Claude 4.6/GPT-5.3) to generate this from your engine's source code.
@@ -96,9 +96,9 @@ When you execute the training loop, you will see the "Loss" value decrease—mat
 
 == Specializing the SLM: From Generalist to Expert
 
-One of the most powerful aspects of specialized development is that it allows **Small Language Models (SLMs)**—typically models in the 8B to 32B parameter range—to outperform 400B+ parameter "Giant" models in the specific domain of your game engine. By combining the "Style Patch" of a LoRA with the "Ground Truth" of a RAG index, the SLM no longer needs to waste its internal parameters trying to remember general C{pp} patterns; it focuses 100% of its reasoning on the logic you provide in your engine's specific dialect.
+One of the most powerful aspects of specialized development is that it allows **Small Language Models (SLMs)**—typically models in the 17B to 30B parameter range—to outperform 400B+ parameter "Giant" models in the specific domain of your game engine. By combining the "Style Patch" of a LoRA with the "Ground Truth" of a RAG index, the SLM no longer needs to waste its internal parameters trying to remember general C{pp} patterns; it focuses 100% of its reasoning on the logic you provide in your engine's specific dialect.
 
-In a team environment, you often want a single, high-performance SLM that "knows" your engine deeply—including the LoRA you just trained—without forcing every developer to sacrifice significant VRAM. To set up a shared inference server, start by configuring the host machine (one with substantial VRAM) with **Ollama**. You must explicitly expose the service by setting the `OLLAMA_HOST` environment variable to `0.0.0.0` before running `ollama serve`. Finally, prepare the specialized model by pulling a capable base such as **Qwen 3.5 Coder (32B)**.
+In a team environment, you often want a single, high-performance SLM that "knows" your engine deeply—including the LoRA you just trained—without forcing every developer to sacrifice significant VRAM. To set up a shared inference server, start by configuring the host machine (one with substantial VRAM) with **Ollama**. You must explicitly expose the service by setting the `OLLAMA_HOST` environment variable to `0.0.0.0` before running `ollama serve`. Finally, prepare the specialized model by pulling a capable base such as **Qwen 3-Coder (30B)**.
 
 Every developer on the team then configures their local **Goose** instance to use the remote server. The beauty of this setup is the **Local-Agent/Remote-Model** split: the Goose agent remains on the developer's machine with direct access to local files and tools, but it offloads the heavy reasoning "thinking" to the shared server. Because the OpenAI API has become the industry standard for AI communication, we use the `openai` provider in Goose to talk to our remote Ollama server. Open your Goose configuration—located at `~/.config/goose/config.yaml` on Unix-like systems or `%APPDATA%\goose\config.yaml` on Windows—and add a provider entry that treats the remote server as an endpoint, using the host machine's IP address.
 
@@ -108,16 +108,16 @@ models:
   shared-vulkan-expert:
     provider: openai
     base_url: "http://<SERVER_IP_ADDRESS>:11434/v1"
-    model: "qwen3.5-coder:32b"
+    model: "qwen3-coder:30b"
     api_key: "not-needed"
 ----
 
-**Why this works:** When you give Goose a task, it first uses its local tools to "Read" your local files. It then packages those file snippets together and sends them over the network to the shared server. The server generates the response and sends it back to your machine, where the local Goose agent then writes the code to your disk. You get the power of a 32B model without using a single byte of your local GPU's VRAM.
+**Why this works:** When you give Goose a task, it first uses its local tools to "Read" your local files. It then packages those file snippets together and sends them over the network to the shared server. The server generates the response and sends it back to your machine, where the local Goose agent then writes the code to your disk. You get the power of a 30B model without using a single byte of your local GPU's VRAM.
 
 To ensure consistency across the team, you must standardize your RAG sources by placing technical manuals and engine specifications in a shared directory tracked by Git. Instruct Goose to always index this directory first to maintain a synchronized "Knowledge Vault."
 
 **Real-World Experience: The Team Audit**
-In this shared configuration, if a developer encounters a new synchronization bug, they can say: *"Goose, query our shared `docs/sync_patterns.md` and the remote 32B model to audit my current pipeline barrier."*
+In this shared configuration, if a developer encounters a new synchronization bug, they can say: *"Goose, query our shared `docs/sync_patterns.md` and the remote 30B model to audit my current pipeline barrier."*
 
 Because the RAG retrieval happens locally, the agent sees the developer's exact line of code. Because the inference happens on the shared server, the agent has the "Reasoning Depth" of a massive model without causing the developer's Vulkan frame rate to drop to zero.
 

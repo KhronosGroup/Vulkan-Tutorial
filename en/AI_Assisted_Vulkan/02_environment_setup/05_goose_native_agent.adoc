@@ -22,16 +22,20 @@ Goose is an open-source autonomous agent designed to work directly with your loc
 
 === 1. Installation
 
-Goose can be installed as a standalone CLI tool or integrated into your workspace. For the most robust "Common Point" experience, we recommend the native CLI installation:
+Goose can be installed as a standalone CLI tool or integrated into your workspace.
 
+**For macOS and Linux:**
 [source,bash]
 ----
-# For macOS and Linux
 curl -fsSL https://block.github.io/goose/install.sh | bash
-
-# For Windows (PowerShell)
-powershell -c "irm https://block.github.io/goose/install.ps1 | iex"
 ----
+
+**For Windows:**
+While there is a PowerShell installer, for the most control on Windows, we recommend the manual installation:
+1.  Go to link:https://goose-docs.ai/[goose-docs.ai] and download the Goose executable.
+2.  Unzip the folder and place it in a permanent location (e.g., `C:\Programs\Goose`).
+3.  Pin the `goose.exe` to your Start menu for easy access.
+4.  **Note:** You may need to locate your `config.yaml` file for advanced manual configuration. On Windows, this is typically found at: `C:\Users\[YourUserName]\AppData\Roaming\Block\goose\config\config.yaml`.
 
 === 2. Giving Goose "Hands"
 
@@ -45,6 +49,17 @@ goose session
 
 From here, you can provide Goose with **Tools** (via the Model Context Protocol) that allow it to read your filesystem, run shell commands, and even search the Vulkan specification.
 
+==== Adding Filesystem Access (MCP)
+To allow Goose to interact with your local files reliably, you should add a custom extension:
+1.  **Install Node.js:** Download the LTS version from link:https://nodejs.org/[nodejs.org] using the Windows Installer (.msi). Verify with `node --version` and `npm --version`.
+2.  **Add Extension in Goose:** Go to **Extensions -> Add Custom Extension** and fill out the fields:
+    *   **Extension Name:** `Filesystem Access`
+    *   **Type:** `STDIO`
+    *   **Description:** `Allows goose to access project files.`
+    *   **Command:** `npx -y @modelcontextprotocol/Filesystem_Access [filepath]` (Replace `[filepath]` with your project path using forward slashes, e.g., `C:/Users/Dev/VulkanProject`).
+    *   **Timeout:** `300`
+3.  **Restart Goose** to enable the extension.
+
 == Model Strategy: Hybrid Cloud and Local Roles
 
 To power your agent effectively, we recommend a **Hybrid Model Strategy**. This approach balances high-level architectural "Reasoning" with low-level, zero-latency "Implementation."
@@ -54,36 +69,43 @@ To power your agent effectively, we recommend a **Hybrid Model Strategy**. This 
 For the initial session setup and complex planning, you should use a high-reasoning cloud model like **Claude 4.6** or **GPT-5.3**. These models excel at understanding the abstract requirements of a graphics pipeline and creating a "Contract" for the work to be done.
 
 To configure a cloud provider in Goose:
-[source,bash]
-----
-# Configure Claude as your "Planner"
-goose configure
-# Select 'Anthropic' and provide your API key.
-----
+1.  Open Goose Settings -> Models -> Configure Providers.
+2.  **Cloud:** Select **Anthropic**. You will need an API key from the link:https://platform.claude.com/[Claude Console]. Paste your key and submit.
 
 === 2. The Local Runner (Implementation Specialist)
 
 Once the high-level plan is established, you can switch the "active hands" to a local model running via **Ollama**. This is your "Implementation" specialist—fast, free, and secure.
 
-Download the native installer from link:https://ollama.com[ollama.com]. Once running, you can download a specialized coding model:
-
+**Setting up Ollama:**
+1.  Download the native installer from link:https://ollama.com[ollama.com].
+2.  **Configuration:** In Ollama settings, choose a "Model location" on a drive with sufficient space.
+3.  **Download Models:** Open PowerShell and run the following commands to pull the latest specialists:
 [source,bash]
 ----
-# Download and run the 8B model (e.g., Llama 4)
-ollama run llama4:8b
+# Download the 17B model (Llama 4) for low-latency coding
+ollama run llama4
 
-# Or the 27B Gemma model for high-precision instruction following
-ollama run gemma4:27b
+# Download the 30B Qwen model for complex architectural implementation
+ollama run qwen3-coder:30b
 
-# Or the 32B Qwen model for complex architectural planning
-ollama run qwen3.5-coder:32b
+# Download the 12B Mistral-Nemo model for balanced reasoning and context
+ollama run mistral-nemo
 ----
+4.  **Connect to Goose:** In Goose Settings -> Models -> Configure Providers, find **Ollama** and click configure. Select your desired model (e.g., `qwen3-coder:30b`) from the dropdown.
 
 === 3. Implementing the Hybrid Workflow
 
 In a real-world session, you leverage these models by switching profiles or starting the session with a specific target. For the **Planning Phase**, start a session with your Cloud model and ask it to analyze your current `VulkanContext` to draft a multi-step plan for a feature like shadow mapping. Once the plan is ready, you move to the **Implementation Phase** by switching to your local Ollama profile and tasking Goose with following that plan to implement the necessary boilerplate code.
 
 This workflow ensures your VRAM is preserved for the Vulkan application during the bulk implementation phase, while still using the high-reasoning capabilities of cloud models for the critical design phase.
+
+==== Security & Permissions (VS Code)
+If you are using Goose or other AI agents (like Claude Code) within VS Code, you may be prompted for permission for every command. To enable a more autonomous (but higher risk) workflow:
+1.  Press `Ctrl + ,` to open Settings.
+2.  Search for `permissions`.
+3.  For your AI extension, set **Initial Permission Mode** to `bypassPermissions`.
+4.  Enable **Allow Dangerously Skip Permissions**.
+*CAUTION:* Only do this in a controlled environment (like a VM or container) as it allows the AI to execute scripts and modify files without confirmation.
 
 == Hardware Requirements: The VRAM Budget
 
@@ -95,7 +117,7 @@ Before starting a local agent, you must perform a "VRAM Audit." For a typical de
 
 === Quantization Strategies
 
-To fit a 32B model into 10GB, we use **Quantization** (compression). Ollama handles this automatically, but you should be aware of the trade-offs. Using **4-bit (Q4_K_M)** quantization is often the "sweet spot," as it is 75% smaller with only about a 5% loss in reasoning. Stepping up to **8-bit (Q8_0)** provides higher precision reasoning but requires significantly more VRAM.
+To fit a 30B model into 10GB, we use **Quantization** (compression). Ollama handles this automatically, but you should be aware of the trade-offs. Using **4-bit (Q4_K_M)** quantization is often the "sweet spot," as it is 75% smaller with only about a 5% loss in reasoning. Stepping up to **8-bit (Q8_0)** provides higher precision reasoning but requires significantly more VRAM.
 
 If your GPU runs out of VRAM, your system may trigger a **TDR (Timeout Detection and Recovery)**, crashing both your AI and your Vulkan renderer. Always leave a 1–2GB "safety margin."
 

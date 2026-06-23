@@ -29,7 +29,7 @@ Vulkan is a "living" API. New extensions are added monthly, and best practices e
 
 In the following chapters, we will guide you through the technical and strategic process of choosing and specializing your AI assistant.
 
-We begin by **Selecting the Base Model**. We will compare the leading models for Vulkan development, including **Qwen 3.5 Coder**, **Gemma 4**, and **Llama 4**. You will learn which models excel at the complex, high-level reasoning required for architectural planning, versus the smaller, faster models best suited for the "inner loop" of real-time autocomplete and shader implementation.
+We begin by **Selecting the Base Model**. We will compare the leading models for Vulkan development, including **Qwen 3-Coder**, **Mistral-Nemo**, and **Llama 4**. You will learn which models excel at the complex, high-level reasoning required for architectural planning, versus the smaller, faster models best suited for the "inner loop" of real-time autocomplete and shader implementation.
 
 Next, we address the critical issue of **Hardware & VRAM Budgeting**. Running these models locally requires a precise strategy. We will provide detailed formulas for calculating your VRAM needs, accounting for the "KV Cache Tax" and the role of **Quantization** in ensuring your AI doesn't starve your Vulkan application of its most precious resource.
 

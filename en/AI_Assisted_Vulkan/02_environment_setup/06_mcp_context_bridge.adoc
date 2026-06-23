@@ -4,7 +4,7 @@
 
 == Introduction: The Missing Link
 
-We have explored the IDEs and the high-reasoning models. But even the most sophisticated AI, like **Qwen 3.5 Coder**, suffers from a fundamental flaw: **The Knowledge Cutoff**.
+We have explored the IDEs and the high-reasoning models. But even the most sophisticated AI, like **Qwen 3-Coder**, suffers from a fundamental flaw: **The Knowledge Cutoff**.
 
 A model trained in 2025 cannot know the specifics of a Vulkan extension released in 2026. It cannot "see" your local file system, and it has no idea that your specific GPU has a `maxSamplerAnisotropy` limit of 16. This is where the **Model Context Protocol (MCP)** becomes a core component of AI-assisted development. MCP is the open standard that allows an AI to securely "reach out" and query the ground truth of your local environment.
 

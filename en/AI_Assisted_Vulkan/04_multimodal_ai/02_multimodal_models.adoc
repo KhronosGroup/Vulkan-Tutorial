@@ -4,7 +4,7 @@
 
 == Introduction: The "Vision-Language" Paradigm
 
-In the previous sections, we focused on models like **Qwen 3.5 Coder**, which are "blind" but possess deep knowledge of C{pp} and the Vulkan spec. While they are masters of syntax, they are fundamentally limited when it comes to visual debugging. They can "read" your code, but they cannot "see" the result.
+In the previous sections, we focused on models like **Qwen 3-Coder**, which are "blind" but possess deep knowledge of C{pp} and the Vulkan spec. While they are masters of syntax, they are fundamentally limited when it comes to visual debugging. They can "read" your code, but they cannot "see" the result.
 
 To bridge this gap, we use **Vision-Language Models (VLMs)**. These are not just "chatbots that can see"; they are specialized AI architectures that integrate a **Vision Encoder** with a standard Large Language Model to perform high-level **Geometric Reasoning**.
 
@@ -27,11 +27,11 @@ Finally, evaluate the model's **Spatial Reasoning**. Ask it to describe the rela
 
 == Leading 2026 Vision Models (Examples)
 
-=== 1. Qwen 3.5-VL: High-Resolution Visual Analysis
-Alibaba's **Qwen 3.5-VL** is currently one of the most capable models for technical image analysis, particularly for identifying complex graphics artifacts like shadow acne or reading text from UI overlays in tools like RenderDoc. For example, if you are debugging a subtle **Banding** artifact in your skybox and upload a 4K screenshot, Qwen 3.5-VL can identify the pattern and suggest that your `VkImageFormat` (such as B8G8R8A8_UNORM) lacks the precision for a smooth gradient, recommending a switch to a 10-bit or 16-bit float format instead.
+=== 1. Qwen 3-VL: High-Resolution Visual Analysis
+Alibaba's **Qwen 3-VL** is currently one of the most capable models for technical image analysis, particularly for identifying complex graphics artifacts like shadow acne or reading text from UI overlays in tools like RenderDoc. For example, if you are debugging a subtle **Banding** artifact in your skybox and upload a 4K screenshot, Qwen 3-VL can identify the pattern and suggest that your `VkImageFormat` (such as B8G8R8A8_UNORM) lacks the precision for a smooth gradient, recommending a switch to a 10-bit or 16-bit float format instead.
 
-=== 2. Gemma 4-Vision: High-Speed Visual Feedback
-Google's **Gemma 4-Vision** offers a smaller, faster alternative that is ideal for real-time visual feedback and rapid classification of bugs—such as determining if a black screen is due to a culling error or a missing swapchain image. It is highly optimized for performance on Apple Silicon and modern NVIDIA cards, providing fast categorization of visual errors.
+=== 2. Gemma 4: High-Speed Visual Feedback
+Google's **Gemma 4** offers a smaller, faster alternative that is ideal for real-time visual feedback and rapid classification of bugs—such as determining if a black screen is due to a culling error or a missing swapchain image. It is highly optimized for performance on Apple Silicon and modern NVIDIA cards, providing fast categorization of visual errors.
 
 == Choosing Your Vision Strategy
 
@@ -40,11 +40,11 @@ Google's **Gemma 4-Vision** offers a smaller, faster alternative that is ideal f
 | Strategy | Recommended Model | Best Use Case
 
 | **Local Inference (Privacy)**
-| Gemma 4-Vision
+| Gemma 4
 | Quick bug classification and visual-focused coding.
 
 | **High-Precision Analysis**
-| Qwen 3.5-VL
+| Qwen 3-VL
 | Deep diagnosis of subtle artifacts like aliasing or banding.
 
 | **High-Reasoning Cloud Model**

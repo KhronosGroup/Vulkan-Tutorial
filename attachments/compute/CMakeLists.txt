@@ -168,6 +168,13 @@ add_compute_chapter(10_performance_optimization
   WINDOWED
   ENTRIES heatmapMain)
 
+# Chapter 12 — Embedded Compute: parallel FABRIK IK solver.
+# Headless (no WINDOWED): pure compute dispatch for Raspberry Pi, NVIDIA Jetson,
+# and other embedded Linux targets. NOT intended for Android — use the windowed
+# chapter samples (02–10) via the Android launcher instead.
+add_compute_chapter(12_embedded
+  ENTRIES ikMain)
+
 # ---------------------------------------------------------------------------
 # Chapter 05 — OpenCL on Vulkan (special: NOT a Slang demo)
 #

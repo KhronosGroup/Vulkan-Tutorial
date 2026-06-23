@@ -52,8 +52,12 @@
 import vulkan_hpp;
 #endif
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#ifdef ANDROID_BUILD
+#  include "glfw_android_shim.h"
+#else
+#  define GLFW_INCLUDE_VULKAN
+#  include <GLFW/glfw3.h>
+#endif
 
 #ifdef HAVE_OPENCL
 #  define CL_TARGET_OPENCL_VERSION 300
@@ -763,6 +767,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------
+#ifndef ANDROID_BUILD
 int main(int argc, char** argv) {
     std::cout << "=====================================================\n"
                  " Chapter 05 — Vulkan rendering powered by OpenCL/clvk\n"
@@ -781,3 +786,13 @@ int main(int argc, char** argv) {
     }
     return EXIT_SUCCESS;
 }
+#endif // ANDROID_BUILD
+
+#ifdef ANDROID_BUILD
+extern "C" void chapter05_run() {
+    // OpenCL/clspv path not available on Android without additional setup.
+    // ForestApp will fall back to a static frame if no .spv is found.
+    try { ForestApp app(""); app.run(); }
+    catch (const std::exception& e) { __android_log_print(ANDROID_LOG_ERROR, "ComputeCh05", "%s", e.what()); }
+}
+#endif

@@ -32,8 +32,12 @@
 import vulkan_hpp;
 #endif
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#ifdef ANDROID_BUILD
+#  include "glfw_android_shim.h"
+#else
+#  define GLFW_INCLUDE_VULKAN
+#  include <GLFW/glfw3.h>
+#endif
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -1582,9 +1586,18 @@ class AsteroidFieldApp
     }
 };
 
+#ifndef ANDROID_BUILD
 int main()
 {
     try { AsteroidFieldApp{}.run(); }
     catch (const std::exception &e) { std::cerr << e.what() << "\n"; return EXIT_FAILURE; }
     return EXIT_SUCCESS;
 }
+#endif // ANDROID_BUILD
+
+#ifdef ANDROID_BUILD
+extern "C" void chapter07_run() {
+    try { AsteroidFieldApp{}.run(); }
+    catch (const std::exception& e) { __android_log_print(ANDROID_LOG_ERROR, "ComputeCh07", "%s", e.what()); }
+}
+#endif

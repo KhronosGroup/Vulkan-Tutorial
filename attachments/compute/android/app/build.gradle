@@ -1,0 +1,97 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace "com.vulkan.compute"
+    compileSdk 35
+    defaultConfig {
+        applicationId "com.vulkan.compute"
+        minSdk 28
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared"
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1+"
+        }
+    }
+    ndkVersion "28.1.13356709"
+    sourceSets {
+        main {
+            assets { srcDirs = ['src/main/assets'] }
+        }
+    }
+    buildFeatures { prefab false }
+}
+
+// ---------------------------------------------------------------------------
+// Shader compilation — all chapter .slang files → SPIR-V assets.
+// Prerequisite: slangc must be on PATH.
+// Run manually: ./gradlew compile_02_compute_architecture  (etc.)
+// All tasks are automatically added as preBuild dependencies.
+// ---------------------------------------------------------------------------
+def computeDir = file("${rootProject.projectDir}/../../")
+def assetsDir  = file("src/main/assets/shaders")
+
+// chapter name → list of -entry arguments
+def chapterShaders = [
+    "02_compute_architecture"   : ["-entry", "compMain"],
+    "03_memory_models"          : ["-entry", "splatPass", "-entry", "advectVelPass",
+                                   "-entry", "divergencePass", "-entry", "jacobiPass",
+                                   "-entry", "gradientPass", "-entry", "advectDyePass",
+                                   "-entry", "renderPass"],
+    "04_subgroup_operations"    : ["-entry", "physicsMain", "-entry", "renderMain"],
+    "06_advanced_data_structures": ["-entry", "primaryRayMain", "-entry", "shadowQueueMain"],
+    "07_gpu_driven_pipelines"   : ["-entry", "cullMain", "-entry", "vertMain", "-entry", "fragMain"],
+    "08_async_compute"          : ["-entry", "constraintPass", "-entry", "vertMain", "-entry", "fragMain"],
+    "09_specialized_math"       : ["-entry", "noiseMain", "-entry", "denoiseMain"],
+    "10_performance_optimization": ["-entry", "heatmapMain"],
+    // Chapter 12 (12_embedded.slang) is headless-only; it is built by the desktop
+    // CMake target, not here.  Android ships only the windowed chapters 02–10.
+]
+
+chapterShaders.each { chName, entries ->
+    def taskName = "compile_${chName.replace('-', '_')}"
+    def slangSrc = new File(computeDir, "${chName}.slang")
+    def outSpv   = new File(assetsDir, "${chName}.spv")
+
+    tasks.register(taskName, Exec) {
+        doFirst { assetsDir.mkdirs() }
+        def args = ['slangc', slangSrc.absolutePath,
+                    '-target', 'spirv', '-profile', 'spirv_1_4',
+                    '-emit-spirv-directly', '-fvk-use-entrypoint-name']
+        args.addAll(entries)
+        args.addAll(['-o', outSpv.absolutePath])
+        commandLine args
+        description = "Compile ${chName}.slang -> shaders/${chName}.spv"
+        inputs.file(slangSrc)
+        outputs.file(outSpv)
+    }
+
+    preBuild.dependsOn taskName
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+}

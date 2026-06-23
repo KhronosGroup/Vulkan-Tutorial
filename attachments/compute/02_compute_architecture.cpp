@@ -31,8 +31,12 @@
 import vulkan_hpp;
 #endif
 
-#define GLFW_INCLUDE_VULKAN   // required only for glfwCreateWindowSurface
-#include <GLFW/glfw3.h>
+#ifdef ANDROID_BUILD
+#  include "glfw_android_shim.h"
+#else
+#  define GLFW_INCLUDE_VULKAN   // required only for glfwCreateWindowSurface
+#  include <GLFW/glfw3.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1245,6 +1249,7 @@ class MandelbrotApp
 };
 
 // ---------------------------------------------------------------------------
+#ifndef ANDROID_BUILD
 int main()
 {
     try
@@ -1259,3 +1264,11 @@ int main()
     }
     return EXIT_SUCCESS;
 }
+#endif // ANDROID_BUILD
+
+#ifdef ANDROID_BUILD
+extern "C" void chapter02_run() {
+    try { MandelbrotApp{}.run(); }
+    catch (const std::exception& e) { __android_log_print(ANDROID_LOG_ERROR, "ComputeCh02", "%s", e.what()); }
+}
+#endif

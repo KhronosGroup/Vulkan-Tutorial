@@ -90,7 +90,7 @@ For `slangc`, download a pre-built Linux AArch64 release from link:https://githu
 
 === Vulkan Limits on the Raspberry Pi
 
-The VideoCore VI GPU (Pi 4) and VideoCore VII (Pi 5) conform to Vulkan 1.2+ but have the tight limits typical of mobile hardware:
+The VideoCore VI GPU (Pi 4, Mesa 23.3+) supports Vulkan 1.2; the VideoCore VII (Pi 5, Mesa 24.0+) reaches Vulkan 1.3. Both have the tight limits typical of tile-based hardware:
 
 *   `maxComputeWorkGroupInvocations`: **256** (Pi 4) / **256** (Pi 5)
 *   `maxComputeSharedMemorySize`: **16 384 bytes** (16 KB)
@@ -221,7 +221,7 @@ This same headless path is what you would use for a server-side compute node, a 
 
 On embedded parts you cannot assume the latest Vulkan version or a fully optional feature set:
 
-*   Always gate features behind `vkEnumerateInstanceVersion` and feature queries; an SBC may only offer Vulkan 1.1 or 1.2.
+*   Always gate optional features behind feature queries. Virtually all shipping embedded hardware (Raspberry Pi 4/5, NVIDIA Jetson JetPack ≥ 5.1, Android API 33+) supports Vulkan 1.3. You may encounter Vulkan 1.1 or 1.2 on older or highly specialized industrial devices, but 1.3 is a reasonable baseline for any new project.
 *   Some embedded drivers omit optional capabilities you took for granted, such as `shaderInt64`, certain subgroup operations, or **Buffer Device Address**. Provide a fallback path or fail gracefully with a clear message.
 *   Mesa drivers (`v3dv`, `lavapipe` for software fallback) are common here; `lavapipe` in particular is a useful CPU-based conformant Vulkan implementation for testing compute on machines with no GPU at all.
 

@@ -4,7 +4,7 @@
 
 == Overview
 
-To write efficient compute kernels, you must look beyond the abstract execution model of "workgroups" and "invocations" and understand how these concepts map to the physical hardware. While Vulkan provides a cross-vendor API, the silicon beneath it from AMD, NVIDIA, and Intel has specific ways of handling your data.
+To write efficient compute kernels, you must look beyond the abstract execution model of "workgroups" and "invocations" and understand how these concepts map to the physical hardware. While Vulkan provides a cross-vendor API, the silicon beneath it from AMD, NVIDIA, and Intel has specific ways of handling your data. The same is true of the **mobile** GPUs from Arm (Mali/Immortalis), Qualcomm (Adreno), and Imagination (PowerVR) that make up the largest installed base of Vulkan devices — their tile-based designs map these same concepts onto very different silicon, which we cover in detail in xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/01_introduction.adoc[Mobile and Embedded Compute].
 
 In this chapter, we will bridge the gap between your shader code and the silicon. We'll explore how the 3D grid system you define in `vkCmdDispatch` is sliced, diced, and distributed across the GPU's **Compute Units (CU)** or **Streaming Multiprocessors (SM)**.
 
@@ -14,10 +14,10 @@ Before we dive in, let's align our vocabulary. Different vendors use different n
 
 *   **Workgroups** (Vulkan/OpenCL) are often mapped to **Thread Blocks** (CUDA).
 *   **Invocations** (Vulkan) are simply **Threads**.
-*   **Subgroups** (Vulkan) are called **Wavefronts** (AMD) or **Warps** (NVIDIA).
-*   **Compute Units** (AMD) are equivalent to **Streaming Multiprocessors** (NVIDIA).
+*   **Subgroups** (Vulkan) are called **Wavefronts** (AMD) or **Warps** (NVIDIA). On mobile, Arm calls the equivalent a **warp** as well, while the practical size varies widely (4–128) and must be queried at runtime.
+*   **Compute Units** (AMD) are equivalent to **Streaming Multiprocessors** (NVIDIA), and to **shader cores** on Arm Mali or Qualcomm Adreno.
 
-Understanding these mappings allows you to read hardware-specific documentation and performance guides regardless of which GPU you are targeting.
+Understanding these mappings allows you to read hardware-specific documentation and performance guides regardless of which GPU you are targeting — desktop *or* mobile.
 
 == Hardware Mapping
 

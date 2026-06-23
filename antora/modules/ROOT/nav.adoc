@@ -202,6 +202,11 @@
 *** xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/01_introduction.adoc[Introduction]
 *** xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/02_compute_validation.adoc[Compute Validation]
 *** xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Assistant-Led Optimization]
+** Mobile and Embedded Compute
+*** xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/01_introduction.adoc[Introduction]
+*** xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.adoc[Compute on Android]
+*** xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/03_mobile_optimization.adoc[Optimizing for Mobile GPUs]
+*** xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/04_embedded_beyond_mobile.adoc[Beyond Mobile: Embedded and Headless Compute]
 ** xref:Advanced_Vulkan_Compute/conclusion.adoc[Conclusion]
 
 * Synchronization 2

@@ -12,6 +12,8 @@ What if you could share data even faster? What if you could exchange values with
 
 A **Subgroup** is a hardware-level bundle of threads (typically 32 on NVIDIA/Intel or 32/64 on AMD) that execute in perfect lockstep on the same SIMD unit. Because the hardware already physically synchronizes these threads, they can communicate with each other using specialized instructions that are often as fast as a single clock cycle.
 
+This is not a desktop-only feature. Mobile GPUs from Arm, Qualcomm, and Imagination expose subgroup operations too, but their width is far more variable (anywhere from 4 to 128 lanes) and *must* be queried at runtime rather than assumed — see xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.adoc[Compute on Android]. On those tile-based parts, keeping data in subgroup registers instead of memory is not just a speed win; it directly saves power and reduces thermal throttling.
+
 In this chapter, we'll explore the hidden power of subgroups:
 
 1.  **Cross-Invocation Communication**: Utilizing Subgroup Shuffles, Broadcasts, and Arithmetic to exchange data directly through registers, bypassing memory entirely.

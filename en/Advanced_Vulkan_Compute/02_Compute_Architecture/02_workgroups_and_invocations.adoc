@@ -58,8 +58,9 @@ However, GPUs execute invocations in bundles of 32 or 64—known as **Subgroups*
 *   **NVIDIA** GPUs typically prefer multiples of **32** (Warps).
 *   **AMD** GPUs typically prefer multiples of **64** (Wavefronts), though modern RDNA architectures can also handle 32.
 *   **Intel** GPUs have variable sizes (8, 16, 32).
+*   **Mobile** GPUs vary the most: Arm Mali and Qualcomm Adreno may report a subgroup size anywhere from 4 to 128, and the maximum invocations per workgroup can be as low as 128 (versus 1024 on desktop). Never hard-code these — query them at runtime, as explained in xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.adoc[Compute on Android].
 
-A safe, portable choice for many workloads is a workgroup size of **64** or **256** (e.g., `16x16` or `8x8x4`). This ensures that most hardware can keep its **SIMD** (Single Instruction, Multiple Data) lanes full.
+A safe, portable choice for many *desktop* workloads is a workgroup size of **64** or **256** (e.g., `16x16` or `8x8x4`). This ensures that most hardware can keep its **SIMD** (Single Instruction, Multiple Data) lanes full. On mobile, prefer smaller groups that respect the device's reported `maxComputeWorkGroupInvocations` and a multiple of its actual `subgroupSize`.
 
 == Dispatching the Work
 

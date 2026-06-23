@@ -14,7 +14,7 @@ The "roof" of this model is determined by the hardware's peak theoretical perfor
 
 == Identifying the Bottleneck
 
-To identify these bottlenecks, you need to look at **Hardware Metrics** using profiling tools like NVIDIA Nsight, AMD Radeon GPU Profiler (RGP), or Intel VTune.
+To identify these bottlenecks, you need to look at **Hardware Metrics** using profiling tools like NVIDIA Nsight, AMD Radeon GPU Profiler (RGP), or Intel VTune. On mobile and embedded targets you use a different but analogous set of tools — Arm Performance Studio (Streamline), Qualcomm Snapdragon Profiler, Imagination PVRTune, or the vendor-neutral Android GPU Inspector — and you must run them on the *actual device*, since a desktop GPU will mislead you about a phone's behavior. The mobile profiling workflow is covered in detail in xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/03_mobile_optimization.adoc[Optimizing for Mobile GPUs].
 
 === Compute-Bound Kernels
 A **Compute-Bound** kernel is one where the hardware's arithmetic units (**ALUs**) are fully occupied. These kernels are characterized by:

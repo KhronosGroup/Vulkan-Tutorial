@@ -53,7 +53,7 @@ commandBuffer.pipelineBarrier2(dependencyInfo);
 
 == Why You Need to Care
 
-If you skip these steps, your kernel might appear to work on one GPU but fail on another. This is because different architectures have different cache coherency strategies. NVIDIA's caches might behave differently than AMD's or Intel's.
+If you skip these steps, your kernel might appear to work on one GPU but fail on another. This is because different architectures have different cache coherency strategies. NVIDIA's caches might behave differently than AMD's or Intel's — and mobile tile-based GPUs from Arm or Qualcomm, with their unified memory and on-chip tile buffers, are different again. A kernel that "happens to work" on your discrete desktop card without proper barriers is especially likely to break on a phone, which makes the memory model *more* important on mobile, not less. The read-back discipline this implies on unified-memory devices is covered in xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.adoc[Compute on Android].
 
 The Vulkan Memory Model is your way of telling the driver exactly what you need, so it can emit the minimal set of hardware instructions to keep your data safe without sacrificing performance.
 

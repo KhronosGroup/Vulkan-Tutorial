@@ -17,6 +17,7 @@ Throughout this series, we have explored the depths of modern GPU compute, movin
 8. **Specialized Math**: We utilized modern hardware features like Cooperative Matrices and mixed-precision (FP16/Int8) for massive throughput.
 9. **Performance & Diagnostics**: We learned to audit our kernels for divergence, analyze throughput with the Roofline model, and debug complex race conditions with GPU-Assisted Validation (GAV).
 10. **AI-Assisted Optimization**: We've seen how Large Language Models (LLMs) can act as a bridge between naive, sequential logic and the parallel, subgroup-aware patterns that are necessary for high GPU throughput.
+11. **Mobile & Embedded Compute**: We took these techniques to the most widely deployed Vulkan hardware of all — Android phones, single-board computers, automotive, and robotics — optimizing for power and bandwidth, exploiting unified memory, and running headless on devices with no display.
 
 == Making it Click: The Compute Mindset
 
@@ -43,10 +44,10 @@ As always, you are not alone in this journey. The Vulkan community is filled wit
 
 - **Khronos Slack/Discord**: Great for technical deep dives into specific extensions.
 - **Vulkan Specification**: Your ultimate source of truth for memory models and hardware constraints.
-- **Vendor-Specific Documentation**: Explore NVIDIA's Nsight, AMD's RGP, and Intel's GPA documentation for hardware-specific optimization tricks.
+- **Vendor-Specific Documentation**: Explore NVIDIA's Nsight, AMD's RGP, and Intel's GPA documentation for desktop hardware-specific optimization tricks. For mobile and embedded targets, consult Arm's Mali/Immortalis best-practices guides and Performance Studio, Qualcomm's Adreno developer documentation and Snapdragon Profiler, and Imagination's PowerVR developer resources.
 
 Thank you for following along with this series. We've moved from "making pixels pretty" to harnessing the full parallel power of modern hardware. The only limit now is your imagination.
 
 Happy Hacking!
 
-xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Previous: Assistant-Led Optimization] | xref:00_Introduction.adoc[Back to Home]
+xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/04_embedded_beyond_mobile.adoc[Previous: Beyond Mobile: Embedded and Headless Compute] | xref:00_Introduction.adoc[Back to Home]

@@ -1,0 +1,386 @@
+:pp: {plus}{plus}
+= Beyond Mobile: Embedded and Headless Compute
+
+== The Long Tail of Vulkan Devices
+
+Mobile phones get the headlines, but Vulkan compute runs on a much wider universe of **embedded** hardware. These devices borrow mobile's constraints — limited power, shared memory, tile-based GPUs, tight thermal envelopes — and add their own: no display, real-time deadlines, safety certification, and product lifetimes measured in years or decades. This section surveys that landscape, its tooling, and the development environment you need to target it effectively.
+
+== Where Embedded Vulkan Compute Lives
+
+*   **Single-board computers (SBCs).** The Raspberry Pi 4/5 expose a conformant Vulkan 1.2+ driver (`v3dv`) on the VideoCore GPU, and countless Arm SBCs ship Mali or Adreno parts. These are popular for hobbyist and edge-compute experiments.
+*   **Edge AI modules.** NVIDIA Jetson, Qualcomm robotics platforms, and similar modules pair a capable GPU with an embedded CPU specifically to run on-device inference and computer vision.
+*   **Automotive.** Infotainment, digital instrument clusters, and driver-assistance systems increasingly standardize on Vulkan, often through the **safety-critical** profile **Vulkan SC** (a derivative API for certifiable systems).
+*   **Industrial and robotics.** Machine-vision cameras, lidar processing units, and robotics controllers use Vulkan compute for low-latency sensor processing close to the sensor.
+*   **Digital signage and set-top boxes.** Long-lived, fanless devices that run video and image processing pipelines continuously.
+
+== Setting Up a Development Environment for Embedded Targets
+
+The single biggest difference between mobile and general embedded development is the toolchain: you typically *cross-compile* on a powerful x86 host machine and then deploy the resulting ARM binary to the target device. Choosing the right IDE and cross-compilation setup is what determines whether your iteration loop is minutes or days.
+
+=== CLion for Embedded and Cross-Platform Development
+
+link:https://www.jetbrains.com/clion/[**CLion**] (https://www.jetbrains.com/clion/) from JetBrains is the most capable C{pp} IDE for embedded and cross-platform Vulkan work. It is commercial, but a 30-day trial is available and students can get a free educational license at link:https://www.jetbrains.com/community/education/[jetbrains.com/community/education].
+
+Two CLion features make it especially valuable for embedded work:
+
+==== Remote Development (SSH)
+
+CLion's **Remote Development** mode (introduced in CLion 2022.3) lets you open a project *on the target device* (Raspberry Pi, Jetson, etc.) over SSH while the full IDE UI runs locally. All editing, code completion, and debugging use the native compiler and libraries *on the device*, so cross-compilation toolchain mismatches become irrelevant. To enable it:
+
+1.  In CLion, choose **File → Remote Development → SSH**.
+2.  Add a connection entry pointing at the target device's IP address, SSH port (default 22), and your username.
+3.  CLion uploads a small server backend to the device the first time it connects, then opens the remote project in the full editor.
+
+The device must have at least a few hundred megabytes of free storage and run a 64-bit ARM Linux. Raspberry Pi 5 and Jetson modules are comfortable with this; Raspberry Pi 4 with the full Raspberry Pi OS (64-bit) also works.
+
+==== Cross-Compilation via CMake Toolchain Files
+
+If the target device is too resource-constrained for remote development — or if you are building for a bare-metal embedded OS — CLion also supports **CMake cross-compilation** with a toolchain file. You install the cross-compiler on your host and point CLion at a `CMakeToolchain-arm64.cmake` file:
+
+[source,cmake]
+----
+# CMakeToolchain-aarch64-linux.cmake
+# Install the toolchain on Ubuntu/Debian:  sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+
+set(CMAKE_C_COMPILER   aarch64-linux-gnu-gcc)
+set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+
+# Point at sysroot if you have one from Raspberry Pi OS or the Jetson L4T rootfs.
+# Leave these unset if you are relying solely on the cross-toolchain's default sysroot.
+# set(CMAKE_SYSROOT /opt/sysroots/aarch64-rpi)
+
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+----
+
+In CLion, add a **CMake profile** (**Settings → Build, Execution, Deployment → CMake → +**), set the **CMake options** to `-DCMAKE_TOOLCHAIN_FILE=/path/to/CMakeToolchain-aarch64-linux.cmake`, and select that profile when building for the target. You can keep a separate profile for your native x86 build to iterate on the host.
+
+For 32-bit ARM targets (older SBCs, some automotive SoCs) replace `aarch64-linux-gnu` with `arm-linux-gnueabihf`.
+
+== Raspberry Pi: Vulkan Compute Setup
+
+The Raspberry Pi 4 and 5 run the **v3dv** Vulkan driver, which is part of the Mesa open-source graphics stack. As of Raspberry Pi OS (Bookworm, 64-bit), a recent-enough Mesa is installed by default. Confirm the driver is present:
+
+[source,bash]
+----
+# On the Raspberry Pi (64-bit RPi OS Bookworm or later):
+sudo apt update && sudo apt install -y mesa-vulkan-drivers vulkan-tools
+
+# Confirm v3dv is recognized:
+vulkaninfo --summary | grep driverName
+# Expected output:  driverName = V3DV (Broadcom)
+----
+
+Install Vulkan development headers and the Validation Layers:
+
+[source,bash]
+----
+sudo apt install -y \
+    libvulkan-dev \
+    vulkan-validationlayers \
+    spirv-tools \
+    glslang-tools      # provides glslangValidator
+----
+
+For `slangc`, download a pre-built Linux AArch64 release from link:https://github.com/shader-slang/slang/releases[github.com/shader-slang/slang/releases] and place it on your `PATH`.
+
+=== Vulkan Limits on the Raspberry Pi
+
+The VideoCore VI GPU (Pi 4) and VideoCore VII (Pi 5) conform to Vulkan 1.2+ but have the tight limits typical of mobile hardware:
+
+*   `maxComputeWorkGroupInvocations`: **256** (Pi 4) / **256** (Pi 5)
+*   `maxComputeSharedMemorySize`: **16 384 bytes** (16 KB)
+*   Subgroup size: **16** (Pi 4 — query it; don't hard-code)
+*   No `shaderInt64` on Pi 4; Pi 5 may vary by firmware version
+
+Apply all of the defensive querying and workgroup-clamping practices from the Android section. They are equally important here.
+
+=== Building a Compute App for the Raspberry Pi (Remote Development)
+
+With CLion's Remote Development connected to the Pi, the workflow is ordinary CMake development:
+
+[source,bash]
+----
+# On the Raspberry Pi, in the project directory CLion opened remotely:
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4           # Pi 4 has 4 cores; -j4 saturates them
+./my_headless_compute
+----
+
+CLion's native debugger (LLDB or GDB, whichever is installed on the Pi) works over the same SSH tunnel — set breakpoints, inspect `VkResult` values, and step through command-buffer recording code exactly as on the desktop.
+
+=== Raspberry Pi Resources
+
+*   link:https://docs.mesa3d.org/drivers/v3dv.html[Mesa v3dv driver documentation] — feature matrix, known limitations, and kernel version requirements.
+*   link:https://www.raspberrypi.com/documentation/computers/raspberry-pi.html[Raspberry Pi hardware documentation] — GPU specifications and `start_x.elf` firmware notes.
+*   link:https://github.com/Igalia/v3dv[v3dv source] — the open-source driver; useful to read when you hit a missing feature.
+
+== NVIDIA Jetson: Vulkan Compute Setup
+
+NVIDIA Jetson modules (Jetson Orin, Jetson AGX Xavier, Jetson Nano) run a proprietary NVIDIA Vulkan driver as part of the **JetPack SDK** — the same underlying GPU IP as NVIDIA's mobile parts, exposed through a full Vulkan implementation.
+
+=== JetPack SDK Installation
+
+Download **JetPack** from link:https://developer.nvidia.com/embedded/jetpack[developer.nvidia.com/embedded/jetpack]. JetPack is a comprehensive SDK that includes:
+
+*   **L4T (Linux for Tegra)** — the Jetson-specific Ubuntu-based OS image.
+*   **CUDA** — NVIDIA's GPGPU compute API (runs alongside Vulkan on the same hardware).
+*   **cuDNN** — deep-learning primitives.
+*   **TensorRT** — inference optimizer.
+*   **Vulkan headers and loader** — included in L4T from JetPack 5.x onward.
+
+Flash the target module with the SDK Manager tool (Windows/Linux host) or by following the Jetson-specific flashing instructions in the JetPack documentation. After flashing, confirm Vulkan:
+
+[source,bash]
+----
+# On the Jetson:
+vulkaninfo --summary | grep -E "driverName|apiVersion"
+# Expected:  driverName = NVIDIA (or similar), apiVersion = 1.x
+----
+
+Install development headers:
+
+[source,bash]
+----
+sudo apt install -y libvulkan-dev vulkan-validationlayers
+----
+
+=== Cross-Compiling for Jetson from an x86 Host
+
+Jetson is 64-bit ARM (aarch64). You can use the same `CMakeToolchain-aarch64-linux.cmake` from the Raspberry Pi section, but with the Jetson L4T sysroot instead of the Raspberry Pi OS sysroot. NVIDIA provides a Docker-based cross-compilation environment called **Jetson Linux Developer Guide** that packages the full L4T rootfs and toolchain together — consult link:https://docs.nvidia.com/jetson/archives/l4t-archived/[docs.nvidia.com/jetson] for the version matching your JetPack release.
+
+Alternatively, CLion's Remote Development over SSH works excellently on Jetson, because the modules are fast enough (Cortex-A78AE on Orin) to run the CLion server backend comfortably.
+
+=== CUDA and Vulkan Interop on Jetson
+
+Jetson is one of the few embedded targets where **CUDA–Vulkan interop** (`VK_KHR_external_memory`, `VK_KHR_external_semaphore`) is genuinely useful: you can run a CUDA kernel and a Vulkan compute kernel on the same data, in the same hardware engine, by sharing `VkDeviceMemory` with a CUDA `cudaExternalMemory_t`. This allows incremental migration: rewrite one stage to Vulkan compute while the rest of the pipeline stays in CUDA. NVIDIA documents this in the link:https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#interoperability-with-vulkan[CUDA Interoperability Guide].
+
+=== Jetson Resources
+
+*   link:https://developer.nvidia.com/embedded/jetpack[JetPack SDK] — download, flashing instructions, and release notes.
+*   link:https://developer.nvidia.com/embedded/community/jetson-projects[Jetson AI Projects] — community samples, many of which use Vulkan compute alongside TensorRT.
+*   link:https://docs.nvidia.com/jetson/archives/l4t-archived/[L4T Developer Guide] — full Linux-level documentation including Vulkan layer paths and driver notes.
+
+== Headless Compute: No Window, No Surface
+
+A defining feature of many embedded systems is that they have **no display at all**. The good news is that Vulkan compute does not need one. Everything in this tutorial series — pipelines, descriptors, dispatches — works without ever creating a `VkSurfaceKHR` or a swapchain.
+
+To run headless, simply *omit* the surface and presentation machinery:
+
+*   Do **not** enable `VK_KHR_surface`, `VK_KHR_swapchain`, or any platform `*_surface` extension.
+*   Select a queue family that reports `VK_QUEUE_COMPUTE_BIT`; you do not need presentation support, so skip the `vkGetPhysicalDeviceSurfaceSupportKHR` check entirely.
+*   Submit dispatches and read results back through buffers, exactly as in the Android read-back example from the earlier section.
+
+[source,cpp]
+----
+// Headless device: request a compute-capable queue, no surface/presentation needed.
+uint32_t computeFamily = findQueueFamily(physicalDevice, VK_QUEUE_COMPUTE_BIT);
+
+float priority = 1.0f;
+VkDeviceQueueCreateInfo queueInfo{
+    .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+    .queueFamilyIndex = computeFamily,
+    .queueCount       = 1,
+    .pQueuePriorities = &priority,
+};
+// No VK_KHR_swapchain in the enabled device extensions — pure compute.
+----
+
+The `findQueueFamily` helper above is worth spelling out, because on embedded parts you often want a *dedicated* compute queue (one that does not also advertise graphics) so your dispatches do not contend with any display work:
+
+[source,cpp]
+----
+uint32_t findQueueFamily(VkPhysicalDevice dev, VkQueueFlags required) {
+    uint32_t count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(dev, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> families(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(dev, &count, families.data());
+
+    // First pass: prefer a compute-only family (no graphics) to avoid contention.
+    for (uint32_t i = 0; i < count; ++i) {
+        const bool hasCompute  = families[i].queueFlags & VK_QUEUE_COMPUTE_BIT;
+        const bool hasGraphics = families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT;
+        if (hasCompute && !hasGraphics) return i;
+    }
+    // Fallback: any family that satisfies the requirement.
+    for (uint32_t i = 0; i < count; ++i)
+        if ((families[i].queueFlags & required) == required) return i;
+
+    throw std::runtime_error("no suitable compute queue family");
+}
+----
+
+This same headless path is what you would use for a server-side compute node, a CI runner that validates kernels, or a robotics controller with no screen.
+
+== Drivers and Conformance Vary More Than on Desktop
+
+On embedded parts you cannot assume the latest Vulkan version or a fully optional feature set:
+
+*   Always gate features behind `vkEnumerateInstanceVersion` and feature queries; an SBC may only offer Vulkan 1.1 or 1.2.
+*   Some embedded drivers omit optional capabilities you took for granted, such as `shaderInt64`, certain subgroup operations, or **Buffer Device Address**. Provide a fallback path or fail gracefully with a clear message.
+*   Mesa drivers (`v3dv`, `lavapipe` for software fallback) are common here; `lavapipe` in particular is a useful CPU-based conformant Vulkan implementation for testing compute on machines with no GPU at all.
+
+Because `lavapipe` runs entirely on the CPU, it is ideal for a CI gate that verifies your kernels even on a build machine that has no GPU. You select it through the standard Vulkan loader by pointing `VK_ICD_FILENAMES` at the Mesa software ICD before launching your headless app:
+
+[source,bash]
+----
+# Run the headless compute app against the CPU-based lavapipe driver.
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+./my_headless_compute --validate
+----
+
+This lets the *same binary* that ships on the embedded device be smoke-tested in CI, which is invaluable when the real hardware is scarce.
+
+== Portability Through clvk and OpenCL
+
+Embedded vendors frequently ship an OpenCL stack rather than a hand-written Vulkan compute path, especially in vision and ML toolchains. `clvk` provides a conformant OpenCL 3.0 runtime layered on top of Vulkan. This is a powerful portability story for embedded:
+
+*   A robotics or vision codebase written against OpenCL can run on any embedded device with a Vulkan-only driver by linking against `clvk` — no kernel or host-code rewrite required.
+*   Conversely, if you target Vulkan directly, `clspv` lets you reuse existing OpenCL C kernels as SPIR-V on these same devices.
+
+For embedded teams, this often determines whether an existing algorithm library can be deployed at all on a Vulkan-only SoC.
+
+=== Building clvk for Embedded Linux
+
+Cross-compile `clvk` on your x86 host using the same aarch64 toolchain from the cross-compilation section above, then deploy the resulting library to the device:
+
+[source,bash]
+----
+git clone --recursive https://github.com/kpet/clvk.git
+cd clvk && mkdir build-arm64 && cd build-arm64
+
+cmake .. \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=/path/to/CMakeToolchain-aarch64-linux.cmake \
+    -DCLVK_COMPILER_AVAILABLE=OFF   # use pre-compiled SPIR-V; no clspv on device
+
+ninja OpenCL
+
+# Deploy to the target.
+scp libOpenCL.so pi@raspberrypi.local:/usr/local/lib/
+ssh pi@raspberrypi.local "sudo ldconfig"
+----
+
+If building *natively* on the device (practical on Jetson, slow but possible on Pi), omit the `-DCMAKE_TOOLCHAIN_FILE` argument:
+
+[source,bash]
+----
+# On the Pi or Jetson directly:
+git clone --recursive https://github.com/kpet/clvk.git
+cd clvk && mkdir build && cd build
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCLVK_COMPILER_AVAILABLE=OFF
+ninja OpenCL
+sudo cp libOpenCL.so /usr/local/lib/ && sudo ldconfig
+----
+
+=== Verifying clvk with clinfo
+
+The `clinfo` utility reports every OpenCL platform and device visible on the system. After deploying `libOpenCL.so`, test it:
+
+[source,bash]
+----
+# On the target device.
+sudo apt install -y clinfo    # or build from source on older distros
+
+LD_PRELOAD=/usr/local/lib/libOpenCL.so clinfo
+----
+
+Successful output shows a platform named something like `clvk` or `Vulkan-backed OpenCL` with a GPU device entry. If you see "No platforms found", double-check that `libOpenCL.so` is on the linker search path (`ldconfig -p | grep OpenCL`) and that a Vulkan-capable driver is installed (`vulkaninfo --summary` must succeed first).
+
+=== Integrating clvk into a CMake Project on Embedded Linux
+
+Once `libOpenCL.so` is deployed, consuming it from a CMake project is straightforward:
+
+[source,cmake]
+----
+# In your project's CMakeLists.txt:
+find_package(OpenCL REQUIRED)   # finds libOpenCL.so via pkg-config or find_library
+target_link_libraries(my_vision_app OpenCL::OpenCL)
+----
+
+At runtime, `LD_LIBRARY_PATH` or `ldconfig` must resolve `libOpenCL.so` to the `clvk` library rather than any vendor-supplied OpenCL runtime that might also be present. On Jetson, where NVIDIA ships its own CUDA-backed OpenCL, be intentional about which library is loaded:
+
+[source,bash]
+----
+# Force clvk instead of the NVIDIA OpenCL runtime.
+LD_PRELOAD=/usr/local/lib/clvk/libOpenCL.so ./my_vision_app
+----
+
+=== Running OpenCL Kernels on Raspberry Pi via clvk — A Complete Example
+
+The following end-to-end example runs an OpenCL vector-scale kernel on a Raspberry Pi 5 through `clvk` backed by the `v3dv` Vulkan driver. The kernel is the same one from Chapter 5; nothing about it is Pi-specific.
+
+*Step 1: Compile the kernel on the host with `clspv`.*
+
+[source,bash]
+----
+# On the x86 host (clspv is available for Linux x86-64):
+clspv scale.cl -o scale.spv --spv-version=1.3
+scp scale.spv pi@raspberrypi.local:~/my_app/
+----
+
+*Step 2: Run the host application on the Pi.*
+
+[source,bash]
+----
+# Compile and run on the Pi (or cross-compile and scp the binary).
+g++ -std=c++20 scale_host.cpp -o scale_app -lOpenCL
+./scale_app scale.spv
+----
+
+*Step 3: Confirm Vulkan is doing the work.*
+
+Enable the Vulkan Validation Layer before your run to verify that `clvk` is routing calls through the `v3dv` driver:
+
+[source,bash]
+----
+VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation ./scale_app scale.spv 2>&1 | head -20
+# If you see "VUID" messages, clvk is talking to Vulkan — no messages means all is clean.
+----
+
+== Real-Time and Safety Considerations
+
+Many embedded workloads have hard deadlines (a lidar frame must be processed before the next arrives) or safety obligations (an instrument cluster must never freeze):
+
+*   Prefer **predictable** dispatch sizes and avoid data-dependent loops with unbounded iteration counts inside kernels.
+*   Use **timeline semaphores** (Chapter 8) to build deterministic, deadline-aware pipelines rather than relying on `vkQueueWaitIdle`.
+*   Where certification is required, target **Vulkan SC**, which removes nondeterministic behavior and runtime error reporting in favor of an offline-validated, deterministic execution model. The Vulkan SC specification is published at link:https://www.khronos.org/vulkansc/[khronos.org/vulkansc].
+*   Account for long device lifetimes: pin to a known driver version and re-validate kernels against it, since field updates may be rare or impossible.
+
+== Additional Tools and References
+
+The table below collects the third-party tools referenced throughout this chapter in one place:
+
+[cols="1,1,1"]
+|===
+|Tool |Purpose |Link
+
+|Android Studio |Android IDE with NDK and native debugger |link:https://developer.android.com/studio[developer.android.com/studio]
+|Android NDK |Native Development Kit (C{pp} for Android) |link:https://developer.android.com/ndk[developer.android.com/ndk]
+|Android GPU Inspector (AGI) |Vendor-neutral Vulkan frame profiler for Android |link:https://gpuinspector.dev/[gpuinspector.dev]
+|Arm Performance Studio |Mali/Immortalis profiling + offline shader analysis |link:https://developer.arm.com/Tools%20and%20Software/Arm%20Performance%20Studio[developer.arm.com]
+|Qualcomm Snapdragon Profiler |Adreno GPU profiler and counter capture |link:https://developer.qualcomm.com/software/snapdragon-profiler[developer.qualcomm.com]
+|PVRTune / PowerVR SDK |Imagination GPU profiling and tools |link:https://developer.imaginationtech.com/pvrtune/[developer.imaginationtech.com]
+|CLion |C{pp} IDE with SSH remote development |link:https://www.jetbrains.com/clion/[jetbrains.com/clion]
+|JetPack SDK |NVIDIA Jetson OS + Vulkan + CUDA |link:https://developer.nvidia.com/embedded/jetpack[developer.nvidia.com/embedded/jetpack]
+|Raspberry Pi OS |Vulkan-capable OS with Mesa v3dv |link:https://www.raspberrypi.com/software/[raspberrypi.com/software]
+|Mesa v3dv |Open-source Vulkan driver for Raspberry Pi |link:https://docs.mesa3d.org/drivers/v3dv.html[docs.mesa3d.org/drivers/v3dv.html]
+|lavapipe (Mesa) |CPU-based conformant Vulkan for headless CI |link:https://docs.mesa3d.org/drivers/llvmpipe.html[docs.mesa3d.org/drivers/llvmpipe.html]
+|clvk |OpenCL 3.0 runtime on Vulkan |link:https://github.com/kpet/clvk[github.com/kpet/clvk]
+|clspv |OpenCL C to SPIR-V compiler |link:https://github.com/google/clspv[github.com/google/clspv]
+|OpenCL-ICD-Loader |Platform-agnostic OpenCL entry-point loader |link:https://github.com/KhronosGroup/OpenCL-ICD-Loader[github.com/KhronosGroup/OpenCL-ICD-Loader]
+|Slang (slangc) |Primary shader language for this tutorial |link:https://github.com/shader-slang/slang/releases[github.com/shader-slang/slang/releases]
+|Vulkan SC |Safety-critical Vulkan profile for automotive/medical |link:https://www.khronos.org/vulkansc/[khronos.org/vulkansc]
+|===
+
+== Summary
+
+Embedded Vulkan compute extends the mobile mindset to a world without screens: SBCs, edge-AI modules, automotive clusters, and robotics controllers. For Android, the full development environment centers on **Android Studio** with NDK and CMake, `clvk` as a `jniLibs` shared library, and `clspv` compiling kernels offline. For embedded Linux targets like Raspberry Pi and Jetson, use **CLion Remote Development** over SSH for a native-feeling IDE loop, or set up an aarch64 cross-compilation toolchain for resource-constrained devices. Build and deploy `clvk` to port any OpenCL codebase onto a Vulkan-only driver with no kernel rewrites. Run **headless** by simply omitting the surface and swapchain, query capabilities defensively because driver coverage varies, and respect real-time and safety constraints with deterministic, deadline-aware pipelines. The compute techniques from the rest of this series apply unchanged — they just have to live within an even tighter, longer-lived envelope.
+
+xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/03_mobile_optimization.adoc[Previous: Optimizing for Mobile GPUs] | xref:Advanced_Vulkan_Compute/conclusion.adoc[Next: Series Conclusion]

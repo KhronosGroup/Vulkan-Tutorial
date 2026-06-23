@@ -12,7 +12,7 @@ A **Divergence Audit** is a methodical process for identifying where these "dive
 === Tool-Based Identification
 Look for metrics in your profiler like **Active Lane Ratio** or **Instruction Execution Efficiency**. A low ratio indicates that many lanes in your subgroups are being idled by divergent control flow.
 
-For example, in NVIDIA Nsight, you might look at the "Warp Execution Efficiency" metric. If it's consistently below 50%, you likely have a significant divergence problem.
+For example, in NVIDIA Nsight, you might look at the "Warp Execution Efficiency" metric. If it's consistently below 50%, you likely have a significant divergence problem. The mobile profilers introduced for mobile work (Arm Performance Studio, Qualcomm Snapdragon Profiler) expose the same idea under names like "warp/wave occupancy" or "thread divergence" — and divergence is *especially* costly on mobile, where wasted lanes still consume power even while idled. See xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/03_mobile_optimization.adoc[Optimizing for Mobile GPUs] for the device-side profiling workflow.
 
 === In-Shader Visualization
 You can also use **Subgroup Operations** (Chapter 4) to manually inspect divergence directly in your shader. By using `WaveActiveBallot()`, you can generate a bitmask of which invocations are taking a particular path.

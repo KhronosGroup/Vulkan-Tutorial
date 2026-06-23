@@ -1,0 +1,35 @@
+:pp: {plus}{plus}
+= Mobile and Embedded Compute: Introduction
+
+== Overview
+
+So far in this series, we have largely assumed a "big iron" environment: a discrete desktop or workstation GPU with gigabytes of dedicated VRAM, a wide memory bus, and a generous power budget. But the vast majority of Vulkan-capable devices in the world are not desktop GPUs at all — they are the **mobile** and **embedded** processors found in phones, tablets, automotive dashboards, set-top boxes, drones, and single-board computers.
+
+Vulkan was designed from the start to be a cross-platform API, and that includes these power- and area-constrained devices. In fact, the single largest installed base of Vulkan drivers today runs on **Android** phones. If you want your compute workloads to reach billions of devices, you cannot afford to treat mobile as an afterthought.
+
+This chapter introduces compute development on mobile and embedded platforms, starting from development environment setup and going through optimization and portability. It covers Android Studio and NDK configuration, how to integrate OpenCL-on-Vulkan tooling (`clvk`/`clspv`) into Android and embedded Linux projects, and how to set up CLion for SSH remote development on devices like the Raspberry Pi and NVIDIA Jetson. For higher-level Android packaging, the main tutorial's xref:14_Android.adoc[Android] chapter remains the primary reference; here we focus on *compute-specific* concerns and what changes when the hardware underneath you is a tile-based mobile GPU rather than a desktop part.
+
+== Why Mobile Compute Matters
+
+Mobile GPUs are no longer toys. Modern mobile parts from Arm (Mali, Immortalis), Qualcomm (Adreno), Imagination (PowerVR), and Apple (on iOS via MoltenVK) support:
+
+*   **Compute shaders** with full workgroup and shared-memory semantics.
+*   **Subgroup operations** (the "Wave" intrinsics from Chapter 4), often with a fixed or queryable subgroup size.
+*   **16-bit storage and arithmetic** (FP16/Int16), which is frequently *faster and more power-efficient* than 32-bit on these devices.
+*   **Buffer Device Address**, **Descriptor Indexing**, and increasingly the features needed to run layered ecosystems like `clvk`.
+
+This makes mobile an excellent target for on-device machine learning inference, computational photography, real-time video processing, and physics — all of the workloads we have been building toward.
+
+== Why Embedded Compute Matters
+
+Beyond the phone in your pocket, Vulkan compute increasingly runs on a long tail of **embedded** systems: automotive infotainment and driver-assistance units, industrial vision systems, robotics controllers, digital signage, and single-board computers like the Raspberry Pi (via the `v3dv` driver) or NVIDIA Jetson modules. These devices share many of mobile's constraints — limited power, shared memory, thermal limits — but add their own: real-time requirements, safety certification, headless operation, and unusually long product lifetimes.
+
+== Chapter Roadmap
+
+1.  **Compute on Android**: Setting up Android Studio, the NDK, and Gradle shader compilation; how to dispatch and consume compute results; using `clvk` for OpenCL portability on Android; and the architectural quirks of tile-based mobile GPUs.
+2.  **Optimizing for Mobile GPUs**: Power, bandwidth, and precision strategies — minimizing VRAM traffic, exploiting FP16, and keeping the device cool — with links to vendor profilers.
+3.  **Beyond Mobile: Embedded and Headless Vulkan Compute**: Development environment setup for CLion, Raspberry Pi, and NVIDIA Jetson; running `clvk` on embedded Linux; headless Vulkan compute with no display; and a complete tool reference table.
+
+By the end of this chapter you will understand that "advanced compute" is not the exclusive domain of the desktop — the same parallel mindset applies, but the *constraints* sharpen, and that is where careful engineering pays off the most.
+
+xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/03_assistant_led_optimization.adoc[Previous: Assistant-Led Optimization] | xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.adoc[Next: Compute on Android]

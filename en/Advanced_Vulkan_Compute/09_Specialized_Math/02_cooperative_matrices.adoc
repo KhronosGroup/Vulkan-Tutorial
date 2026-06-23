@@ -113,7 +113,7 @@ void main() {
 
 The physical dimensions (latexmath:[M, N, K]) are not arbitrary. You must query `VkPhysicalDeviceCooperativeMatrixPropertiesKHR` to find supported combinations.
 
-* **Subgroup Size**: On NVIDIA, these units typically expect a subgroup size of 32. On AMD, it might be 64. Using the wrong subgroup size in your `[numthreads]` will result in a failure to initialize the cooperative matrix types.
+* **Subgroup Size**: On NVIDIA, these units typically expect a subgroup size of 32. On AMD, it might be 64. Using the wrong subgroup size in your `[numthreads]` will result in a failure to initialize the cooperative matrix types. This matters even more on mobile: a growing number of Arm and Qualcomm parts expose `VK_KHR_cooperative_matrix` for on-device ML, but their subgroup sizes differ from desktop, so always query the supported configurations rather than copying a desktop value (see xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.adoc[Compute on Android]).
 * **Precision Trade-offs**: It is standard practice to use `float16` for the input matrices (A and B) to maximize throughput and save bandwidth, while using `float32` for the accumulator (C and D). This "Mixed Precision GEMM" provides the best balance of speed and numerical stability.
 * **Alignment**: Memory addresses passed to `.load()` and `.store()` usually require specific alignment (e.g., 16 bytes). Loading from a misaligned address can lead to a device lost error.
 

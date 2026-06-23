@@ -31,6 +31,7 @@ This tutorial series is organized into several key areas:
 6.  **GPU-Driven Pipelines** - Moving command generation and workload management entirely to the GPU for autonomous execution.
 7.  **Asynchronous Orchestration** - Running compute and graphics concurrently using Synchronization 2 and multiple hardware queues.
 8.  **Advanced Math & Optimization** - Using Cooperative Matrices for linear algebra and auditing kernels for divergence and throughput.
+9.  **Mobile & Embedded Compute** - Running compute on Android and embedded devices, optimizing for power and bandwidth, and going headless beyond the phone.
 
 === Prerequisites
 
@@ -59,5 +60,6 @@ Let's dive into the world of high-performance GPU computing!
 * xref:Advanced_Vulkan_Compute/09_Specialized_Math/01_introduction.adoc[Cooperative Matrices and Specialized Math]
 * xref:Advanced_Vulkan_Compute/10_Performance_Optimization/01_introduction.adoc[Performance Auditing and Optimization]
 * xref:Advanced_Vulkan_Compute/11_Diagnostics_and_Refinement/01_introduction.adoc[Diagnostics and AI-Assisted Compute Refinement]
+* xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/01_introduction.adoc[Mobile and Embedded Compute]
 
 xref:11_Compute_Shader.adoc[Previous: Basic Compute Shaders] | xref:Advanced_Vulkan_Compute/02_Compute_Architecture/01_introduction.adoc[Next: Compute Architecture]

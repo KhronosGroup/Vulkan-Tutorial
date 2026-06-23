@@ -79,6 +79,7 @@ float3 safeNorm(float3 v)
 // ---------------------------------------------------------------------------
 // Entry point: ikMain
 // ---------------------------------------------------------------------------
+[shader("compute")]
 [numthreads(64, 1, 1)]
 void ikMain(uint3 id : SV_DispatchThreadID)
 {
@@ -93,7 +94,7 @@ void ikMain(uint3 id : SV_DispatchThreadID)
     float r2 = job.reach.z;   // joint2 → end effector
 
     float totalReach = r0 + r1 + r2;
-    float3 reachArr[3] = { r0, r1, r2 };
+    float reachArr[3] = { r0, r1, r2 };
 
     // Initialise joint chain in rest pose: stretched along +X from the base.
     float3 p[4];

@@ -14,7 +14,7 @@ endif()
 
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
-find_package (Vulkan REQUIRED)
+find_package (Vulkan 1.4.335 REQUIRED)      # Require Vulkan SDK version 1.4.335 or higher
 find_package (tinyobjloader REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
@@ -139,6 +139,9 @@ function (add_chapter CHAPTER_NAME)
     target_compile_definitions(${CHAPTER_NAME} PRIVATE USE_CPP20_MODULES=1)
   endif()
 
+  # Define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS to treat VK_ERROR_OUT_OF_DATE_KHR as a success code
+  target_compile_definitions(${CHAPTER_NAME} PRIVATE "VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS" )
+
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
       set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
@@ -210,20 +213,16 @@ add_chapter (16_frames_in_flight
 add_chapter (17_swap_chain_recreation
   SHADER 09_shader_base)
 
-add_chapter (18_vertex_input
-  SHADER 18_shader_vertexbuffer
-  LIBS glm::glm)
-
 add_chapter (19_vertex_buffer
-  SHADER 18_shader_vertexbuffer
+  SHADER 19_shader_vertexbuffer
   LIBS glm::glm)
 
 add_chapter (20_staging_buffer
-  SHADER 18_shader_vertexbuffer
+  SHADER 19_shader_vertexbuffer
   LIBS glm::glm)
 
 add_chapter (21_index_buffer
-  SHADER 18_shader_vertexbuffer
+  SHADER 19_shader_vertexbuffer
   LIBS glm::glm)
 
 add_chapter (22_descriptor_layout

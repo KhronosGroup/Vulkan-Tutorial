@@ -428,7 +428,7 @@ class VulkanApplication
 		    .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
 		    .apiVersion         = VK_API_VERSION_1_3};
 
-		auto extensions = getRequiredExtensions();
+		auto extensions = getRequiredInstanceExtensions();
 
 		vk::InstanceCreateInfo createInfo{
 		    .pApplicationInfo        = &appInfo,
@@ -471,96 +471,87 @@ class VulkanApplication
 #endif
 	}
 
+	bool isDeviceSuitable(vk::raii::PhysicalDevice const &physicalDevice)
+	{
+		// Check if the physicalDevice supports the Vulkan 1.3 API version
+		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
+
+		// Check if any of the queue families support graphics operations
+		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
+		bool supportsGraphics = std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+
+		// Check if all required physicalDevice extensions are available
+		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
+		bool supportsAllRequiredExtensions =
+		    std::ranges::all_of(requiredDeviceExtension,
+		                        [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
+			                        return std::ranges::any_of(availableDeviceExtensions,
+			                                                   [requiredDeviceExtension](auto const &availableDeviceExtension) { return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0; });
+		                        });
+
+		// Check if the physicalDevice supports the required features
+		auto features =
+		    physicalDevice
+		        .template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+
+		// Return true if the physicalDevice meets all the criteria
+		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+	}
+
 	void pickPhysicalDevice()
 	{
-		std::vector<vk::raii::PhysicalDevice> devices = instance.enumeratePhysicalDevices();
-		const auto                            devIter = std::ranges::find_if(
-            devices,
-            [&](auto const &device) {
-                // Check if the device supports the Vulkan 1.3 API version
-                bool supportsVulkan1_3 = device.getProperties().apiVersion >= VK_API_VERSION_1_3;
-
-                // Check if any of the queue families support graphics operations
-                auto queueFamilies = device.getQueueFamilyProperties();
-                bool supportsGraphics =
-                    std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
-
-                // Check if all required device extensions are available
-                auto availableDeviceExtensions = device.enumerateDeviceExtensionProperties();
-                bool supportsAllRequiredExtensions =
-                    std::ranges::all_of(requiredDeviceExtension,
-			                                                       [&availableDeviceExtensions](auto const &requiredDeviceExtension) {
-                                            return std::ranges::any_of(availableDeviceExtensions,
-				                                                                                  [requiredDeviceExtension](auto const &availableDeviceExtension) {
-                                                                           return strcmp(availableDeviceExtension.extensionName, requiredDeviceExtension) == 0;
-                                                                       });
-                                        });
-
-                auto features                 = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-                bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
-
-                return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
-            });
-
-		if (devIter != devices.end())
+		std::vector<vk::raii::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
+		auto const                            devIter         = std::ranges::find_if(physicalDevices, [&](auto const &physicalDevice) { return isDeviceSuitable(physicalDevice); });
+		if (devIter == physicalDevices.end())
 		{
-			physicalDevice = *devIter;
+			throw std::runtime_error("failed to find a suitable GPU!");
+		}
+		physicalDevice = *devIter;
 
-			// Check for Vulkan profile support
-			VpProfileProperties profileProperties;
+		// Check for Vulkan profile support
+		VpProfileProperties profileProperties;
 #if PLATFORM_ANDROID
-			strcpy(profileProperties.name, VP_KHR_ROADMAP_2022_NAME);
+		strcpy(profileProperties.name, VP_KHR_ROADMAP_2022_NAME);
 #else
-			strcpy(profileProperties.profileName, VP_KHR_ROADMAP_2022_NAME);
+		strcpy(profileProperties.profileName, VP_KHR_ROADMAP_2022_NAME);
 #endif
-			profileProperties.specVersion = VP_KHR_ROADMAP_2022_SPEC_VERSION;
+		profileProperties.specVersion = VP_KHR_ROADMAP_2022_SPEC_VERSION;
 
-			VkBool32 supported = VK_FALSE;
-			bool     result    = false;
+		VkBool32 supported = VK_FALSE;
+		bool     result    = false;
 
 #if PLATFORM_ANDROID
-			// Create a vp::ProfileDesc from our VpProfileProperties
-			vp::ProfileDesc profileDesc = {
-			    profileProperties.name,
-			    profileProperties.specVersion};
+		// Create a vp::ProfileDesc from our VpProfileProperties
+		vp::ProfileDesc profileDesc = {profileProperties.name, profileProperties.specVersion};
 
-			// Use vp::GetProfileSupport for Android
-			result = vp::GetProfileSupport(
-			    *physicalDevice,        // Pass the physical device directly
-			    &profileDesc,           // Pass the profile description
-			    &supported              // Output parameter for support status
-			);
+		// Use vp::GetProfileSupport for Android
+		result = vp::GetProfileSupport(*physicalDevice,        // Pass the physical device directly
+		                               &profileDesc,           // Pass the profile description
+		                               &supported              // Output parameter for support status
+		);
 #else
-			// Use vpGetPhysicalDeviceProfileSupport for Desktop
-			VkResult vk_result = vpGetPhysicalDeviceProfileSupport(
-			    *instance,
-			    *physicalDevice,
-			    &profileProperties,
-			    &supported);
-			result = vk_result == static_cast<int>(vk::Result::eSuccess);
+		// Use vpGetPhysicalDeviceProfileSupport for Desktop
+		VkResult vk_result = vpGetPhysicalDeviceProfileSupport(*instance, *physicalDevice, &profileProperties, &supported);
+		result             = vk_result == static_cast<int>(vk::Result::eSuccess);
 #endif
-			const char *name = nullptr;
+		const char *name = nullptr;
 #ifdef PLATFORM_ANDROID
-			name = profileProperties.name;
+		name = profileProperties.name;
 #else
-			name = profileProperties.profileName;
+		name = profileProperties.profileName;
 #endif
 
-			if (result && supported == VK_TRUE)
-			{
-				appInfo.profileSupported = true;
-				appInfo.profile          = profileProperties;
-				LOGI("Device supports Vulkan profile: %s", name);
-			}
-			else
-			{
-				LOGI("Device does not support Vulkan profile: %s", name);
-			}
+		if (result && supported == VK_TRUE)
+		{
+			appInfo.profileSupported = true;
+			appInfo.profile          = profileProperties;
+			LOGI("Device supports Vulkan profile: %s", name);
 		}
 		else
 		{
-			throw std::runtime_error("failed to find a suitable GPU!");
+			LOGI("Device does not support Vulkan profile: %s", name);
 		}
 	}
 
@@ -611,11 +602,18 @@ class VulkanApplication
 
 	void createSwapChain()
 	{
-		auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
-		swapChainExtent          = chooseSwapExtent(surfaceCapabilities);
-		swapChainSurfaceFormat   = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR(*surface));
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
+		swapChainExtent                                = chooseSwapExtent(surfaceCapabilities);
+		uint32_t minImageCount                         = chooseSwapMinImageCount(surfaceCapabilities);
+
+		std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
+		swapChainSurfaceFormat                             = chooseSwapSurfaceFormat(availableFormats);
+
+		std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR(*surface);
+		vk::PresentModeKHR              presentMode           = chooseSwapPresentMode(availablePresentModes);
+
 		vk::SwapchainCreateInfoKHR swapChainCreateInfo{.surface          = *surface,
-		                                               .minImageCount    = chooseSwapMinImageCount(surfaceCapabilities),
+		                                               .minImageCount    = minImageCount,
 		                                               .imageFormat      = swapChainSurfaceFormat.format,
 		                                               .imageColorSpace  = swapChainSurfaceFormat.colorSpace,
 		                                               .imageExtent      = swapChainExtent,
@@ -624,7 +622,7 @@ class VulkanApplication
 		                                               .imageSharingMode = vk::SharingMode::eExclusive,
 		                                               .preTransform     = surfaceCapabilities.currentTransform,
 		                                               .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-		                                               .presentMode      = chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR(*surface)),
+		                                               .presentMode      = presentMode,
 		                                               .clipped          = true};
 
 		swapChain       = vk::raii::SwapchainKHR(device, swapChainCreateInfo);
@@ -635,11 +633,10 @@ class VulkanApplication
 	{
 		assert(swapChainImageViews.empty());
 
-		vk::ImageViewCreateInfo imageViewCreateInfo{
-		    .viewType         = vk::ImageViewType::e2D,
-		    .format           = swapChainSurfaceFormat.format,
-		    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
-		for (auto& image : swapChainImages)
+		vk::ImageViewCreateInfo imageViewCreateInfo{.viewType         = vk::ImageViewType::e2D,
+		                                            .format           = swapChainSurfaceFormat.format,
+		                                            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
+		for (auto &image : swapChainImages)
 		{
 			imageViewCreateInfo.image = image;
 			swapChainImageViews.emplace_back(device, imageViewCreateInfo);
@@ -695,8 +692,8 @@ class VulkanApplication
 		    .depthBoundsTestEnable = vk::False,
 		    .stencilTestEnable     = vk::False};
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-			.blendEnable    = vk::False,	    
-			.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+		    .blendEnable    = vk::False,
+		    .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 		vk::PipelineColorBlendStateCreateInfo colorBlending{
 		    .logicOpEnable   = vk::False,
 		    .logicOp         = vk::LogicOp::eCopy,
@@ -1401,18 +1398,25 @@ class VulkanApplication
 
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
+		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+		// here and does not need to be caught by an exception.
 		if (result == vk::Result::eErrorOutOfDateKHR)
 		{
 			recreateSwapChain();
 			return;
 		}
+		// On other success codes than eSuccess and eSuboptimalKHR we just throw an exception.
+		// On any error code, aquireNextImage already threw an exception.
 		if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
 		{
+			assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 		updateUniformBuffer(frameIndex);
 
+		// Only reset the fence if we are submitting work
 		device.resetFences(*inFlightFences[frameIndex]);
+
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
 
@@ -1426,35 +1430,23 @@ class VulkanApplication
 		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
 		queue.submit(submitInfo, *inFlightFences[frameIndex]);
 
-		try
+		const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
+		                                        .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
+		                                        .swapchainCount     = 1,
+		                                        .pSwapchains        = &*swapChain,
+		                                        .pImageIndices      = &imageIndex};
+		result = queue.presentKHR(presentInfoKHR);
+		// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+		// here and does not need to be caught by an exception.
+		if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || framebufferResized)
 		{
-			const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
-			                                        .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
-			                                        .swapchainCount     = 1,
-			                                        .pSwapchains        = &*swapChain,
-			                                        .pImageIndices      = &imageIndex};
-			result = queue.presentKHR(presentInfoKHR);
-			if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
-			{
-				framebufferResized = false;
-				recreateSwapChain();
-			}
-			else if (result != vk::Result::eSuccess)
-			{
-				throw std::runtime_error("failed to present swap chain image!");
-			}
+			framebufferResized = false;
+			recreateSwapChain();
 		}
-		catch (const vk::SystemError &e)
+		else
 		{
-			if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR))
-			{
-				recreateSwapChain();
-				return;
-			}
-			else
-			{
-				throw;
-			}
+			// There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+			assert(result == vk::Result::eSuccess);
 		}
 		frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
@@ -1486,7 +1478,7 @@ class VulkanApplication
 		return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
 	}
 
-	static vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR> &availablePresentModes)
+	static vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes)
 	{
 		assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
 		return std::ranges::any_of(availablePresentModes,
@@ -1495,9 +1487,9 @@ class VulkanApplication
 		           vk::PresentModeKHR::eFifo;
 	}
 
-	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities)
+	vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
 	{
-		if (capabilities.currentExtent.width != 0xFFFFFFFF)
+		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 		{
 			return capabilities.currentExtent;
 		}
@@ -1514,7 +1506,7 @@ class VulkanApplication
 		    std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
 	}
 
-	[[nodiscard]] std::vector<const char *> getRequiredExtensions() const
+	[[nodiscard]] std::vector<const char *> getRequiredInstanceExtensions() const
 	{
 		std::vector<const char *> extensions;
 

@@ -316,8 +316,7 @@ Different mobile vendors and devices vary in which Vulkan extensions they expose
 
 Different mobile GPU vendors have varying levels of support for Vulkan extensions:
 
-* *Dynamic Rendering Support*: Many mobile GPUs have optimized
-implementations of `VK_KHR_dynamic_rendering`. This can lead to significant performance improvements compared to traditional render passes, especially on tile-based renderers.
+* *Dynamic Rendering Support*: Many mobile GPUs support `VK_KHR_dynamic_rendering`. This simplifies the API surface, but can be slower than using traditional render passes when multiple sub passes are involved, unless one of the following tile-based optimizations is supported.
 
 * *Tile-Based Optimizations*: On tile-based GPUs (e.g., Mali, PowerVR), `VK_EXT_shader_tile_image` and `VK_KHR_dynamic_rendering_local_read` are effective because they keep reads and writes in tile memory. See the extension sections above for details; benefits are workload- and GPU-dependent.
 

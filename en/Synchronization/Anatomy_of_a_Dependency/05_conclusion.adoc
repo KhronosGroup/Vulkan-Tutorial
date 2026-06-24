@@ -1,0 +1,26 @@
+:pp: {plus}{plus}
+= Anatomy of a Synchronization Dependency: Conclusion
+
+== Summary
+
+In this chapter, we have deconstructed the fundamental "handshake" that governs all GPU operations. By distinguishing between execution and memory dependencies, we've moved beyond simply "making it work" and towards a precise, performant understanding of how to orchestrate the complex parallelism of modern Vulkan.
+
+=== Summary of Barrier Types
+
+To solidify our understanding, let's summarize the three primary barrier types used in Synchronization 2:
+
+[cols="1,2,2", options="header"]
+|===
+| Barrier Type | Purpose | Key Structure
+| **Global Memory Barrier** | Synchronizes all memory accesses across specified pipeline stages. Use this when you need a broad flush that isn't tied to a specific resource. | `vk::MemoryBarrier2`
+| **Buffer Memory Barrier** | Provides granular synchronization for a specific range of a `vk::Buffer`. Ideal for compute-to-compute or compute-to-vertex dependencies. | `vk::BufferMemoryBarrier2`
+| **Image Memory Barrier** | The most powerful barrier. Handles execution and memory dependencies while also performing mandatory **Image Layout Transitions**. | `vk::ImageMemoryBarrier2`
+|===
+
+== Final Thoughts
+
+Every dependency you define is a contract between two operations. By being surgical with your pipeline stages and access flags, you ensure that the GPU spends its time processing data rather than waiting in unnecessary bubbles. Mastering this dependency is the first step towards building high-performance, asynchronous engine architectures.
+
+== Navigation
+
+Previous: xref:Synchronization/Anatomy_of_a_Dependency/04_refined_pipeline_stages.adoc[Refined Pipeline Stages] | Next: xref:Synchronization/Pipeline_Barriers_Transitions/01_introduction.adoc[Pipeline Barriers and Transitions]

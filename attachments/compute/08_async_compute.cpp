@@ -1288,7 +1288,29 @@ class AsyncComputeApplication
                       vk::MemoryPropertyFlags props,
                       vk::raii::Buffer &buf, vk::raii::DeviceMemory &mem) const
     {
-        buf = vk::raii::Buffer(device, {.size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive});
+        // When graphics and async-compute live in different queue families, the
+        // cloth buffers are written by one family and read by the other.  Rather
+        // than emitting explicit queue-family ownership transfers (acquire/release
+        // barriers) every frame, we declare the buffers as CONCURRENT across both
+        // families.  For buffers this carries no practical cost on real drivers,
+        // and it removes the ownership-transfer requirement entirely.  When the two
+        // families are the same, exclusive mode is used.
+        std::array<uint32_t, 2> families{graphicsQueueFamily, asyncComputeQueueFamily};
+        bool concurrent = (graphicsQueueFamily != asyncComputeQueueFamily);
+
+        vk::BufferCreateInfo bci{.size = size, .usage = usage};
+        if (concurrent)
+        {
+            bci.sharingMode           = vk::SharingMode::eConcurrent;
+            bci.queueFamilyIndexCount = static_cast<uint32_t>(families.size());
+            bci.pQueueFamilyIndices   = families.data();
+        }
+        else
+        {
+            bci.sharingMode = vk::SharingMode::eExclusive;
+        }
+
+        buf = vk::raii::Buffer(device, bci);
         auto req = buf.getMemoryRequirements();
         mem = vk::raii::DeviceMemory(device,
             {.allocationSize  = req.size,

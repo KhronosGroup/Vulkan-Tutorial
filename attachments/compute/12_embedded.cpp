@@ -182,7 +182,7 @@ struct EmbeddedContext
                         vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral    |
                         vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
                         vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-                    .pfnUserCallback = &debugCallback});
+                    .pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(&debugCallback)});
         }
 
         // ---- Physical device selection ----
@@ -216,10 +216,10 @@ struct EmbeddedContext
         // variablePointers are needed when loading clspv-generated SPIR-V
         // (Chapter 5 portability path).  synchronization2 is REQUIRED in
         // Vulkan 1.3, so we can always enable it when targeting 1.3.
-        vk::PhysicalDeviceVulkan13Features v13Query{};
-        vk::PhysicalDeviceVulkan11Features v11Query{ .pNext = &v13Query };
-        vk::PhysicalDeviceFeatures2 feats2{ .pNext = &v11Query };
-        physDev.getFeatures2(&feats2);
+        auto featChain = physDev.getFeatures2<vk::PhysicalDeviceFeatures2,
+                                              vk::PhysicalDeviceVulkan11Features,
+                                              vk::PhysicalDeviceVulkan13Features>();
+        auto& v11Query = featChain.get<vk::PhysicalDeviceVulkan11Features>();
         bool haveVP = v11Query.variablePointers && v11Query.variablePointersStorageBuffer;
 
         // ---- Logical device ----
@@ -596,7 +596,7 @@ int main(int argc, char** argv)
     try {
         IKSolverDemo demo;
         demo.run(count, "shaders/12_embedded.spv", report);
-        std::cout << report;
+        printf("%s", report.c_str());
     } catch (const std::exception& e) {
         fprintf(stderr, "ERROR: %s\n", e.what());
         return 1;

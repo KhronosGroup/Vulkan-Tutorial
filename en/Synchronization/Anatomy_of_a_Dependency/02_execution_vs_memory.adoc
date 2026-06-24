@@ -1,0 +1,61 @@
+:pp: {plus}{plus}
+= Execution vs. Memory Dependencies
+
+== Introduction
+
+To understand why synchronization is so critical, we first need to look at what's happening under the hood when a GPU processes your work. Unlike a CPU, which generally executes instructions in a linear, predictable fashion, the GPU is a massive, highly-parallel array of specialized hardware units. When you submit a command buffer, the GPU doesn't just start at the top and finish at the bottom; it distributes tasks across various stages of its pipeline—geometry, rasterization, fragment shading, and more—often all at once.
+
+This parallelism is what makes Vulkan powerful, but it's also where the danger lies. If you want a fragment shader to read data that was just written by a compute shader, you must define exactly how that dependency works. In Vulkan, this is split into two distinct concepts: **Execution Dependencies** and **Memory Dependencies**.
+
+=== The "When": Execution Dependencies
+
+An **Execution Dependency** is the simplest form of synchronization. It answers the question: "When can this work start?"
+
+Imagine you have two commands: Command A and Command B. An execution dependency from A to B simply tells the GPU: "Don't start the specified pipeline stages of Command B until the specified pipeline stages of Command A have finished."
+
+This sounds straightforward, but here's the catch: on modern hardware, Command A finishing its work is *not* the same thing as its data being ready for Command B. Execution is just the trigger; memory is the substance.
+
+=== Architectural Realities: Caches and Memory Types
+
+Vulkan memory isn't just one big bucket where you store textures and buffers. Depending on your hardware, it's a complex landscape of different physical locations and access speeds. To sync effectively, you need to know what you're syncing against.
+
+On a **Discrete GPU**, you have dedicated Video RAM (VRAM) that is physically separate from your system's RAM. Moving data between these two is the job of the **DMA (Direct Memory Access)** engine—a specialized unit that can copy data across the PCI Express bus without bothering the main shader cores. When you upload a texture, you're often syncing the DMA engine with the Graphics pipeline.
+
+On the other hand, many laptops and mobile devices use **Unified Memory Architecture (UMA)**, where the CPU and GPU share the same physical RAM sticks. While this sounds like it should make things easier, it actually adds a hidden layer of complexity: **Caches**. Even if they share the RAM, the CPU has its own L1/L2/L3 caches, and the GPU has its own L1/L2 caches. If the GPU writes data to a shared buffer, that data might stay in the GPU's L2 cache and never actually reach the physical RAM. When the CPU tries to read it, it will see the old, stale value from the RAM or its own cache.
+
+In Vulkan, we categorize these behaviors into three primary memory types:
+
+*   **Device Local**: This is memory that is "fastest" for the GPU to access. On a discrete card, this is the VRAM. On UMA, it's just a portion of the shared RAM.
+*   **Host Visible**: This memory can be "mapped" into your c{pp} application's address space, allowing the CPU to read and write to it directly.
+*   **Host Coherent**: A special type of Host Visible memory where the hardware automatically ensures that CPU and GPU see the same data without you needing to manually flush caches (though you still need an execution dependency to ensure the write has *finished*!).
+
+=== The "Where": Memory Dependencies
+
+This is where many Vulkan developers get caught. Even if Command A has finished, its output might still be sitting in a local L1 cache on a specific shader core, or it might be in a shared L2 cache that hasn't been written back to the main pool. If Command B—perhaps running on a completely different part of the GPU or even the CPU—tries to read that data from main memory before it has been "made available," it will read stale data.
+
+This is why we say execution is not enough. You can tell the hardware "Wait for the Compute Shader to finish before starting the Fragment Shader," and the hardware will happily oblige. But the Fragment Shader will then go to read the texture and find the old data because the Compute Shader's writes are still trapped in a local cache somewhere.
+
+A **Memory Dependency** ensures that data is properly moved between caches and main memory so it can be safely read. This involves two critical steps:
+
+1.  **Availability**: This operation "flushes" the data from the source's local caches so that it is visible to a shared memory pool (like L2 cache or main memory).
+2.  **Visibility**: This operation "invalidates" the local caches of the destination stage, forcing it to read the fresh data from the shared memory pool rather than using whatever stale bits it might already have.
+
+Without both an execution dependency AND a memory dependency, you are living in a world of **hazards**. The most common is the "Read-After-Write" (RAW) hazard, where your fragment shader reads a texture before the compute shader has finished writing to it, resulting in the flickering artifacts or "shadow acne" that are so common in early Vulkan implementations.
+
+=== The Practical Handshake
+
+Think of it as a professional handshake. An execution dependency is the two people agreeing to meet. A memory dependency is one person actually handing the document to the other and the other person making sure they are looking at the new document, not their old notes.
+
+In Synchronization 2, we define this handshake using `vk::PipelineStageFlagBits2` and `vk::AccessFlagBits2`. The stage flags define the *when* (the execution dependency), and the access flags define the *how* (the memory dependency). By pairing these correctly, you ensure that your data is not only processed in the right order but is also actually there when you go to look for it.
+
+== Simple Engine Implementation: Caches and Safety
+
+In `Simple Engine`, we handle these architectural realities through our `MemoryPool` class (`memory_pool.cpp`). When we allocate memory for a buffer or image, we specify the `vk::MemoryPropertyFlags` to decide its role. For example, our `UniformBuffer` objects are typically allocated as `HostVisible | HostCoherent`. This means the CPU can write to them and they are automatically visible to the GPU without a manual `flushMappedMemoryRanges` call.
+
+However, just because they are **coherent** doesn't mean we can ignore execution dependencies! Even in `Simple Engine`, if the CPU updates a `HostCoherent` uniform buffer while the GPU is in the middle of a fragment shader reading from it, we will encounter a **data race**. This is why we still use `inFlightFences` and semaphores to ensure the GPU has finished using a frame's resources before the CPU starts modifying them for the next frame.
+
+For our textures and vertex buffers, we use `DeviceLocal` memory for maximum performance. Because these are not host-coherent, we must use `vk::DependencyInfo` and `vk::ImageMemoryBarrier2` to explicitly manage the "Availability" and "Visibility" handshakes. This ensures that after a `vkCmdCopyBufferToImage` command, the data is properly flushed from the transfer unit's caches and invalidated for the fragment shader's caches.
+
+== Navigation
+
+Previous: xref:Synchronization/Anatomy_of_a_Dependency/01_introduction.adoc[Introduction] | Next: xref:Synchronization/Anatomy_of_a_Dependency/03_sync2_advantage.adoc[The Synchronization 2 Advantage]

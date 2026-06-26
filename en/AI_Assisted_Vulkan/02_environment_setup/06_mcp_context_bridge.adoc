@@ -24,18 +24,7 @@ By using **mcp-Vulkan**, you can simply tell your assistant: *"Use the Vulkan MC
 
 === Building the Server
 
-To integrate this into your workflow, you'll need to clone and build the server locally. This ensures your "Source of Truth" is always under your control.
-
-[source,bash]
-----
-# Clone the Vulkan MCP Server
-git clone https://github.com/gpx1000/mcp-Vulkan.git
-cd mcp-Vulkan/vulkan
-
-# Install dependencies and build
-npm install
-npm run build
-----
+If you have not already built the server, see xref:01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[First Step: Building the Vulkan MCP Server] in the Environment Setup introduction. That section covers cloning the repository and running `npm install && npm run build` inside the `mcp-Vulkan/vulkan/` subdirectory.
 
 === Connecting mcp-Vulkan to Goose (The Agentic Common Point)
 

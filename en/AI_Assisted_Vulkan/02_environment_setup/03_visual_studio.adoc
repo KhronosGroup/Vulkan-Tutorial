@@ -40,7 +40,7 @@ the current offset and buffer size.
 ----
 
 === Step 3: Local Private Specialist (Continue)
-For privacy-sensitive rendering logic, configure the **Continue** extension to use a local **Qwen 3-Coder** model and the **Vulkan MCP**.
+For privacy-sensitive rendering logic, configure the **Continue** extension to use a local **Qwen 3-Coder** model and the **Vulkan MCP**. This assumes you have already built the `mcp-Vulkan` server as described in xref:01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[the Environment Setup introduction].
 
 [source,json]
 ----
@@ -49,7 +49,7 @@ For privacy-sensitive rendering logic, configure the **Continue** extension to u
     {
       "name": "Vulkan-Registry",
       "command": "node",
-      "args": ["/path/to/mcp-Vulkan/build/index.js"]
+      "args": ["/path/to/mcp-Vulkan/vulkan/build/index.js"]
     }
   ]
 }

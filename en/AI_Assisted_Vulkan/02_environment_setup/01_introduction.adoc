@@ -34,6 +34,27 @@ In the next generation version of the IDEs this demarcation is blurred, with AI 
 
 We will show you how to set up both, creating a hybrid environment where the AI is as much a part of your team as a human colleague.
 
+== First Step: Building the Vulkan MCP Server
+
+Before diving into any platform-specific setup, complete this one-time prerequisite. Every IDE and agent chapter that follows assumes you have already cloned and built the **mcp-Vulkan** server. The resulting binary is what you will point each tool at with the path `/path/to/mcp-Vulkan/vulkan/build/index.js`.
+
+You will need **Node.js** (LTS) and **npm** installed. Download the LTS installer from link:https://nodejs.org/[nodejs.org] if you do not already have them.
+
+[source,bash]
+----
+# Clone the repository
+git clone https://github.com/gpx1000/mcp-Vulkan.git
+
+# The package.json lives in the vulkan/ subdirectory
+cd mcp-Vulkan/vulkan
+
+# Install dependencies and build
+npm install
+npm run build
+----
+
+Note the absolute path to the `mcp-Vulkan` directory (run `pwd` inside it). Every platform chapter uses this path when registering the server, shown as `/path/to/mcp-Vulkan/vulkan/build/index.js`.
+
 == The Environment Roadmap: From IDE to Agent
 
 In the following chapters, we have structured the guide to cover the major development ecosystems used by graphics engineers. You don't need to read them all—focus on the one that matches your daily "Lab."

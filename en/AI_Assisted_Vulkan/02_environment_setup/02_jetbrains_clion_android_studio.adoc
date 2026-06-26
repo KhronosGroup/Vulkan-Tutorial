@@ -26,14 +26,14 @@ JetBrains has integrated the **Model Context Protocol (MCP)** directly into thei
 
 **Adding the Vulkan MCP to AI Assistant:**
 
-To provide your Cloud-based assistant (like **Claude 4.6** or **GPT-5.3**) with the ground truth of the Vulkan specification, follow these steps:
+To provide your Cloud-based assistant (like **Claude 4.6** or **GPT-5.3**) with the ground truth of the Vulkan specification, follow these steps. This assumes you have already built the `mcp-Vulkan` server as described in xref:01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[the Environment Setup introduction].
 
 1.  Open **Settings** (`Ctrl+Alt+S` or `Cmd+,`).
 2.  Navigate to **Tools > AI Assistant > MCP Servers**.
 3.  Click the **+** (Add) button and select **Local Stdio**.
 4.  **Name:** `Vulkan-Spec`
 5.  **Command:** `node` (Ensure Node.js is in your PATH).
-6.  **Arguments:** Provide the absolute path to your built MCP server: `/path/to/mcp-Vulkan/build/index.js`.
+6.  **Arguments:** Provide the absolute path to your built MCP server: `/path/to/mcp-Vulkan/vulkan/build/index.js`.
 7.  **Environment Variables:** (Optional) Add any keys if required by other servers.
 
 Once configured, the "Tools" icon in your AI chat window will show the active MCP. Now, when you ask a question about a specific structure like `VkVideoProfileInfoKHR`, the assistant can call the MCP to fetch the exact definition from the latest registry, even if it wasn't in its training data.

@@ -8,6 +8,121 @@ Vulkan is often seen as the "modern successor" to OpenGL, primarily focused on r
 
 Until recently, running OpenCL code on a Vulkan-only driver was a significant challenge. But thanks to the **Vulkan 1.4** ecosystem and tools like `clspv` and `clvk`, that gap has finally been bridged.
 
+== The Wider Ecosystem: pocl and ANGLE
+
+This chapter focuses on `clvk`, but it is worth knowing about two other actively-developed implementations that put OpenCL on top of Vulkan via the same `clspv` compiler. Both share the `clspv` kernel-compatibility constraints described throughout this chapter (no `printf`, loop bounds must be compile-time constants, etc.), so the material here transfers directly.
+
+=== pocl — Portable Computing Language
+
+https://portablecl.org/[pocl] (MIT licence) is a full OpenCL 3.0 runtime whose primary compiler infrastructure is **LLVM/Clang**, not `clspv`.  Its Vulkan driver is a secondary backend that _does_ call `clspv` for kernel compilation, but pocl's headline strength is its **CPU and Intel Level Zero GPU paths**, both of which achieved Khronos-conformant OpenCL 3.0 certification as of the pocl 7.0 release (January 2025).
+
+.pocl strengths
+[%autowidth]
+|===
+|Strength |Detail
+
+|CPU as a first-class device
+|pocl's CPU path (x86-64, ARM64, RISC-V) is production-conformant with ~100 % CTS pass rates, something no Vulkan-only runtime like `clvk` can offer.  This lets a single pocl installation serve every device in the system — from a server CPU to a discrete GPU — under one ICD.
+
+|Multi-target from one runtime
+|The same pocl binary can dispatch to CPU, Intel GPU (Level Zero), NVIDIA (libCUDA), and Vulkan simultaneously.  This is valuable for HPC workloads that need portable fallback paths.
+
+|SYCL backend
+|pocl can serve as the OpenCL backend for DPC++/SYCL applications, widening its reach to modern heterogeneous C++ code.
+
+|Accepts SPIR-V and LLVM bitcode
+|In addition to OpenCL C source, pocl accepts pre-compiled SPIR-V 1.4/1.5 and LLVM bitcode as program input, enabling more flexible toolchain integration.
+
+|Experimental Built-in Kernels (DBK)
+|pocl 7.x adds vendor-neutral built-in kernels for GEMM, JPEG, and ONNX inference — workloads that benefit from a dispatch abstraction above raw compute shaders.
+|===
+
+.pocl weaknesses (Vulkan path specifically)
+[%autowidth]
+|===
+|Weakness |Detail
+
+|Vulkan driver is unmaintained
+|pocl's own documentation labels the Vulkan backend "INCOMPLETE, without an active maintainer. Pull Requests welcomed."  `clvk` is actively maintained and Khronos-conformant; pocl's Vulkan driver has "low maturity with limited testing" and no stated CTS pass rate.
+
+|OpenCL 1.2 subset only on Vulkan
+|While pocl's CPU and Level Zero paths support OpenCL 3.0, the Vulkan driver exposes only most of the OpenCL 1.2 API.
+
+|No image/sampler support on Vulkan
+|Buffer-only workloads are supported; image objects and samplers are not implemented on the Vulkan path.
+
+|Build complexity
+|pocl's Vulkan driver requires `clspv` to be built separately (its own LLVM checkout, specified via `CLSPV_DIR`), whereas `clvk` bundles `clspv` as a CMake sub-project.
+
+|No `CL_MEM_USE_HOST_PTR` on discrete GPUs
+|Host-pointer aliasing, often used to avoid copies, is unsupported on discrete-GPU Vulkan devices.
+|===
+
+In short: choose pocl if you need a **portable CPU+GPU runtime** with certified conformance on CPU or Intel.  Its Vulkan path is not production-ready and should not be used in place of `clvk` for GPU compute.
+
+=== ANGLE — Almost Native Graphics Layer Engine
+
+https://chromium.googlesource.com/angle/angle[ANGLE] is Google's multi-platform OpenGL ES / EGL translation layer, used inside Chrome and Chromium.  OpenCL is a **secondary, explicitly experimental** feature added to enable graphics–compute interop within the same Vulkan context.  Its OpenCL implementation lives in `src/libOpenCL/` and `src/libANGLE/renderer/vulkan/CL*Vk.cpp`.
+
+At runtime, ANGLE's Vulkan backend calls `ClspvCompileSource()` to compile OpenCL C to SPIR-V using the same `clspv` pipeline as `clvk`.  It supports a three-stage model (source → LLVM bitcode → executable SPIR-V) that enables binary caching, and it validates the SPIR-V before creating the `VkShaderModule`.
+
+.ANGLE strengths
+[%autowidth]
+|===
+|Strength |Detail
+
+|`cl_khr_external_memory` — zero-copy graphics–compute interop
+|ANGLE's Vulkan backend implements `cl_khr_external_memory`, which allows an OpenCL buffer to alias a `VkBuffer` or `VkImage` directly.  Mainline `clvk` explicitly does **not** implement this extension.  For mixed rendering+compute pipelines (e.g. post-processing a rendered frame entirely on the GPU without a readback) ANGLE is currently the only `clspv`-based runtime that can eliminate that copy.
+
+|Full image support
+|ANGLE implements the complete `enqueueRead/Write/Copy/FillImage`, `enqueueMapImage`, and `enqueueCopyImageToBuffer` surface, which pocl's Vulkan driver entirely lacks.
+
+|Passthrough backend
+|On systems with a native vendor OpenCL driver, ANGLE can forward calls directly without `clspv` overhead while still exposing a unified ICD interface — useful for mixed-hardware CI environments.
+
+|Active development
+|Backed by the Chromium team with continuous integration infrastructure.
+|===
+
+.ANGLE weaknesses
+[%autowidth]
+|===
+|Weakness |Detail
+
+|OpenCL is explicitly experimental
+|The README describes it as work-in-progress.  ANGLE's primary mission is OpenGL ES translation; the OpenCL layer exists to serve Chromium's internal needs, not as a general-purpose runtime.
+
+|No Khronos conformance submission
+|Neither ANGLE's Vulkan path nor any other path has been submitted for OpenCL conformance testing, unlike `clvk` (conformant) and pocl's CPU path (conformant).
+
+|Chromium build system
+|ANGLE uses `gn`/`ninja` with Chromium's depot_tools.  Building it standalone outside of a Chromium checkout is documented but non-trivial for developers not already in that ecosystem.
+
+|Not distributed as a standalone ICD
+|`clvk` and pocl ship as drop-in `libOpenCL.so` replacements.  ANGLE's OpenCL layer is primarily consumed inside Chrome; independent adoption as a compute runtime is uncommon.
+
+|Same `clspv` kernel restrictions apply
+|No `printf`, no `double` by default, loop bounds must be compile-time constants — identical to the constraints documented throughout this chapter.
+|===
+
+In short: consider ANGLE if you are building a **mixed rendering+compute pipeline** that genuinely needs zero-copy sharing between OpenCL and Vulkan memory objects.  It is not a general-purpose alternative to `clvk` today.
+
+=== At a Glance
+
+[%autowidth]
+|===
+| |`clvk` |pocl (Vulkan path) |ANGLE (Vulkan path)
+
+|Primary purpose |OpenCL on Vulkan GPU |Portable OpenCL (CPU-first) |GL ES translation (CL secondary)
+|Compiler backend |clspv (bundled) |clspv (must build separately) |clspv (runtime call)
+|OpenCL version (Vulkan path) |3.0 |~1.2 subset |1.x–3.0 (in progress)
+|Khronos conformant |Yes |No (Vulkan driver incomplete) |No (experimental)
+|Image support |Yes |No |Yes
+|`cl_khr_external_memory` |No |No |Yes
+|Standalone ICD |Yes |Yes |Primarily in-Chromium
+|Maintainer status |Active |Vulkan driver unmaintained |Active (Chromium)
+|===
+
 == Why Run OpenCL on Vulkan?
 
 You might wonder why we would want to run "legacy" OpenCL code on a modern API like Vulkan. There are three main reasons:
@@ -23,8 +138,8 @@ A key insight from conformant layered implementations like `clvk` is that OpenCL
 What makes this interesting from a Vulkan developer's perspective is the **advanced Vulkan features** that make a conformant OpenCL implementation possible:
 
 *   **SPIR-V as the Bridge**: OpenCL C kernels are compiled into **SPIR-V** (Standard Portable Intermediate Representation - V), the same binary format used by Vulkan for its shaders. This is the key integration point — Vulkan's shader format is flexible enough to express OpenCL semantics.
-*   **Variable Pointers and Buffer Device Address**: OpenCL's pointer-based memory model requires Vulkan's `VK_KHR_variable_pointers` (core in Vulkan 1.1) and the **Buffer Device Address** feature to emulate flat address spaces efficiently.
-*   **Subgroup Extensions**: OpenCL's work-group collective operations map directly to Vulkan's subgroup operations, enabling hardware-accelerated reductions and scans.
+*   **Variable Pointers and Buffer Device Address**: OpenCL's pointer-based memory model requires Vulkan's link:https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_variable_pointers.html[`VK_KHR_variable_pointers`] (core in Vulkan 1.1) and link:https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_buffer_device_address.html[Buffer Device Address] to emulate flat address spaces efficiently.
+*   **Subgroup Extensions**: The `cl_khr_sub_groups` extension maps OpenCL subgroup operations directly onto Vulkan's subgroup operations, enabling hardware-accelerated reductions and scans where supported. Note that work-group collective operations (an OpenCL C 2.0 feature) are optional in OpenCL 3.0 and may not be available in every layered implementation.
 
 In this chapter, we'll explore the two primary tools: **AOT** (Ahead-of-Time) compilation using `clspv`, and **Runtime Layering** using `clvk`.
 

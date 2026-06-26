@@ -78,19 +78,21 @@ does not compile these constructs.
 
 === Dynamic Loop Bounds from Buffers
 
-This is one of the most important production gotchas.  `clspv`'s structured-
-control-flow pass must be able to prove that every loop terminates so it can
-produce valid structured SPIR-V.  When a loop bound is loaded from a storage
-buffer at runtime, the pass cannot make that proof, and the resulting shader
-typically hangs the GPU.
+This is one of the most important production gotchas when using the `clspv` AOT
+path.  `clspv`'s structured-control-flow pass must be able to prove that every loop
+terminates so it can produce valid structured SPIR-V.  When a loop bound is loaded
+from a storage buffer at runtime, the pass cannot make that proof, and the resulting
+shader typically hangs the GPU.
 
-A native OpenCL driver (NVIDIA CUDA, AMD ROCm) compiles dynamic bounds without
-complaint because it does not require structured control flow.  The kernel will
-work on those platforms and silently produce a GPU hang via `clspv`.
+This is a limitation of `clspv` specifically, not of the OpenCL specification.
+A conformant native OpenCL driver (NVIDIA, AMD ROCm) compiles dynamic bounds
+without complaint because it does not require structured control flow.  The kernel
+will work on those platforms and silently produce a GPU hang only via `clspv` AOT
+compilation.
 
-The rule: **loop bounds must be compile-time constants in kernels destined for
-`clspv`.**  Use `#define`, `constexpr`, or SPIR-V specialisation constants —
-never a value read from a descriptor.
+The rule for the `clspv` AOT path: **loop bounds must be compile-time constants.**
+Use `#define`, `constexpr`, or SPIR-V specialisation constants — never a value read
+from a descriptor.
 
 [WARNING]
 ====
@@ -101,10 +103,7 @@ hangs under the `clspv` AOT path, a dynamic loop bound is the first thing to che
 
 === No Variable-Length Arrays
 
-OpenCL C allows `__local float tmp[n]` where `n` is a kernel argument.  `clspv`
-requires `__local` array sizes to be fixed at compile time (they map to statically-
-sized `Workgroup` arrays in SPIR-V).  Factor dynamic sizing into a `#define` or
-specialisation constant instead.
+Variable-length arrays are https://registry.khronos.org/OpenCL/specs/unified/html/OpenCL_C.html#_footnotedef_31[not supported in OpenCL C] — this is a spec restriction, not a `clspv` limitation.  `__local` array sizes must be fixed at compile time.  In practice this means using a `#define` or a specialisation constant for any local array dimension that you might otherwise want to pass as a kernel argument.
 
 === Vulkan-Only Capabilities You Cannot Reach from OpenCL C
 

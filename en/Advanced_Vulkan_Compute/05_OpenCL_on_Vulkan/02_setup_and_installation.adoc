@@ -26,6 +26,7 @@ To build `clspv`, follow these steps:
 ----
 git clone --recursive https://github.com/google/clspv.git
 cd clspv
+python3 utils/fetch_sources.py
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja clspv
@@ -35,7 +36,7 @@ Once the build is complete, you'll have a `clspv` executable in your `build` fol
 
 == Building clvk
 
-`clvk` is simpler to build than `clspv`, as it primarily needs a Vulkan driver and headers to function.
+`clvk` builds `clspv` as a dependency and uses it internally to compile OpenCL C kernels into Vulkan-compatible SPIR-V at runtime. You therefore do not need to build `clspv` separately if your only goal is to use `clvk`. The build primarily requires a Vulkan driver and headers:
 
 [source,bash]
 ----

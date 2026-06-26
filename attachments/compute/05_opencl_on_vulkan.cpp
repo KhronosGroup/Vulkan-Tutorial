@@ -18,10 +18,11 @@
 //     kernel becomes "just another shader" in the Vulkan pipeline — no copies,
 //     no interop layer. This is Vulkan taking advantage of OpenCL, directly.
 //
-//   * clvk runtime (alternative): the SAME .cl is compiled at run time by clvk
-//     (OpenCL 3.0 layered on Vulkan). clvk does not expose cl_khr_external_memory,
-//     so its result is bridged into the Vulkan buffer with a per-frame readback.
-//     It demonstrates the runtime-layering tool at the cost of one copy/frame.
+//   * clvk runtime (alternative): the SAME .cl is compiled and executed at run time
+//     by clvk (OpenCL 3.0 layered on Vulkan). clvk does not expose
+//     cl_khr_external_memory, so its result is bridged into the Vulkan buffer with
+//     a per-frame readback. It demonstrates the runtime-layering tool at the cost
+//     of one copy/frame.
 //
 // We deliberately refuse to use an unrelated OpenCL platform (e.g. a vendor's
 // native CUDA/ROCm driver): the point is the Vulkan layer, so only a platform

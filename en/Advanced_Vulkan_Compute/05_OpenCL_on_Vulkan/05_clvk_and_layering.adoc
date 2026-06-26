@@ -10,7 +10,7 @@ This means you don't even have to change your **host code** (C{pp} application c
 
 == How It Works
 
-`clvk` acts as an "OpenCL Driver" for the operating system. When your application calls an OpenCL function:
+`clvk` is an ICD-compatible OpenCL shared library. When your application calls an OpenCL function through the ICD Loader:
 
 1.  **API Translation**: `clvk` translates the call (e.g., `clEnqueueNDRangeKernel`) into a Vulkan command (e.g., `vkCmdDispatch`).
 2.  **Kernel Compilation**: It uses `clspv` internally to compile your OpenCL C source code into Vulkan-compatible SPIR-V.

@@ -41,10 +41,10 @@ storage buffer that is presented — the OpenCL kernel is literally "just anothe
 shader" in the Vulkan pipeline, with no copies and no second API at run time.
 
 |**clvk runtime** (`--backend=clvk`)
-|The same `.cl` is compiled at run time by `clvk` (OpenCL 3.0 layered on Vulkan).
-clvk does not implement `cl_khr_external_memory`, so its result is bridged into the
-Vulkan buffer with a per-frame `clEnqueueReadBuffer`. It showcases the runtime
-layering tool at the cost of one copy per frame.
+|The same `.cl` is compiled and executed at run time by `clvk` (OpenCL 3.0 layered
+on Vulkan). `clvk` does not implement `cl_khr_external_memory`, so its result is
+bridged into the Vulkan buffer with a per-frame `clEnqueueReadBuffer`. It showcases
+the runtime layering tool at the cost of one copy per frame.
 |===
 
 == The Kernel as a Vulkan Shader (zero-copy)

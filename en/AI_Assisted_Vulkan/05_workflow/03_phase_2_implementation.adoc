@@ -20,6 +20,7 @@ The AI doesn't just "guess." It uses the roadmap's "Contract" to ensure the blen
 == Why Use a Local Specialist?
 
 Implementing a graphics feature requires **Zero Latency**. You will find yourself asking hundreds of small, syntactic questions every hour:
+
 *   *"What was the enum for a 1D sampler again?"*
 *   *"Generate the `VkDescriptorImageInfo` array for these mips."*
 *   *"Refactor this shader to use a structured buffer for the bloom weights."*
@@ -41,9 +42,9 @@ Vulkan pipelines are where most bugs are born.
 **The Result:** 150 lines of correct `VkPipeline` initialization code generated in 5 seconds.
 
 === Step 3: Shader Iteration
-Shader development is where local models truly shine.
+Shader development is where local models can accelerate iteration, though results require careful review.
 **The Prompt:** *"Generate a Slang shader for the 13-tap downsample filter. Use the Karis average to prevent fireflies in the bloom, as discussed in the roadmap's performance section."*
-**The Result:** A spec-accurate shader that implements a complex graphics technique, ready for the compiler.
+**The Result:** A shader implementing the requested technique. However, be aware that most LLMs have been trained primarily on HLSL and GLSL, and will often produce HLSL-style output that needs manual adjustment to compile as valid Slang. Treat the generated shader as a starting point: verify the syntax, check that Slang-specific constructs (e.g., `[shader("fragment")]`, `ParameterBlock`, or `interface` types) are used correctly, and expect to fix several issues before the shader compiles cleanly.
 
 == Summary: The Accelerated Implementation Loop
 

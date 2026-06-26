@@ -30,7 +30,7 @@ To integrate this into your workflow, you'll need to clone and build the server 
 ----
 # Clone the Vulkan MCP Server
 git clone https://github.com/gpx1000/mcp-Vulkan.git
-cd mcp-Vulkan
+cd mcp-Vulkan/vulkan
 
 # Install dependencies and build
 npm install
@@ -50,7 +50,7 @@ extensions:
     type: stdio
     cmd: node
     args:
-      - /path/to/mcp-Vulkan/build/index.js
+      - /path/to/mcp-Vulkan/vulkan/build/index.js
 ----
 
 Once saved, restart your Goose session (`goose session`). You can verify the connection by asking: *"List the tools you have available."* You should see `search-vulkan-docs` and `get-vulkan-topic` in the list.

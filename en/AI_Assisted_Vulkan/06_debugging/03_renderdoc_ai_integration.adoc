@@ -10,7 +10,7 @@ In **Collaborative Engineering**, we combine the raw state-tracking of RenderDoc
 
 == The Core Concept: Programmatic Inspection
 
-To integrate AI with RenderDoc, we move beyond the GUI and utilize the **RenderDoc CLI (`rdc-cli`)**. This allows an autonomous agent (like **Goose**) to "browse" your GPU capture programmatically.
+To integrate AI with RenderDoc, we move beyond the GUI and utilize the **RenderDoc command-line tool (`renderdoccmd`)**. This allows an autonomous agent (like **Goose**) to "browse" your GPU capture programmatically.
 
 Consider a typical scenario where you encounter a "Black Screen." You know the draw call is happening, but you don't know which of the 50 pipeline states is misconfigured. In a traditional workflow, you'd spend an hour clicking through the RenderDoc UI.
 
@@ -34,12 +34,12 @@ Because the agent also has access to your source code, it doesn't just tell you 
 
 == Practical Tutorial: Connecting Goose to RenderDoc
 
-To truly automate your GPU analysis, you must give your agent the ability to use the **RenderDoc Command Line Interface (`rdc-cli`)**. This allows the AI to "inspect" a `.rdc` capture file as if it were a text document.
+To truly automate your GPU analysis, you must give your agent the ability to use the **RenderDoc command-line tool (`renderdoccmd`)**. This allows the AI to "inspect" a `.rdc` capture file as if it were a text document.
 
 Follow these steps to build the "RenderDoc Bridge":
 
 1.  **Ensure RenderDoc is in your PATH:**
-    The `rdc-cli` binary must be accessible from your terminal.
+    The `renderdoccmd` binary (or `renderdoccmd.exe` on Windows) must be accessible from your terminal.
 +
 [source,bash]
 ----
@@ -57,7 +57,7 @@ export PATH=$PATH:/usr/bin/renderdoc
 +
 [source,text]
 ----
-Goose, list all draw calls in 'debug_capture.rdc' using 'rdc-cli'.
+Goose, list all draw calls in 'debug_capture.rdc' using 'renderdoccmd'.
 Find the one using 'MainPass' and export its full
 pipeline state to a structured file named 'state.txt'.
 ----

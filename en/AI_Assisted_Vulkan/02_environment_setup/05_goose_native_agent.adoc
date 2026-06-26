@@ -32,6 +32,7 @@ curl -fsSL https://block.github.io/goose/install.sh | bash
 
 **For Windows:**
 While there is a PowerShell installer, for the most control on Windows, we recommend the manual installation:
+
 1.  Go to link:https://goose-docs.ai/[goose-docs.ai] and download the Goose executable.
 2.  Unzip the folder and place it in a permanent location (e.g., `C:\Programs\Goose`).
 3.  Pin the `goose.exe` to your Start menu for easy access.
@@ -51,6 +52,7 @@ From here, you can provide Goose with **Tools** (via the Model Context Protocol)
 
 ==== Adding Filesystem Access (MCP)
 To allow Goose to interact with your local files reliably, you should add a custom extension:
+
 1.  **Install Node.js:** Download the LTS version from link:https://nodejs.org/[nodejs.org] using the Windows Installer (.msi). Verify with `node --version` and `npm --version`.
 2.  **Add Extension in Goose:** Go to **Extensions -> Add Custom Extension** and fill out the fields:
     *   **Extension Name:** `Filesystem Access`
@@ -69,6 +71,7 @@ To power your agent effectively, we recommend a **Hybrid Model Strategy**. This 
 For the initial session setup and complex planning, you should use a high-reasoning cloud model like **Claude 4.6** or **GPT-5.3**. These models excel at understanding the abstract requirements of a graphics pipeline and creating a "Contract" for the work to be done.
 
 To configure a cloud provider in Goose:
+
 1.  Open Goose Settings -> Models -> Configure Providers.
 2.  **Cloud:** Select **Anthropic**. You will need an API key from the link:https://platform.claude.com/[Claude Console]. Paste your key and submit.
 
@@ -77,21 +80,27 @@ To configure a cloud provider in Goose:
 Once the high-level plan is established, you can switch the "active hands" to a local model running via **Ollama**. This is your "Implementation" specialist—fast, free, and secure.
 
 **Setting up Ollama:**
+
 1.  Download the native installer from link:https://ollama.com[ollama.com].
 2.  **Configuration:** In Ollama settings, choose a "Model location" on a drive with sufficient space.
 3.  **Download Models:** Open PowerShell and run the following commands to pull the latest specialists:
++
 [source,bash]
 ----
 # Download the 17B model (Llama 4) for low-latency coding
 ollama run llama4
 
 # Download the 30B Qwen model for complex architectural implementation
+# NOTE: qwen3-coder:30b requires 20+ GB of VRAM even at 4-bit quantization.
+# Most consumer GPUs (16 GB or less) will not have sufficient VRAM when a
+# Vulkan application is also running. Use qwen3-coder:14b as a practical
+# alternative on systems with 16 GB or less.
 ollama run qwen3-coder:30b
 
 # Download the 12B Mistral-Nemo model for balanced reasoning and context
 ollama run mistral-nemo
 ----
-4.  **Connect to Goose:** In Goose Settings -> Models -> Configure Providers, find **Ollama** and click configure. Select your desired model (e.g., `qwen3-coder:30b`) from the dropdown.
+4.  **Connect to Goose:** In Goose Settings -> Models -> Configure Providers, find **Ollama** and click configure. Select your desired model (e.g., `qwen3-coder:14b`) from the dropdown.
 
 === 3. Implementing the Hybrid Workflow
 
@@ -117,7 +126,9 @@ Before starting a local agent, you must perform a "VRAM Audit." For a typical de
 
 === Quantization Strategies
 
-To fit a 30B model into 10GB, we use **Quantization** (compression). Ollama handles this automatically, but you should be aware of the trade-offs. Using **4-bit (Q4_K_M)** quantization is often the "sweet spot," as it is 75% smaller with only about a 5% loss in reasoning. Stepping up to **8-bit (Q8_0)** provides higher precision reasoning but requires significantly more VRAM.
+We use **Quantization** (compression) to reduce model memory footprint. Ollama handles this automatically, but you should be aware of the trade-offs. Using **4-bit (Q4_K_M)** quantization is often the "sweet spot," as it is 75% smaller with only about a 5% loss in reasoning. Stepping up to **8-bit (Q8_0)** provides higher precision reasoning but requires significantly more VRAM.
+
+NOTE: Even at 4-bit quantization, `qwen3-coder:30b` requires approximately 20 GB of VRAM — more than most consumer graphics cards provide. On a 16 GB GPU running a Vulkan application simultaneously, this will exceed your budget. Use `qwen3-coder:14b` (~9 GB at Q4_K_M) as a practical alternative that fits comfortably within a 16 GB VRAM budget.
 
 If your GPU runs out of VRAM, your system may trigger a **TDR (Timeout Detection and Recovery)**, crashing both your AI and your Vulkan renderer. Always leave a 1–2GB "safety margin."
 

@@ -130,7 +130,7 @@ If you find a hazard, suggest the specific line in
 By auditing the "Stream of Truth," you ensure that your engine isn't just working by "accident" on your current developer driver, but is strictly compliant with the Vulkan specification across time.
 
 === Step 7: Visual Frame Inspection with RenderDoc
-While GFXReconstruct provides the multi-frame "Timeline of Truth," **RenderDoc** allows you to perform a deep-dive into the visual state of a single frame. Use the **RenderDoc CLI (`rdc-cli`)** in conjunction with your autonomous agent to verify that each downsample and upsample pass in your blur system is producing the expected visual output. This is especially useful for identifying "Black Textures" or "Sampling Artifacts" that arise from incorrect sampler settings.
+While GFXReconstruct provides the multi-frame "Timeline of Truth," **RenderDoc** allows you to perform a deep-dive into the visual state of a single frame. Use the **RenderDoc command-line tool (`renderdoccmd`)** in conjunction with your autonomous agent to verify that each downsample and upsample pass in your blur system is producing the expected visual output. This is especially useful for identifying "Black Textures" or "Sampling Artifacts" that arise from incorrect sampler settings.
 
 [source,bash]
 ----
@@ -144,7 +144,7 @@ While GFXReconstruct provides the multi-frame "Timeline of Truth," **RenderDoc**
 
 [source,text]
 ----
-Goose, analyze 'capture_frame_60.rdc' using 'rdc-cli'.
+Goose, analyze 'capture_frame_60.rdc' using 'renderdoccmd'.
 We are looking for the 'Blur_Downsample_Pass_2' draw call.
 
 1. List all draw calls and find the one that binds
@@ -161,10 +161,10 @@ beyond the available mip-levels.
 
 By integrating RenderDoc with your AI agent, you move beyond "guessing" why a texture is black. The AI identifies the specific state mismatch (like a misconfigured LOD clamp) and correlates it directly to the line of code in your engine that created the faulty resource.
 
-== Summary: The Mastery of Graphics Engineering
+== Summary: Mastering the Collaborative Engineering Workflow
 
-By completing this lab, you have proven that you can manage the extreme complexity of modern Vulkan using a **Collaborative Engineering** approach. You have moved beyond the role of a "Manual Coder" and into the role of a **Code Director**, orchestrating a team of intelligent agents to achieve higher performance and better architectural quality than was ever possible alone.
+By completing this lab, you have practiced managing the complexity of a modern Vulkan feature using a **Collaborative Engineering** approach — combining high-reasoning cloud models for architecture, local specialists for implementation, and established tools like RenderDoc and GFXReconstruct for verification.
 
-Welcome to the future of graphics development. The Vulkan specification being a verbose standard is not a bug, it's a feature; it is a live resource that your AI assistant can help you navigate. Your engine is no longer a collection of static files; it is an evolving ecosystem that you and your digital co-authors build, debug, and optimize together.
+AI assistance does not replace the need to understand Vulkan; it reduces the time spent on boilerplate and repetitive lookups so you can focus on the decisions that matter. The Vulkan specification remains your authoritative reference, and your judgment as an engineer remains the critical ingredient. What changes is how efficiently you can navigate that specification and iterate on your implementation.
 
 Next: xref:../conclusion.adoc[Main Tutorial Conclusion]

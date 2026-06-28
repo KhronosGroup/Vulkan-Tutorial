@@ -154,16 +154,30 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     return false;
   }
 
+  // In XR mode pick the device BEFORE creating the surface.  The OpenXR runtime
+  // identifies the correct GPU via LUID/UUID, so no surface is needed for selection.
+  // Creating the GLFW surface first causes the XR runtime's Vulkan layer to intercept
+  // vkCreateXxxSurfaceKHR before the validation layer sees it, producing an untracked
+  // surface handle that crashes vkGetPhysicalDeviceSurfaceSupportKHR.
+  if (xrMode) {
+    if (!pickPhysicalDevice()) {
+      std::cerr << "Failed to pick physical device" << std::endl;
+      return false;
+    }
+  }
+
   // Create surface
   if (!createSurface()) {
     std::cerr << "Failed to create surface" << std::endl;
     return false;
   }
 
-  // Pick the physical device
-  if (!pickPhysicalDevice()) {
-    std::cerr << "Failed to pick physical device" << std::endl;
-    return false;
+  // Pick the physical device (non-XR path — surface is available for present-support queries)
+  if (!xrMode) {
+    if (!pickPhysicalDevice()) {
+      std::cerr << "Failed to pick physical device" << std::endl;
+      return false;
+    }
   }
 
   // Create logical device
@@ -627,9 +641,33 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
       createInfo.pNext = &validationFeatures;
     }
 
-    // Create instance
-    instance = vk::raii::Instance(context, createInfo);
+    // In XR mode, use xrCreateVulkanInstanceKHR (XR_KHR_vulkan_enable2) so the runtime
+    // injects its Vulkan layer before GLFW creates the surface.  Without this, Meta's
+    // OpenXR layer on Windows is not in the dispatch chain at surface-creation time,
+    // causing vkGetPhysicalDeviceSurfaceSupportKHR to report the handle as invalid.
+    if (xrMode) {
+      PFN_xrCreateVulkanInstanceKHR pfnXrCreateVulkanInstance = nullptr;
+      xrGetInstanceProcAddr(xrContext.getXrInstance(), "xrCreateVulkanInstanceKHR",
+                            reinterpret_cast<PFN_xrVoidFunction*>(&pfnXrCreateVulkanInstance));
+      if (pfnXrCreateVulkanInstance) {
+        XrVulkanInstanceCreateInfoKHR xrVkCreateInfo{XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR};
+        xrVkCreateInfo.systemId = xrContext.getSystemId();
+        xrVkCreateInfo.pfnGetInstanceProcAddr = vkGetInstanceProcAddr;
+        xrVkCreateInfo.vulkanCreateInfo = reinterpret_cast<const VkInstanceCreateInfo*>(&createInfo);
+        xrVkCreateInfo.vulkanAllocator = nullptr;
+        VkInstance vkInst = VK_NULL_HANDLE;
+        VkResult vkResult = VK_SUCCESS;
+        if (pfnXrCreateVulkanInstance(xrContext.getXrInstance(), &xrVkCreateInfo, &vkInst, &vkResult) == XR_SUCCESS
+            && vkResult == VK_SUCCESS) {
+          instance = vk::raii::Instance(context, vkInst);
+          xrContext.setVulkanInstance(*instance);
+          return true;
+        }
+        std::cerr << "Warning: xrCreateVulkanInstanceKHR failed, falling back to standard instance creation" << std::endl;
+      }
+    }
 
+    instance = vk::raii::Instance(context, createInfo);
     if (xrMode) {
       xrContext.setVulkanInstance(*instance);
     }
@@ -732,8 +770,14 @@ bool Renderer::pickPhysicalDevice() {
         continue;
       }
 
-      // Check queue families
+      // Check queue families.  In XR mode the surface may not exist yet (it is created after
+      // device selection), so findQueueFamilies will skip the present-support query and leave
+      // presentFamily unset.  Fall back to the graphics family — modern discrete GPUs always
+      // support present on the graphics queue.
       QueueFamilyIndices indices = findQueueFamilies(_device);
+      if (!indices.presentFamily.has_value() && indices.graphicsFamily.has_value()) {
+        indices.presentFamily = indices.graphicsFamily;
+      }
       bool supportsGraphics = indices.isComplete();
       if (!supportsGraphics) {
         std::cout << "  - Missing required queue families" << std::endl;
@@ -747,12 +791,15 @@ bool Renderer::pickPhysicalDevice() {
         continue;
       }
 
-      // Check swap chain support
-      SwapChainSupportDetails swapChainSupport = querySwapChainSupport(_device);
-      bool swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-      if (!swapChainAdequate) {
-        std::cout << "  - Inadequate swap chain support" << std::endl;
-        continue;
+      // Check swap chain support — skip in XR mode because the surface does not exist yet
+      // at the time of device selection.  Swap-chain adequacy is verified at swapchain creation.
+      if (!xrMode) {
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(_device);
+        bool swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+        if (!swapChainAdequate) {
+          std::cout << "  - Inadequate swap chain support" << std::endl;
+          continue;
+        }
       }
 
       // Check for required features
@@ -802,6 +849,9 @@ bool Renderer::pickPhysicalDevice() {
 
       // Store queue family indices for the selected device
       queueFamilyIndices = findQueueFamilies(physicalDevice);
+      if (!queueFamilyIndices.presentFamily.has_value() && queueFamilyIndices.graphicsFamily.has_value()) {
+        queueFamilyIndices.presentFamily = queueFamilyIndices.graphicsFamily;
+      }
 
       // Add supported optional extensions
       addSupportedOptionalExtensions();

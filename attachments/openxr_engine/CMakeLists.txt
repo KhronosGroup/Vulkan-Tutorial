@@ -136,7 +136,7 @@ set(SOURCES_COMMON
     ${SIMPLE_ENGINE_DIR}/platform.cpp
     renderer_pipelines.cpp
     ${SIMPLE_ENGINE_DIR}/renderer_compute.cpp
-    ${SIMPLE_ENGINE_DIR}/renderer_utils.cpp
+    renderer_utils.cpp                # OpenXR version (VK_NULL_HANDLE guard for XR device selection)
     ${SIMPLE_ENGINE_DIR}/renderer_ray_query.cpp
     memory_pool.cpp
     ${SIMPLE_ENGINE_DIR}/resource_manager.cpp

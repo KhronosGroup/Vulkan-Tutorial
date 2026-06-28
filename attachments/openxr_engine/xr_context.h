@@ -2,7 +2,11 @@
 
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+#if defined(_WIN32)
+#define XR_USE_PLATFORM_WIN32
+#elif defined(__linux__)
 #define XR_USE_PLATFORM_XLIB
+#endif
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
@@ -28,6 +32,8 @@ public:
 
     bool createInstance(const std::string& appName);
     void setVulkanInstance(vk::Instance instance) { vkInstance = instance; }
+    XrInstance getXrInstance() const { return instance; }
+    XrSystemId getSystemId() const { return systemId; }
     bool createSession(vk::PhysicalDevice physicalDevice, vk::Device device, uint32_t queueFamilyIndex, uint32_t queueIndex);
     void cleanup();
 

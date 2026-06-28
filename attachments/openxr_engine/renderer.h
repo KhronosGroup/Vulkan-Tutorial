@@ -979,9 +979,6 @@ class Renderer {
     XrContext& GetXrContext() { return xrContext; }
 
   private:
-    XrContext xrContext;
-    bool xrMode = false;
-
     // Platform
     Platform* platform = nullptr;
 
@@ -1034,9 +1031,6 @@ class Renderer {
     vk::Format swapChainImageFormat = vk::Format::eUndefined;
     vk::Extent2D swapChainExtent = {0, 0};
     std::vector<vk::raii::ImageView> swapChainImageViews;
-    // OpenXR Swapchains
-    std::vector<vk::Image> eyeSwapchainImages[2];
-    std::vector<vk::raii::ImageView> eyeSwapchainImageViews[2];
 
     // Tracked layouts for swapchain images (VVL requires correct oldLayout in barriers).
     // Initialized at swapchain creation and updated as we transition.
@@ -1119,7 +1113,6 @@ class Renderer {
     // Depth buffer
     vk::raii::Image depthImage = nullptr;
     std::unique_ptr<MemoryPool::Allocation> depthImageAllocation = nullptr;
-    vk::raii::DeviceMemory depthImageMemory = nullptr;
     vk::raii::ImageView depthImageView = nullptr;
 
     // Forward+ configuration
@@ -1925,7 +1918,15 @@ class Renderer {
     // Serialize descriptor writes vs command buffer recording to avoid mid-record updates during recording
     std::mutex renderRecordMutex;
 
-    // (Descriptor API wrappers were considered but avoided here to keep RAII types intact.)
+    // OpenXR-specific members placed here (after all shared members) so that simple_engine/renderer.h
+    // and openxr_engine/renderer.h share identical byte offsets for all common members.
+    // renderer_utils.cpp and other shared source files are compiled against simple_engine/renderer.h
+    // (source-file-dir include precedence), so the shared-member layout MUST match.
+    XrContext xrContext;
+    bool xrMode = false;
+    std::vector<vk::Image> eyeSwapchainImages[2];
+    std::vector<vk::raii::ImageView> eyeSwapchainImageViews[2];
+    vk::raii::DeviceMemory depthImageMemory = nullptr;
 
     // Upload perf getters
   public:

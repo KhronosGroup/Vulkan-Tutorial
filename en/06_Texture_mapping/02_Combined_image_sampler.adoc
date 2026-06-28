@@ -8,10 +8,10 @@ We looked at descriptors for the first time in the uniform buffers part of the t
 In this chapter, we will look at a new type of descriptor: _combined image sampler_.
 This descriptor makes it possible for shaders to access an image resource through a sampler object like the one we created in the previous chapter.
 
-It's worth noting that Vulkan provides flexibility in how textures are accessed in shaders through different descriptor types. While we'll be using a _combined image sampler_ in this tutorial, Vulkan also supports separate descriptors for samplers (`VK_DESCRIPTOR_TYPE_SAMPLER`) and sampled images (`VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE`). Using separate descriptors allows you to reuse the same sampler with multiple images or access the same image with different sampling parameters. This can be more efficient in scenarios where you have many textures that use identical sampling configurations. However, the combined image sampler is often more convenient and can offer better performance on some hardware due to optimized cache usage.
+It's worth noting that Vulkan provides flexibility in how textures are accessed in shaders through different descriptor types. While we'll be using a _combined image sampler_ in this tutorial, Vulkan also supports separate descriptors for samplers (`vk::DescriptorType::eSampler`) and sampled images (`vk::DescriptorType::eSampledImage`). Using separate descriptors allows you to reuse the same sampler with multiple images or access the same image with different sampling parameters. This can be more efficient in scenarios where you have many textures that use identical sampling configurations. However, the combined image sampler is often more convenient and can offer better performance on some hardware due to optimized cache usage.
 
 We'll start by modifying the descriptor set layout, descriptor pool and descriptor set to include such a combined image sampler descriptor.
-After that, we're going to add texture coordinates to `Vertex` and modify the fragment shader to read colors from the texture instead of just interpolating the vertex colors.
+After that, we're going to add texture coordinates to `Vertex`, replacing the color value, and modify the fragment shader to read colors from the texture instead of just interpolating the vertex colors.
 
 == Updating the descriptors
 
@@ -20,36 +20,36 @@ We'll simply put it in the binding after the uniform buffer:
 
 [,c++]
 ----
-std::array bindings = {
-    vk::DescriptorSetLayoutBinding( 0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
-    vk::DescriptorSetLayoutBinding( 1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr)
-};
+std::array<vk::DescriptorSetLayoutBinding, 2> bindings{
+    {{.binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex},
+     {.binding = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment}}};
 
-vk::DescriptorSetLayoutCreateInfo layoutInfo({}, bindings.size(), bindings.data());
+vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()};
 ----
 
 Make sure to set the `stageFlags` to indicate that we intend to use the combined image sampler descriptor in the fragment shader.
 That's where the color of the fragment is going to be determined.
 It is possible to use texture sampling in the vertex shader, for example to dynamically deform a grid of vertices by a https://en.wikipedia.org/wiki/Heightmap[heightmap].
 
-We must also create a larger descriptor pool to make room for the allocation of the combined image sampler by adding another `VkPoolSize` of type `VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER` to the `VkDescriptorPoolCreateInfo`.
-Go to the `createDescriptorPool` function and modify it to include a `VkDescriptorPoolSize` for this descriptor:
+We must also create a larger descriptor pool to make room for the allocation of the combined image sampler by adding another `vk::PoolSize` of type `vk::DescriptorType::eCombinedImageSampler` to the `vk::DescriptorPoolCreateInfo`.
+Go to the `createDescriptorPool` function and modify it to include a `vk::DescriptorPoolSize` for this descriptor:
 
 [,c++]
 ----
-std::array poolSize {
-    vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
-    vk::DescriptorPoolSize(  vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT)
-};
-vk::DescriptorPoolCreateInfo poolInfo(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, MAX_FRAMES_IN_FLIGHT, poolSize);
+std::array<vk::DescriptorPoolSize, 2> poolSize{{{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+                                                {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}};
+vk::DescriptorPoolCreateInfo          poolInfo{.flags         = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                               .maxSets       = MAX_FRAMES_IN_FLIGHT,
+                                               .poolSizeCount = static_cast<uint32_t>(poolSize.size()),
+                                               .pPoolSizes    = poolSize.data()};
 ----
 
-Inadequate descriptor pools are a good example of a problem that the validation layers will not catch: As of Vulkan 1.1, `vkAllocateDescriptorSets` may fail with the error code `VK_ERROR_POOL_OUT_OF_MEMORY` if the pool is not sufficiently large, but the driver may also try to solve the problem internally.
+Inadequate descriptor pools are a good example of a problem that the validation layers will not catch: As of Vulkan 1.1, `vk::raii::Device::allocateDescriptorSets` may fail and throw a `vk::OutOfPoolMemoryError` exception if the pool is not sufficiently large, but the driver may also try to solve the problem internally.
 This means that sometimes (depending on hardware, pool size and allocation size) the driver will let us get away with an allocation that exceeds the limits of our descriptor pool.
-Other times, `vkAllocateDescriptorSets` will fail and return `VK_ERROR_POOL_OUT_OF_MEMORY`.
+Other times, `vk::raii::Device::allocateDescriptorSets` will fail and throw a `vk::OutOfPoolMemoryError` exception.
 This can be particularly frustrating if the allocation succeeds on some machines, but fails on others.
 
-Since Vulkan shifts the responsibility for the allocation to the driver, it is no longer a strict requirement to only allocate as many descriptors of a certain type (`VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER`, etc.) as specified by the corresponding `descriptorCount` members for the creation of the descriptor pool.
+Since Vulkan shifts the responsibility for the allocation to the driver, it is no longer a strict requirement to only allocate as many descriptors of a certain type (`vk::DescriptorType::eCombinedImageSampler`, etc.) as specified by the corresponding `descriptorCount` members for the creation of the descriptor pool.
 However, it remains best practice to do so, and in the future, `VK_LAYER_KHRONOS_validation` will warn about this type of problem if you enable https://vulkan.lunarg.com/doc/view/latest/windows/best_practices.html[Best Practice Validation].
 
 The final step is to bind the actual image and sampler resources to the descriptors in the descriptor set.
@@ -57,25 +57,32 @@ Go to the `createDescriptorSets` function.
 
 [,c++]
 ----
-for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vk::DescriptorBufferInfo bufferInfo{ .buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject) };
-    vk::DescriptorImageInfo imageInfo{ .sampler = textureSampler, .imageView = textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+{
+    vk::DescriptorBufferInfo bufferInfo{.buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject)};
+    vk::DescriptorImageInfo  imageInfo{.sampler = textureSampler, .imageView = textureImageView, .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
     ...
 }
 ----
 
-The resources for a combined image sampler structure must be specified in a `VkDescriptorImageInfo` struct, just like the buffer resource for a uniform buffer descriptor is specified in a `VkDescriptorBufferInfo` struct.
+The resources for a combined image sampler structure must be specified in a `vk::DescriptorImageInfo` struct, just like the buffer resource for a uniform buffer descriptor is specified in a `vk::DescriptorBufferInfo` struct.
 This is where the objects from the previous chapter come together.
 
 [,c++]
 ----
-std::array descriptorWrites{
-    vk::WriteDescriptorSet{ .dstSet = descriptorSets[i], .dstBinding = 0, .dstArrayElement = 0, .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo },
-    vk::WriteDescriptorSet{ .dstSet = descriptorSets[i], .dstBinding = 1, .dstArrayElement = 0, .descriptorCount = 1, 
-        .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo }
-};
+std::array<vk::WriteDescriptorSet, 2> descriptorWrites{{{.dstSet          = descriptorSets[i],
+                                                         .dstBinding      = 0,
+                                                         .dstArrayElement = 0,
+                                                         .descriptorCount = 1,
+                                                         .descriptorType  = vk::DescriptorType::eUniformBuffer,
+                                                         .pBufferInfo     = &bufferInfo},
+                                                        {.dstSet          = descriptorSets[i],
+                                                         .dstBinding      = 1,
+                                                         .dstArrayElement = 0,
+                                                         .descriptorCount = 1,
+                                                         .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+                                                         .pImageInfo      = &imageInfo}}};
 device.updateDescriptorSets(descriptorWrites, {});
 ----
 
@@ -90,27 +97,26 @@ The texture coordinates determine how the image is actually mapped to the geomet
 
 [,c++]
 ----
-struct Vertex {
+struct Vertex
+{
     glm::vec2 pos;
-    glm::vec3 color;
     glm::vec2 texCoord;
 
-    static vk::VertexInputBindingDescription getBindingDescription() {
+    static vk::VertexInputBindingDescription getBindingDescription()
+    {
         return { 0, sizeof(Vertex), vk::VertexInputRate::eVertex };
     }
 
-    static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions() {
-        return {
-            vk::VertexInputAttributeDescription( 0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos) ),
-            vk::VertexInputAttributeDescription( 1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color) ),
-            vk::VertexInputAttributeDescription( 2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord) )
-        };
+    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+    {
+        return {{{.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, pos)},
+                 {.location = 1, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, texCoord)}}};
     }
 };
 ----
 
-Modify the `Vertex` struct to include a `vec2` for texture coordinates.
-Make sure to also add a `VkVertexInputAttributeDescription` so that we can use access texture coordinates as input in the vertex shader.
+Modify the `Vertex` struct to include a `vec2` for texture coordinates. The color isn't used anymore and can be removed.
+Make sure to also add a `vk::VertexInputAttributeDescription` so that we can access texture coordinates as input in the vertex shader.
 That is necessary to be able to pass them to the fragment shader for interpolation across the surface of the square.
 
 [,c++]
@@ -163,11 +169,9 @@ VSOutput vertMain(VSInput input) {
     return output;
 }
 
-Sampler2D texture;
-
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
-   return texture.Sample(vertIn.fragTexCoord);
+   return float4(vertIn.fragTexCoord, 0.0, 1.0);
 }
 ----
 

@@ -61,6 +61,7 @@
 ** xref:courses/18_Ray_tracing/05_Shadow_transparency.adoc[Shadow transparency]
 ** xref:courses/18_Ray_tracing/06_Reflections.adoc[Reflections]
 ** xref:courses/18_Ray_tracing/07_Conclusion.adoc[Conclusion]
+* xref:courses/siggraph2026_vk_tutorial/00_Overview.adoc[How to write a Vulkan application in 2026]
 * xref:90_FAQ.adoc[FAQ]
 * link:https://github.com/KhronosGroup/Vulkan-Tutorial[GitHub Repository, window=_blank]
 
@@ -250,3 +251,50 @@
 *** xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/03_automated_qa.adoc[Automated QA]
 *** xref:OpenXR_Vulkan_Spatial_Computing/20_Spatial_Diagnostics_CI_CD/04_incorporating_into_the_engine.adoc[Incorporating into the Engine]
 ** xref:OpenXR_Vulkan_Spatial_Computing/conclusion.adoc[Conclusion]
+* Synchronization 2
+** xref:Synchronization/introduction.adoc[Introduction]
+** Anatomy of a Dependency
+*** xref:Synchronization/Anatomy_of_a_Dependency/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Anatomy_of_a_Dependency/02_execution_vs_memory.adoc[Execution vs. Memory]
+*** xref:Synchronization/Anatomy_of_a_Dependency/03_sync2_advantage.adoc[Sync 2 Advantage]
+*** xref:Synchronization/Anatomy_of_a_Dependency/04_refined_pipeline_stages.adoc[Refined Pipeline Stages]
+*** xref:Synchronization/Anatomy_of_a_Dependency/05_conclusion.adoc[Conclusion]
+** Pipeline Barriers and Transitions
+*** xref:Synchronization/Pipeline_Barriers_Transitions/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Pipeline_Barriers_Transitions/02_image_barrier.adoc[The Image Barrier]
+*** xref:Synchronization/Pipeline_Barriers_Transitions/03_queue_family_ownership.adoc[Queue Family Ownership]
+*** xref:Synchronization/Pipeline_Barriers_Transitions/04_global_vs_local_barriers.adoc[Global vs. Local Barriers]
+** Timeline Semaphores
+*** xref:Synchronization/Timeline_Semaphores/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Timeline_Semaphores/02_unifying_sync.adoc[Unifying Sync]
+*** xref:Synchronization/Timeline_Semaphores/03_monotonic_counter.adoc[Monotonic Counter]
+*** xref:Synchronization/Timeline_Semaphores/04_wait_before_signal.adoc[Wait Before Signal]
+** Frame-in-Flight Architecture
+*** xref:Synchronization/Frame_in_Flight/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Frame_in_Flight/02_managing_concurrent_frames.adoc[Managing Concurrent Frames]
+*** xref:Synchronization/Frame_in_Flight/03_resource_lifetimes.adoc[Resource Lifetimes]
+** Asynchronous Compute & Overlap
+*** xref:Synchronization/Async_Compute_Overlap/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Async_Compute_Overlap/02_maximizing_throughput.adoc[Maximizing Throughput]
+*** xref:Synchronization/Async_Compute_Overlap/03_async_post_processing.adoc[Async Post-processing]
+*** xref:Synchronization/Async_Compute_Overlap/04_bubble_problem.adoc[The Bubble Problem]
+** Transfer Queues & Asset Streaming Sync
+*** xref:Synchronization/Transfer_Queues_Streaming/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Transfer_Queues_Streaming/02_non_blocking_uploads.adoc[Non-blocking Uploads]
+*** xref:Synchronization/Transfer_Queues_Streaming/03_staging_sync.adoc[Staging Sync]
+** Synchronization in Dynamic Rendering
+*** xref:Synchronization/Dynamic_Rendering_Sync/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Dynamic_Rendering_Sync/02_subpass_replacement.adoc[Subpass Replacement]
+*** xref:Synchronization/Dynamic_Rendering_Sync/03_local_read_sync.adoc[Local Read Sync]
+** Host Image Copies & Memory Mapped Sync
+*** xref:Synchronization/Host_Image_Copies_Memory_Sync/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Host_Image_Copies_Memory_Sync/02_cpu_to_image_access.adoc[CPU-to-Image Access]
+*** xref:Synchronization/Host_Image_Copies_Memory_Sync/03_visibility_flushes.adoc[Visibility Flushes]
+** Debugging with Synchronization Validation
+*** xref:Synchronization/Synchronization_Validation/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Synchronization_Validation/02_validation_layer.adoc[Validation Layer]
+*** xref:Synchronization/Synchronization_Validation/03_interpreting_vuids.adoc[Interpreting VUIDs]
+** Profiling, Batching, and Optimization
+*** xref:Synchronization/Profiling_Optimization/01_introduction.adoc[Introduction]
+*** xref:Synchronization/Profiling_Optimization/02_barrier_batching.adoc[Barrier Batching]
+*** xref:Synchronization/Profiling_Optimization/03_visualizing_stalls.adoc[Visualizing Stalls]

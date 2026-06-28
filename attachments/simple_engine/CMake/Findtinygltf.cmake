@@ -74,10 +74,11 @@ if(NOT tinygltf_INCLUDE_DIR)
                    TINYGLTF_CMAKE_CONTENT "${TINYGLTF_CMAKE_CONTENT}")
     file(WRITE "${tinygltf_SOURCE_DIR}/CMakeLists.txt" "${TINYGLTF_CMAKE_CONTENT}")
 
-    # Create a symbolic link to make nlohmann/json.hpp available
+    # Copy json.hpp to nlohmann/json.hpp to make it available
+    # Using COPY instead of CREATE_LINK SYMBOLIC to avoid permission issues on Windows
     if(EXISTS "${tinygltf_SOURCE_DIR}/json.hpp")
       file(MAKE_DIRECTORY "${tinygltf_SOURCE_DIR}/nlohmann")
-      file(CREATE_LINK "${tinygltf_SOURCE_DIR}/json.hpp" "${tinygltf_SOURCE_DIR}/nlohmann/json.hpp" SYMBOLIC)
+      file(COPY "${tinygltf_SOURCE_DIR}/json.hpp" DESTINATION "${tinygltf_SOURCE_DIR}/nlohmann")
     endif()
 
     # Set tinygltf to header-only mode

@@ -4,6 +4,11 @@
 #include <vulkan/vulkan_raii.hpp>
 #if defined(_WIN32)
 #define XR_USE_PLATFORM_WIN32
+// openxr_platform.h with XR_USE_PLATFORM_WIN32 needs LARGE_INTEGER, IUnknown, etc.
+// <windows.h> provides the base types; <unknwn.h> provides IUnknown which is
+// excluded by WIN32_LEAN_AND_MEAN (defined globally in the build).
+#include <windows.h>
+#include <unknwn.h>
 #elif defined(__linux__)
 #define XR_USE_PLATFORM_XLIB
 #endif

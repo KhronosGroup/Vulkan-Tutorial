@@ -39,8 +39,8 @@ Even with a perfect pipeline, things go wrong. We'll build specialized debugging
 Throughout this series, we will upgrade our development toolkit to reflect modern standards:
 
 *   **Slang Shaders**: All of our new shader work—from compute skinning to PBR enhancements—will be written in **Slang**. Slang's modularity and natural alignment features make it far more productive than raw GLSL for complex rendering pipelines.
-*   **Vulkan 1.4**: We will utilize features like **Dynamic Rendering** and **Descriptor Indexing** to simplify our pipeline management and improve performance.
-*   **Jolt Physics**: We have selected **Jolt Physics** as our simulation engine. Its performance-first design and clean C++ API make it the ideal choice for real-time character dynamics and ragdolls.
+*   **Vulkan 1.3**: We will utilize features like **Dynamic Rendering** and **Descriptor Indexing** to simplify our pipeline management and improve performance.
+*   **Jolt Physics**: We have selected link:https://jrouwe.github.io/JoltPhysics/[Jolt Physics] (link:https://github.com/jrouwe/JoltPhysics[source on GitHub]) as our simulation engine. Its performance-first design and clean C++ API make it the ideal choice for real-time character dynamics and ragdolls.
 
 == Setting Up Your Development Environment
 
@@ -70,14 +70,15 @@ FetchContent_MakeAvailable(Jolt)
 
 === 3. Khronos glTF-Validator
 To ensure our custom glTF assets are valid, we will use the official validator.
+
 * **Installation**: Follow the instructions on the link:https://github.com/KhronosGroup/glTF-Validator[glTF-Validator repository]. It is available as a standalone CLI tool or via NPM.
 
 == Preparing the Starter Project
 
 This series assumes you have a working engine from the "Building a Simple Engine" series. To transition to the Advanced glTF architecture, you should prepare a "Starter Project" that:
 
-1.  **Supports Vulkan 1.4**: Ensure your instance and device creation request the 1.4 API version.
-2.  **Enables Dynamic Rendering**: This series moves away from fixed Render Passes and Framebuffers in favor of `VK_KHR_dynamic_rendering`.
+1.  **Supports Vulkan 1.3**: Ensure your instance and device creation request the 1.3 API version.
+2.  **Enables Dynamic Rendering**: Ensure `VK_KHR_dynamic_rendering` is enabled; this should already be active if you completed the Simple Engine series, which introduced dynamic rendering in its Advanced Topics chapter.
 3.  **Integrates GLM**: We will use GLM extensively for math operations, specifically for quaternion support in skeletal animation.
 
 If you are starting fresh, we recommend refactoring your Simple Engine core to support a global scene graph before proceeding to the next chapter.

@@ -10,6 +10,24 @@ The glTF format provides a powerful but often overlooked feature for solving thi
 
 In a professional production, an artist shouldn't have to write code to define where a character's collision shapes go. Instead, they define them as custom properties in Blender. When the glTF is exported, these properties are embedded in the `extras` field of the corresponding node.
 
+=== Adding Custom Properties in Blender
+
+To attach physics metadata to a node, select the object or bone in Blender and navigate to the **Properties panel → Object Properties → Custom Properties** (or **Bone Properties → Custom Properties** for armature bones). Click **New** to add a property and name it `physics`. Set its value to a JSON-compatible dictionary using Blender's property editor or a small Python script in the scripting workspace:
+
+[source,python]
+----
+import bpy
+
+obj = bpy.context.active_object
+obj["physics"] = {"type": "capsule", "radius": 0.1, "height": 0.4}
+----
+
+When you export via **File → Export → glTF 2.0**, enable **Include → Custom Properties** in the export dialog. Blender will serialize those properties into the `extras` field of the corresponding node in the output `.glb` / `.gltf` file.
+
+image::images/blender_custom_properties.png[Blender Custom Properties panel showing a physics capsule property on a forearm bone,600]
+
+NOTE: The screenshot above shows the Custom Properties panel in Blender 4.x. The panel location is the same in Blender 3.x.
+
 Consider a character's forearm bone. In Blender, we can add a custom property called `physics` with a value that defines a capsule collider. When our engine parses the glTF, it doesn't just see a bone node; it sees a request to attach a physical proxy.
 
 [source,cpp]

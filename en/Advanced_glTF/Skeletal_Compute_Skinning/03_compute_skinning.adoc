@@ -71,7 +71,7 @@ While you may be familiar with GLSL from the "Simple Engine," Slang offers sever
 
 [NOTE]
 ====
-To follow this section, you will need the **Slang compiler (`slangc`)**. You can download the latest binaries from the link:https://github.com/shader-slang/slang/releases[Slang GitHub releases page]. Ensure `slangc` is in your system PATH.
+The **Slang compiler (`slangc`)** is bundled with the link:https://vulkan.lunarg.com/sdk/home[Vulkan SDK], so if you have already installed the SDK to follow this tutorial, `slangc` should already be available in your PATH without any additional download. If you need a standalone installation or a newer version, binaries are also available on the link:https://github.com/shader-slang/slang/releases[Slang GitHub releases page].
 ====
 
 === Compiling and Loading Slang Shaders

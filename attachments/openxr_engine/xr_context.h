@@ -62,6 +62,15 @@ public:
     uint32_t acquireSwapchainImage();
     void releaseSwapchainImage();
 
+    // Session lifecycle
+    void pollEvents();
+    bool isSessionRunning() const {
+        return sessionState == XR_SESSION_STATE_SYNCHRONIZED ||
+               sessionState == XR_SESSION_STATE_VISIBLE ||
+               sessionState == XR_SESSION_STATE_FOCUSED;
+    }
+    XrSessionState getSessionState() const { return sessionState; }
+
     // Frame Lifecycle (Chapter 5)
     XrFrameState waitFrame();
     void beginFrame();
@@ -70,7 +79,11 @@ public:
     // View & Projection (Chapter 4 & 11)
     void locateViews(XrTime predictedTime);
     std::vector<XrView> getLatestViews() const { return views; }
-    std::array<XrPosef, 2> getLatestViewPoses() const { return {views[0].pose, views[1].pose}; }
+    std::array<XrPosef, 2> getLatestViewPoses() const {
+        static const XrPosef identity = {{0,0,0,1},{0,0,0}};
+        return {views.size() > 0 ? views[0].pose : identity,
+                views.size() > 1 ? views[1].pose : identity};
+    }
     vk::Viewport getViewport(uint32_t eye) const;
     vk::Rect2D getScissor(uint32_t eye) const;
     glm::mat4 getProjectionMatrix(uint32_t eye) const;
@@ -125,6 +138,7 @@ private:
 
     XrFrameState frameState;
     std::vector<XrView> views;
+    XrSessionState sessionState = XR_SESSION_STATE_UNKNOWN;
 
     // Action system members
     XrActionSet actionSet;

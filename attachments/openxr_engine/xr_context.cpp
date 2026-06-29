@@ -138,17 +138,33 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
         return false;
     }
 
-    XrReferenceSpaceCreateInfo spaceCreateInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-    spaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
-    spaceCreateInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
-    if (xrCreateReferenceSpace(this->session, &spaceCreateInfo, &this->appSpace) != XR_SUCCESS) {
-        return false;
-    }
-
+    // Always initialize views to safe defaults so locateViews can populate them.
     this->views.resize(2, {XR_TYPE_VIEW});
     for (uint32_t i = 0; i < 2; ++i) {
         this->views[i].pose = {{0,0,0,1}, {0,0,0}};
         this->views[i].fov = {-1, 1, 1, -1};
+    }
+
+    // Try STAGE first (physical room-scale origin), fall back to LOCAL (head-locked),
+    // then VIEW (eye-relative) — Monado's QWERTY driver only supports LOCAL/VIEW.
+    XrReferenceSpaceCreateInfo spaceCreateInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+    spaceCreateInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
+    const XrReferenceSpaceType spaceFallbacks[] = {
+        XR_REFERENCE_SPACE_TYPE_STAGE,
+        XR_REFERENCE_SPACE_TYPE_LOCAL,
+        XR_REFERENCE_SPACE_TYPE_VIEW,
+    };
+    bool spaceCreated = false;
+    for (auto spaceType : spaceFallbacks) {
+        spaceCreateInfo.referenceSpaceType = spaceType;
+        if (xrCreateReferenceSpace(this->session, &spaceCreateInfo, &this->appSpace) == XR_SUCCESS) {
+            this->referenceSpaceType = spaceType;
+            spaceCreated = true;
+            break;
+        }
+    }
+    if (!spaceCreated) {
+        return false;
     }
 
     XrActionSetCreateInfo actionSetInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
@@ -173,8 +189,8 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
     createAction("pose_right", "Right Hand Pose", XR_ACTION_TYPE_POSE_INPUT);
     createAction("grab_left", "Left Grab", XR_ACTION_TYPE_FLOAT_INPUT);
     createAction("grab_right", "Right Grab", XR_ACTION_TYPE_FLOAT_INPUT);
-    createAction("Grab", "Grab", XR_ACTION_TYPE_BOOLEAN_INPUT);
-    createAction("GrabPose", "Grab Pose", XR_ACTION_TYPE_POSE_INPUT);
+    createAction("grab", "Grab", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    createAction("grab_pose", "Grab Pose", XR_ACTION_TYPE_POSE_INPUT);
     createAction("menu", "Menu Button", XR_ACTION_TYPE_BOOLEAN_INPUT);
 
     XrPath khrSimplePath;
@@ -189,8 +205,8 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
     addBinding("trigger_right", "/user/hand/right/input/select/click");
     addBinding("pose_left", "/user/hand/left/input/grip/pose");
     addBinding("pose_right", "/user/hand/right/input/grip/pose");
-    addBinding("Grab", "/user/hand/right/input/select/click");
-    addBinding("GrabPose", "/user/hand/right/input/grip/pose");
+    addBinding("grab", "/user/hand/right/input/select/click");
+    addBinding("grab_pose", "/user/hand/right/input/grip/pose");
     addBinding("menu", "/user/hand/left/input/menu/click");
 
     XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
@@ -204,7 +220,7 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
     attachInfo.actionSets = &this->actionSet;
     xrAttachSessionActionSets(this->session, &attachInfo);
 
-    for (const auto& actionName : {"pose_left", "pose_right", "GrabPose"}) {
+    for (const auto& actionName : {"pose_left", "pose_right", "grab_pose"}) {
         XrActionSpaceCreateInfo actionSpaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
         actionSpaceInfo.action = actions[actionName];
         actionSpaceInfo.poseInActionSpace = {{0,0,0,1}, {0,0,0}};
@@ -424,6 +440,27 @@ void XrContext::releaseSwapchainImage() {
     if (swapchains.empty()) return;
     XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     xrReleaseSwapchainImage(swapchains[0].handle, &ri);
+}
+
+void XrContext::pollEvents() {
+    XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};
+    while (xrPollEvent(instance, &event) == XR_SUCCESS) {
+        if (event.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
+            auto* stateEvent = reinterpret_cast<XrEventDataSessionStateChanged*>(&event);
+            sessionState = stateEvent->state;
+            if (stateEvent->state == XR_SESSION_STATE_READY) {
+                XrSessionBeginInfo bi{XR_TYPE_SESSION_BEGIN_INFO};
+                bi.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+                xrBeginSession(session, &bi);
+            } else if (stateEvent->state == XR_SESSION_STATE_STOPPING) {
+                xrEndSession(session);
+            } else if (stateEvent->state == XR_SESSION_STATE_EXITING ||
+                       stateEvent->state == XR_SESSION_STATE_LOSS_PENDING) {
+                // Signal caller to exit
+            }
+        }
+        event = {XR_TYPE_EVENT_DATA_BUFFER};
+    }
 }
 
 XrFrameState XrContext::waitFrame() {

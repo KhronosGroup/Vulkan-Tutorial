@@ -21,6 +21,7 @@
 #include "transform_component.h"
 #include "xr_context.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -68,7 +69,7 @@ void SetupScene(Engine *engine)
 		renderer->SetLoadingPhase(Renderer::LoadingPhase::Textures);
 	}
 	std::thread([engine] {
-		LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
+		LoadGLTFModel(engine, "Assets/bistro/bistro.gltf");
 	}).detach();
 }
 
@@ -115,6 +116,15 @@ void android_main(android_app *app)
  */
 int main(int, char *[])
 {
+	// Prevent libcanberra-gtk-module from loading into this process.  On Wayland,
+	// libdecor-gtk is loaded as a GLFW window decoration backend; it in turn loads
+	// libcanberra-gtk-module which tries to spawn a PulseAudio thread the first time
+	// a GTK event fires.  If the nptl thread-stack cache contains any corrupted entry
+	// (e.g., from Monado shared-memory init), that pa_thread_new call aborts with
+	// "free(): invalid pointer".  We don't use GTK sound themes, so unloading the
+	// module is correct regardless.
+	setenv("GTK_MODULES", "", 1);
+
 	try
 	{
 		// Enable minidump generation for Release-only crashes (e.g., stack cookie failures / fast-fail).

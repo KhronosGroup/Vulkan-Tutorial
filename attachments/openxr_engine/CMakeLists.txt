@@ -81,15 +81,21 @@ else()
 endif()
 
 # Platform-specific settings
+# XR_COMPANION_WINDOW: ON  → desktop build with GLFW companion window (default on non-Android)
+#                      OFF → headless XR build for standalone headsets (PICO, embedded Linux, etc.)
+option(XR_COMPANION_WINDOW "Enable GLFW companion window for desktop XR mode" ON)
+
 if(ANDROID)
-    # Android-specific settings
     add_definitions(-DPLATFORM_ANDROID)
     find_package(game-activity REQUIRED CONFIG)
-else()
-    # Desktop-specific settings
+elseif(XR_COMPANION_WINDOW)
     add_definitions(-DPLATFORM_DESKTOP)
     find_package(glfw3 REQUIRED)
     find_package(OpenAL REQUIRED)
+else()
+    # Headless XR build: no GLFW, no companion window.
+    add_definitions(-DPLATFORM_HEADSET_ONLY)
+    find_package(OpenAL QUIET)
 endif()
 
 # Shader compilation (using local shaders in openxr_engine)
@@ -201,8 +207,10 @@ target_link_libraries(OpenXREngine PUBLIC
 
 if (ANDROID)
     target_link_libraries(OpenXREngine PUBLIC game-activity::game-activity OpenSLES android log)
-else ()
+elseif(XR_COMPANION_WINDOW)
     target_link_libraries(OpenXREngine PRIVATE glfw OpenAL::OpenAL)
+elseif(OpenAL_FOUND)
+    target_link_libraries(OpenXREngine PRIVATE OpenAL::OpenAL)
 endif()
 
 # Windows/MSVC portability and build settings

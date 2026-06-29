@@ -977,6 +977,8 @@ class Renderer {
     // OpenXR support
     bool IsXrMode() const { return xrMode; }
     XrContext& GetXrContext() { return xrContext; }
+    vk::Format GetSwapChainImageFormat() const { return swapChainImageFormat; }
+    void TouchWatchdog() { lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed); }
 
   private:
     // Platform

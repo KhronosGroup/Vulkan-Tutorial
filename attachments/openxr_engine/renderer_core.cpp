@@ -166,11 +166,13 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     }
   }
 
-  // Create surface
+  // Create surface (skipped in headless XR builds — no companion window).
+#if !defined(PLATFORM_HEADSET_ONLY)
   if (!createSurface()) {
     std::cerr << "Failed to create surface" << std::endl;
     return false;
   }
+#endif
 
   // Pick the physical device (non-XR path — surface is available for present-support queries)
   if (!xrMode) {
@@ -203,17 +205,18 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     return false;
   }
 
-  // Create swap chain
+  // Create swap chain + image views (skipped in headless XR builds).
+#if !defined(PLATFORM_HEADSET_ONLY)
   if (!createSwapChain()) {
     std::cerr << "Failed to create swap chain" << std::endl;
     return false;
   }
 
-  // Create image views
   if (!createImageViews()) {
     std::cerr << "Failed to create image views" << std::endl;
     return false;
   }
+#endif
 
   // Setup dynamic rendering
   if (!setupDynamicRendering()) {

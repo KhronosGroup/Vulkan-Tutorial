@@ -17,6 +17,7 @@
 #include "engine.h"
 #include "mesh_component.h"
 #include "scene_loading.h"
+#include "imgui.h"
 
 #include <algorithm>
 #include <chrono>
@@ -24,6 +25,7 @@
 #include <random>
 #include <ranges>
 #include <stdexcept>
+#include <thread>
 
 // This implementation corresponds to the Engine_Architecture chapter in the tutorial:
 // @see en/Building_a_Simple_Engine/Engine_Architecture/02_architectural_patterns.adoc
@@ -151,14 +153,31 @@ void Engine::Run() {
 
     if (renderer->IsXrMode()) {
       auto& xrContext = renderer->GetXrContext();
-      auto frameState = xrContext.waitFrame();
-      xrContext.beginFrame();
 
-      deltaTimeMs = CalculateDeltaTimeMs();
-      Update(frameState.predictedDisplayTime);
-      Render(frameState.predictedDisplayTime);
+      // Drive the session state machine; handles xrBeginSession/xrEndSession.
+      xrContext.pollEvents();
 
-      xrContext.endFrame(renderer->GetXrImageViews());
+      if (xrContext.isSessionRunning()) {
+        auto frameState = xrContext.waitFrame();
+        xrContext.beginFrame();
+
+        deltaTimeMs = CalculateDeltaTimeMs();
+        Update(frameState.predictedDisplayTime);
+
+        if (frameState.shouldRender) {
+          Render(frameState.predictedDisplayTime);
+        } else {
+          // Frame submitted but not rendered (occluded/minimised) — close ImGui frame.
+          if (imguiSystem) ImGui::EndFrame();
+        }
+
+        xrContext.endFrame(renderer->GetXrImageViews());
+      } else {
+        // Session not running: yield to avoid busy-spinning and keep watchdog fed.
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        renderer->TouchWatchdog();
+        deltaTimeMs = std::chrono::milliseconds(10);
+      }
 
       // Update frame counter and FPS for window title (companion window)
       frameCount++;

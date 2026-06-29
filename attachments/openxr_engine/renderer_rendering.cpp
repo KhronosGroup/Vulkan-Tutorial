@@ -1228,13 +1228,19 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   cmd.setScissor(0, xrContext.getScissor(0));
 
   // Draw opaque objects
-  for (const auto& job : opaqueJobs) {
-    drawRenderJob(cmd, job, currentFrame, 0, false);
+  if (!opaqueJobs.empty() && !!*pbrGraphicsPipeline) {
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pbrGraphicsPipeline);
+    for (const auto& job : opaqueJobs) {
+      drawRenderJob(cmd, job, currentFrame, 0, false);
+    }
   }
 
   // Draw transparent objects
-  for (const auto& job : transparentJobs) {
-    drawRenderJob(cmd, job, currentFrame, 0, true);
+  if (!transparentJobs.empty() && !!*pbrBlendGraphicsPipeline) {
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pbrBlendGraphicsPipeline);
+    for (const auto& job : transparentJobs) {
+      drawRenderJob(cmd, job, currentFrame, 0, true);
+    }
   }
 
   cmd.endRendering();
@@ -1264,6 +1270,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     std::lock_guard<std::mutex> lock(queueMutex);
     graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
   }
+
+  // ImGui frame must be closed every frame; XR overlay rendering is not yet implemented.
+  if (imguiSystem)
+    ImGui::EndFrame();
 
   currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }

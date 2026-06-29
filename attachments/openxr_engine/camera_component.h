@@ -159,10 +159,10 @@ class CameraComponent : public Component
 	 * @param near The near plane distance.
 	 * @param far The far plane distance.
 	 */
-	void SetClipPlanes(float near, float far)
+	void SetClipPlanes(float nearDist, float farDist)
 	{
-		nearPlane             = near;
-		farPlane              = far;
+		nearPlane             = nearDist;
+		farPlane              = farDist;
 		projectionMatrixDirty = true;
 	}
 

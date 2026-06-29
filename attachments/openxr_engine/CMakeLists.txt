@@ -148,7 +148,7 @@ set(SOURCES_COMMON
     ${SIMPLE_ENGINE_DIR}/model_loader.cpp
     ${SIMPLE_ENGINE_DIR}/audio_system.cpp
     ${SIMPLE_ENGINE_DIR}/physics_system.cpp
-    ${SIMPLE_ENGINE_DIR}/imgui_system.cpp
+    imgui_system.cpp                  # OpenXR version (ImGui 1.92+ texture lifecycle)
     ${SIMPLE_ENGINE_DIR}/imgui/imgui.cpp
     ${SIMPLE_ENGINE_DIR}/imgui/imgui_draw.cpp
     ${SIMPLE_ENGINE_DIR}/imgui/imgui_tables.cpp
@@ -187,6 +187,7 @@ target_compile_definitions(OpenXREngine PRIVATE
     _USE_MATH_DEFINES
     VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC
+    IMGUI_ENABLE_STB_TRUETYPE
 )
 
 # Link libraries

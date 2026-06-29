@@ -274,7 +274,7 @@ void draw_bone_bodies(
                         ? DYNAMIC_COLOR
                         : KINEMATIC_COLOR;
 
-        glm::mat4 body_transform = pose_to_matrix(pose);
+        glm::mat4 body_transform = pose.to_matrix();
 
         const ColliderDef& def = bone_body.collider_def;
         if (def.shape == ColliderDef::Shape::CAPSULE) {
@@ -293,20 +293,25 @@ void draw_bone_bodies(
 }
 ----
 
-For physics constraints, most physics engines provide a query API to retrieve the constraint's anchor points and axis direction. Drawing a constraint as a line between its two anchor points plus a small indicator for the constraint axis gives you enough information to visually verify that the constraint setup is correct:
+For physics constraints, the `PhysicsWorld` interface does not expose a generic constraint query API, since constraint introspection is highly engine-specific in Jolt. The code below is **pseudocode** showing the pattern you would implement by casting your constraint handles to the concrete Jolt type (`JPH::Constraint*`) and reading `mPoint1`, `mHingeAxis1`, etc. directly:
 
 [source,cpp]
 ----
+// PSEUDOCODE — illustrates the pattern; get_constraint_debug_info() is not part
+// of the PhysicsWorld interface. Implement by casting to JPH::SwingTwistConstraint*
+// or JPH::HingeConstraint* and reading Jolt-specific members directly.
+
 const glm::vec3 CONSTRAINT_COLOR = { 0.0f, 0.5f, 1.0f }; // Blue for constraints
 const glm::vec3 LIMIT_COLOR      = { 1.0f, 0.0f, 1.0f }; // Magenta for limits
 
 void draw_constraints(
     DebugDrawer&              drawer,
-    const PhysicsWorld&       physics_world,
     const std::vector<void*>& constraint_handles)
 {
     for (void* constraint : constraint_handles) {
-        ConstraintDebugInfo info = physics_world.get_constraint_debug_info(constraint);
+        // Cast to the concrete Jolt type and extract anchor/axis data
+        // (ConstraintDebugInfo is a project-specific helper struct, not part of Jolt)
+        ConstraintDebugInfo info = extract_constraint_debug_info(constraint);
 
         // Draw a line connecting the two constraint anchor points
         drawer.draw_line(info.anchor_a, info.anchor_b, CONSTRAINT_COLOR);

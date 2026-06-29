@@ -47,21 +47,23 @@ Because physics engines usually expect separate position and rotation data rathe
 
 [source,cpp]
 ----
-void sync_kinematic_to_physics(const Node& node, PhysicsBody& body) {
+void sync_kinematic_to_physics(const Node& node, JPH::BodyID body_id,
+                                PhysicsWorld& physics_world) {
     // Optimization: Only update physics if the visual node has actually moved
     if (node.status & TransformStatus::WorldDirty) {
 
         // 1. Extract the Translation
         // The 4th column of a standard 4x4 matrix contains the world-space position.
-        glm::vec3 world_pos = glm::vec3(node.world_matrix[3]);
+        PhysicsPose pose;
+        pose.position = glm::vec3(node.world_matrix[3]);
 
         // 2. Extract the Rotation
         // This gives us the world-space orientation without any scaling factors.
-        glm::quat world_rot = node.get_world_rotation();
+        pose.orientation = node.get_world_rotation();
 
         // 3. Update the Physics Representation
-        // This effectively 'teleports' the collider to the visual node's location.
-        body.set_transform(world_pos, world_rot);
+        // move_kinematic teleports the kinematic body to the new pose.
+        physics_world.move_kinematic(body_id, pose);
     }
 }
 ----
@@ -78,24 +80,36 @@ Instead, we must calculate what the **local transform** needs to be, relative to
 
 [source,cpp]
 ----
-void sync_physics_to_dynamic(Node& node, const PhysicsBody& body) {
+void sync_physics_to_dynamic(Node& node, JPH::BodyID body_id,
+                              const PhysicsWorld& physics_world,
+                              std::vector<Node>& nodes) {
     // 1. Get the new world transform from the physics simulation
-    glm::mat4 new_world_matrix = body.get_world_matrix();
+    PhysicsPose pose = physics_world.get_body_pose(body_id);
+    glm::mat4 new_world_matrix = pose.to_matrix();
 
     // 2. Convert world matrix to local transform relative to parent
     // The fundamental formula for our hierarchy is: World = ParentWorld * Local
     // To solve for Local, we multiply both sides by the inverse of ParentWorld:
     // Local = Inverse(ParentWorld) * World
+    glm::mat4 local;
     if (node.parent_index != INVALID_NODE_INDEX) {
         const Node& parent = nodes[node.parent_index];
-        glm::mat4 inv_parent_matrix = glm::inverse(parent.world_matrix);
-
-        // Calculate and set the node's new local matrix
-        node.set_local_matrix(inv_parent_matrix * new_world_matrix);
+        local = glm::inverse(parent.world_matrix) * new_world_matrix;
     } else {
         // Root nodes have no parent, so world space is identical to local space
-        node.set_local_matrix(new_world_matrix);
+        local = new_world_matrix;
     }
+
+    // Decompose the local matrix into the SRT components stored on the node
+    node.translation    = glm::vec3(local[3]);
+    node.scale          = glm::vec3(glm::length(glm::vec3(local[0])),
+                                    glm::length(glm::vec3(local[1])),
+                                    glm::length(glm::vec3(local[2])));
+    glm::mat3 rot_only;
+    rot_only[0] = glm::normalize(glm::vec3(local[0]));
+    rot_only[1] = glm::normalize(glm::vec3(local[1]));
+    rot_only[2] = glm::normalize(glm::vec3(local[2]));
+    node.local_rotation = glm::quat_cast(rot_only);
 
     // 3. Mark the node dirty so its children and the renderer update correctly
     node.mark_dirty();
@@ -108,26 +122,20 @@ By converting the physics world-space coordinate into a local-space coordinate, 
 
 One final, critical aspect of character physics is **Self-Collision**. In a ragdoll, every limb is a separate rigid body. If the arm's capsule collider is allowed to collide with the torso's collider, the ragdoll will "explode" or jitter violently as the limbs fight for space at the joints.
 
-To prevent this, we use **Collision Bitmasks**. We define groups for our objects and tell the physics engine which groups are allowed to interact.
+To prevent this, Jolt Physics uses **Object Layers**. A globally defined layer-pair table specifies which layers can interact. We assign each body to a layer using `set_object_layer()`.
 
 [source,cpp]
 ----
-// Define our collision groups using bitwise flags
-enum CollisionGroup {
-    Group_Environment = 1 << 0, // Ground, walls, buildings
-    Group_Character   = 1 << 1, // The character's own limbs
-    Group_Player      = 1 << 2  // Other players or NPCs
-};
+// Object layer constants — defined once at physics initialization.
+constexpr uint16_t LAYER_ENVIRONMENT = 0; // Ground, walls, buildings
+constexpr uint16_t LAYER_CHARACTER   = 1; // The character's own limbs
+constexpr uint16_t LAYER_PLAYER      = 2; // Other players or NPCs
 
-// Example: Setting up a bone collider
-void setup_bone_physics(PhysicsBody& body) {
-    // This body identifies as part of the 'Character' group
-    body.set_collision_group(Group_Character);
-
-    // This body should collide with the Environment and the Player,
-    // but we EXCLUDE the Character group to prevent self-collisions.
-    uint32_t mask = Group_Environment | Group_Player;
-    body.set_collision_mask(mask);
+// Example: Assign a bone collider to the character layer.
+// The layer-pair table (set up during PhysicsWorld::global_init()) prevents
+// LAYER_CHARACTER bodies from colliding with each other, avoiding self-collision.
+void setup_bone_physics(JPH::BodyID body_id, PhysicsWorld& physics_world) {
+    physics_world.set_object_layer(body_id, LAYER_CHARACTER);
 }
 ----
 

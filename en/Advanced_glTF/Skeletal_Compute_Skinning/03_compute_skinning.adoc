@@ -104,28 +104,29 @@ vkCreateShaderModule(device, &createInfo, nullptr, &skinningShaderModule);
 ----
 // skinning.slang
 
-// The input vertex layout, matching our rest-pose buffer
+// Both structs use C-style arrays to match the binary layout of the GPU buffers
+// uploaded from the CPU (see OutputVertex in renderer_advanced_types.h).
 struct InputVertex {
-    float3 position;
-    float3 normal;
-    float4 tangent;         // w component stores handedness (-1 or +1)
-    float2 texcoord;
-    uint4  joint_indices;   // Up to 4 bone influences
-    float4 joint_weights;   // Corresponding weights (must sum to 1.0)
+    float p[3];
+    float n[3];
+    float uv[2];
+    float t[4]; // tangent; t[3] is handedness (-1 or +1)
 };
 
-// The output vertex layout - a subset of the input (no joint data needed)
 struct OutputVertex {
-    float3 position;
-    float3 normal;
-    float4 tangent;
-    float2 texcoord;
+    float p[3];
+    float n[3];
+    float uv[2];
+    float t[4];
 };
 
-// Shader Storage Buffer bindings
-[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>  input_vertices;
-[[vk::binding(1, 0)]] StructuredBuffer<float4x4>     joint_matrices;
-[[vk::binding(2, 0)]] RWStructuredBuffer<OutputVertex> output_vertices;
+// Joint data is stored in two separate buffers rather than being embedded in
+// InputVertex, so the rest-pose geometry buffer never needs to change.
+[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>    input_vertices;
+[[vk::binding(1, 0)]] RWStructuredBuffer<OutputVertex> output_vertices;
+[[vk::binding(2, 0)]] StructuredBuffer<float4x4>       joint_matrices;
+[[vk::binding(3, 0)]] StructuredBuffer<uint4>          joint_indices;
+[[vk::binding(4, 0)]] StructuredBuffer<float4>         joint_weights;
 
 // Push constants for per-dispatch data
 struct SkinPushConstants {
@@ -138,43 +139,55 @@ struct SkinPushConstants {
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint vertex_id = dispatchThreadID.x;
-
-    // Guard: don't process vertices beyond the mesh
-    if (vertex_id >= push_constants.vertex_count) {
-        return;
-    }
+    if (vertex_id >= push_constants.vertex_count) return;
 
     InputVertex v = input_vertices[vertex_id];
+    uint4  j_idx  = joint_indices[vertex_id];
+    float4 j_w    = joint_weights[vertex_id];
 
     // Build the blended skin matrix from the four joint influences.
     // This is the core of the Linear Blend Skinning (LBS) equation:
     // SkinMatrix = sum(weight_i * JointMatrix_i) for i in [0, 3]
     float4x4 skin_matrix =
-        v.joint_weights.x * joint_matrices[v.joint_indices.x] +
-        v.joint_weights.y * joint_matrices[v.joint_indices.y] +
-        v.joint_weights.z * joint_matrices[v.joint_indices.z] +
-        v.joint_weights.w * joint_matrices[v.joint_indices.w];
+        j_w.x * joint_matrices[j_idx.x] +
+        j_w.y * joint_matrices[j_idx.y] +
+        j_w.z * joint_matrices[j_idx.z] +
+        j_w.w * joint_matrices[j_idx.w];
+
+    float3 v_pos = float3(v.p[0], v.p[1], v.p[2]);
+    float3 v_nrm = float3(v.n[0], v.n[1], v.n[2]);
+    float4 v_tan = float4(v.t[0], v.t[1], v.t[2], v.t[3]);
 
     // Transform the position using the full 4x4 skin matrix
-    float4 animated_pos = mul(skin_matrix, float4(v.position, 1.0));
+    float4 animated_pos = mul(skin_matrix, float4(v_pos, 1.0));
 
     // Normals and tangents use only the 3x3 rotational portion (no translation).
-    // We extract it directly from the skin matrix.
     float3x3 skin_rot = float3x3(
         skin_matrix[0].xyz,
         skin_matrix[1].xyz,
-        skin_matrix[2].xyz
-    );
+        skin_matrix[2].xyz);
 
-    float3 animated_normal  = normalize(mul(skin_rot, v.normal));
-    float3 animated_tangent = normalize(mul(skin_rot, v.tangent.xyz));
+    float3 animated_normal  = normalize(mul(skin_rot, v_nrm));
+    float3 animated_tangent = normalize(mul(skin_rot, v_tan.xyz));
 
-    // Write the animated data to the output buffer
+    // Write the animated data to the output buffer element-by-element
+    // (required because OutputVertex uses C-style arrays, not vector types).
     OutputVertex out_v;
-    out_v.position = animated_pos.xyz;
-    out_v.normal   = animated_normal;
-    out_v.tangent  = float4(animated_tangent, v.tangent.w); // Preserve handedness
-    out_v.texcoord = v.texcoord;  // UV coordinates are not affected by skinning
+    out_v.p[0] = animated_pos.x;
+    out_v.p[1] = animated_pos.y;
+    out_v.p[2] = animated_pos.z;
+
+    out_v.n[0] = animated_normal.x;
+    out_v.n[1] = animated_normal.y;
+    out_v.n[2] = animated_normal.z;
+
+    out_v.t[0] = animated_tangent.x;
+    out_v.t[1] = animated_tangent.y;
+    out_v.t[2] = animated_tangent.z;
+    out_v.t[3] = v_tan.w; // preserve handedness
+
+    out_v.uv[0] = v.uv[0]; // UV coordinates are not affected by skinning
+    out_v.uv[1] = v.uv[1];
 
     output_vertices[vertex_id] = out_v;
 }
@@ -191,27 +204,38 @@ To run our shader, we need to create a `VkComputePipeline`. This requires defini
 [source,cpp]
 ----
 // 1. Create Descriptor Set Layout
-VkDescriptorSetLayoutBinding bindings[3] = {};
-// t0: Input vertices
-bindings[0].binding = 0;
-bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+// Must match the five bindings declared in skinning.slang.
+VkDescriptorSetLayoutBinding bindings[5] = {};
+// binding 0: input vertices (rest-pose, read-only)
+bindings[0].binding         = 0;
+bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 bindings[0].descriptorCount = 1;
-bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-// t1: Joint matrices
-bindings[1].binding = 1;
-bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[0].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+// binding 1: output vertices (animated, read-write)
+bindings[1].binding         = 1;
+bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 bindings[1].descriptorCount = 1;
-bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-// u2: Output vertices
-bindings[2].binding = 2;
-bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[1].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+// binding 2: joint matrices (float4x4 per joint, updated each frame)
+bindings[2].binding         = 2;
+bindings[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 bindings[2].descriptorCount = 1;
-bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+bindings[2].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+// binding 3: joint indices (uint4 per vertex)
+bindings[3].binding         = 3;
+bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[3].descriptorCount = 1;
+bindings[3].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+// binding 4: joint weights (float4 per vertex)
+bindings[4].binding         = 4;
+bindings[4].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+bindings[4].descriptorCount = 1;
+bindings[4].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
 
 VkDescriptorSetLayoutCreateInfo layoutInfo{};
-layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-layoutInfo.bindingCount = 3;
-layoutInfo.pBindings = bindings;
+layoutInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+layoutInfo.bindingCount = 5;
+layoutInfo.pBindings    = bindings;
 vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &computeLayout);
 
 // 2. Create Pipeline Layout (including push constants)

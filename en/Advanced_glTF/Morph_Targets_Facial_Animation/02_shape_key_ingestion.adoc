@@ -215,9 +215,10 @@ A common pattern is to maintain a per-mesh `std::vector<float>` of morph weights
 [source,cpp]
 ----
 struct MorphWeightBlock {
-    float weights[64]; // Support up to 64 active morph targets
-    uint32_t active_count;
-    uint32_t _pad[3];
+    float    weights[24];     // Up to 24 active morph targets
+    uint32_t activeCount;     // How many entries in weights[] are valid
+    uint32_t applySkinning;   // 1 = also apply skeletal skinning, 0 = morph only
+    uint32_t pad[2];          // Align to 16 bytes
 };
 ----
 

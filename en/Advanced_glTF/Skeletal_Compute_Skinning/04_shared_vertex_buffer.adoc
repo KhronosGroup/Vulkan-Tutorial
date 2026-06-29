@@ -41,11 +41,13 @@ Your vertex shader for skinned meshes also becomes simpler. It no longer needs t
 // skinned_mesh.vert.slang
 // The vertex shader for skinned meshes does NO skinning itself.
 // The compute shader already did the work.
+// Field order matches OutputVertex in renderer_advanced_types.h:
+// position, normal, texcoord, tangent.
 struct VertexInput {
     float3 position  : POSITION;
     float3 normal    : NORMAL;
-    float4 tangent   : TANGENT;
     float2 texcoord  : TEXCOORD0;
+    float4 tangent   : TANGENT;
 };
 
 struct VertexOutput {

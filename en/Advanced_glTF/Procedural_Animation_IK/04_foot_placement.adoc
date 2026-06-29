@@ -56,25 +56,16 @@ void update_foot_targets(
         glm::vec3 ray_dir    = glm::vec3(0, -1, 0);
         float     ray_length = character_height * 2.0f;
 
-        // Jolt Physics Raycast Implementation
-        JPH::RayCast ray;
-        ray.mOrigin = JPH::Vec3(ray_origin.x, ray_origin.y, ray_origin.z);
-        ray.mDirection = JPH::Vec3(ray_dir.x * ray_length, ray_dir.y * ray_length, ray_dir.z * ray_length);
+        // Use the abstract PhysicsWorld::raycast() — keeps this code engine-agnostic.
+        float     out_distance;
+        glm::vec3 out_normal;
+        JPH::BodyID out_body_id;
 
-        JPH::RayCastResult hit;
-        // We use a collision filter to ensure the ray hits the terrain but ignores the character itself
-        if (world.get_physics_system().GetNarrowPhaseQuery().CastRay(ray, hit,
-            JPH::SpecifiedBroadPhaseLayerFilter(Layers::NON_MOVING),
-            JPH::SpecifiedObjectLayerFilter(Layers::NON_MOVING)))
+        if (world.raycast(ray_origin, ray_dir, ray_length,
+                          out_distance, out_normal, out_body_id))
         {
-            JPH::BodyLockRead lock(world.get_physics_system().GetBodyLockInterface(), hit.mBodyID);
-            if (lock.Succeeded()) {
-                const JPH::Body& body = lock.GetBody();
-                JPH::Vec3 pos = ray.GetPointOnRay(hit.mFraction);
-                JPH::Vec3 normal = body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, pos);
-                return { glm::vec3(pos.GetX(), pos.GetY(), pos.GetZ()),
-                         glm::vec3(normal.GetX(), normal.GetY(), normal.GetZ()) };
-            }
+            glm::vec3 hit_point = ray_origin + ray_dir * out_distance;
+            return { hit_point, out_normal };
         }
         // No hit: keep the animated foot position, flat normal
         return { foot_world, glm::vec3(0, 1, 0) };

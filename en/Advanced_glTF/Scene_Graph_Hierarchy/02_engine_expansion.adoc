@@ -39,7 +39,7 @@ We then only perform the expensive matrix multiplications if a node (or its pare
 
 [source,cpp]
 ----
-const uint32_t INVALID_NODE_INDEX = 0xFFFFFFFF;
+static constexpr uint32_t INVALID_NODE_INDEX = 0xFFFFFFFF;
 
 enum TransformStatus : uint8_t {
     Clean = 0,
@@ -103,18 +103,6 @@ struct Node {
                glm::scale(glm::mat4(1.0f), scale);
     }
 
-    void set_local_matrix(const glm::mat4& m) {
-        translation = glm::vec3(m[3]);
-        local_rotation = glm::quat_cast(m);
-        // Extract scale from the matrix basis vectors
-        scale = glm::vec3(
-            glm::length(glm::vec3(m[0])),
-            glm::length(glm::vec3(m[1])),
-            glm::length(glm::vec3(m[2]))
-        );
-        mark_dirty();
-    }
-
     // Safely extracts rotation from the world matrix, stripping any scale.
     glm::quat get_world_rotation() const {
         glm::mat3 rot_scale = glm::mat3(world_matrix);
@@ -139,8 +127,8 @@ To maximize performance, we will store all of our nodes in a **Flat Data-Oriente
 
 [source,cpp]
 ----
-struct SceneGraph {
-    // All nodes in the entire world live in this one contiguous block of memory
+class SceneGraph {
+public:
     std::vector<Node> nodes;
 
     // Linear update: Only works if nodes are topologically sorted (parent before children)

@@ -15,61 +15,67 @@ The heatmap is rendered by replacing the standard PBR fragment shader with a dia
 
 [source,slang]
 ----
-// Vertex shader: pass through position and skinning attributes
-struct VertexOut {
-    float4     position  : SV_Position;
-    float4     weights   : TEXCOORD0;  // The four bone weights
-    uint4      joints    : TEXCOORD1;  // The four bone indices
-};
+// Camera data — declared as a push constant for simplicity.
+struct CameraPushConstants { float4x4 view_proj; };
+[[vk::push_constant]] CameraPushConstants camera;
 
-// Vertex input mirrors the InputVertex layout
-struct InputVertex {
+// Vertex data without embedded joint indices/weights —
+// joint data is stored in separate parallel buffers (same pattern as skinning.slang).
+struct Vertex {
     float3 position;
     float3 normal;
     float4 tangent;
     float2 texcoord;
-    uint4  joint_indices;
-    float4 joint_weights;
 };
 
-[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>    vertices;
-[[vk::binding(1, 0)]] StructuredBuffer<float4x4>     joint_matrices;
-[[vk::binding(2, 0)]] StructuredBuffer<float4>       joint_colors; // One color per joint
+// Five bindings: vertex geometry, joint matrices, joint indices, joint weights, joint colors.
+[[vk::binding(0, 0)]] StructuredBuffer<Vertex>    vertices;
+[[vk::binding(1, 0)]] StructuredBuffer<float4x4>  joint_matrices;  // For world position
+[[vk::binding(2, 0)]] StructuredBuffer<uint4>     joint_indices;
+[[vk::binding(3, 0)]] StructuredBuffer<float4>    joint_weights;
+[[vk::binding(4, 0)]] StructuredBuffer<float4>    joint_colors;   // One RGBA per joint
+
+// Vertex shader passes joint data to the fragment stage for coloring.
+struct VertexOut {
+    float4 position : SV_Position;
+    float4 weights  : TEXCOORD0;
+    uint4  joints   : TEXCOORD1;
+};
 
 [shader("vertex")]
 VertexOut vertex_main(uint vertex_id : SV_VertexID)
 {
-    InputVertex v = vertices[vertex_id];
+    Vertex v   = vertices[vertex_id];
+    uint4 j_idx = joint_indices[vertex_id];
+    float4 j_w  = joint_weights[vertex_id];
 
-    // Apply skinning to get world position (same as Chapter 3)
+    // Apply skinning to get world position (same LBS as skinning.slang)
     float4x4 skin_matrix =
-        v.joint_weights.x * joint_matrices[v.joint_indices.x] +
-        v.joint_weights.y * joint_matrices[v.joint_indices.y] +
-        v.joint_weights.z * joint_matrices[v.joint_indices.z] +
-        v.joint_weights.w * joint_matrices[v.joint_indices.w];
+        j_w.x * joint_matrices[j_idx.x] +
+        j_w.y * joint_matrices[j_idx.y] +
+        j_w.z * joint_matrices[j_idx.z] +
+        j_w.w * joint_matrices[j_idx.w];
 
     VertexOut out;
     out.position = mul(camera.view_proj, mul(skin_matrix, float4(v.position, 1.0)));
-    out.weights  = v.joint_weights;
-    out.joints   = v.joint_indices;
+    out.weights  = j_w;
+    out.joints   = j_idx;
     return out;
 }
 
-// Fragment shader: colorize by dominant joint
-// Each joint gets a unique color from a lookup table.
+// Colors each pixel by the dominant (highest-weight) joint using a per-joint color table.
 [shader("fragment")]
 float4 fragment_dominant_bone(VertexOut input) : SV_Target
 {
-    // Find the joint with the highest weight
-    uint   dominant_joint = 0;
-    float  max_weight     = input.weights.x;
+    uint  dominant = 0;
+    float max_w    = input.weights.x;
 
-    if (input.weights.y > max_weight) { max_weight = input.weights.y; dominant_joint = 1; }
-    if (input.weights.z > max_weight) { max_weight = input.weights.z; dominant_joint = 2; }
-    if (input.weights.w > max_weight) { max_weight = input.weights.w; dominant_joint = 3; }
+    if (input.weights.y > max_w) { max_w = input.weights.y; dominant = 1; }
+    if (input.weights.z > max_w) { max_w = input.weights.z; dominant = 2; }
+    if (input.weights.w > max_w) { max_w = input.weights.w; dominant = 3; }
 
-    uint actual_joint_idx = input.joints[dominant_joint];
-    return joint_colors[actual_joint_idx];
+    uint actual_joint = input.joints[dominant];
+    return joint_colors[actual_joint];
 }
 ----
 

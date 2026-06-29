@@ -69,20 +69,38 @@ class PhysicsWorld {
 public:
     virtual ~PhysicsWorld() = default;
 
-    // Body Management
+    // Global lifecycle — call once at app start/shutdown, before/after any instance.
+    static void global_init();
+    static void global_shutdown();
+    static std::unique_ptr<PhysicsWorld> create(); // Returns a JoltPhysicsWorld
+
+    // Body management
     virtual JPH::BodyID create_body(const JPH::BodyCreationSettings& settings) = 0;
     virtual void        destroy_body(JPH::BodyID body_id) = 0;
     virtual void        set_motion_type(JPH::BodyID body_id, JPH::EMotionType type) = 0;
+    virtual void        set_object_layer(JPH::BodyID body_id, uint16_t layer) = 0;
     virtual void        activate_body(JPH::BodyID body_id) = 0;
 
-    // Syncing
+    // Kinematic/dynamic sync
     virtual void        move_kinematic(JPH::BodyID body_id, const PhysicsPose& pose) = 0;
     virtual PhysicsPose get_body_pose(JPH::BodyID body_id) const = 0;
+    virtual glm::vec3   get_linear_velocity(JPH::BodyID body_id) const = 0;
     virtual void        set_linear_velocity(JPH::BodyID body_id, const glm::vec3& velocity) = 0;
 
-    // Constraints
-    virtual void        create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2, float swing, float twist) = 0;
-    virtual void        create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2, const glm::vec3& axis, float min_angle, float max_angle) = 0;
+    // Constraints (angles in radians)
+    virtual void create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2,
+                                               float swing_rad, float twist_rad) = 0;
+    virtual void create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2,
+                                         const glm::vec3& axis,
+                                         float min_angle_rad, float max_angle_rad) = 0;
+
+    // Simulation
+    virtual void step(float delta_seconds) = 0;
+
+    // Queries
+    virtual bool raycast(const glm::vec3& origin, const glm::vec3& direction, float max_distance,
+                         float& out_distance, glm::vec3& out_normal,
+                         JPH::BodyID& out_body_id) const = 0;
 };
 ----
 
@@ -94,79 +112,153 @@ To bridge our engine-agnostic `PhysicsWorld` to Jolt, we implement the methods u
 
 [source,cpp]
 ----
-class JoltPhysicsWorld : public PhysicsWorld {
-    JPH::PhysicsSystem* system;
-    JPH::BodyInterface* body_interface;
-
+// JoltPhysicsWorld owns its JPH::PhysicsSystem (does not take a pointer to one).
+// Call PhysicsWorld::create() rather than constructing this directly.
+class JoltPhysicsWorld final : public PhysicsWorld {
 public:
-    JoltPhysicsWorld(JPH::PhysicsSystem* s) : system(s) {
-        body_interface = &system->GetBodyInterface();
+    explicit JoltPhysicsWorld(
+        uint32_t max_bodies             = 20480,
+        uint32_t max_body_pairs         = 65536,
+        uint32_t max_contact_constraints = 32768,
+        uint32_t num_worker_threads     = 4)
+    {
+        temp_allocator_ = std::make_unique<JPH::TempAllocatorImpl>(32 * 1024 * 1024);
+        job_system_     = std::make_unique<JPH::JobSystemThreadPool>(
+            JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, num_worker_threads);
+
+        system_.Init(max_bodies, 0, max_body_pairs, max_contact_constraints,
+                     bp_layer_interface_, obj_vs_bp_filter_, obj_vs_obj_filter_);
+        body_interface_ = &system_.GetBodyInterface();
     }
 
     JPH::BodyID create_body(const JPH::BodyCreationSettings& settings) override {
-        // Create and add the body to the world
-        JPH::Body* body = body_interface->CreateBody(settings);
-        body_interface->AddBody(body->GetID(), JPH::EActivation::Activate);
+        JPH::Body* body = body_interface_->CreateBody(settings);
+        if (!body) return JPH::BodyID(); // allocation failed
+        body_interface_->AddBody(body->GetID(), JPH::EActivation::Activate);
         return body->GetID();
     }
 
-    void destroy_body(JPH::BodyID body_id) override {
-        body_interface->RemoveBody(body_id);
-        body_interface->DestroyBody(body_id);
+    void destroy_body(JPH::BodyID id) override {
+        body_interface_->RemoveBody(id);
+        body_interface_->DestroyBody(id);
     }
 
-    void set_motion_type(JPH::BodyID body_id, JPH::EMotionType type) override {
-        body_interface->SetMotionType(body_id, type, JPH::EActivation::Activate);
+    void set_motion_type(JPH::BodyID id, JPH::EMotionType type) override {
+        body_interface_->SetMotionType(id, type, JPH::EActivation::Activate);
     }
 
-    void activate_body(JPH::BodyID body_id) override {
-        body_interface->ActivateBody(body_id);
+    void set_object_layer(JPH::BodyID id, uint16_t layer) override {
+        body_interface_->SetObjectLayer(id, layer);
     }
 
-    void move_kinematic(JPH::BodyID body_id, const PhysicsPose& pose) override {
-        // Jolt uses float3/quat. We convert from our glm types.
-        JPH::Vec3 position(pose.position.x, pose.position.y, pose.position.z);
-        JPH::Quat rotation(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w);
-
-        // SetPositionAndRotation is the correct way to drive kinematic bodies.
-        // It ensures velocities are correctly calculated for the next physics step.
-        body_interface->SetPositionAndRotation(body_id, position, rotation, JPH::EActivation::Activate);
+    void activate_body(JPH::BodyID id) override {
+        body_interface_->ActivateBody(id);
     }
 
-    PhysicsPose get_body_pose(JPH::BodyID body_id) const override {
-        JPH::RVec3 position;
-        JPH::Quat rotation;
-        body_interface->GetPositionAndRotation(body_id, position, rotation);
+    void move_kinematic(JPH::BodyID id, const PhysicsPose& pose) override {
+        // JPH::RVec3 is used for world-space positions (double precision in large-world builds).
+        body_interface_->SetPositionAndRotation(
+            id,
+            JPH::RVec3(pose.position.x, pose.position.y, pose.position.z),
+            JPH::Quat(pose.orientation.x, pose.orientation.y,
+                      pose.orientation.z, pose.orientation.w),
+            JPH::EActivation::Activate);
+    }
 
+    PhysicsPose get_body_pose(JPH::BodyID id) const override {
+        JPH::RVec3 pos;
+        JPH::Quat  rot;
+        body_interface_->GetPositionAndRotation(id, pos, rot);
         return {
-            glm::vec3(position.GetX(), position.GetY(), position.GetZ()),
-            glm::quat(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ())
+            glm::vec3(pos.GetX(), pos.GetY(), pos.GetZ()),
+            glm::quat(rot.GetW(), rot.GetX(), rot.GetY(), rot.GetZ()),
         };
     }
 
-    void set_linear_velocity(JPH::BodyID body_id, const glm::vec3& v) override {
-        body_interface->SetLinearVelocity(body_id, JPH::Vec3(v.x, v.y, v.z));
+    glm::vec3 get_linear_velocity(JPH::BodyID id) const override {
+        JPH::Vec3 v = body_interface_->GetLinearVelocity(id);
+        return glm::vec3(v.GetX(), v.GetY(), v.GetZ());
     }
 
-    void create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2, float swing, float twist) override {
-        JPH::PointConstraintSettings settings;
-        settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
-        // In a real implementation, you would set the anchor points and limits here
-        // using JPH::PointConstraintSettings and swing/twist values.
-        system->GetConstraintInterface().AddConstraint(settings.Create(
-            *body_interface->GetBody(p1), *body_interface->GetBody(p2)));
+    void set_linear_velocity(JPH::BodyID id, const glm::vec3& v) override {
+        body_interface_->SetLinearVelocity(id, JPH::Vec3(v.x, v.y, v.z));
     }
 
-    void create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2, const glm::vec3& axis, float min_angle, float max_angle) override {
-        JPH::HingeConstraintSettings settings;
-        settings.mPoint1 = settings.mPoint2 = JPH::Vec3::sZero(); // Anchor at COM for simplicity
-        settings.mHingeAxis1 = settings.mHingeAxis2 = JPH::Vec3(axis.x, axis.y, axis.z);
-        settings.mLimitsMin = min_angle;
-        settings.mLimitsMax = max_angle;
+    // Ball-socket joints use SwingTwistConstraint (not PointConstraint).
+    // Body access requires BodyLockWrite for thread safety.
+    void create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2,
+                                       float swing_rad, float twist_rad) override {
+        JPH::SwingTwistConstraintSettings s;
+        s.mSpace               = JPH::EConstraintSpace::LocalToBodyCOM;
+        s.mNormalHalfConeAngle = swing_rad;
+        s.mPlaneHalfConeAngle  = swing_rad;
+        s.mTwistMinAngle       = -twist_rad;
+        s.mTwistMaxAngle       =  twist_rad;
 
-        system->GetConstraintInterface().AddConstraint(settings.Create(
-            *body_interface->GetBody(p1), *body_interface->GetBody(p2)));
+        JPH::BodyLockWrite lock1(system_.GetBodyLockInterface(), p1);
+        JPH::BodyLockWrite lock2(system_.GetBodyLockInterface(), p2);
+        if (lock1.Succeeded() && lock2.Succeeded()) {
+            auto* c = static_cast<JPH::SwingTwistConstraint*>(
+                s.Create(lock1.GetBody(), lock2.GetBody()));
+            system_.AddConstraint(c);
+        }
     }
+
+    void create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2,
+                                 const glm::vec3& axis,
+                                 float min_angle_rad, float max_angle_rad) override {
+        JPH::HingeConstraintSettings s;
+        s.mSpace      = JPH::EConstraintSpace::WorldSpace;
+        s.mHingeAxis1 = s.mHingeAxis2 = JPH::Vec3(axis.x, axis.y, axis.z);
+        s.mNormalAxis1 = s.mNormalAxis2 = JPH::Vec3(0, 1, 0);
+        s.mLimitsMin  = min_angle_rad;
+        s.mLimitsMax  = max_angle_rad;
+
+        JPH::BodyLockWrite lock1(system_.GetBodyLockInterface(), p1);
+        JPH::BodyLockWrite lock2(system_.GetBodyLockInterface(), p2);
+        if (lock1.Succeeded() && lock2.Succeeded()) {
+            auto* c = static_cast<JPH::HingeConstraint*>(
+                s.Create(lock1.GetBody(), lock2.GetBody()));
+            system_.AddConstraint(c);
+        }
+    }
+
+    void step(float delta_seconds) override {
+        system_.Update(delta_seconds, 1, temp_allocator_.get(), job_system_.get());
+    }
+
+    bool raycast(const glm::vec3& origin, const glm::vec3& direction, float max_distance,
+                 float& out_distance, glm::vec3& out_normal, JPH::BodyID& out_body_id) const override {
+        JPH::RRayCast ray(JPH::RVec3(origin.x, origin.y, origin.z),
+                          JPH::Vec3(direction.x, direction.y, direction.z) * max_distance);
+        JPH::RayCastResult result;
+        if (system_.GetNarrowPhaseQuery().CastRay(ray, result)) {
+            out_distance = result.mFraction * max_distance;
+            out_body_id  = result.mBodyID;
+            JPH::BodyLockRead lock(system_.GetBodyLockInterface(), out_body_id);
+            out_normal = lock.Succeeded()
+                ? glm::vec3(lock.GetBody().GetWorldSpaceSurfaceNormal(
+                      result.mSubShapeID2, ray.GetPointOnRay(result.mFraction)).GetX(),
+                      lock.GetBody().GetWorldSpaceSurfaceNormal(
+                      result.mSubShapeID2, ray.GetPointOnRay(result.mFraction)).GetY(),
+                      lock.GetBody().GetWorldSpaceSurfaceNormal(
+                      result.mSubShapeID2, ray.GetPointOnRay(result.mFraction)).GetZ())
+                : glm::vec3(0, 1, 0);
+            return true;
+        }
+        return false;
+    }
+
+private:
+    // (Layer interface objects must outlive system_ — declare first.)
+    BPLayerInterfaceImpl bp_layer_interface_;
+    ObjVsBPFilter        obj_vs_bp_filter_;
+    ObjVsObjFilter       obj_vs_obj_filter_;
+
+    std::unique_ptr<JPH::TempAllocatorImpl>   temp_allocator_;
+    std::unique_ptr<JPH::JobSystemThreadPool> job_system_;
+    JPH::PhysicsSystem  system_;
+    JPH::BodyInterface* body_interface_ = nullptr;
 };
 ----
 

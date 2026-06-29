@@ -44,8 +44,12 @@ void processNodeExtras(const tinygltf::Node& gltfNode, Node& engineNode) {
                 float radius = static_cast<float>(physicsData.Get("radius").Get<double>());
                 float height = static_cast<float>(physicsData.Get("height").Get<double>());
 
-                // The Scene Graph node now acts as a hook for the physics engine
-                engineNode.attachPhysicsProxy(createCapsuleCollider(radius, height));
+                // Populate the ColliderDef embedded in the Node.
+                // ColliderDef::half_height stores the capsule's *half*-height,
+                // so we halve the artist-facing "height" value from the extras.
+                engineNode.collider_def.shape       = ColliderDef::Shape::CAPSULE;
+                engineNode.collider_def.radius      = radius;
+                engineNode.collider_def.half_height = height * 0.5f;
             }
         }
     }

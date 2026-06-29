@@ -6,7 +6,7 @@ This appendix provides authoritative, consolidated definitions for the shared ty
 
 [source,cpp]
 ----
-const uint32_t INVALID_NODE_INDEX = 0xFFFFFFFF;
+static constexpr uint32_t INVALID_NODE_INDEX = 0xFFFFFFFF;
 
 enum TransformStatus : uint8_t {
     Clean      = 0,
@@ -141,9 +141,9 @@ inline void update_world_matrices_subtree(std::vector<Node>& nodes, uint32_t ind
 enum InterpolationMode { STEP, LINEAR, CUBICSPLINE };
 
 struct AnimationSampler {
-    InterpolationMode interpolation;
-    std::vector<float> inputs;              // Timestamps
-    std::vector<glm::vec4> outputs_raw;     // Raw packed output data
+    InterpolationMode interpolation = LINEAR;
+    std::vector<float> inputs;              // Timestamps in seconds
+    std::vector<glm::vec4> outputs_raw;     // Packed: for CUBICSPLINE stores in_tan/value/out_tan triples
 
     // For CUBICSPLINE, we split the raw data for easier interpolation
     std::vector<glm::vec4> in_tangents;
@@ -164,12 +164,34 @@ struct Pose {
     std::vector<glm::vec3> scales;
 };
 
+// Matches the glTF skin object.
+struct Skin {
+    std::string              name;
+    std::vector<uint32_t>    joints;                // Node indices, one per joint
+    std::vector<glm::mat4>   inverse_bind_matrices; // One per joint
+    uint32_t                 skeleton_root = INVALID_NODE_INDEX;
+};
+
 // Binary search for the keyframe index corresponding to time
 uint32_t find_keyframe(const AnimationSampler& sampler, float time) {
     if (sampler.inputs.size() < 2) return 0;
     auto it = std::lower_bound(sampler.inputs.begin(), sampler.inputs.end(), time);
     uint32_t idx = static_cast<uint32_t>(std::distance(sampler.inputs.begin(), it));
     return (idx > 0) ? idx - 1 : 0;
+}
+
+// Pre-computes joint matrices (JointWorldMatrix * InverseBindMatrix) for GPU upload.
+// Call after animation update and scene graph update, once per frame.
+void compute_joint_matrices(
+    const Skin&              skin,
+    const std::vector<Node>& nodes,
+    std::vector<glm::mat4>&  joint_matrices_out)
+{
+    joint_matrices_out.resize(skin.joints.size());
+    for (size_t i = 0; i < skin.joints.size(); ++i) {
+        const Node& joint_node = nodes[skin.joints[i]];
+        joint_matrices_out[i] = joint_node.world_matrix * skin.inverse_bind_matrices[i];
+    }
 }
 
 // Bridges the Animation output (Pose) back to the Scene Graph Nodes
@@ -201,20 +223,38 @@ class PhysicsWorld {
 public:
     virtual ~PhysicsWorld() = default;
 
-    // Body Management
+    // Global lifecycle
+    static void global_init();
+    static void global_shutdown();
+    static std::unique_ptr<PhysicsWorld> create();
+
+    // Body management
     virtual JPH::BodyID create_body(const JPH::BodyCreationSettings& settings) = 0;
     virtual void        destroy_body(JPH::BodyID body_id) = 0;
     virtual void        set_motion_type(JPH::BodyID body_id, JPH::EMotionType type) = 0;
+    virtual void        set_object_layer(JPH::BodyID body_id, uint16_t layer) = 0;
     virtual void        activate_body(JPH::BodyID body_id) = 0;
 
-    // Syncing
+    // Kinematic/dynamic sync
     virtual void        move_kinematic(JPH::BodyID body_id, const PhysicsPose& pose) = 0;
     virtual PhysicsPose get_body_pose(JPH::BodyID body_id) const = 0;
+    virtual glm::vec3   get_linear_velocity(JPH::BodyID body_id) const = 0;
     virtual void        set_linear_velocity(JPH::BodyID body_id, const glm::vec3& velocity) = 0;
 
-    // Constraints
-    virtual void        create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2, float swing, float twist) = 0;
-    virtual void        create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2, const glm::vec3& axis, float min_angle, float max_angle) = 0;
+    // Constraints (angles in radians)
+    virtual void create_ball_socket_constraint(JPH::BodyID p1, JPH::BodyID p2,
+                                               float swing_rad, float twist_rad) = 0;
+    virtual void create_hinge_constraint(JPH::BodyID p1, JPH::BodyID p2,
+                                         const glm::vec3& axis,
+                                         float min_angle_rad, float max_angle_rad) = 0;
+
+    // Simulation
+    virtual void step(float delta_seconds) = 0;
+
+    // Queries
+    virtual bool raycast(const glm::vec3& origin, const glm::vec3& direction, float max_distance,
+                         float& out_distance, glm::vec3& out_normal,
+                         JPH::BodyID& out_body_id) const = 0;
 };
 ----
 

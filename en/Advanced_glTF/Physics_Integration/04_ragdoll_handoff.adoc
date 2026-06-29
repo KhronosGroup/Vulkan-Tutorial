@@ -169,28 +169,31 @@ The `blend_weight` we have been tracking in the controller is what gets passed t
 
 [source,cpp]
 ----
-// After updating physics and animation separately:
+// During the BLENDED phase, capture the animation world matrices BEFORE
+// sync_physics_to_animation overwrites them, then blend:
 if (controller.state == RagdollState::BLENDED) {
+    // 1. Snapshot current (animation-driven) world matrices.
+    std::vector<glm::mat4> anim_matrices;
+    anim_matrices.reserve(bodies.size());
     for (const auto& bone_body : bodies) {
-        Node& node = nodes[bone_body.node_index];
+        anim_matrices.push_back(nodes[bone_body.node_index].world_matrix);
+    }
 
-        // Animated world matrix (from scene graph dirty-flag pass)
-        glm::mat4& anim_matrix = node.world_matrix_animated;
+    // 2. Read physics poses into the nodes.
+    sync_physics_to_animation(nodes, bodies, physics_world);
 
-        // Physics world matrix (from sync_physics_to_animation)
-        PhysicsPose pose = physics_world.get_body_pose(bone_body.physics_body);
-        glm::mat4 phys_matrix = glm::translate(glm::mat4(1.0f), pose.position)
-                              * glm::mat4_cast(pose.orientation);
+    // 3. Blend animation and physics results.
+    float w = controller.blend_weight;
+    for (size_t i = 0; i < bodies.size(); ++i) {
+        Node& node = nodes[bodies[i].node_index];
 
-        // Decompose both to TRS, lerp/slerp, recompose
-        glm::vec3 anim_pos = glm::vec3(anim_matrix[3]);
-        glm::quat anim_rot = glm::quat_cast(glm::mat3(anim_matrix));
-        glm::vec3 phys_pos = glm::vec3(phys_matrix[3]);
-        glm::quat phys_rot = glm::quat_cast(glm::mat3(phys_matrix));
+        glm::vec3 anim_pos = glm::vec3(anim_matrices[i][3]);
+        glm::quat anim_rot = glm::quat_cast(glm::mat3(anim_matrices[i]));
 
-        float w = controller.blend_weight;
-        glm::vec3 blended_pos = glm::mix(anim_pos, phys_pos, w);
-        glm::quat blended_rot = glm::slerp(anim_rot, phys_rot, w);
+        PhysicsPose pose = physics_world.get_body_pose(bodies[i].physics_body);
+
+        glm::vec3 blended_pos = glm::mix(anim_pos,      pose.position,    w);
+        glm::quat blended_rot = glm::slerp(anim_rot,    pose.orientation, w);
 
         node.world_matrix = glm::translate(glm::mat4(1.0f), blended_pos)
                           * glm::mat4_cast(blended_rot);

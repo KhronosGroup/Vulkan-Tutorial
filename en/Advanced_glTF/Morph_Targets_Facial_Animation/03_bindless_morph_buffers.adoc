@@ -191,30 +191,39 @@ Here is the extended shader in Slang. The key additions are the `morphTargets` b
 
 [source,slang]
 ----
-// Bindless array of morph target displacement buffers.
-// Each buffer contains one vec3 per vertex in the mesh.
-[[vk::binding(0, 1)]]
-StructuredBuffer<float3> morphTargets[];
+// morph_accumulate.slang — combines morph target accumulation with skeletal skinning.
+// Requires: VK_EXT_descriptor_indexing, runtimeDescriptorArray.
 
-// Weights for the currently active morph targets.
-struct MorphWeightBlock {
-    float    weights[64];
-    uint32_t active_count;
-    uint32_t pad[3];
-};
-[[vk::push_constant]]
-struct PushConstants {
-    // From Chapter 3: skeleton joint matrix indices
-    uint32_t vertex_count;
-    uint32_t joint_count;
-    // Morph target indices (which slots in morphTargets[] are active)
-    uint32_t morph_indices[64];
-    MorphWeightBlock morph_weights;
-} pc;
+// Same C-array struct layout as skinning.slang (matches GPU buffer memory layout).
+struct InputVertex  { float p[3]; float n[3]; float uv[2]; float t[4]; };
+struct OutputVertex { float p[3]; float n[3]; float uv[2]; float t[4]; };
 
-[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>  base_vertices;
+// Set 0: per-mesh buffers (same 5-binding layout as the base skinning shader)
+[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>    base_vertices;
 [[vk::binding(1, 0)]] RWStructuredBuffer<OutputVertex> output_vertices;
-[[vk::binding(2, 0)]] StructuredBuffer<float4x4> joint_matrices;
+[[vk::binding(2, 0)]] StructuredBuffer<float4x4>       joint_matrices;
+[[vk::binding(3, 0)]] StructuredBuffer<uint4>          joint_indices;
+[[vk::binding(4, 0)]] StructuredBuffer<float4>         joint_weights;
+
+// Set 1: runtime-length array of morph delta buffers (one StructuredBuffer per target).
+// MorphDelta uses a C-array to match GPU buffer layout.
+struct MorphDelta { float d[3]; };
+[[vk::binding(0, 1)]] StructuredBuffer<MorphDelta> morph_targets[];
+
+// MorphWeightBlock must match SkinPushConstants::MorphWeightBlock in renderer_advanced_types.h.
+struct MorphWeightBlock {
+    float    weights[24];     // Blending weights for the active targets
+    uint32_t active_count;    // How many entries in weights[] are valid
+    uint32_t apply_skinning;  // 1 = also apply skeletal skinning, 0 = morph only
+    uint32_t pad[2];
+};
+
+struct PushConstants {
+    uint32_t         vertex_count;
+    uint32_t         morph_indices[24]; // Which descriptor slot each active target lives in
+    MorphWeightBlock morph_weights;
+};
+[[vk::push_constant]] PushConstants pc;
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
@@ -224,39 +233,55 @@ void main(uint3 dispatch_id : SV_DispatchThreadID)
     if (vertex_idx >= pc.vertex_count) return;
 
     InputVertex base = base_vertices[vertex_idx];
+    float3 base_pos = float3(base.p[0], base.p[1], base.p[2]);
+    float3 base_nrm = float3(base.n[0], base.n[1], base.n[2]);
+    float4 base_tan = float4(base.t[0], base.t[1], base.t[2], base.t[3]);
 
-    // --- Step 1: Apply morph target displacements ---
-    float3 morphed_position = base.position;
-    float3 morphed_normal   = base.normal;
+    // --- Pass 1: morph target accumulation ---
+    float3 morphed_position = base_pos;
+    float3 morphed_normal   = base_nrm;
 
     for (uint m = 0; m < pc.morph_weights.active_count; ++m) {
-        uint   target_slot = pc.morph_indices[m];
-        float  weight      = pc.morph_weights.weights[m];
-        if (weight < 1e-5f) continue;
+        float weight = pc.morph_weights.weights[m];
+        if (abs(weight) < 1e-5f) continue;
 
-        // NonUniformResourceIndex is required when indexing bindless arrays
-        // with a non-uniform value (different invocations may use different indices)
-        float3 delta = morphTargets[NonUniformResourceIndex(target_slot)][vertex_idx];
+        uint slot = pc.morph_indices[m];
+        // NonUniformResourceIndex: different threads may use different descriptor slots.
+        MorphDelta delta_raw = morph_targets[NonUniformResourceIndex(slot)][vertex_idx];
+        float3 delta = float3(delta_raw.d[0], delta_raw.d[1], delta_raw.d[2]);
         morphed_position += weight * delta;
-        // Normal deltas would go here if you have a second morphNormals[] array
     }
 
-    // --- Step 2: Skeletal skinning (same as Chapter 3) ---
+    // --- Pass 2: skeletal skinning (same LBS as skinning.slang) ---
+    uint4  j_idx = joint_indices[vertex_idx];
+    float4 j_w   = joint_weights[vertex_idx];
+
     float4x4 skin_matrix =
-        base.joint_weights.x * joint_matrices[base.joint_indices.x] +
-        base.joint_weights.y * joint_matrices[base.joint_indices.y] +
-        base.joint_weights.z * joint_matrices[base.joint_indices.z] +
-        base.joint_weights.w * joint_matrices[base.joint_indices.w];
+        j_w.x * joint_matrices[j_idx.x] +
+        j_w.y * joint_matrices[j_idx.y] +
+        j_w.z * joint_matrices[j_idx.z] +
+        j_w.w * joint_matrices[j_idx.w];
 
-    float4 world_pos = mul(skin_matrix, float4(morphed_position, 1.0));
-    float3 world_nrm = normalize(mul(float3x3(skin_matrix), morphed_normal));
+    float3x3 skin_rot = float3x3(
+        skin_matrix[0].xyz, skin_matrix[1].xyz, skin_matrix[2].xyz);
 
-    // Write to output buffer (shared with rasterizer, ray tracing, physics)
+    float3 final_position = morphed_position;
+    float3 final_normal   = morphed_normal;
+    float3 final_tangent  = base_tan.xyz;
+    if (pc.morph_weights.apply_skinning != 0u) {
+        final_position = mul(skin_matrix, float4(morphed_position, 1.0)).xyz;
+        final_normal   = normalize(mul(skin_rot, morphed_normal));
+        final_tangent  = normalize(mul(skin_rot, base_tan.xyz));
+    }
+
+    // Write to output buffer element-by-element (C-array structs require this).
     OutputVertex out;
-    out.position = world_pos.xyz;
-    out.normal   = world_nrm;
-    out.tangent  = base.tangent;
-    out.texcoord = base.texcoord;
+    out.p[0] = final_position.x;  out.p[1] = final_position.y;  out.p[2] = final_position.z;
+    out.n[0] = final_normal.x;    out.n[1] = final_normal.y;    out.n[2] = final_normal.z;
+    out.t[0] = final_tangent.x;   out.t[1] = final_tangent.y;
+    out.t[2] = final_tangent.z;   out.t[3] = base_tan.w;
+    out.uv[0] = base.uv[0];       out.uv[1] = base.uv[1];
+
     output_vertices[vertex_idx] = out;
 }
 ----
@@ -273,7 +298,7 @@ The morph system integrates into the frame loop naturally:
 4. **Dispatch.** Bind the descriptor set (which has all morph target buffers registered), push constants, and dispatch the compute shader. One thread per vertex.
 5. **Barrier.** Issue a `VkBufferMemoryBarrier2` on the output buffer (same as Chapter 3) before the rasterizer or ray tracing pass reads from it.
 
-The only part that requires care is the per-frame push constant size. If you have up to 64 active morph targets, the push constants become large—64 indices (256 bytes) plus 64 weights (256 bytes) plus metadata equals over 512 bytes. The Vulkan specification guarantees a minimum of 128 bytes of push constant space, but most desktop GPUs support 256 bytes, and high-end GPUs support 256 bytes or more. If you exceed the available push constant space, move the weight data into a small uniform buffer instead.
+The only part that requires care is the per-frame push constant size. With up to 24 active morph targets, `PushConstants` contains 24 indices (96 bytes) plus `MorphWeightBlock` with 24 weights (96 bytes) plus metadata — roughly 200 bytes total. The Vulkan specification guarantees a minimum of 128 bytes of push constant space, but most desktop GPUs support 256 bytes or more. The 24-target cap was chosen to stay within that budget. If you need more simultaneous targets, move the weight data into a small uniform buffer instead.
 
 == Morph Targets and Skeletal Rigs Together
 

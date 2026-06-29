@@ -104,9 +104,9 @@ enum InterpolationMode {
 };
 
 struct AnimationSampler {
-    InterpolationMode interpolation;
-    std::vector<float> inputs;              // Timestamps
-    std::vector<glm::vec4> outputs_raw;     // Raw packed output data
+    InterpolationMode interpolation = LINEAR;
+    std::vector<float> inputs;              // Timestamps in seconds
+    std::vector<glm::vec4> outputs_raw;     // Packed: for CUBICSPLINE stores in_tan/value/out_tan triples
 
     // For CUBICSPLINE, we split the raw data for easier interpolation
     std::vector<glm::vec4> in_tangents;
@@ -264,28 +264,28 @@ void update_character_pose(
         blend_poses(state.animation_pose, state.physics_pose, state.ragdoll_weight, blended_pose);
 
         // Apply the blended pose to the scene graph nodes
-        apply_pose_to_scene_graph(blended_pose, nodes, skin);
+        apply_pose_to_scene_graph(nodes, blended_pose, skin.joints);
     } else {
         // Fully animation-driven: apply directly without blending
-        apply_pose_to_scene_graph(state.animation_pose, nodes, skin);
+        apply_pose_to_scene_graph(nodes, state.animation_pose, skin.joints);
     }
 }
 
-/**
- * Applies a Pose to the Scene Graph.
- * We write the pose data to the nodes' local transforms. The Scene Graph's
- * dirty propagation system will then handle updating the world matrices.
- */
-void apply_pose_to_scene_graph(const Pose& pose, std::vector<Node>& nodes, const Skin& skin) {
-    for (size_t i = 0; i < skin.joints.size(); ++i) {
-        uint32_t node_idx = skin.joints[i];
-        Node& node = nodes[node_idx];
+// Applies a Pose to the Scene Graph.
+// Parameter order: nodes first, pose second, then the joint index list.
+// (Canonical signature from animation.h.)
+void apply_pose_to_scene_graph(
+    std::vector<Node>&           nodes,
+    const Pose&                  pose,
+    const std::vector<uint32_t>& joint_indices)
+{
+    for (size_t i = 0; i < joint_indices.size(); ++i) {
+        Node& node = nodes[joint_indices[i]];
 
         node.translation    = pose.translations[i];
         node.local_rotation = pose.rotations[i];
         node.scale          = pose.scales[i];
 
-        // Trigger dirty flag so world matrix is recalculated
         node.mark_dirty();
     }
 }

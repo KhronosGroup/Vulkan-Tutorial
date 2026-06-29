@@ -122,8 +122,10 @@ int main(int, char *[])
 	// a GTK event fires.  If the nptl thread-stack cache contains any corrupted entry
 	// (e.g., from Monado shared-memory init), that pa_thread_new call aborts with
 	// "free(): invalid pointer".  We don't use GTK sound themes, so unloading the
-	// module is correct regardless.
+	// module is correct regardless.  GTK_MODULES is Linux-only; no-op on Windows.
+#if !defined(_WIN32)
 	setenv("GTK_MODULES", "", 1);
+#endif
 
 	try
 	{

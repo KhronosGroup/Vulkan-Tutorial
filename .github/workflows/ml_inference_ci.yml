@@ -162,8 +162,8 @@ jobs:
             WORK="${RUNNER_TEMP}/NNEF-Tools"
             git clone --depth 1 https://github.com/KhronosGroup/NNEF-Tools.git "$WORK"
             mkdir -p "${NNEF_DIR}/src" "${NNEF_DIR}/include"
-            cp "$WORK/parser/cpp/nnef.cpp" "${NNEF_DIR}/src/"
-            cp -r "$WORK/parser/cpp/include/." "${NNEF_DIR}/include/"
+            cp "$WORK/nnef-pyproject/nnef/cpp/src/nnef.cpp" "${NNEF_DIR}/src/"
+            cp -r "$WORK/nnef-pyproject/nnef/cpp/include/." "${NNEF_DIR}/include/"
           else
             echo "NNEF parser already present"
           fi

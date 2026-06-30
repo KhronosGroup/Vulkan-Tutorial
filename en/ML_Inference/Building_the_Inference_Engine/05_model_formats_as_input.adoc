@@ -187,7 +187,7 @@ From training to results, the path is straightforward. A framework such as PyTor
 
 == Implementation Note
 
-A production‑quality parser handles many operators, data types, and awkward corner cases, which quickly grows beyond what belongs in an introductory tutorial. The working code that powers this chapter lives in xref:attachments/ml_inference[ml_inference]. It covers the core operators used here—Dense, Conv2D, ReLU, MaxPool—and the same pattern scales to the rest: read the node, fetch its parameters, wire the tensors. We encourage you to learn the concepts behind this tutorial independently of the code, an example implementation showing all of these concepts is attached to this chapter for when you're ready to see an example implementation.
+A production‑quality parser handles many operators, data types, and awkward corner cases, which quickly grows beyond what belongs in an introductory tutorial. The working code that powers this chapter lives in link:/attachments/ml_inference/[ml_inference]. It covers the core operators used here—Dense, Conv2D, ReLU, MaxPool—and the same pattern scales to the rest: read the node, fetch its parameters, wire the tensors. We encourage you to learn the concepts behind this tutorial independently of the code, an example implementation showing all of these concepts is attached to this chapter for when you're ready to see an example implementation.
 
 Next chapter: NNEF Introduction.
 

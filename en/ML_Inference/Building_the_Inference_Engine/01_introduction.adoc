@@ -58,7 +58,7 @@ We'll use the Vulkan-Hpp RAII bindings throughout, building on patterns from the
 
 == The Working Code
 
-All complete, working code lives in the tutorial's xref:attachments/ml_inference[ml_inference] directory. The chapters in this section explain the concepts and show key snippets, but we don't dump thousands of lines into the tutorial itself. When we say "see the attachments," we mean it—the code is there, it compiles, and it runs.
+All complete, working code lives in the tutorial's link:/attachments/ml_inference/[ml_inference] directory. The chapters in this section explain the concepts and show key snippets, but we don't dump thousands of lines into the tutorial itself. When we say "see the attachments," we mean it—the code is there, it compiles, and it runs.
 
 We're teaching you to think about the problem, not memorizing syntax.
 

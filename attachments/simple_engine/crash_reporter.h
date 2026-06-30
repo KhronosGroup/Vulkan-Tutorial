@@ -32,8 +32,11 @@
 #	include <windows.h>
 #	include <dbghelp.h>
 #	pragma comment(lib, "dbghelp.lib")
-#elif defined(__APPLE__) || defined(__linux__)
+#elif defined(__APPLE__) || (defined(__linux__) && !defined(__ANDROID__))
 #	include <execinfo.h>
+#	include <signal.h>
+#	include <unistd.h>
+#elif defined(__ANDROID__)
 #	include <signal.h>
 #	include <unistd.h>
 #endif
@@ -220,6 +223,12 @@ class CrashReporter
 
 			CloseHandle(hFile);
 		}
+#elif defined(__ANDROID__)
+        // Android implementation: use standard signals
+        signal(SIGSEGV, SIG_DFL);
+        signal(SIGABRT, SIG_DFL);
+        signal(SIGFPE, SIG_DFL);
+        signal(SIGILL, SIG_DFL);
 #else
 		// Unix implementation
 		std::ofstream file(filename, std::ios::out | std::ios::binary);
@@ -372,6 +381,12 @@ class CrashReporter
 			CrashReporter::GetInstance().HandleCrashInternal("Unhandled exception", exInfo);
 			return EXCEPTION_EXECUTE_HANDLER;
 		});
+#elif defined(__ANDROID__)
+        // Android implementation: use standard signals
+        signal(SIGSEGV, SIG_DFL);
+        signal(SIGABRT, SIG_DFL);
+        signal(SIGFPE, SIG_DFL);
+        signal(SIGILL, SIG_DFL);
 #else
 		// Unix implementation
 		signal(SIGSEGV, [](int sig) {
@@ -409,6 +424,12 @@ class CrashReporter
 			RemoveVectoredExceptionHandler(vectoredHandlerHandle);
 			vectoredHandlerHandle = nullptr;
 		}
+#elif defined(__ANDROID__)
+        // Android implementation: use standard signals
+        signal(SIGSEGV, SIG_DFL);
+        signal(SIGABRT, SIG_DFL);
+        signal(SIGFPE, SIG_DFL);
+        signal(SIGILL, SIG_DFL);
 #else
 		// Unix implementation
 		signal(SIGSEGV, SIG_DFL);

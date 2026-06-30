@@ -617,22 +617,6 @@ bool PhysicsSystem::Raycast(const glm::vec3& origin,
 }
 
 // Helper function to read a shader file
-static std::vector<char> readFile(const std::string& filename) {
-  std::ifstream file(filename, std::ios::ate | std::ios::binary);
-  if (!file.is_open()) {
-    throw std::runtime_error("Failed to open file: " + filename);
-  }
-
-  size_t fileSize = file.tellg();
-  std::vector<char> buffer(fileSize);
-
-  file.seekg(0);
-  file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
-  file.close();
-
-  return buffer;
-}
-
 // Helper function to create a shader module
 static vk::raii::ShaderModule createShaderModule(const vk::raii::Device& device, const std::vector<char>& code) {
   vk::ShaderModuleCreateInfo createInfo;
@@ -659,7 +643,7 @@ bool PhysicsSystem::InitializeVulkanResources() {
     const vk::raii::Device& raiiDevice = renderer->GetRaiiDevice();
 
     // Load physics shader once and reuse for all compute pipelines
-    std::vector<char> physicsShaderCode = readFile("shaders/physics.spv");
+    std::vector<char> physicsShaderCode = renderer->readFile("shaders/physics.spv");
     vulkanResources.integrateShaderModule = createShaderModule(raiiDevice, physicsShaderCode);
     vulkanResources.broadPhaseShaderModule = createShaderModule(raiiDevice, physicsShaderCode);
     vulkanResources.narrowPhaseShaderModule = createShaderModule(raiiDevice, physicsShaderCode);

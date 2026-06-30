@@ -52,9 +52,9 @@ void SetupScene(Engine *engine)
 
 	// Add a camera component to the camera entity
 	auto *camera = cameraEntity->AddComponent<CameraComponent>();
-	camera->SetAspectRatio(static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT));
+    // Camera aspect ratio will be set by the engine during initialization or resize events.
 
-	// Set the camera as the active camera
+    // Set the camera as the active camera
 	engine->SetActiveCamera(camera);
 
 	// Kick off GLTF model loading on a background thread so the main loop
@@ -67,8 +67,12 @@ void SetupScene(Engine *engine)
 		renderer->SetLoadingPhase(Renderer::LoadingPhase::Textures);
 	}
 	std::thread([engine] {
-		LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
-	}).detach();
+#if defined(PLATFORM_ANDROID)
+      LoadGLTFModel(engine, "bistro/bistro.gltf");
+#else
+      LoadGLTFModel(engine, "../Assets/bistro/bistro.gltf");
+#endif
+    }).detach();
 }
 
 #if defined(PLATFORM_ANDROID)
@@ -76,8 +80,7 @@ void SetupScene(Engine *engine)
  * @brief Android entry point.
  * @param app The Android app.
  */
-void android_main(android_app *app)
-{
+extern "C" void android_main(android_app* app) {
 	try
 	{
 		// Create the engine

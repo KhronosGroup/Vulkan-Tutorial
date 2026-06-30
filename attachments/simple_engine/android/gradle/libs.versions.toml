@@ -1,0 +1,17 @@
+[versions]
+agp = "9.2.1"
+appcompat = "1.7.1"
+gamesActivity = "4.4.2"
+gradle = "9.2.1"
+gradleToolchainsFoojayResolverConvention = "1.0.0"
+material = "1.14.0"
+
+[libraries]
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-games-activity = { group = "androidx.games", name = "games-activity", version.ref = "gamesActivity" }
+gradle = { group = "com.android.tools.build", name = "gradle", version.ref = "gradle" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+foojay = { id = "org.gradle.toolchains.foojay-resolver-convention", version.ref = "gradleToolchainsFoojayResolverConvention" }

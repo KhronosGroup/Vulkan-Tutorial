@@ -1,10 +1,10 @@
 plugins {
-    id 'com.android.application'
+    alias(libs.plugins.android.application)
 }
 
 android {
     namespace "com.simple_engine"
-    compileSdk 36
+    compileSdk 37
     defaultConfig {
         applicationId "com.simple_engine"
         minSdk 24
@@ -20,8 +20,12 @@ android {
     }
 
     buildTypes {
-        release {
+        debug {
             minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        release {
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -34,7 +38,7 @@ android {
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
-            version "4.0.2+"
+            version "3.29.0+"
         }
     }
 
@@ -58,7 +62,7 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.7.1'
-    implementation 'com.google.android.material:material:1.12.0'
-    implementation 'androidx.games:games-activity:4.0.0'
+    implementation libs.androidx.appcompat
+    implementation libs.material
+    implementation libs.androidx.games.activity
 }

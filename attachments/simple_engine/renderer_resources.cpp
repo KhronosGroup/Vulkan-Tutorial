@@ -113,7 +113,7 @@ static vk::Format CoerceFormatSRGB(vk::Format fmt, bool wantSRGB) {
 }
 
 // Create texture image
-bool Renderer::createTextureImage(const std::string& texturePath_, TextureResources& resources) {
+bool Renderer::createTextureImage(const std::string& texturePath_, TextureResources& resources, bool cachePixels) {
   try {
     ensureThreadLocalVulkanInit();
     const std::string textureId = ResolveTextureId(texturePath_);
@@ -169,12 +169,12 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
     // If it's a KTX2 texture but the path doesn't exist, try common fallback filename variants
     if (isKtx2) {
       std::filesystem::path origPath(resolvedPath);
-      if (!std::filesystem::exists(origPath)) {
+      if (!fileExists(origPath.string())) {
         std::string fname = origPath.filename().string();
         std::string dir = origPath.parent_path().string();
         auto tryCandidate = [&](const std::string& candidateName) -> bool {
           std::filesystem::path cand = std::filesystem::path(dir) / candidateName;
-          if (std::filesystem::exists(cand)) {
+          if (fileExists(cand.string())) {
             std::cout << "Resolved missing texture '" << resolvedPath << "' to existing file '" << cand.string() << "'" << std::endl;
             resolvedPath = cand.string();
             return true;
@@ -218,19 +218,58 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
     std::vector<vk::BufferImageCopy> copyRegions;
 
     if (isKtx2) {
-      // Load KTX2 file
+      // Load KTX2 file from memory on Android or file on desktop
+#if defined(PLATFORM_ANDROID)
+      std::vector<char> fileBuffer;
+      try {
+        fileBuffer = readFile(resolvedPath);
+      } catch (...) {
+        // Retry with fallback logic below if needed
+      }
+
+      KTX_error_code result = KTX_SUCCESS;
+      if (!fileBuffer.empty()) {
+        result = ktxTexture2_CreateFromMemory(reinterpret_cast<const ktx_uint8_t *>(fileBuffer.data()),
+                                              fileBuffer.size(),
+                                              KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+                                              &ktxTex);
+      } else {
+        result = KTX_FILE_OPEN_FAILED;
+      }
+#else
       KTX_error_code result = ktxTexture2_CreateFromNamedFile(resolvedPath.c_str(),
                                                               KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
                                                               &ktxTex);
+#endif
       if (result != KTX_SUCCESS) {
+        // ... (rest of fallback logic)
         // Retry with sibling suffix variants if file exists but cannot be parsed/opened
         std::filesystem::path origPath(resolvedPath);
         std::string fname = origPath.filename().string();
         std::string dir = origPath.parent_path().string();
         auto tryLoad = [&](const std::string& candidateName) -> bool {
           std::filesystem::path cand = std::filesystem::path(dir) / candidateName;
-          if (std::filesystem::exists(cand)) {
-            std::string candStr = cand.string();
+          std::string candStr = cand.string();
+#if defined(PLATFORM_ANDROID)
+          std::vector<char> candBuffer;
+          try {
+            candBuffer = readFile(candStr);
+          } catch (...) {
+            return false;
+          }
+          if (!candBuffer.empty()) {
+            result = ktxTexture2_CreateFromMemory(reinterpret_cast<const ktx_uint8_t *>(candBuffer.data()),
+                                                  candBuffer.size(),
+                                                  KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+                                                  &ktxTex);
+            if (result == KTX_SUCCESS) {
+              resolvedPath = candStr;
+              return true;
+            }
+          }
+          return false;
+#else
+          if (fileExists(cand.string())) {
             std::cout << "Retrying KTX2 load with sibling candidate '" << candStr << "' for original '" << resolvedPath << "'" << std::endl;
             result = ktxTexture2_CreateFromNamedFile(candStr.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTex);
             if (result == KTX_SUCCESS) {
@@ -239,6 +278,7 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
             }
           }
           return false;
+#endif
         };
         // Known suffix variants near the end of filename before extension
         std::vector<std::string> suffixes = {"_c", "_d", "_cm", "_diffuse", "_basecolor", "_albedo"};
@@ -273,6 +313,48 @@ bool Renderer::createTextureImage(const std::string& texturePath_, TextureResour
 
       // Check if the texture needs BasisU transcoding; prefer GPU-compressed targets to save VRAM
       wasTranscoded = ktxTexture2_NeedsTranscoding(ktxTex);
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // --- Course: Opacity Micromaps ---
+      // If requested, cache the raw CPU pixels for the OMM builder.
+      if (cachePixels) {
+        if (wasTranscoded) {
+          // BasisU must be transcoded to a readable format (RGBA32) for the CPU cache.
+          // Since transcoding is destructive, we use a temporary texture object for the cache.
+          ktxTexture2* cacheKtx = nullptr;
+          KTX_error_code cacheRes = KTX_SUCCESS;
+#if defined(PLATFORM_ANDROID)
+          std::vector<char> cacheBuf;
+          try { cacheBuf = readFile(resolvedPath); } catch (...) {
+          }
+          if (!cacheBuf.empty()) {
+            cacheRes = ktxTexture2_CreateFromMemory(reinterpret_cast<const ktx_uint8_t *>(cacheBuf.data()), cacheBuf.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &cacheKtx);
+          } else { cacheRes = KTX_FILE_OPEN_FAILED; }
+#else
+          cacheRes = ktxTexture2_CreateFromNamedFile(resolvedPath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &cacheKtx);
+#endif
+          if (cacheRes == KTX_SUCCESS) {
+            if (ktxTexture2_TranscodeBasis(cacheKtx, KTX_TTF_RGBA32, 0) == KTX_SUCCESS) {
+              ktx_size_t offset = 0;
+              ktxTexture_GetImageOffset(reinterpret_cast<ktxTexture*>(cacheKtx), 0, 0, 0, &offset);
+              const uint8_t* pData = ktxTexture_GetData(reinterpret_cast<ktxTexture *>(cacheKtx)) + offset;
+              StoreRawTexturePixels(textureId, pData, cacheKtx->baseWidth, cacheKtx->baseHeight, 4);
+            }
+            ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(cacheKtx));
+          }
+        } else {
+          // Already transcoded or not BasisU; check if it's a raw format we can use directly (RGBA8)
+          if (ktxTex->vkFormat == static_cast<uint32_t>(vk::Format::eR8G8B8A8Unorm) ||
+            ktxTex->vkFormat == static_cast<uint32_t>(vk::Format::eR8G8B8A8Srgb)) {
+            ktx_size_t offset = 0;
+            ktxTexture_GetImageOffset(reinterpret_cast<ktxTexture*>(ktxTex), 0, 0, 0, &offset);
+            const uint8_t* pData = ktxTexture_GetData(reinterpret_cast<ktxTexture *>(ktxTex)) + offset;
+            StoreRawTexturePixels(textureId, pData, ktxTex->baseWidth, ktxTex->baseHeight, 4);
+          }
+        }
+      }
+#endif
+
       if (wasTranscoded) {
         // Select a compressed target supported by the device (prefer BC7 RGBA, then BC3 RGBA, then BC1 RGB)
         auto supportsFormat = [&](vk::Format f) {
@@ -674,7 +756,7 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
 }
 
 // Load texture from file (public wrapper for createTextureImage)
-bool Renderer::LoadTexture(const std::string& texturePath) {
+bool Renderer::LoadTexture(const std::string& texturePath, bool cachePixels) {
   ensureThreadLocalVulkanInit();
   if (texturePath.empty()) {
     std::cerr << "LoadTexture: Empty texture path provided" << std::endl;
@@ -689,8 +771,17 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
     std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
     auto it = textureResources.find(resolvedId);
     if (it != textureResources.end()) {
-      // Texture already loaded
+      // Texture already loaded.
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // If we need to cache pixels but they aren't cached yet, don't return early.
+      if (cachePixels && GetRawTexturePixels(resolvedId, nullptr, nullptr, nullptr) == nullptr) {
+        // Continue to createTextureImage which will handle caching.
+      } else {
+        return true;
+      }
+#else
       return true;
+#endif
     }
   }
 
@@ -700,7 +791,7 @@ bool Renderer::LoadTexture(const std::string& texturePath) {
   // Use existing createTextureImage method (it inserts into textureResources on success) if it's a KTX2 path; otherwise fall back to memory path below
   bool success = false;
   if (resolvedId.ends_with(".ktx2")) {
-    success = createTextureImage(resolvedId, tempResources);
+    success = createTextureImage(resolvedId, tempResources, cachePixels);
     if (success)
       return true;
     // Fall through to raw-memory path if KTX load failed
@@ -751,10 +842,11 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
                                      const unsigned char* imageData,
                                      int width,
                                      int height,
-                                     int channels) {
+                                     int channels,
+                                     bool cachePixels) {
   ensureThreadLocalVulkanInit();
   const std::string resolvedId = ResolveTextureId(textureId);
-  std::cout << "[LoadTextureFromMemory] start id=" << textureId << " -> resolved=" << resolvedId << " size=" << width << "x" << height << " ch=" << channels << std::endl;
+  std::cout << "[LoadTextureFromMemory] start id=" << textureId << " -> resolved=" << resolvedId << " size=" << width << "x" << height << " ch=" << channels << " cache=" << cachePixels << std::endl;
   if (resolvedId.empty() || !imageData || width <= 0 || height <= 0 || channels <= 0) {
     std::cerr << "LoadTextureFromMemory: Invalid parameters" << std::endl;
     return false;
@@ -765,8 +857,17 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
     std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
     auto it = textureResources.find(resolvedId);
     if (it != textureResources.end()) {
-      // Texture already loaded
+      // Texture already loaded.
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // If we need to cache pixels but they aren't cached yet, don't return early.
+      if (cachePixels && GetRawTexturePixels(resolvedId, nullptr, nullptr, nullptr) == nullptr) {
+        // Continue to load logic below to cache pixels.
+      } else {
+        return true;
+      }
+#else
       return true;
+#endif
     }
   }
 
@@ -779,9 +880,19 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
   }
   // Double-check cache after the wait
   {
-    std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
-    auto it2 = textureResources.find(resolvedId);
-    if (it2 != textureResources.end()) {
+    bool alreadyLoaded = false; {
+      std::shared_lock<std::shared_mutex> texLock(textureResourcesMutex);
+      alreadyLoaded = textureResources.contains(resolvedId);
+    }
+    if (alreadyLoaded) {
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // Another thread may have loaded the GPU texture but skipped the pixel
+      // cache (e.g. it used a different cachePixels=false call).  Store the
+      // pixels now while we still have imageData in hand.
+      if (cachePixels && GetRawTexturePixels(resolvedId, nullptr, nullptr, nullptr) == nullptr) {
+        StoreRawTexturePixels(resolvedId, imageData, width, height, channels);
+      }
+#endif
       return true;
     }
   }
@@ -855,6 +966,13 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
         break;
       }
     }
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // --- Course: Opacity Micromaps ---
+    if (cachePixels) {
+      StoreRawTexturePixels(resolvedId, stagingData, width, height, 4);
+    }
+#endif
 
     stagingBufferMemory.unmapMemory();
 
@@ -1315,12 +1433,13 @@ bool Renderer::createDescriptorSets(Entity* entity, EntityResources& res, const 
         vk::DescriptorBufferInfo lightBufferInfo;
         vk::DescriptorBufferInfo headersInfo;
         vk::DescriptorBufferInfo indicesInfo;
+        vk::DescriptorBufferInfo geoInfoInfo;
+        vk::DescriptorBufferInfo matInfoInfo;
 
         descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &bufferInfo});
 
         auto meshComponent = entity->GetComponent<MeshComponent>();
-        std::vector<std::string> pbrTexturePaths;
-        {
+        std::vector<std::string> pbrTexturePaths; {
           const std::string legacyPath = (meshComponent ? meshComponent->GetTexturePath() : std::string());
           const std::string baseColorPath = (meshComponent && !meshComponent->GetBaseColorTexturePath().empty()) ? meshComponent->GetBaseColorTexturePath() : (!legacyPath.empty() ? legacyPath : SHARED_DEFAULT_ALBEDO_ID);
           const std::string mrPath = (meshComponent && !meshComponent->GetMetallicRoughnessTexturePath().empty()) ? meshComponent->GetMetallicRoughnessTexturePath() : SHARED_DEFAULT_METALLIC_ROUGHNESS_ID;
@@ -1348,8 +1467,8 @@ bool Renderer::createDescriptorSets(Entity* entity, EntityResources& res, const 
         lightBufferInfo = vk::DescriptorBufferInfo{.buffer = *lightStorageBuffers[i].buffer, .range = VK_WHOLE_SIZE};
         descriptorWrites.push_back({.dstSet = *targetDescriptorSets[i], .dstBinding = 6, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &lightBufferInfo});
 
-        // Ensure Forward+ per-frame array exists
-        if (forwardPlusPerFrame.empty()) {
+        // Ensure Forward+ per-frame array is properly sized
+        if (forwardPlusPerFrame.size() < MAX_FRAMES_IN_FLIGHT) {
           forwardPlusPerFrame.resize(MAX_FRAMES_IN_FLIGHT);
         }
 
@@ -1413,17 +1532,30 @@ bool Renderer::createDescriptorSets(Entity* entity, EntityResources& res, const 
           vk::AccelerationStructureKHR h = *tlasStructure.handle;
           if (!!h)
             tlasHandleValue = h;
-        }
-        tlasInfo.accelerationStructureCount = 1;
-        tlasInfo.pAccelerationStructures = &tlasHandleValue;
-        vk::WriteDescriptorSet tlasWrite{};
-        tlasWrite.dstSet = *targetDescriptorSets[i];
-        tlasWrite.dstBinding = 11;
-        tlasWrite.dstArrayElement = 0;
-        tlasWrite.descriptorCount = 1;
-        tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
-        tlasWrite.pNext = &tlasInfo;
-        descriptorWrites.push_back(tlasWrite); {
+
+          tlasInfo.accelerationStructureCount = 1;
+          tlasInfo.pAccelerationStructures = &tlasHandleValue;
+          vk::WriteDescriptorSet tlasWrite{};
+          tlasWrite.dstSet = *targetDescriptorSets[i];
+          tlasWrite.dstBinding = 11;
+          tlasWrite.dstArrayElement = 0;
+          tlasWrite.descriptorCount = 1;
+          tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
+          tlasWrite.pNext = &tlasInfo;
+          descriptorWrites.push_back(tlasWrite);
+
+          // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
+          auto& fpf = forwardPlusPerFrame[i];
+          vk::Buffer hBuf = *fpf.tileHeaders;
+          vk::Buffer iBuf = *fpf.tileLightIndices;
+          vk::Buffer fallbackBuf = hBuf ? hBuf : iBuf;
+          vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
+          vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
+          geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+          matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+          descriptorWrites.push_back(vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[i], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
+          descriptorWrites.push_back(vk::WriteDescriptorSet{.dstSet = *targetDescriptorSets[i], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
+        } {
           std::lock_guard<std::mutex> lk(descriptorMutex);
           device.updateDescriptorSets(descriptorWrites, {});
         }
@@ -1577,8 +1709,7 @@ bool Renderer::preAllocateEntityResourcesBatch(const std::vector<Entity *>& enti
     }
 
     // --- 2. Defer all GPU copies to the render thread safe point ---
-		if (!meshesNeedingUpload.empty())
-    {
+    if (!meshesNeedingUpload.empty()) {
       watchdogProgressLabel.store("Batch: EnqueueMeshUploads", std::memory_order_relaxed);
       EnqueueMeshUploads(meshesNeedingUpload);
       if (flushUploadsNow) {
@@ -2852,24 +2983,26 @@ void Renderer::refreshPBRForwardPlusBindingsForFrame(uint32_t frameIndex) {
 
       // Binding 11: TLAS - ALWAYS bind (required by layout when ray query/AS is enabled)
       // If TLAS is not built yet, the handle will be null; the shader must not trace when disabled.
-      vk::WriteDescriptorSet tlasWrite{};
-      tlasWrite.dstSet = *res.pbrDescriptorSets[frameIndex];
-      tlasWrite.dstBinding = 11;
-      tlasWrite.dstArrayElement = 0;
-      tlasWrite.descriptorCount = 1;
-      tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
-      tlasWrite.pNext = &tlasInfo;
-      writes.push_back(tlasWrite);
+      if (accelerationStructureEnabled) {
+        vk::WriteDescriptorSet tlasWrite{};
+        tlasWrite.dstSet = *res.pbrDescriptorSets[frameIndex];
+        tlasWrite.dstBinding = 11;
+        tlasWrite.dstArrayElement = 0;
+        tlasWrite.descriptorCount = 1;
+        tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
+        tlasWrite.pNext = &tlasInfo;
+        writes.push_back(tlasWrite);
 
-      // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
-      // Always bind something valid; shader guards on `ubo.geometryInfoCount/materialCount`.
-      vk::Buffer fallbackBuf = headersBuf ? headersBuf : indicesBuf;
-      vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
-      vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
-      geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
-      matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
-      writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
-      writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
+        // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
+        // Always bind something valid; shader guards on `ubo.geometryInfoCount/materialCount`.
+        vk::Buffer fallbackBuf = headersBuf ? headersBuf : indicesBuf;
+        vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
+        vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
+        geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+        matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+        writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
+        writes.push_back(vk::WriteDescriptorSet{.dstSet = *res.pbrDescriptorSets[frameIndex], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
+      }
     }
 
     if (!writes.empty()) {
@@ -2925,9 +3058,9 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
         glm::vec3 shadowCamPos = light.position;
         glm::vec3 lightDir = glm::normalize(light.direction);
         if (camera) {
-             // Center shadow map on camera frustum
-             glm::vec3 camPos = camera->GetPosition();
-             shadowCamPos = camPos - lightDir * 50.0f;
+          // Center shadow map on camera frustum
+          glm::vec3 camPos = camera->GetPosition();
+          shadowCamPos = camPos - lightDir * 50.0f;
         }
         lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, 200.0f);
 
@@ -2973,7 +3106,7 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
 }
 
 // Asynchronous texture loading implementations using ThreadPool
-std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical) {
+std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical, bool cachePixels) {
   if (texturePath.empty()) {
     return std::async(std::launch::deferred, [] { return false; });
   }
@@ -2983,11 +3116,12 @@ std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, boo
   // validation.
   textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
   uploadJobsTotal.fetch_add(1, std::memory_order_relaxed);
-  auto task = [this, texturePath, critical]() {
+  auto task = [this, texturePath, critical, cachePixels]() {
     PendingTextureJob job;
     job.type = PendingTextureJob::Type::FromFile;
     job.priority = critical ? PendingTextureJob::Priority::Critical : PendingTextureJob::Priority::NonCritical;
-    job.idOrPath = texturePath; {
+    job.idOrPath = texturePath;
+    job.cachePixels = cachePixels; {
       std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
       pendingTextureJobs.emplace_back(std::move(job));
     }
@@ -3011,7 +3145,8 @@ std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textur
                                                        int width,
                                                        int height,
                                                        int channels,
-                                                       bool critical) {
+                                                       bool critical,
+                                                       bool cachePixels) {
   if (!imageData || textureId.empty() || width <= 0 || height <= 0 || channels <= 0) {
     return std::async(std::launch::deferred, [] { return false; });
   }
@@ -3022,11 +3157,16 @@ std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textur
 
   textureTasksScheduled.fetch_add(1, std::memory_order_relaxed);
   uploadJobsTotal.fetch_add(1, std::memory_order_relaxed);
-  auto task = [this, textureId, data = std::move(dataCopy), width, height, channels, critical]() mutable {
+  auto task = [this, textureId, data = std::move(dataCopy), width, height, channels, critical, cachePixels]() mutable {
     PendingTextureJob job;
     job.type = PendingTextureJob::Type::FromMemory;
     job.priority = critical ? PendingTextureJob::Priority::Critical : PendingTextureJob::Priority::NonCritical;
-    job.idOrPath = textureId; {
+    job.idOrPath = textureId;
+    job.data = std::move(data);
+    job.width = width;
+    job.height = height;
+    job.channels = channels;
+    job.cachePixels = cachePixels; {
       std::lock_guard<std::mutex> lk(pendingTextureJobsMutex);
       pendingTextureJobs.emplace_back(std::move(job));
     }
@@ -3337,7 +3477,7 @@ void Renderer::StartUploadsWorker(size_t workerCount) {
         for (auto& job : batch) {
           try {
             if (job.type == PendingTextureJob::Type::FromFile) {
-              (void) LoadTexture(job.idOrPath);
+              (void) LoadTexture(job.idOrPath, job.cachePixels);
               OnTextureUploaded(job.idOrPath);
               if (job.priority == PendingTextureJob::Priority::Critical) {
                 criticalJobsOutstanding.fetch_sub(1, std::memory_order_relaxed);
@@ -3346,6 +3486,10 @@ void Renderer::StartUploadsWorker(size_t workerCount) {
             }
           } catch (const std::exception& e) {
             std::cerr << "UploadsWorker: failed to process job for '" << job.idOrPath << "': " << e.what() << std::endl;
+            if (job.priority == PendingTextureJob::Priority::Critical) {
+              criticalJobsOutstanding.fetch_sub(1, std::memory_order_relaxed);
+            }
+            uploadJobsCompleted.fetch_add(1, std::memory_order_relaxed);
           }
         }
       }
@@ -3525,7 +3669,7 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
         return;
 
       // Binding 7/8: Forward+ tile buffers (must be valid even when Forward+ is disabled)
-      if (forwardPlusPerFrame.empty()) {
+      if (forwardPlusPerFrame.size() < MAX_FRAMES_IN_FLIGHT) {
         forwardPlusPerFrame.resize(MAX_FRAMES_IN_FLIGHT);
       }
       vk::Buffer headersBuf{};
@@ -3575,26 +3719,29 @@ bool Renderer::updateDescriptorSetsForFrame(Entity* entity,
       dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 10, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &reflInfo});
 
       // Binding 11: TLAS (ray-query shadows in raster PBR fragment shader)
-      tlasHandleValue = accelerationStructureEnabled ? *tlasStructure.handle : vk::AccelerationStructureKHR{};
-      tlasInfo.accelerationStructureCount = 1;
-      tlasInfo.pAccelerationStructures = &tlasHandleValue;
-      tlasWrite.dstSet = *targetDescriptorSets[frameIndex];
-      tlasWrite.dstBinding = 11;
-      tlasWrite.dstArrayElement = 0;
-      tlasWrite.descriptorCount = 1;
-      tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
-      tlasWrite.pNext = &tlasInfo;
-      dstWrites.push_back(tlasWrite);
+      if (accelerationStructureEnabled) {
+        tlasHandleValue = accelerationStructureEnabled ? *tlasStructure.handle : vk::AccelerationStructureKHR{};
+        tlasInfo.accelerationStructureCount = 1;
+        tlasInfo.pAccelerationStructures = &tlasHandleValue;
+        tlasWrite.dstSet = *targetDescriptorSets[frameIndex];
+        tlasWrite.dstBinding = 11;
+        tlasWrite.dstArrayElement = 0;
+        tlasWrite.descriptorCount = 1;
+        tlasWrite.descriptorType = vk::DescriptorType::eAccelerationStructureKHR;
+        tlasWrite.pNext = &tlasInfo;
+        dstWrites.push_back(tlasWrite);
 
-      // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
-      // Always bind something valid; shader guards on `ubo.geometryInfoCount/materialCount`.
-      vk::Buffer fallbackBuf = headersBuf ? headersBuf : indicesBuf;
-      vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
-      vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
-      geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
-      matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
-      dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
-      dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
+        // Binding 12/13: Ray-query geometry/material buffers for material-aware raster shadow queries.
+        // Always bind something valid; shader guards on `ubo.geometryInfoCount/materialCount`.
+        vk::Buffer fallbackBuf = headersBuf ? headersBuf : indicesBuf;
+        vk::Buffer geoBuf = (!!*geometryInfoBuffer) ? *geometryInfoBuffer : fallbackBuf;
+        vk::Buffer matBuf = (!!*materialBuffer) ? *materialBuffer : fallbackBuf;
+        geoInfoInfo = vk::DescriptorBufferInfo{.buffer = geoBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+        matInfoInfo = vk::DescriptorBufferInfo{.buffer = matBuf, .offset = 0, .range = VK_WHOLE_SIZE};
+
+        dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 12, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &geoInfoInfo});
+        dstWrites.push_back({.dstSet = *targetDescriptorSets[frameIndex], .dstBinding = 13, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &matInfoInfo});
+      }
     };
 
     // Optionally write only the UBO (binding 0) — used at safe point to initialize per-frame sets once
@@ -3803,7 +3950,7 @@ void Renderer::ProcessPendingTextureJobs(uint32_t maxJobs,
       switch (job.type) {
         case PendingTextureJob::Type::FromFile:
           // LoadTexture will resolve aliases and perform full GPU upload
-          LoadTexture(job.idOrPath);
+          LoadTexture(job.idOrPath, job.cachePixels);
           break;
         case PendingTextureJob::Type::FromMemory:
           // LoadTextureFromMemory will create GPU resources for this ID
@@ -3811,7 +3958,8 @@ void Renderer::ProcessPendingTextureJobs(uint32_t maxJobs,
                                 job.data.data(),
                                 job.width,
                                 job.height,
-                                job.channels);
+                                job.channels,
+                                job.cachePixels);
           break;
       }
       // Refresh descriptors for entities that use this texture so

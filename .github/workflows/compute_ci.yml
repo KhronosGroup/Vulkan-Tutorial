@@ -178,6 +178,15 @@ jobs:
             ${{ runner.os }}-apt-compute-
             ${{ runner.os }}-apt-
 
+      - name: Cache clspv + clvk build (Ubuntu)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v3
+        with:
+          path: ~/opencl-on-vulkan
+          key: ${{ runner.os }}-opencl-on-vulkan-${{ hashFiles('attachments/compute/install_dependencies_linux.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-opencl-on-vulkan-
+
       - name: Cache ccache files
         uses: actions/cache@v3
         with:

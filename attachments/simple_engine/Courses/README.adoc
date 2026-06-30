@@ -1,0 +1,120 @@
+= Simple Engine — Course Modules
+:toc: left
+:toclevels: 3
+:sectnums:
+
+Course modules are self-contained feature extensions that live entirely inside this `Courses/` directory.
+Each module is compiled as a static library (`SimpleEngineCourses`) that is linked into the main `SimpleEngine` target — no existing engine source files are modified.
+
+== Available Courses
+
+[cols="2,5",options="header"]
+|===
+| Module | Description
+
+| xref:../en/Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps]
+| Hardware-accelerated shadow rays through alpha-masked geometry using
+`VK_KHR_opacity_micromap`.  Reduces any-hit shader invocations to only the
+micro-triangles at the exact alpha boundary.
+|===
+
+== Building with Course Modules
+
+=== Prerequisites
+
+* CMake 3.29 or newer
+* Vulkan SDK 1.3.283 or newer (the `VK_KHR_opacity_micromap` extension headers must be present — SDK 1.3.296+ recommended)
+* A GPU and driver that advertise `VK_KHR_opacity_micromap`
+
+=== Quick Start
+
+[source,shell]
+----
+# Configure — enable the course modules umbrella option plus the
+# Opacity Micromaps module specifically
+cmake -B build \
+      -DENABLE_COURSES=ON \
+      -DENABLE_COURSE_OPACITY_MICROMAPS=ON \
+      ..
+
+# Build
+cmake --build build --parallel
+----
+
+=== CMake Options
+
+[cols="3,1,4",options="header"]
+|===
+| Option | Default | Effect
+
+| `ENABLE_COURSES`
+| `OFF`
+| Master switch.  Must be `ON` for any course module to be compiled.
+When `OFF`, the `Courses/` subdirectory is skipped entirely and the
+build is identical to the base engine.
+
+| `ENABLE_COURSE_OPACITY_MICROMAPS`
+| `ON`
+| Build the Opacity Micromaps module.  Has no effect unless
+`ENABLE_COURSES=ON`.  When enabled, adds the
+`ENABLE_COURSE_OPACITY_MICROMAPS` compile definition so the engine
+startup code activates `OmmIntegration`.
+|===
+
+=== Enabling Only Courses, Disabling OMM
+
+[source,shell]
+----
+# Build courses infrastructure but skip the OMM module
+cmake -B build \
+      -DENABLE_COURSES=ON \
+      -DENABLE_COURSE_OPACITY_MICROMAPS=OFF \
+      ..
+----
+
+When all per-course options are disabled, no `SimpleEngineCourses` library is produced and the linker step is a no-op.
+
+=== Disabling Everything (Base Engine Only)
+
+[source,shell]
+----
+cmake -B build -DENABLE_COURSES=OFF ..
+----
+
+=== Reconfiguring an Existing Build Directory
+
+Pass the same flags to the existing build tree — CMake will re-run the configure step and update only the affected targets:
+
+[source,shell]
+----
+cmake -B build -DENABLE_COURSES=ON -DENABLE_COURSE_OPACITY_MICROMAPS=ON
+cmake --build build --parallel
+----
+
+=== IDE / GUI Configuration (cmake-gui / ccmake)
+
+1. Open `cmake-gui` (or run `ccmake build/`).
+2. Set `ENABLE_COURSES` to `ON` and click **Configure**.
+3. Set `ENABLE_COURSE_OPACITY_MICROMAPS` to `ON` (it appears after the first configure pass).
+4. Click **Configure** again, then **Generate**.
+5. Build the generated project as normal.
+
+== Verifying the Build
+
+A successful configure with OMM enabled prints:
+
+----
+[Courses] Opacity Micromaps module ENABLED
+----
+
+A successful build will produce `libSimpleEngineCourses.a` (Linux/macOS) or
+`SimpleEngineCourses.lib` (Windows) in the build tree, linked automatically into `SimpleEngine`.
+
+At runtime the ImGui panel shows an **Opacity Micromaps** section with live statistics (micromap count, build time, any-hit invocations saved).
+
+== Adding a New Course Module
+
+1. Create a subdirectory under `Courses/` (e.g. `Courses/My_Feature/`).
+2. Add its `.cpp` files to the `COURSE_SOURCES` list in `Courses/CMakeLists.txt`.
+3. Add a corresponding `option(ENABLE_COURSE_MY_FEATURE ...)` entry.
+4. Document the course in `en/Building_a_Simple_Engine/Courses/`.

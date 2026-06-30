@@ -333,7 +333,16 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
       geometry.geometryType = vk::GeometryTypeKHR::eTriangles;
       // Mark geometry as OPAQUE to ensure closest hits are committed reliably for primary rays
       // (we can re-introduce transparency later with any-hit/candidate handling)
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // Course: Opacity Micromaps — attach micromap pNext if available.
+      // If a micromap is present, we MUST NOT set the OPAQUE flag, otherwise
+      // the "Unknown" regions will be treated as opaque and the any-hit shader
+      // won't fire for the alpha-mask edges.
+      void* ommPNext = GetMicromapPNext(meshComp);
+      geometry.flags = ommPNext ? vk::GeometryFlagBitsKHR{} : vk::GeometryFlagBitsKHR::eOpaque;
+#else
       geometry.flags = vk::GeometryFlagBitsKHR::eOpaque;
+#endif
 
       geometry.geometry.triangles.vertexFormat = vk::Format::eR32G32B32Sfloat;
       geometry.geometry.triangles.vertexData = vertexAddress;
@@ -344,6 +353,11 @@ bool Renderer::buildAccelerationStructures(const std::vector<Entity *>& entities
       geometry.geometry.triangles.maxVertex = vertexCount;
       geometry.geometry.triangles.indexType = vk::IndexType::eUint32;
       geometry.geometry.triangles.indexData = indexAddress;
+
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+      // Course: Opacity Micromaps — attach micromap pNext if available
+      geometry.geometry.triangles.pNext = ommPNext;
+#endif
 
       // Build info
       vk::AccelerationStructureBuildGeometryInfoKHR buildInfo{};

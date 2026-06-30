@@ -22,8 +22,8 @@ add_library(simple_engine_android SHARED
 
 # Link against libraries
 target_link_libraries(simple_engine_android
-        SimpleEngine
-        game-activity::game-activity
+        -Wl,--whole-archive SimpleEngine -Wl,--no-whole-archive
+        -Wl,--whole-archive game-activity::game-activity -Wl,--no-whole-archive
         android
         log
 )

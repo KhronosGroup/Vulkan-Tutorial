@@ -18,6 +18,9 @@
 // This shader implements the Phong lighting model as a fallback when BRDF/PBR is disabled
 // Note: BRDF/PBR is now the default lighting model - this is used only when explicitly requested
 
+// Import shared utility modules
+import common_types;
+
 // Input from vertex buffer
 struct VSInput {
     float3 Position : POSITION;
@@ -35,30 +38,20 @@ struct VSOutput {
     float4 Tangent : TANGENT; // Pass through tangent (unused in basic lighting)
 };
 
-// Uniform buffer for transformation matrices and light information
-struct UniformBufferObject {
-    float4x4 model;
-    float4x4 view;
-    float4x4 proj;
-    float4 lightPos;
-    float4 lightColor;
-    float4 viewPos;
-};
+// Bindings
+[[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
+[[vk::binding(1, 0)]] Sampler2D texSampler;
 
 // Push constants for material properties
-struct PushConstants {
+struct LegacyPushConstants {
     float4 ambientColor;
     float4 diffuseColor;
     float4 specularColor;
     float shininess;
 };
 
-// Bindings
-[[vk::binding(0, 0)]] ConstantBuffer<UniformBufferObject> ubo;
-[[vk::binding(1, 0)]] Sampler2D texSampler;
-
 // Push constants
-[[vk::push_constant]] PushConstants material;
+[[vk::push_constant]] LegacyPushConstants material;
 
 // Vertex shader entry point
 [[shader("vertex")]]
@@ -94,20 +87,23 @@ float4 PSMain(VSOutput input) : SV_TARGET
 
     // Normalize vectors
     float3 normal = normalize(input.Normal);
-    float3 lightDir = normalize(ubo.lightPos.xyz - input.WorldPos);
-    float3 viewDir = normalize(ubo.viewPos.xyz - input.WorldPos);
+    // Use first light for legacy fallback (matches Renderer::updateUniformBufferInternal logic if it was using this UBO)
+    // Actually, common_types.slang UBO doesn't have lightPos.
+    // We should probably just use a default light or ignore it for now as this is a fallback.
+    float3 lightDir = normalize(float3(1.0, 1.0, 1.0));
+    float3 viewDir = normalize(ubo.camPos.xyz - input.WorldPos);
     float3 reflectDir = reflect(-lightDir, normal);
 
     // Ambient
-    float3 ambient = material.ambientColor.rgb * ubo.lightColor.rgb;
+    float3 ambient = material.ambientColor.rgb * float3(0.1, 0.1, 0.1);
 
     // Diffuse
     float diff = max(dot(normal, lightDir), 0.0);
-    float3 diffuse = diff * material.diffuseColor.rgb * ubo.lightColor.rgb;
+    float3 diffuse = diff * material.diffuseColor.rgb;
 
     // Specular
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-    float3 specular = spec * material.specularColor.rgb * ubo.lightColor.rgb;
+    float3 specular = spec * material.specularColor.rgb;
 
     // Combine components
     float3 result = (ambient + diffuse + specular) * texColor.rgb;

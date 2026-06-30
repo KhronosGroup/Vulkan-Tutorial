@@ -8,12 +8,9 @@ public class VulkanActivity extends GameActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Keep the screen on while the app is running
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
-    // Load the native library
     static {
         System.loadLibrary("simple_engine_android");
     }

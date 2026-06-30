@@ -6,6 +6,9 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
 
 // For Gradle 9.0+, dependency repositories should be configured here
 dependencyResolutionManagement {

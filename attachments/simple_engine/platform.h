@@ -147,9 +147,30 @@ class Platform {
 	 * @param title The new window title.
 	 */
     virtual void SetWindowTitle(const std::string& title) = 0;
+
+    /**
+	 * @brief Get the current accelerometer data (tilting).
+	 * @param x Output for X axis tilting.
+	 * @param y Output for Y axis tilting.
+	 * @param z Output for Z axis tilting.
+	 * @return True if sensor data was successfully retrieved.
+	 */
+    virtual bool GetAccelerometerData(float* x, float* y, float* z) const {
+      *x = 0.0f; *y = 0.0f; *z = 0.0f;
+      return false;
+    }
+
+    /**
+     * @brief Get the current display rotation.
+     * @return 0 for 0 degrees, 1 for 90, 2 for 180, 3 for 270.
+     */
+    virtual int GetDisplayRotation() const {
+      return 0;
+    }
 };
 
 #if defined(PLATFORM_ANDROID)
+#include <android/sensor.h>
 /**
  * @brief Android implementation of the Platform interface.
  */
@@ -163,6 +184,14 @@ class AndroidPlatform : public Platform {
     std::function<void(float, float, uint32_t)> mouseCallback;
     std::function<void(uint32_t, bool)> keyboardCallback;
     std::function<void(uint32_t)> charCallback;
+
+    // Sensor support
+    ASensorManager* sensorManager = nullptr;
+    const ASensor* accelerometerSensor = nullptr;
+    ASensorEventQueue* sensorEventQueue = nullptr;
+    float accelX = 0.0f;
+    float accelY = 0.0f;
+    float accelZ = 0.0f;
 
     // Mobile-specific properties
     struct DeviceCapabilities {
@@ -319,6 +348,21 @@ class AndroidPlatform : public Platform {
 	 * @param title The new window title.
 	 */
     void SetWindowTitle(const std::string& title) override;
+
+    /**
+	 * @brief Get the current accelerometer data (tilting).
+	 */
+    bool GetAccelerometerData(float* x, float* y, float* z) const override {
+      *x = accelX;
+      *y = accelY;
+      *z = accelZ;
+      return true;
+    }
+
+    /**
+     * @brief Get the current display rotation.
+     */
+    int GetDisplayRotation() const override;
 
     /**
 	 * @brief Get the Android app.

@@ -200,7 +200,7 @@ void transition_image_layout(
 		    .dependencyFlags         = {},
 		    .imageMemoryBarrierCount = 1,
 		    .pImageMemoryBarriers    = &barrier};
-    commandBuffer.pipelineBarrier2(dependencyInfo);
+    commandBuffer.pipelineBarrier2(dependency_info);
 }
 ----
 

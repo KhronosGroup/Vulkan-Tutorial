@@ -129,6 +129,16 @@
 *** xref:Building_a_Simple_Engine/Mobile_Development/04_rendering_approaches.adoc[Rendering approaches]
 *** xref:Building_a_Simple_Engine/Mobile_Development/05_vulkan_extensions.adoc[Vulkan extensions]
 *** xref:Building_a_Simple_Engine/Mobile_Development/06_conclusion.adoc[Conclusion]
+** Extra Courses
+*** Opacity Micromaps
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Introduction]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/01_the_shadow_problem.adoc[The shadow problem]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/02_why_alpha_testing_is_expensive.adoc[Why alpha testing is expensive]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/03_what_are_micromaps.adoc[What are micromaps]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/04_hardware_traversal_with_omm.adoc[Hardware traversal with OMM]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/05_implementation_overview.adoc[Implementation overview]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/06_results_guidance_and_tradeoffs.adoc[Results, guidance and tradeoffs]
+**** xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/07_conclusion.adoc[Conclusion]
 ** Advanced Topics
 *** xref:Building_a_Simple_Engine/Advanced_Topics/01_introduction.adoc[Introduction]
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Rendering_Pipeline_Overview.adoc[Rendering pipeline overview]

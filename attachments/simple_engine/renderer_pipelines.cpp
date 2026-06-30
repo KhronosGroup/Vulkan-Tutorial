@@ -50,8 +50,12 @@ bool Renderer::createDescriptorSetLayout() {
     vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
     std::array<vk::DescriptorBindingFlags, 2> bindingFlags{};
     if (descriptorIndexingEnabled) {
-      bindingFlags[0] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-      bindingFlags[1] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+      if (descriptorBindingUniformBufferUpdateAfterBindEnabled) {
+        bindingFlags[0] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+      }
+      if (descriptorBindingSampledImageUpdateAfterBindEnabled) {
+        bindingFlags[1] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+      }
       bindingFlagsInfo.bindingCount = static_cast<uint32_t>(bindingFlags.size());
       bindingFlagsInfo.pBindingFlags = bindingFlags.data();
     }
@@ -76,7 +80,7 @@ bool Renderer::createDescriptorSetLayout() {
 bool Renderer::createPBRDescriptorSetLayout() {
   try {
     // Create descriptor set layout bindings for PBR shader
-    std::array bindings = {
+    std::array baseBindings = {
       // Binding 0: Uniform buffer (UBO)
       vk::DescriptorSetLayoutBinding{
         .binding = 0,
@@ -124,81 +128,94 @@ bool Renderer::createPBRDescriptorSetLayout() {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 6: Light storage buffer (shadows removed)
-      vk::DescriptorSetLayoutBinding{
-        .binding = 6,
+      }
+    };
+
+    std::vector<vk::DescriptorSetLayoutBinding> bindings(baseBindings.begin(), baseBindings.end());
+
+    // Structured buffers and Ray-query related bindings.
+    // Only add them if the features are actually supported on the device.
+    // Binding 6: lights SSBO
+    bindings.push_back(vk::DescriptorSetLayoutBinding{
+      .binding = 6,
         .descriptorType = vk::DescriptorType::eStorageBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 7: Forward+ tile headers SSBO
-      vk::DescriptorSetLayoutBinding{
-        .binding = 7,
+    });
+    // Binding 7: tile headers
+    bindings.push_back(vk::DescriptorSetLayoutBinding{
+      .binding = 7,
         .descriptorType = vk::DescriptorType::eStorageBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 8: Forward+ tile light indices SSBO
-      vk::DescriptorSetLayoutBinding{
-        .binding = 8,
+    });
+    // Binding 8: tile indices
+    bindings.push_back(vk::DescriptorSetLayoutBinding{
+      .binding = 8,
         .descriptorType = vk::DescriptorType::eStorageBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 9: Fragment debug output buffer (optional)
-      vk::DescriptorSetLayoutBinding{
-        .binding = 9,
+    });
+    // Binding 9: fragment debug output buffer
+    bindings.push_back(vk::DescriptorSetLayoutBinding{
+      .binding = 9,
         .descriptorType = vk::DescriptorType::eStorageBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 10: Reflection texture (planar reflections)
-      vk::DescriptorSetLayoutBinding{
-        .binding = 10,
+    });
+
+    // Binding 10 is always present (planar reflections)
+    bindings.push_back(vk::DescriptorSetLayoutBinding{
+      .binding = 10,
         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 11: TLAS (ray-query shadows in raster fragment shader)
-      vk::DescriptorSetLayoutBinding{
+    });
+
+    if (accelerationStructureEnabled) {
+      // Binding 11: TLAS
+      bindings.push_back(vk::DescriptorSetLayoutBinding{
         .binding = 11,
         .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 12: Ray-query geometry info buffer (per-instance addresses + material indices)
-      vk::DescriptorSetLayoutBinding{
+      });
+      // Binding 12: geometry info
+      bindings.push_back(vk::DescriptorSetLayoutBinding{
         .binding = 12,
         .descriptorType = vk::DescriptorType::eStorageBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      },
-      // Binding 13: Ray-query material buffer (PBR material properties)
-      vk::DescriptorSetLayoutBinding{
+      });
+      // Binding 13: material data
+      bindings.push_back(vk::DescriptorSetLayoutBinding{
         .binding = 13,
         .descriptorType = vk::DescriptorType::eStorageBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr
-      }
-    };
+      });
+    }
 
     // Create a descriptor set layout
     // Descriptor indexing: set per-binding flags for UPDATE_AFTER_BIND on UBO (0) and sampled images (1..5)
     vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
-    std::array<vk::DescriptorBindingFlags, 14> bindingFlags{};
+    std::vector<vk::DescriptorBindingFlags> bindingFlags(bindings.size(), vk::DescriptorBindingFlags{});
     if (descriptorIndexingEnabled) {
-      bindingFlags[0] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-      bindingFlags[1] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
-      bindingFlags[10] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+      for (size_t i = 0; i < bindings.size(); ++i) {
+        if (bindings[i].descriptorType == vk::DescriptorType::eUniformBuffer && descriptorBindingUniformBufferUpdateAfterBindEnabled) {
+          bindingFlags[i] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+        } else if (bindings[i].descriptorType == vk::DescriptorType::eCombinedImageSampler && descriptorBindingSampledImageUpdateAfterBindEnabled) {
+          bindingFlags[i] = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
+        }
+      }
       bindingFlagsInfo.bindingCount = static_cast<uint32_t>(bindingFlags.size());
       bindingFlagsInfo.pBindingFlags = bindingFlags.data();
     }
@@ -219,7 +236,7 @@ bool Renderer::createPBRDescriptorSetLayout() {
       .binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
     vk::DescriptorSetLayoutCreateInfo transparentLayoutInfo{.bindingCount = 1, .pBindings = &sceneColorBinding};
-    if (descriptorIndexingEnabled) {
+    if (descriptorIndexingEnabled && descriptorBindingSampledImageUpdateAfterBindEnabled) {
       // Make this sampler binding update-after-bind safe as well (optional)
       vk::DescriptorSetLayoutBindingFlagsCreateInfo transBindingFlagsInfo{};
       vk::DescriptorBindingFlags transFlags = vk::DescriptorBindingFlagBits::eUpdateAfterBind | vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending;
@@ -245,31 +262,24 @@ bool Renderer::createPBRDescriptorSetLayout() {
 // Create a graphics pipeline
 bool Renderer::createGraphicsPipeline() {
   try {
-    // Read shader code
+    // Read shader code (Reverted to use the Slang-compiled texturedMesh shader)
     auto shaderCode = readFile("shaders/texturedMesh.spv");
 
-    // Create shader modules
+    // Create shader module
     vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
     // Create shader stage info
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
-      .stage = vk::ShaderStageFlagBits::eVertex,
-      .module = *shaderModule,
-      .pName = "VSMain"
-    };
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+    vertShaderStageInfo.module = *shaderModule;
+    vertShaderStageInfo.pName = "VSMain";
 
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
-      .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = *shaderModule,
-      .pName = "PSMain"
-    };
-
-    // Fragment entry point specialized for architectural glass
-    vk::PipelineShaderStageCreateInfo fragGlassStageInfo{
-      .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = *shaderModule,
-      .pName = "GlassPSMain"
-    };
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragShaderStageInfo.module = *shaderModule;
+    fragShaderStageInfo.pName = "PSMain";
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
@@ -376,13 +386,12 @@ bool Renderer::createGraphicsPipeline() {
     vk::Format depthFormat = findDepthFormat();
     std::cout << "Creating main graphics pipeline with depth format: " << static_cast<int>(depthFormat) << std::endl;
 
-    // Initialize member variable for proper lifetime management
-    mainPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .colorAttachmentCount = 1,
-      .pColorAttachmentFormats = &swapChainImageFormat,
-      .depthAttachmentFormat = depthFormat,
-      .stencilAttachmentFormat = vk::Format::eUndefined
-    };
+    vk::PipelineRenderingCreateInfo pipelineRenderingInfo{};
+    pipelineRenderingInfo.sType = vk::StructureType::ePipelineRenderingCreateInfo;
+    pipelineRenderingInfo.colorAttachmentCount = 1;
+    pipelineRenderingInfo.pColorAttachmentFormats = &swapChainImageFormat;
+    pipelineRenderingInfo.depthAttachmentFormat = depthFormat;
+    pipelineRenderingInfo.stencilAttachmentFormat = vk::Format::eUndefined;
 
     // Create the graphics pipeline
     vk::PipelineRasterizationStateCreateInfo rasterizerBack = rasterizer;
@@ -390,25 +399,20 @@ bool Renderer::createGraphicsPipeline() {
     // instance/model transforms flip winding (ensures PASS 1 actually shades pixels)
     rasterizerBack.cullMode = vk::CullModeFlagBits::eNone;
 
-    vk::GraphicsPipelineCreateInfo pipelineInfo{
-      .pNext = &mainPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = shaderStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizerBack,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencil,
-      .pColorBlendState = &colorBlending,
-      .pDynamicState = &dynamicState,
-      .layout = *pipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
+    vk::GraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    pipelineInfo.pNext = &pipelineRenderingInfo;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizerBack;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = *pipelineLayout;
 
     graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
     return true;
@@ -420,41 +424,55 @@ bool Renderer::createGraphicsPipeline() {
 
 // Create PBR pipeline
 bool Renderer::createPBRPipeline() {
+  LOGI("Entering createPBRPipeline");
   try {
     // Create PBR descriptor set layout
+    LOGI("Creating PBR descriptor set layout...");
     if (!createPBRDescriptorSetLayout()) {
       return false;
     }
+    LOGI("PBR descriptor set layout created");
 
     // Read shader code
-    auto shaderCode = readFile("shaders/pbr.spv");
+    LOGI("Reading PBR shader...");
+    std::string shaderPath = "shaders/pbr.spv";
+    if (!rayQueryEnabled || !accelerationStructureEnabled) {
+      LOGI("Ray Query not supported/enabled. Using optimized Android PBR shader.");
+      shaderPath = "shaders/pbr_android.spv";
+    }
+    auto shaderCode = readFile(shaderPath);
+    LOGI("PBR shader read successfully (%s), size: %zu", shaderPath.c_str(), shaderCode.size());
 
     // Create shader modules
     vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
+    LOGI("PBR shader module created");
 
     // Create shader stage info
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
-      .stage = vk::ShaderStageFlagBits::eVertex,
-      .module = *shaderModule,
-      .pName = "VSMain"
-    };
+    LOGI("Creating shader stage info...");
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+    vertShaderStageInfo.module = *shaderModule;
+    vertShaderStageInfo.pName = "VSMain";
 
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
-      .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = *shaderModule,
-      .pName = "PSMain"
-    };
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragShaderStageInfo.module = *shaderModule;
+    fragShaderStageInfo.pName = "PSMain";
 
     // Fragment entry point specialized for architectural glass
-    vk::PipelineShaderStageCreateInfo fragGlassStageInfo{
-      .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = *shaderModule,
-      .pName = "GlassPSMain"
-    };
+    vk::PipelineShaderStageCreateInfo fragGlassStageInfo{};
+    fragGlassStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    fragGlassStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragGlassStageInfo.module = *shaderModule;
+    fragGlassStageInfo.pName = "GlassPSMain";
+    LOGI("Shader stage info created");
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
     // Define vertex and instance binding descriptions
+    LOGI("Defining vertex input descriptions...");
     auto vertexBindingDescription = Vertex::getBindingDescription();
     auto instanceBindingDescription = InstanceData::getBindingDescription();
     std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = {
@@ -473,64 +491,63 @@ bool Renderer::createPBRPipeline() {
     allAttributeDescriptions.insert(allAttributeDescriptions.end(), instanceModelMatrixAttributes.begin(), instanceModelMatrixAttributes.end());
     allAttributeDescriptions.insert(allAttributeDescriptions.end(), instanceNormalMatrixAttributes.begin(), instanceNormalMatrixAttributes.end());
 
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo{
-      .vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size()),
-      .pVertexBindingDescriptions = bindingDescriptions.data(),
-      .vertexAttributeDescriptionCount = static_cast<uint32_t>(allAttributeDescriptions.size()),
-      .pVertexAttributeDescriptions = allAttributeDescriptions.data()
-    };
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = vk::StructureType::ePipelineVertexInputStateCreateInfo;
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(allAttributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = allAttributeDescriptions.data();
 
     // Create input assembly info
-    vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
-      .topology = vk::PrimitiveTopology::eTriangleList,
-      .primitiveRestartEnable = VK_FALSE
-    };
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = vk::StructureType::ePipelineInputAssemblyStateCreateInfo;
+    inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+    inputAssembly.primitiveRestartEnable = vk::False;
 
     // Create viewport state info
-    vk::PipelineViewportStateCreateInfo viewportState{
-      .viewportCount = 1,
-      .scissorCount = 1
-    };
+    vk::PipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = vk::StructureType::ePipelineViewportStateCreateInfo;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
 
     // Create rasterization state info
-    vk::PipelineRasterizationStateCreateInfo rasterizer{
-      .depthClampEnable = VK_FALSE,
-      .rasterizerDiscardEnable = VK_FALSE,
-      .polygonMode = vk::PolygonMode::eFill,
-      .cullMode = vk::CullModeFlagBits::eNone,
-      .frontFace = vk::FrontFace::eCounterClockwise,
-      .depthBiasEnable = VK_FALSE,
-      .lineWidth = 1.0f
-    };
+    vk::PipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = vk::StructureType::ePipelineRasterizationStateCreateInfo;
+    rasterizer.depthClampEnable = vk::False;
+    rasterizer.rasterizerDiscardEnable = vk::False;
+    rasterizer.polygonMode = vk::PolygonMode::eFill;
+    rasterizer.cullMode = vk::CullModeFlagBits::eNone;
+    rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
+    rasterizer.depthBiasEnable = vk::False;
+    rasterizer.lineWidth = 1.0f;
 
     // Create multisample state info
-    vk::PipelineMultisampleStateCreateInfo multisampling{
-      .rasterizationSamples = vk::SampleCountFlagBits::e1,
-      .sampleShadingEnable = VK_FALSE
-    };
+    vk::PipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = vk::StructureType::ePipelineMultisampleStateCreateInfo;
+    multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+    multisampling.sampleShadingEnable = vk::False;
 
     // Create depth stencil state info
-    vk::PipelineDepthStencilStateCreateInfo depthStencil{
-      .depthTestEnable = VK_TRUE,
-      .depthWriteEnable = VK_TRUE,
-      .depthCompareOp = vk::CompareOp::eLess,
-      .depthBoundsTestEnable = VK_FALSE,
-      .stencilTestEnable = VK_FALSE
-    };
+    vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = vk::StructureType::ePipelineDepthStencilStateCreateInfo;
+    depthStencil.depthTestEnable = vk::True;
+    depthStencil.depthWriteEnable = vk::True;
+    depthStencil.depthCompareOp = vk::CompareOp::eLess;
+    depthStencil.depthBoundsTestEnable = vk::False;
+    depthStencil.stencilTestEnable = vk::False;
 
     // Create a color blend attachment state
-    vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-      .blendEnable = VK_FALSE,
-      .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
-    };
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.blendEnable = vk::False;
+    colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 
     // Create color blend state info
-    vk::PipelineColorBlendStateCreateInfo colorBlending{
-      .logicOpEnable = VK_FALSE,
-      .logicOp = vk::LogicOp::eCopy,
-      .attachmentCount = 1,
-      .pAttachments = &colorBlendAttachment
-    };
+    vk::PipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = vk::StructureType::ePipelineColorBlendStateCreateInfo;
+    colorBlending.logicOpEnable = vk::False;
+    colorBlending.logicOp = vk::LogicOp::eCopy;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
 
     // Create dynamic state info
     std::vector dynamicStates = {
@@ -538,55 +555,66 @@ bool Renderer::createPBRPipeline() {
       vk::DynamicState::eScissor
     };
 
-    vk::PipelineDynamicStateCreateInfo dynamicState{
-      .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
-      .pDynamicStates = dynamicStates.data()
-    };
+    vk::PipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = vk::StructureType::ePipelineDynamicStateCreateInfo;
+    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicState.pDynamicStates = dynamicStates.data();
 
     // Create push constant range for material properties
-    vk::PushConstantRange pushConstantRange{
-      .stageFlags = vk::ShaderStageFlagBits::eFragment,
-      .offset = 0,
-      .size = sizeof(MaterialProperties)
-    };
+    vk::PushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eFragment;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(MaterialProperties);
 
     std::array<vk::DescriptorSetLayout, 2> transparentSetLayouts = {*pbrDescriptorSetLayout, *transparentDescriptorSetLayout};
     // Create a pipeline layout for opaque PBR with only the PBR descriptor set (set 0)
     std::array<vk::DescriptorSetLayout, 1> pbrOnlySetLayouts = {*pbrDescriptorSetLayout};
     // Create BOTH pipeline layouts with two descriptor sets (PBR set 0 + scene color set 1)
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
-      .setLayoutCount = static_cast<uint32_t>(transparentSetLayouts.size()),
-      .pSetLayouts = transparentSetLayouts.data(),
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &pushConstantRange
-    };
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(transparentSetLayouts.size());
+    pipelineLayoutInfo.pSetLayouts = transparentSetLayouts.data();
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
+    LOGI("Creating pipeline layout...");
     pbrPipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+    LOGI("Pipeline layout created");
 
     // Transparent PBR layout uses the same two-set layout
-    vk::PipelineLayoutCreateInfo transparentPipelineLayoutInfo{.setLayoutCount = static_cast<uint32_t>(transparentSetLayouts.size()), .pSetLayouts = transparentSetLayouts.data(), .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange};
+    vk::PipelineLayoutCreateInfo transparentPipelineLayoutInfo{};
+    transparentPipelineLayoutInfo.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+    transparentPipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(transparentSetLayouts.size());
+    transparentPipelineLayoutInfo.pSetLayouts = transparentSetLayouts.data();
+    transparentPipelineLayoutInfo.pushConstantRangeCount = 1;
+    transparentPipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    LOGI("Creating transparent pipeline layout...");
     pbrTransparentPipelineLayout = vk::raii::PipelineLayout(device, transparentPipelineLayoutInfo);
+    LOGI("Transparent pipeline layout created");
 
     // Create pipeline rendering info
     vk::Format depthFormat = findDepthFormat();
+    LOGI("Creating opaque PBR pipeline...");
+    LOGI("Device: %p, Dispatcher: %p", (void *) (VkDevice) * device, (void *) device.getDispatcher());
 
-    // Initialize member variable for proper lifetime management
-    pbrPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .colorAttachmentCount = 1,
-      .pColorAttachmentFormats = &swapChainImageFormat,
-      .depthAttachmentFormat = depthFormat,
-      .stencilAttachmentFormat = vk::Format::eUndefined
-    };
+    vk::PipelineRenderingCreateInfo pipelineRenderingInfo{};
+    pipelineRenderingInfo.sType = vk::StructureType::ePipelineRenderingCreateInfo;
+    pipelineRenderingInfo.colorAttachmentCount = 1;
+    pipelineRenderingInfo.pColorAttachmentFormats = &swapChainImageFormat;
+    pipelineRenderingInfo.depthAttachmentFormat = depthFormat;
+    pipelineRenderingInfo.stencilAttachmentFormat = vk::Format::eUndefined;
 
     // 1) Opaque PBR pipeline (no blending, depth writes enabled)
     vk::PipelineColorBlendAttachmentState opaqueBlendAttachment = colorBlendAttachment;
     opaqueBlendAttachment.blendEnable = VK_FALSE;
-    vk::PipelineColorBlendStateCreateInfo colorBlendingOpaque{
-      .logicOpEnable = VK_FALSE,
-      .logicOp = vk::LogicOp::eCopy,
-      .attachmentCount = 1,
-      .pAttachments = &opaqueBlendAttachment
-    };
+
+    vk::PipelineColorBlendStateCreateInfo colorBlendingOpaque{};
+    colorBlendingOpaque.sType = vk::StructureType::ePipelineColorBlendStateCreateInfo;
+    colorBlendingOpaque.logicOpEnable = VK_FALSE;
+    colorBlendingOpaque.logicOp = vk::LogicOp::eCopy;
+    colorBlendingOpaque.attachmentCount = 1;
+    colorBlendingOpaque.pAttachments = &opaqueBlendAttachment;
+
     vk::PipelineDepthStencilStateCreateInfo depthStencilOpaque = depthStencil;
     depthStencilOpaque.depthWriteEnable = VK_TRUE;
 
@@ -600,27 +628,24 @@ bool Renderer::createPBRPipeline() {
     vk::PipelineRasterizationStateCreateInfo rasterizerGlass = rasterizer;
     rasterizerGlass.cullMode = vk::CullModeFlagBits::eNone;
 
-    vk::GraphicsPipelineCreateInfo opaquePipelineInfo{
+    vk::GraphicsPipelineCreateInfo opaquePipelineInfo{};
+    opaquePipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    opaquePipelineInfo.pNext = &pipelineRenderingInfo;
+    opaquePipelineInfo.stageCount = 2;
+    opaquePipelineInfo.pStages = shaderStages;
+    opaquePipelineInfo.pVertexInputState = &vertexInputInfo;
+    opaquePipelineInfo.pInputAssemblyState = &inputAssembly;
+    opaquePipelineInfo.pViewportState = &viewportState;
+    opaquePipelineInfo.pRasterizationState = &rasterizerBack;
+    opaquePipelineInfo.pMultisampleState = &multisampling;
+    opaquePipelineInfo.pDepthStencilState = &depthStencilOpaque;
+    opaquePipelineInfo.pColorBlendState = &colorBlendingOpaque;
+    opaquePipelineInfo.pDynamicState = &dynamicState;
+    opaquePipelineInfo.layout = *pbrPipelineLayout;
 
-      .pNext = &pbrPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = shaderStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizerBack,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencilOpaque,
-      .pColorBlendState = &colorBlendingOpaque,
-      .pDynamicState = &dynamicState,
-      .layout = *pbrPipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
+    LOGI("Calling vkCreateGraphicsPipelines for opaque PBR...");
     pbrGraphicsPipeline = vk::raii::Pipeline(device, nullptr, opaquePipelineInfo);
+    LOGI("Opaque PBR pipeline created");
 
     // 1b) Opaque PBR pipeline variant for color pass after a depth pre-pass.
     // Depth writes disabled (read-only) and compare against pre-pass depth.
@@ -629,51 +654,41 @@ bool Renderer::createPBRPipeline() {
     depthStencilAfterPrepass.depthWriteEnable = VK_FALSE;
     depthStencilAfterPrepass.depthCompareOp = vk::CompareOp::eEqual;
 
-    vk::GraphicsPipelineCreateInfo opaqueAfterPrepassInfo{
+    vk::GraphicsPipelineCreateInfo opaqueAfterPrepassInfo{};
+    opaqueAfterPrepassInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    opaqueAfterPrepassInfo.pNext = &pipelineRenderingInfo;
+    opaqueAfterPrepassInfo.stageCount = 2;
+    opaqueAfterPrepassInfo.pStages = shaderStages;
+    opaqueAfterPrepassInfo.pVertexInputState = &vertexInputInfo;
+    opaqueAfterPrepassInfo.pInputAssemblyState = &inputAssembly;
+    opaqueAfterPrepassInfo.pViewportState = &viewportState;
+    opaqueAfterPrepassInfo.pRasterizationState = &rasterizerBack;
+    opaqueAfterPrepassInfo.pMultisampleState = &multisampling;
+    opaqueAfterPrepassInfo.pDepthStencilState = &depthStencilAfterPrepass;
+    opaqueAfterPrepassInfo.pColorBlendState = &colorBlendingOpaque;
+    opaqueAfterPrepassInfo.pDynamicState = &dynamicState;
+    opaqueAfterPrepassInfo.layout = *pbrPipelineLayout;
 
-      .pNext = &pbrPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = shaderStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizerBack,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencilAfterPrepass,
-      .pColorBlendState = &colorBlendingOpaque,
-      .pDynamicState = &dynamicState,
-      .layout = *pbrPipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
     pbrPrepassGraphicsPipeline = vk::raii::Pipeline(device, nullptr, opaqueAfterPrepassInfo);
 
     // 1c) Reflection PBR pipeline for mirrored off-screen pass (cull none to avoid winding issues)
     vk::PipelineRasterizationStateCreateInfo rasterizerReflection = rasterizer;
     rasterizerReflection.cullMode = vk::CullModeFlagBits::eNone;
-    vk::GraphicsPipelineCreateInfo reflectionPipelineInfo{
+    vk::GraphicsPipelineCreateInfo reflectionPipelineInfo{};
+    reflectionPipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    reflectionPipelineInfo.pNext = &pipelineRenderingInfo;
+    reflectionPipelineInfo.stageCount = 2;
+    reflectionPipelineInfo.pStages = shaderStages;
+    reflectionPipelineInfo.pVertexInputState = &vertexInputInfo;
+    reflectionPipelineInfo.pInputAssemblyState = &inputAssembly;
+    reflectionPipelineInfo.pViewportState = &viewportState;
+    reflectionPipelineInfo.pRasterizationState = &rasterizerReflection;
+    reflectionPipelineInfo.pMultisampleState = &multisampling;
+    reflectionPipelineInfo.pDepthStencilState = &depthStencilOpaque;
+    reflectionPipelineInfo.pColorBlendState = &colorBlendingOpaque;
+    reflectionPipelineInfo.pDynamicState = &dynamicState;
+    reflectionPipelineInfo.layout = *pbrPipelineLayout;
 
-      .pNext = &pbrPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = shaderStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizerReflection,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencilOpaque,
-      .pColorBlendState = &colorBlendingOpaque,
-      .pDynamicState = &dynamicState,
-      .layout = *pbrPipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
     pbrReflectionGraphicsPipeline = vk::raii::Pipeline(device, nullptr, reflectionPipelineInfo);
 
     // 2) Blended PBR pipeline (straight alpha blending, depth writes disabled for translucency)
@@ -690,30 +705,21 @@ bool Renderer::createPBRPipeline() {
     depthStencilBlended.depthWriteEnable = VK_FALSE;
     depthStencilBlended.depthCompareOp = vk::CompareOp::eLessOrEqual;
 
-    vk::GraphicsPipelineCreateInfo blendedPipelineInfo{
+    vk::GraphicsPipelineCreateInfo blendedPipelineInfo{};
+    blendedPipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    blendedPipelineInfo.pNext = &pipelineRenderingInfo;
+    blendedPipelineInfo.stageCount = 2;
+    blendedPipelineInfo.pStages = shaderStages;
+    blendedPipelineInfo.pVertexInputState = &vertexInputInfo;
+    blendedPipelineInfo.pInputAssemblyState = &inputAssembly;
+    blendedPipelineInfo.pViewportState = &viewportState;
+    blendedPipelineInfo.pRasterizationState = &rasterizerBack;
+    blendedPipelineInfo.pMultisampleState = &multisampling;
+    blendedPipelineInfo.pDepthStencilState = &depthStencilBlended;
+    blendedPipelineInfo.pColorBlendState = &colorBlendingBlended;
+    blendedPipelineInfo.pDynamicState = &dynamicState;
+    blendedPipelineInfo.layout = *pbrTransparentPipelineLayout;
 
-      .pNext = &pbrPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = shaderStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      // Use back-face culling for the blended (glass) pipeline to avoid
-      // rendering both front and back faces of thin glass geometry, which
-      // can cause flickering as the camera rotates due to overlapping
-      // transparent surfaces passing the depth test.
-      .pRasterizationState = &rasterizerBack,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencilBlended,
-      .pColorBlendState = &colorBlendingBlended,
-      .pDynamicState = &dynamicState,
-      .layout = *pbrTransparentPipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
     pbrBlendGraphicsPipeline = vk::raii::Pipeline(device, nullptr, blendedPipelineInfo);
 
     // 3) Glass pipeline (architectural glass) - uses the same vertex input and
@@ -721,26 +727,21 @@ bool Renderer::createPBRPipeline() {
     // (GlassPSMain) for more stable glass shading.
     vk::PipelineShaderStageCreateInfo glassStages[] = {vertShaderStageInfo, fragGlassStageInfo};
 
-    vk::GraphicsPipelineCreateInfo glassPipelineInfo{
+    vk::GraphicsPipelineCreateInfo glassPipelineInfo{};
+    glassPipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    glassPipelineInfo.pNext = &pipelineRenderingInfo;
+    glassPipelineInfo.stageCount = 2;
+    glassPipelineInfo.pStages = glassStages;
+    glassPipelineInfo.pVertexInputState = &vertexInputInfo;
+    glassPipelineInfo.pInputAssemblyState = &inputAssembly;
+    glassPipelineInfo.pViewportState = &viewportState;
+    glassPipelineInfo.pRasterizationState = &rasterizerGlass;
+    glassPipelineInfo.pMultisampleState = &multisampling;
+    glassPipelineInfo.pDepthStencilState = &depthStencilBlended;
+    glassPipelineInfo.pColorBlendState = &colorBlendingBlended;
+    glassPipelineInfo.pDynamicState = &dynamicState;
+    glassPipelineInfo.layout = *pbrTransparentPipelineLayout;
 
-      .pNext = &pbrPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = glassStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizerGlass,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencilBlended,
-      .pColorBlendState = &colorBlendingBlended,
-      .pDynamicState = &dynamicState,
-      .layout = *pbrTransparentPipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
     glassGraphicsPipeline = vk::raii::Pipeline(device, nullptr, glassPipelineInfo);
 
     return true;
@@ -766,16 +767,18 @@ bool Renderer::createCompositePipeline() {
     vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
     // Shader stages
-    vk::PipelineShaderStageCreateInfo vert{
-      .stage = vk::ShaderStageFlagBits::eVertex,
-      .module = *shaderModule,
-      .pName = "VSMain"
-    };
-    vk::PipelineShaderStageCreateInfo frag{
-      .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = *shaderModule,
-      .pName = "PSMain"
-    };
+    vk::PipelineShaderStageCreateInfo vert{};
+    vert.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    vert.stage = vk::ShaderStageFlagBits::eVertex;
+    vert.module = *shaderModule;
+    vert.pName = "VSMain";
+
+    vk::PipelineShaderStageCreateInfo frag{};
+    frag.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    frag.stage = vk::ShaderStageFlagBits::eFragment;
+    frag.module = *shaderModule;
+    frag.pName = "PSMain";
+
     vk::PipelineShaderStageCreateInfo stages[] = {vert, frag};
 
     // No vertex inputs (fullscreen triangle via SV_VertexID)
@@ -803,31 +806,27 @@ bool Renderer::createCompositePipeline() {
     compositePipelineLayout = vk::raii::PipelineLayout(device, plInfo);
 
     // Dynamic rendering info
-    compositePipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
+    vk::PipelineRenderingCreateInfo pipelineRenderingInfo{};
+    pipelineRenderingInfo.sType = vk::StructureType::ePipelineRenderingCreateInfo;
+    pipelineRenderingInfo.colorAttachmentCount = 1;
+    pipelineRenderingInfo.pColorAttachmentFormats = &swapChainImageFormat;
+    pipelineRenderingInfo.depthAttachmentFormat = vk::Format::eUndefined;
+    pipelineRenderingInfo.stencilAttachmentFormat = vk::Format::eUndefined;
 
-      .colorAttachmentCount = 1,
-      .pColorAttachmentFormats = &swapChainImageFormat,
-      .depthAttachmentFormat = vk::Format::eUndefined,
-      .stencilAttachmentFormat = vk::Format::eUndefined
-    };
-
-    vk::GraphicsPipelineCreateInfo pipeInfo{
-
-      .pNext = &compositePipelineRenderingCreateInfo,
-      .stageCount = 2,
-      .pStages = stages,
-      .pVertexInputState = &vertexInput,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizer,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencil,
-      .pColorBlendState = &colorBlending,
-      .pDynamicState = &dynamicState,
-      .layout = *compositePipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0
-    };
+    vk::GraphicsPipelineCreateInfo pipeInfo{};
+    pipeInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    pipeInfo.pNext = &pipelineRenderingInfo;
+    pipeInfo.stageCount = 2;
+    pipeInfo.pStages = stages;
+    pipeInfo.pVertexInputState = &vertexInput;
+    pipeInfo.pInputAssemblyState = &inputAssembly;
+    pipeInfo.pViewportState = &viewportState;
+    pipeInfo.pRasterizationState = &rasterizer;
+    pipeInfo.pMultisampleState = &multisampling;
+    pipeInfo.pDepthStencilState = &depthStencil;
+    pipeInfo.pColorBlendState = &colorBlending;
+    pipeInfo.pDynamicState = &dynamicState;
+    pipeInfo.layout = *compositePipelineLayout;
 
     compositePipeline = vk::raii::Pipeline(device, nullptr, pipeInfo);
     return true;
@@ -852,11 +851,11 @@ bool Renderer::createDepthPrepassPipeline() {
     vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
     // Stages: Vertex only
-    vk::PipelineShaderStageCreateInfo vertStage{
-      .stage = vk::ShaderStageFlagBits::eVertex,
-      .module = *shaderModule,
-      .pName = "VSMain"
-    };
+    vk::PipelineShaderStageCreateInfo vertStage{};
+    vertStage.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    vertStage.stage = vk::ShaderStageFlagBits::eVertex;
+    vertStage.module = *shaderModule;
+    vertStage.pName = "VSMain";
 
     // Vertex/instance bindings & attributes same as PBR
     auto vertexBindingDescription = Vertex::getBindingDescription();
@@ -928,26 +927,26 @@ bool Renderer::createDepthPrepassPipeline() {
     };
 
     vk::Format depthFormat = findDepthFormat();
-    vk::PipelineRenderingCreateInfo renderingInfo{
-      .colorAttachmentCount = 0,
-      .pColorAttachmentFormats = nullptr,
-      .depthAttachmentFormat = depthFormat
-    };
+    vk::PipelineRenderingCreateInfo pipelineRenderingInfo{};
+    pipelineRenderingInfo.sType = vk::StructureType::ePipelineRenderingCreateInfo;
+    pipelineRenderingInfo.colorAttachmentCount = 0;
+    pipelineRenderingInfo.pColorAttachmentFormats = nullptr;
+    pipelineRenderingInfo.depthAttachmentFormat = depthFormat;
 
-    vk::GraphicsPipelineCreateInfo pipelineInfo{
-      .pNext = &renderingInfo,
-      .stageCount = 1,
-      .pStages = &vertStage,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizer,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencil,
-      .pColorBlendState = &colorBlending,
-      .pDynamicState = &dynamicState,
-      .layout = *pbrPipelineLayout
-    };
+    vk::GraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    pipelineInfo.pNext = &pipelineRenderingInfo;
+    pipelineInfo.stageCount = 1;
+    pipelineInfo.pStages = &vertStage;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = *pbrPipelineLayout;
 
     depthPrepassPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
     return true;
@@ -967,17 +966,17 @@ bool Renderer::createLightingPipeline() {
     vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
 
     // Create shader stage info
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
-      .stage = vk::ShaderStageFlagBits::eVertex,
-      .module = *shaderModule,
-      .pName = "VSMain"
-    };
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+    vertShaderStageInfo.module = *shaderModule;
+    vertShaderStageInfo.pName = "VSMain";
 
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
-      .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = *shaderModule,
-      .pName = "PSMain"
-    };
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragShaderStageInfo.module = *shaderModule;
+    fragShaderStageInfo.pName = "PSMain";
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
@@ -1081,39 +1080,31 @@ bool Renderer::createLightingPipeline() {
     // Create pipeline rendering info
     vk::Format depthFormat = findDepthFormat();
 
-    // Initialize member variable for proper lifetime management
-    lightingPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-
-      .colorAttachmentCount = 1,
-      .pColorAttachmentFormats = &swapChainImageFormat,
-      .depthAttachmentFormat = depthFormat,
-      .stencilAttachmentFormat = vk::Format::eUndefined
-    };
+    vk::PipelineRenderingCreateInfo pipelineRenderingInfo{};
+    pipelineRenderingInfo.sType = vk::StructureType::ePipelineRenderingCreateInfo;
+    pipelineRenderingInfo.colorAttachmentCount = 1;
+    pipelineRenderingInfo.pColorAttachmentFormats = &swapChainImageFormat;
+    pipelineRenderingInfo.depthAttachmentFormat = depthFormat;
+    pipelineRenderingInfo.stencilAttachmentFormat = vk::Format::eUndefined;
 
     // Create a graphics pipeline
     vk::PipelineRasterizationStateCreateInfo rasterizerBack = rasterizer;
     rasterizerBack.cullMode = vk::CullModeFlagBits::eBack;
 
-    vk::GraphicsPipelineCreateInfo pipelineInfo{
-
-      .pNext = &lightingPipelineRenderingCreateInfo,
-      .flags = vk::PipelineCreateFlags{},
-      .stageCount = 2,
-      .pStages = shaderStages,
-      .pVertexInputState = &vertexInputInfo,
-      .pInputAssemblyState = &inputAssembly,
-      .pViewportState = &viewportState,
-      .pRasterizationState = &rasterizerBack,
-      .pMultisampleState = &multisampling,
-      .pDepthStencilState = &depthStencil,
-      .pColorBlendState = &colorBlending,
-      .pDynamicState = &dynamicState,
-      .layout = *lightingPipelineLayout,
-      .renderPass = nullptr,
-      .subpass = 0,
-      .basePipelineHandle = nullptr,
-      .basePipelineIndex = -1
-    };
+    vk::GraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+    pipelineInfo.pNext = &pipelineRenderingInfo;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizerBack;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = *lightingPipelineLayout;
 
     lightingPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
     return true;
@@ -1179,11 +1170,18 @@ bool Renderer::createRayQueryDescriptorSetLayout() {
   // On some drivers this requires descriptor indexing features + layout binding flags to avoid the
   // array collapsing to slot 0 (resulting in "no textures" even when `texIndex>0`).
   std::array<vk::DescriptorBindingFlags, 7> bindingFlags{};
+  bool useUpdateAfterBind = false;
   if (descriptorIndexingEnabled) {
-    // Binding 6 is the large sampled texture array.
-    bindingFlags[6] = vk::DescriptorBindingFlagBits::eUpdateAfterBind |
-        vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending |
-        vk::DescriptorBindingFlagBits::ePartiallyBound;
+    if (descriptorBindingSampledImageUpdateAfterBindEnabled) {
+      // Binding 6 is the large sampled texture array.
+      bindingFlags[6] = vk::DescriptorBindingFlagBits::eUpdateAfterBind |
+          vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending |
+          vk::DescriptorBindingFlagBits::ePartiallyBound;
+      useUpdateAfterBind = true;
+    } else {
+      // If update-after-bind is not supported, we can still use partially bound if supported
+      bindingFlags[6] = vk::DescriptorBindingFlagBits::ePartiallyBound;
+    }
   }
 
   vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
@@ -1195,7 +1193,9 @@ bool Renderer::createRayQueryDescriptorSetLayout() {
   vk::DescriptorSetLayoutCreateInfo layoutInfo{};
   if (descriptorIndexingEnabled) {
     layoutInfo.pNext = &bindingFlagsInfo;
-    layoutInfo.flags = vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
+    if (useUpdateAfterBind) {
+      layoutInfo.flags = vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
+    }
   }
   layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
   layoutInfo.pBindings = bindings.data();

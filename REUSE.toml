@@ -68,7 +68,9 @@ SPDX-License-Identifier = "BSD-3-Clause"
 [[annotations]]
 path = [
     "attachments/simple_engine/**",
+    "attachments/compute/**",
     "en/Synchronization/**",
+    "en/Advanced_Vulkan_Compute/**",
     "scripts/**",
 ]
 precedence = "closest"

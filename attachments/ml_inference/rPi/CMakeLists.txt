@@ -28,7 +28,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Vulkan REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(OpenCV QUIET)
 
 # Backend selection
 set(ML_BACKEND "AUTO" CACHE STRING "ML Backend to use (IREE, NNEF, TFLITE, or AUTO)")
@@ -67,8 +67,13 @@ add_executable(embedded_wildlife_cam_app
 target_link_libraries(embedded_wildlife_cam_app PRIVATE
     ml_common
     Vulkan::Vulkan
-    ${OpenCV_LIBRARIES}
 )
+if(OpenCV_FOUND)
+    target_link_libraries(embedded_wildlife_cam_app PRIVATE ${OpenCV_LIBRARIES})
+    target_compile_definitions(embedded_wildlife_cam_app PRIVATE HAVE_OPENCV)
+else()
+    message(STATUS "OpenCV not found. rPi wildlife cam will run in simulation mode (no camera input).")
+endif()
 
 if(TARGET ml_shaders)
     add_dependencies(embedded_wildlife_cam_app ml_shaders)

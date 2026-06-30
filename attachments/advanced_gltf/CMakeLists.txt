@@ -53,7 +53,7 @@ endif()
 # find_package() calls they become no-ops: the cache is warm and the
 # if(NOT TARGET ...) guards inside each Find module see the targets we just
 # created (parent-scope targets ARE visible in child scopes).
-list(APPEND CMAKE_MODULE_PATH "${SE_DIR}/CMake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" "${SE_DIR}/CMake")
 
 find_package(glm       REQUIRED)
 find_package(Vulkan    REQUIRED)

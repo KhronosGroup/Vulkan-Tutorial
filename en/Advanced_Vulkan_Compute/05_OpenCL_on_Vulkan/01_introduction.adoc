@@ -10,7 +10,7 @@ Until recently, running OpenCL code on a Vulkan-only driver was a significant ch
 
 == The Wider Ecosystem: pocl and ANGLE
 
-This chapter focuses on `clvk`, but it is worth knowing about two other actively-developed implementations that put OpenCL on top of Vulkan via the same `clspv` compiler. Both share the `clspv` kernel-compatibility constraints described throughout this chapter (no `printf`, loop bounds must be compile-time constants, etc.), so the material here transfers directly.
+This chapter focuses on `clvk`, but it is worth knowing about two other actively-developed implementations that put OpenCL on top of Vulkan via the same `clspv` compiler. Both share the `clspv` kernel-compatibility constraints described throughout this chapter (loop bounds must be compile-time constants, etc.), so the material here transfers directly.
 
 === pocl — Portable Computing Language
 
@@ -102,7 +102,7 @@ At runtime, ANGLE's Vulkan backend calls `ClspvCompileSource()` to compile OpenC
 |`clvk` and pocl ship as drop-in `libOpenCL.so` replacements.  ANGLE's OpenCL layer is primarily consumed inside Chrome; independent adoption as a compute runtime is uncommon.
 
 |Same `clspv` kernel restrictions apply
-|No `printf`, no `double` by default, loop bounds must be compile-time constants — identical to the constraints documented throughout this chapter.
+|No `double` by default, loop bounds must be compile-time constants — identical to the constraints documented throughout this chapter.
 |===
 
 In short: consider ANGLE if you are building a **mixed rendering+compute pipeline** that genuinely needs zero-copy sharing between OpenCL and Vulkan memory objects.  It is not a general-purpose alternative to `clvk` today.

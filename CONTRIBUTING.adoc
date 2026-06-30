@@ -1,4 +1,4 @@
-// Copyright 2023 The Khronos Group, Inc.
+// Copyright 2023-2026 The Khronos Group, Inc.
 // SPDX-License-Identifier: CC-BY-4.0
 
 = Khronos Vulkan^®^ Tutorial Contributing
@@ -7,8 +7,9 @@ Contributions to this repository are welcome and anyone is free to contribute. B
 
 == License
 
-The contents of this repository are licensed as https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0], unless stated otherwise.
-By contributing to this repository, you agree to license your contributions to the public under that same license.
+The contents of this repository are licensed as [Apache-2.0], [BSD-3-Clause] and https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
+
+By contributing to this repository, you agree to license your contributions to the public under these same licenses.
 
 == Ways to Contribute
 
@@ -47,3 +48,20 @@ Example:
 cd attachments
 clang-format -i -- 15_hello_triangle.*
 ----
+
+=== Contributor License Agreement (CLA)
+
+When you propose a pull request on this repository you must execute a
+Contributor License Agreement, to confirm you own your work and are granting
+Khronos the necessary permissions to redistribute it under our licenses.
+
+=== AI-Assisted Contributions
+
+By submitting a Contribution to this repository, you additionally represent
+that, to the extent any of Your Contributions were developed with the
+assistance of artificial intelligence tools or AI-generated code, You have
+exercised sufficient review, judgment, and creative direction over such tools
+and resulting material to reasonably consider it Your original creation, and
+You are not aware of any third-party license, intellectual property claim, or
+other restriction arising from such use that is associated with any part of
+Your Contribution or use thereof.

@@ -17,6 +17,7 @@
 #include "engine.h"
 #include "mesh_component.h"
 #include "scene_loading.h"
+#include <cmath>
 
 #include <algorithm>
 #include <chrono>
@@ -115,6 +116,12 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     // Physics system via constructor (GPU enabled)
     physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
 
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // OMM integration via constructor
+    ommIntegration = std::make_unique<OmmIntegration>();
+    ommIntegration->init(*renderer, *modelLoader);
+#endif
+
     // ImGui via constructor, then connect audio system
     imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
     imguiSystem->SetAudioSystem(audioSystem.get());
@@ -204,6 +211,9 @@ void Engine::Cleanup() {
 
     // Clean up subsystems in reverse order of creation
     imguiSystem.reset();
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    ommIntegration.reset();
+#endif
     physicsSystem.reset();
     audioSystem.reset();
     modelLoader.reset();
@@ -357,78 +367,81 @@ PhysicsSystem* Engine::GetPhysicsSystem() {
   return physicsSystem.get();
 }
 
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+OmmIntegration* Engine::GetOmmIntegration() {
+  return ommIntegration.get();
+}
+#endif
+
 const ImGuiSystem* Engine::GetImGuiSystem() const {
   return imguiSystem.get();
 }
 
 void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
-  // Check if ImGui wants to capture mouse input first
-  bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
-
-  // Suppress right-click while loading
-  if (renderer&& renderer
-  
-  ->
-  IsLoading()
-  ) {
-    buttons &= ~2u; // clear right button bit
-  }
-
-  if (!imguiWantsMouse) {
-    // Handle mouse click for ball throwing (right mouse button)
-    if (buttons & 2) {
-      // Right mouse button (bit 1)
-      if (!cameraControl.mouseRightPressed) {
-        cameraControl.mouseRightPressed = true;
-        // Throw a ball on mouse click
-        ThrowBall(x, y);
-      }
-    } else {
-      cameraControl.mouseRightPressed = false;
-    }
-
-    // Handle camera rotation when left mouse button is pressed
-    if (buttons & 1) {
-      // Left mouse button (bit 0)
-      if (!cameraControl.mouseLeftPressed) {
-        cameraControl.mouseLeftPressed = true;
-        cameraControl.firstMouse = true;
-      }
-
-      if (cameraControl.firstMouse) {
-        cameraControl.lastMouseX = x;
-        cameraControl.lastMouseY = y;
-        cameraControl.firstMouse = false;
-      }
-
-      float xOffset = x - cameraControl.lastMouseX;
-      float yOffset = y - cameraControl.lastMouseY;
-      cameraControl.lastMouseX = x;
-      cameraControl.lastMouseY = y;
-
-      xOffset *= cameraControl.mouseSensitivity;
-      yOffset *= cameraControl.mouseSensitivity;
-
-      // Mouse look: positive X moves view to the right; positive Y moves view up.
-      // Platform mouse coordinates increase downward, so invert Y.
-      cameraControl.yaw -= xOffset;
-      cameraControl.pitch -= yOffset;
-
-      // Constrain pitch to avoid gimbal lock
-      if (cameraControl.pitch > 89.0f)
-        cameraControl.pitch = 89.0f;
-      if (cameraControl.pitch < -89.0f)
-        cameraControl.pitch = -89.0f;
-    } else {
-      cameraControl.mouseLeftPressed = false;
-    }
-  }
-
+  // Update ImGui system with current mouse state immediately.
+  // This pushes events to the ImGui IO queue for processing in NewFrame().
   if (imguiSystem) {
     imguiSystem->HandleMouse(x, y, buttons);
   }
 
-  // Always perform hover detection (even when ImGui is active)
+  // Handle LEFT button (Touch DOWN/MOVE/UP)
+  if (buttons & 1) {
+    if (!cameraControl.mouseLeftPressed) {
+      // Finger just went down
+      cameraControl.mouseLeftPressed = true;
+      cameraControl.firstMouse = true;
+      cameraControl.touchTotalDistance = 0.0f;
+      cameraControl.touchDownX = x;
+      cameraControl.touchDownY = y;
+      cameraControl.touchStartTime = 0.0; // We'll increment this in Update
+    }
+
+    if (cameraControl.firstMouse) {
+      cameraControl.lastMouseX = x;
+      cameraControl.lastMouseY = y;
+      cameraControl.firstMouse = false;
+    }
+
+    // Accumulate movement deltas. These will be applied in UpdateCameraControls
+    // AFTER ImGui has updated its capture state (post-NewFrame).
+    float dx = (x - cameraControl.lastMouseX);
+    float dy = (y - cameraControl.lastMouseY);
+    cameraControl.pendingXOffset += dx;
+    cameraControl.pendingYOffset += dy;
+    cameraControl.touchTotalDistance += std::sqrt(dx*dx + dy*dy);
+
+#if defined(PLATFORM_ANDROID)
+    // On Android, we map SWIPE to MOVEMENT (Forward/Backward, Left/Right)
+    // if the touch didn't start on UI.
+    if (!cameraControl.isFirstFrameOfInteraction && !cameraControl.startedOnImGui) {
+       cameraControl.touchMoveX = dx;
+       cameraControl.touchMoveY = dy;
+    }
+#endif
+
+    cameraControl.lastMouseX = x;
+    cameraControl.lastMouseY = y;
+  } else {
+    // Finger lifted
+    cameraControl.mouseLeftPressed = false;
+  }
+
+  // Handle RIGHT button (Ball throwing)
+  if (buttons & 2) {
+    if (!cameraControl.mouseRightPressed) {
+      cameraControl.mouseRightPressed = true;
+      // Note: We check capture status in NewFrame/Update for consistent behavior
+      // but for discrete clicks, we use the stale capture status or wait.
+      // On Android, we don't currently generate right clicks easily.
+      if (imguiSystem && !imguiSystem->WantCaptureMouse()) {
+        ThrowBall(x, y);
+      }
+    }
+  } else {
+    cameraControl.mouseRightPressed = false;
+  }
+
+  // Update hover detection
   HandleMouseHover(x, y);
 }
 void Engine::handleKeyInput(uint32_t key, bool pressed) {
@@ -461,15 +474,15 @@ void Engine::handleKeyInput(uint32_t key, bool pressed) {
     default:
       break;
   }
-
-  if (imguiSystem) {
-    imguiSystem->HandleKeyboard(key, pressed);
-  }
 #else
   // Android uses different input handling via touch events
   (void) key;
   (void) pressed;
 #endif
+
+  if (imguiSystem) {
+    imguiSystem->HandleKeyboard(key, pressed);
+  }
 }
 
 void Engine::Update(TimeDelta deltaTime) {
@@ -480,12 +493,13 @@ void Engine::Update(TimeDelta deltaTime) {
   // list from the main thread. This lets the loading thread construct
   // entities/components safely while the main thread only drives the
   // UI/loading overlay.
-  if (renderer&& renderer
-  
-  ->
-  IsLoading()
-  ) {
+  if (renderer && renderer->IsLoading()) {
     if (imguiSystem) {
+      uint32_t rw, rh;
+      renderer->GetSwapChainExtent(&rw, &rh);
+      if (rw > 0 && rh > 0) {
+        imguiSystem->HandleResize(rw, rh);
+      }
       imguiSystem->NewFrame();
     }
     return;
@@ -506,7 +520,14 @@ void Engine::Update(TimeDelta deltaTime) {
   audioSystem->Update(deltaTime);
 
   // Update ImGui system
-  imguiSystem->NewFrame();
+  if (imguiSystem) {
+    uint32_t rw, rh;
+    renderer->GetSwapChainExtent(&rw, &rh);
+    if (rw > 0 && rh > 0) {
+      imguiSystem->HandleResize(rw, rh);
+    }
+    imguiSystem->NewFrame();
+  }
 
   // Update camera controls
   if (activeCamera) {
@@ -586,6 +607,8 @@ void Engine::HandleResize(int width, int height) const {
   if (height <= 0 || width <= 0) {
     return;
   }
+  LOGI("Engine: HandleResize %dx%d", width, height);
+
   // Update the active camera's aspect ratio
   if (activeCamera) {
     activeCamera->SetAspectRatio(static_cast<float>(width) / static_cast<float>(height));
@@ -650,6 +673,158 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
   // Calculate movement speed
   float velocity = cameraControl.cameraSpeed * deltaTime.count() * .001f;
 
+  // Check if ImGui wants to capture mouse input (updated in NewFrame)
+  bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
+
+#if defined(PLATFORM_ANDROID)
+  // --- Android: Ambitious Controls ---
+  // 1. Accelerometer -> Rotation (Tilting)
+  float ax, ay, az;
+  float androidPitchOffset = 0.0f;
+  float androidYawOffset = 0.0f;
+  if (platform->GetAccelerometerData(&ax, &ay, &az)) {
+    // Correct for display rotation (Portrait vs Landscape vs Reversed)
+    ax = -ax;
+    ay = -ay;
+    float rawX = ax;
+    float rawY = ay;
+    int rotation = platform->GetDisplayRotation();
+    switch (rotation) {
+      case 1: // ROTATION_90 (Landscape Left)
+        ax = -rawY; ay = rawX; break;
+      case 2: // ROTATION_180 (Portrait Upside Down)
+        ax = -rawX; ay = -rawY; break;
+      case 3: // ROTATION_270 (Landscape Right)
+        ax = rawY; ay = -rawX; break;
+      default: // ROTATION_0 (Portrait)
+        break;
+    }
+
+    // If not calibrated, take current values as neutral
+    if (!cameraControl.tiltCalibrated) {
+      cameraControl.tiltCenterX = ax;
+      cameraControl.tiltCenterY = ay;
+      cameraControl.tiltCalibrated = true;
+    }
+
+    float dax = ax - cameraControl.tiltCenterX;
+    float day = ay - cameraControl.tiltCenterY;
+
+    // Auto-recalibration: If the phone is held steady (small delta from current center),
+    // we slowly drift the center point towards the current reading.
+    // This allows the "rest" position to adapt to the user's hands.
+    float distFromCenter = std::sqrt(dax*dax + day*day);
+    float dt = deltaTime.count() * 0.001f;
+
+    if (distFromCenter < 1.5f) {
+      // Steady detection: If we're close to the center for a while, snap it.
+      cameraControl.tiltSteadyTime += dt;
+      if (cameraControl.tiltSteadyTime > 0.5f) {
+        // Drift the center towards current value to "establish a new deadzone"
+        float driftRate = 2.0f * dt;
+        cameraControl.tiltCenterX += dax * driftRate;
+        cameraControl.tiltCenterY += day * driftRate;
+      }
+    } else {
+      cameraControl.tiltSteadyTime = 0.0f;
+    }
+
+    // Deadzone and immediate stop: if within deadzone, motion is ZERO.
+    // Increased deadzone to 0.8f for more stability.
+    if (std::abs(dax) < 0.8f) dax = 0.0f;
+    if (std::abs(day) < 0.8f) day = 0.0f;
+
+    // We multiply by deltaTime to ensure consistent rotation speed across different frame rates.
+    const float tiltSensitivity = 20.0f; // Degrees per second at max tilt
+    androidYawOffset = dax * tiltSensitivity * dt;
+    androidPitchOffset = -day * tiltSensitivity * dt;
+  }
+
+  // 2. Swipe -> Movement
+  float androidMoveForward = 0.0f;
+  float androidMoveRight = 0.0f;
+  if (cameraControl.mouseLeftPressed && !cameraControl.startedOnImGui) {
+    const float moveSensitivity = 0.15f;
+    androidMoveRight = cameraControl.touchMoveX * moveSensitivity;
+    androidMoveForward = -cameraControl.touchMoveY * moveSensitivity;
+  }
+  // Clear touch movement frame delta
+  cameraControl.touchMoveX = 0.0f;
+  cameraControl.touchMoveY = 0.0f;
+
+  // 3. Tap and Hold -> Reset Camera & Recalibrate Tilt
+  bool isHoldingToReset = false;
+  if (cameraControl.mouseLeftPressed && !cameraControl.startedOnImGui) {
+    cameraControl.touchStartTime += deltaTime.count() * 0.001f;
+    // If held for more than 0.5s without moving more than 10 pixels
+    if (cameraControl.touchStartTime > 0.5f && cameraControl.touchTotalDistance < 10.0f) {
+      cameraControl.yaw = 0.0f;
+      cameraControl.pitch = 0.0f;
+
+      // Force the camera to be level (horizon-aligned) during reset.
+      // We extract the yaw from the base orientation and discard pitch/roll.
+      glm::vec3 euler = glm::eulerAngles(cameraControl.baseOrientation);
+      cameraControl.baseOrientation = glm::angleAxis(euler.y, glm::vec3(0.0f, 1.0f, 0.0f));
+
+      // Recalibrate: current physical orientation becomes the new "zero"
+      // We use the rotation-corrected values already calculated in ax/ay above.
+      cameraControl.tiltCenterX = ax;
+      cameraControl.tiltCenterY = ay;
+
+      androidYawOffset = 0.0f;
+      androidPitchOffset = 0.0f;
+      isHoldingToReset = true;
+    }
+  } else {
+    cameraControl.touchStartTime = 0.0f;
+  }
+#endif
+
+  // INTERACTION LOCKING LOGIC:
+  // If a touch began, we wait until ImGui has processed the first DOWN event (in NewFrame)
+  // before deciding whether this drag belongs to the GUI or the 3D Scene.
+  if (cameraControl.mouseLeftPressed) {
+    if (cameraControl.isFirstFrameOfInteraction) {
+      // This is the first frame (Update call) where the finger is DOWN.
+      // ImGui's WantCaptureMouse now accurately reflects if the tap was on a window.
+      cameraControl.startedOnImGui = imguiWantsMouse;
+      cameraControl.isFirstFrameOfInteraction = false;
+    }
+
+    // Only apply rotation if the interaction started on the scene background
+    if (!cameraControl.startedOnImGui) {
+#if !defined(PLATFORM_ANDROID)
+      float xOffset = cameraControl.pendingXOffset * cameraControl.mouseSensitivity;
+      float yOffset = cameraControl.pendingYOffset * cameraControl.mouseSensitivity;
+
+      cameraControl.yaw -= xOffset;
+      cameraControl.pitch -= yOffset;
+#endif
+    }
+  } else {
+    // Reset locking state when finger is lifted
+    cameraControl.isFirstFrameOfInteraction = true;
+    cameraControl.startedOnImGui = false;
+  }
+
+#if defined(PLATFORM_ANDROID)
+  // Apply Android tilt and swiping
+  if (!isHoldingToReset) {
+    cameraControl.yaw += androidYawOffset;
+    cameraControl.pitch += androidPitchOffset;
+  }
+#endif
+
+  // Constrain pitch to avoid gimbal lock
+  if (cameraControl.pitch > 89.0f)
+    cameraControl.pitch = 89.0f;
+  if (cameraControl.pitch < -89.0f)
+    cameraControl.pitch = -89.0f;
+
+  // Clear accumulated offsets after processing
+  cameraControl.pendingXOffset = 0.0f;
+  cameraControl.pendingYOffset = 0.0f;
+
   // Capture base orientation from GLTF camera once and then apply mouse deltas relative to it
   if (!cameraControl.baseOrientationCaptured) {
     // TransformComponent stores Euler in radians; convert to quaternion
@@ -700,6 +875,20 @@ void Engine::UpdateCameraControls(TimeDelta deltaTime) {
   if (cameraControl.moveDown) {
     position -= up * velocity;
   }
+
+#if defined(PLATFORM_ANDROID)
+  // Apply Android swipe-to-walk displacement
+  // We use the same front/right vectors but apply the swipe deltas.
+  // Note: androidMoveForward/Right are already calculated in the Android block above.
+  position += front * androidMoveForward * cameraControl.cameraSpeed * 0.02f;
+  position += right * androidMoveRight * cameraControl.cameraSpeed * 0.02f;
+#endif
+
+#if defined(PLATFORM_ANDROID)
+  // Apply Android swipe-based movement
+  position += front * androidMoveForward;
+  position += right * androidMoveRight;
+#endif
 
   // Update camera position
   cameraTransform->SetPosition(position);
@@ -930,8 +1119,19 @@ void Engine::HandleMouseHover(float mouseX, float mouseY) {
 #if defined(PLATFORM_ANDROID)
 // Android-specific implementation
 bool Engine::InitializeAndroid(android_app* app, const std::string& appName, bool enableValidationLayers) {
+  // Record main thread identity
+  mainThreadId = std::this_thread::get_id();
+
   // Create platform
   platform = CreatePlatform(app);
+
+  // Wait for the window to be initialized before continuing
+  while (app->window == nullptr) {
+    if (!platform->ProcessEvents()) {
+      return false; // Exit requested
+    }
+  }
+
   if (!platform->Initialize(appName, 0, 0)) {
     return false;
   }
@@ -943,33 +1143,12 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
 
   // Set mouse callback
   platform->SetMouseCallback([this](float x, float y, uint32_t buttons) {
-    // Check if ImGui wants to capture mouse input first
-    bool imguiWantsMouse = imguiSystem && imguiSystem->WantCaptureMouse();
-
-    if (!imguiWantsMouse) {
-      // Handle mouse click for ball throwing (right mouse button)
-      if (buttons & 2) {
-        // Right mouse button (bit 1)
-        if (!cameraControl.mouseRightPressed) {
-          cameraControl.mouseRightPressed = true;
-          // Throw a ball on mouse click
-          ThrowBall(x, y);
-        }
-      } else {
-        cameraControl.mouseRightPressed = false;
-      }
-    }
-
-    if (imguiSystem) {
-      imguiSystem->HandleMouse(x, y, buttons);
-    }
+    handleMouseInput(x, y, buttons);
   });
 
   // Set keyboard callback
   platform->SetKeyboardCallback([this](uint32_t key, bool pressed) {
-    if (imguiSystem) {
-      imguiSystem->HandleKeyboard(key, pressed);
-    }
+    handleKeyInput(key, pressed);
   });
 
   // Set char callback
@@ -980,31 +1159,50 @@ bool Engine::InitializeAndroid(android_app* app, const std::string& appName, boo
   });
 
   // Create renderer
+  LOGI("Engine: Initializing Renderer...");
   renderer = std::make_unique<Renderer>(platform.get());
   if (!renderer->Initialize(appName, enableValidationLayers)) {
+    LOGE("Engine: Renderer initialization failed");
     return false;
   }
+  LOGI("Engine: Renderer initialized successfully");
 
   // Get window dimensions from platform for ImGui initialization
   int width, height;
   platform->GetWindowSize(&width, &height);
+  LOGI("Engine: Initial window size: %dx%d", width, height);
+
+  // Ensure initial size is applied to camera and renderer
+  HandleResize(width, height);
 
   try {
     // Model loader via constructor; also wire into renderer
+    LOGI("Engine: Initializing ModelLoader...");
     modelLoader = std::make_unique<ModelLoader>(renderer.get());
     renderer->SetModelLoader(modelLoader.get());
 
     // Audio system via constructor
+    LOGI("Engine: Initializing AudioSystem...");
     audioSystem = std::make_unique<AudioSystem>(this, renderer.get());
 
     // Physics system via constructor (GPU enabled)
+    LOGI("Engine: Initializing PhysicsSystem...");
     physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
 
+#ifdef ENABLE_COURSE_OPACITY_MICROMAPS
+    // OMM integration via constructor
+LOGI("Engine: Initializing OmmIntegration...");
+ommIntegration = std::make_unique<OmmIntegration>();
+    ommIntegration->init(*renderer, *modelLoader);
+#endif
+
     // ImGui via constructor, then connect audio system
+    LOGI("Engine: Initializing ImGuiSystem...");
     imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
     imguiSystem->SetAudioSystem(audioSystem.get());
+    LOGI("Engine: Subsystems initialized successfully");
   } catch (const std::exception& e) {
-    std::cerr << "Subsystem initialization failed: " << e.what() << std::endl;
+    LOGE("Subsystem initialization failed: %s", e.what());
     return false;
   }
 
@@ -1025,16 +1223,29 @@ void Engine::RunAndroid() {
 
   running = true;
 
-  // Main loop is handled by the platform
-  // We just need to update and render when the platform is ready
+  while (running) {
+    // Process Android events
+    if (!platform->ProcessEvents()) {
+      running = false;
+      break;
+    }
 
-  // Calculate delta time
-  deltaTimeMs = CalculateDeltaTimeMs();
+    // Only update and render if we have a valid window size
+    int width, height;
+    platform->GetWindowSize(&width, &height);
+    if (width > 0 && height > 0) {
+      // Calculate delta time
+      deltaTimeMs = CalculateDeltaTimeMs();
 
-  // Update
-  Update(deltaTimeMs);
+      // Update
+      Update(deltaTimeMs);
 
-  // Render
-  Render();
+      // Render
+      Render();
+    } else {
+      // If the window is not ready or minimized, yield to the system
+      std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+  }
 }
 #endif

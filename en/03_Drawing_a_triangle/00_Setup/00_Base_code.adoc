@@ -227,7 +227,15 @@ glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 ----
 
 All that's left now is creating the actual window. Add a `GLFWwindow* window;`
-private class member to store a reference to it and initialize the window with:
+private class member to store a reference to it:
+
+[,c++]
+----
+private:
+    GLFWwindow *window = nullptr;
+----
+
+and initialize the window with:
 
 [,c++]
 ----

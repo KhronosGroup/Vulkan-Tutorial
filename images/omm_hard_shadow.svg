@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" width="800" height="400" font-family="'Segoe UI',Arial,sans-serif">
+  <!-- Background -->
+  <rect width="800" height="400" fill="#1e1e2e"/>
+
+  <!-- Title -->
+  <text x="400" y="32" text-anchor="middle" fill="#cdd6f4" font-size="17" font-weight="bold">Hard Shadows — Point Light Source</text>
+
+  <!-- Ground plane -->
+  <rect x="0" y="310" width="800" height="90" fill="#313244"/>
+  <text x="400" y="395" text-anchor="middle" fill="#6c7086" font-size="12">Ground Plane</text>
+
+  <!-- Shadow region (crisp polygon on ground) -->
+  <polygon points="290,310 620,310 620,325 290,325" fill="#11111b" opacity="0.85"/>
+  <!-- Hard edge marker lines -->
+  <line x1="290" y1="305" x2="290" y2="335" stroke="#f38ba8" stroke-width="2" stroke-dasharray="4,3"/>
+  <line x1="620" y1="305" x2="620" y2="335" stroke="#f38ba8" stroke-width="2" stroke-dasharray="4,3"/>
+
+  <!-- Shadow fill (dark trapezoid) -->
+  <polygon points="240,310 700,310 700,340 240,340" fill="#11111b" opacity="0.75"/>
+  <polygon points="250,310 680,310 680,370 250,370" fill="#11111b" opacity="0.6"/>
+  <polygon points="260,310 660,310 660,380 260,380" fill="#11111b" opacity="0.45"/>
+  <text x="460" y="358" text-anchor="middle" fill="#cba6f7" font-size="14" font-weight="bold">Hard Shadow</text>
+  <text x="460" y="376" text-anchor="middle" fill="#9399b2" font-size="11">Sharp, well-defined edge</text>
+
+  <!-- Opaque object (box) -->
+  <rect x="300" y="195" width="130" height="115" rx="4" fill="#89b4fa" opacity="0.9" stroke="#74c7ec" stroke-width="2"/>
+  <text x="365" y="252" text-anchor="middle" fill="#1e1e2e" font-size="13" font-weight="bold">Opaque</text>
+  <text x="365" y="268" text-anchor="middle" fill="#1e1e2e" font-size="13" font-weight="bold">Object</text>
+
+  <!-- Point light source -->
+  <circle cx="110" cy="90" r="18" fill="#f9e2af" opacity="0.95"/>
+  <circle cx="110" cy="90" r="25" fill="#f9e2af" opacity="0.18"/>
+  <!-- Light rays (sunburst) -->
+  <g stroke="#f9e2af" stroke-width="2" opacity="0.7">
+    <line x1="110" y1="60" x2="110" y2="48"/>
+    <line x1="110" y1="120" x2="110" y2="132"/>
+    <line x1="80" y1="90" x2="68" y2="90"/>
+    <line x1="140" y1="90" x2="152" y2="90"/>
+    <line x1="89" y1="69" x2="81" y2="61"/>
+    <line x1="131" y1="111" x2="139" y2="119"/>
+    <line x1="131" y1="69" x2="139" y2="61"/>
+    <line x1="89" y1="111" x2="81" y2="119"/>
+  </g>
+  <text x="110" y="148" text-anchor="middle" fill="#f9e2af" font-size="12" font-weight="bold">Point Light</text>
+  <text x="110" y="162" text-anchor="middle" fill="#f9e2af" font-size="12" font-weight="bold">Source</text>
+
+  <!-- Light rays toward object edges and shadow -->
+  <!-- Ray to top-left of object, continuing to shadow left edge -->
+  <line x1="125" y1="100" x2="300" y2="195" stroke="#f9e2af" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.6"/>
+  <line x1="300" y1="195" x2="250" y2="310" stroke="#f9e2af" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.3"/>
+
+  <!-- Ray to top-right of object, continuing to shadow right edge -->
+  <line x1="125" y1="100" x2="430" y2="195" stroke="#f9e2af" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.6"/>
+  <line x1="430" y1="195" x2="680" y2="310" stroke="#f9e2af" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.3"/>
+
+  <!-- Ray to bottom-left corner -->
+  <line x1="125" y1="100" x2="300" y2="310" stroke="#f9e2af" stroke-width="1.2" stroke-dasharray="4,4" opacity="0.35"/>
+
+  <!-- Ray to bottom-right corner -->
+  <line x1="125" y1="100" x2="430" y2="310" stroke="#f9e2af" stroke-width="1.2" stroke-dasharray="4,4" opacity="0.35"/>
+
+  <!-- Labels with arrows -->
+  <!-- Sharp edge label left -->
+  <line x1="240" y1="328" x2="288" y2="320" stroke="#f38ba8" stroke-width="1.5"/>
+  <text x="155" y="332" fill="#f38ba8" font-size="12">Sharp Edge</text>
+
+  <!-- Sharp edge label right -->
+  <line x1="636" y1="328" x2="622" y2="320" stroke="#f38ba8" stroke-width="1.5"/>
+  <text x="638" y="332" fill="#f38ba8" font-size="12">Sharp Edge</text>
+
+  <!-- "Fully Lit" region label -->
+  <text x="680" y="270" text-anchor="middle" fill="#a6e3a1" font-size="13">Fully</text>
+  <text x="680" y="286" text-anchor="middle" fill="#a6e3a1" font-size="13">Lit</text>
+
+  <!-- Concept note -->
+  <rect x="30" y="340" width="195" height="42" rx="6" fill="#181825" stroke="#45475a" stroke-width="1"/>
+  <text x="127" y="357" text-anchor="middle" fill="#9399b2" font-size="11">A point source produces</text>
+  <text x="127" y="372" text-anchor="middle" fill="#9399b2" font-size="11">a perfectly crisp boundary</text>
+</svg>

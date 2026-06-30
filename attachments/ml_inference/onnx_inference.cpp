@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cmath>
 
+#ifdef HAS_ONNX_RUNTIME
+
 ONNXClassifier::ONNXClassifier(const std::string& modelPath)
     : env(ORT_LOGGING_LEVEL_WARNING, "ONNXClassifier") {
 
@@ -185,3 +187,27 @@ std::vector<std::pair<int, float>> ONNXClassifier::getTopK(
     indexed.resize(k);
     return indexed;
 }
+
+#else // HAS_ONNX_RUNTIME
+
+ONNXClassifier::ONNXClassifier(const std::string& modelPath) {
+    std::cerr << "ONNX Runtime not available. Model not loaded: " << modelPath << "\n";
+}
+
+ONNXClassifier::ClassificationResult ONNXClassifier::classify(const PreprocessedImage&, int topK) {
+    return {{}, 0.0f};
+}
+
+ONNXClassifier::GenericResult ONNXClassifier::runGeneric(const PreprocessedImage&) {
+    return {{}, {}, 0.0f};
+}
+
+std::vector<float> ONNXClassifier::softmax(const float*, size_t size) {
+    return std::vector<float>(size, 0.0f);
+}
+
+std::vector<std::pair<int, float>> ONNXClassifier::getTopK(const std::vector<float>& probabilities, int k) {
+    return {};
+}
+
+#endif // HAS_ONNX_RUNTIME

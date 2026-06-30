@@ -1,11 +1,14 @@
 #pragma once
 
-#include <onnxruntime_cxx_api.h>
 #include <string>
 #include <vector>
 #include <memory>
 #include <array>
 #include "common/preprocessing/vulkan_preprocessing.h"
+
+#ifdef HAS_ONNX_RUNTIME
+#include <onnxruntime_cxx_api.h>
+#endif
 
 class ONNXClassifier {
 public:
@@ -30,6 +33,7 @@ private:
     std::vector<float> softmax(const float* logits, size_t size);
     std::vector<std::pair<int, float>> getTopK(const std::vector<float>& probabilities, int k);
 
+#ifdef HAS_ONNX_RUNTIME
     Ort::Env env;
     Ort::SessionOptions sessionOptions;
     std::unique_ptr<Ort::Session> session;
@@ -38,4 +42,5 @@ private:
     std::vector<const char*> outputNames;
 
     size_t numClasses = 0;
+#endif
 };

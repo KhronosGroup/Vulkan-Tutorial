@@ -63,6 +63,12 @@ bool ImGuiSystem::Initialize(Renderer* renderer, uint32_t width, uint32_t height
   // Set up ImGui style
   ImGui::StyleColorsDark();
 
+#if defined(PLATFORM_ANDROID)
+  // Scale UI for high-DPI mobile screens to ensure buttons are touchable
+  ImGui::GetStyle().ScaleAllSizes(2.0f);
+  io.FontGlobalScale = 2.0f;
+#endif
+
   // Create Vulkan resources
   if (!createResources()) {
     std::cerr << "Failed to create ImGui Vulkan resources" << std::endl;
@@ -163,6 +169,12 @@ void ImGuiSystem::NewFrame() {
 
       ImGui::SetNextWindowPos(ImVec2(0, 0));
       ImGui::SetNextWindowSize(dispSize);
+
+      // Override style for loading overlay to ensure visibility and contrast
+      ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.05f, 0.05f, 0.05f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
       ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
           ImGuiWindowFlags_NoResize |
           ImGuiWindowFlags_NoMove |
@@ -207,9 +219,11 @@ void ImGuiSystem::NewFrame() {
           ImGui::Text("%s (%u/%u, %.1fs)", renderer->GetASBuildStage(), done, total, renderer->GetASBuildElapsedSeconds());
         }
         ImGui::EndGroup();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(); // WindowPadding
       }
       ImGui::End();
+      ImGui::PopStyleVar(); // WindowBorderSize
+      ImGui::PopStyleColor(2); // WindowBg, Text
       return;
     }
   }
@@ -577,15 +591,27 @@ void ImGuiSystem::HandleMouse(float x, float y, uint32_t buttons) {
 
   ImGuiIO& io = ImGui::GetIO();
 
+  // Inform ImGui that this is a touch screen event to adjust behavior (e.g. no hover tooltips)
+#if defined(PLATFORM_ANDROID)
+  io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+#endif
+
   // Update mouse position (v1.87+ event API)
   io.AddMousePosEvent(x, y);
 
   // Update mouse buttons (v1.87+ event API)
   // We compare with current state to send events only on change
   static uint32_t lastButtons = 0;
-  if ((buttons & 0x01) != (lastButtons & 0x01)) io.AddMouseButtonEvent(0, (buttons & 0x01) != 0);
-  if ((buttons & 0x02) != (lastButtons & 0x02)) io.AddMouseButtonEvent(1, (buttons & 0x02) != 0);
-  if ((buttons & 0x04) != (lastButtons & 0x04)) io.AddMouseButtonEvent(2, (buttons & 0x04) != 0);
+  if ((buttons & 0x01) != (lastButtons & 0x01)) {
+    io.AddMouseButtonEvent(0, (buttons & 0x01) != 0);
+  }
+  if ((buttons & 0x02) != (lastButtons & 0x02)) {
+    io.AddMouseButtonEvent(1, (buttons & 0x02) != 0);
+  }
+  if ((buttons & 0x04) != (lastButtons & 0x04)) {
+    io.AddMouseButtonEvent(2, (buttons & 0x04) != 0);
+  }
+
   lastButtons = buttons;
 }
 

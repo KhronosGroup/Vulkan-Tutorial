@@ -14,6 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#if defined(PLATFORM_ANDROID)
+[numthreads(1, 1, 1)]
+void main() {}
+#else
 // Ray query compute shader for ray-traced rendering
 // Uses Slang's ray query extension as an alternative to rasterization
 
@@ -1065,3 +1069,4 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         outputImage[pixelCoord] = float4(skyColor(rayDir), 1.0);
     }
 }
+#endif

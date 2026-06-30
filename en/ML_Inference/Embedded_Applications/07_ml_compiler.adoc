@@ -39,7 +39,7 @@ Compilers do more with models that are easy to reason about. You can help them b
 
 Here’s the arc that reliably gets you to “runs correctly on the device” without drowning in options:
 
-1. Export a single, fixed‑shape variant of your model. If your source of truth is NNEF, convert to ONNX or StableHLO first (xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[NNEF deep dive] explains why this is a clean staging step).
+1. Export a single, fixed‑shape variant of your model. If your source of truth is NNEF, convert to ONNX or StableHLO first (xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[NNEF introduction] explains why this is a clean staging step).
 2. Compile for Vulkan with your chosen toolchain. In IREE, that means using the Vulkan HAL backend; in TVM, setting `target="vulkan"` when you build Relay.
 3. Run the artifact on your dev machine first. Use a headless Vulkan ICD if needed (xref:ML_Inference/Desktop_Applications/04_ci_render_validation.adoc[Headless Vulkan]) to eliminate device‑bring‑up variables.
 4. Only then deploy to the board and repeat the same correctness check on‑device.

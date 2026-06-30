@@ -14,7 +14,7 @@ NNEF is how the model is described. TVM or IREE turns that description into a pr
 
 == 1) Start with a tiny NNEF model
 
-Pick something with Conv→ReLU→Pool or a small classifier—simple enough that you can reason about shapes and spot errors. You’ll have a text graph (e.g., `graph.nnef`) and binary weight files. If you haven’t read an NNEF package before, skim the xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[NNEF deep dive]—it explains what’s on disk and how to think about layout and quantization.
+Pick something with Conv→ReLU→Pool or a small classifier—simple enough that you can reason about shapes and spot errors. You’ll have a text graph (e.g., `graph.nnef`) and binary weight files. If you haven’t read an NNEF package before, skim the xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[NNEF introduction]—it explains what’s on disk and how to think about layout and quantization.
 
 == 2) Convert NNEF → ONNX
 

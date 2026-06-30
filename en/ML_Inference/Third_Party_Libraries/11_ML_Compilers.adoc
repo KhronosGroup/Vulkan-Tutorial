@@ -44,7 +44,7 @@ For Vulkan, the path you’ll use in this section is typically: StableHLO → IR
 
 == Relation to Model Formats (including NNEF)
 
-Compilers frequently accept ONNX and/or StableHLO/XLA. Some also support NNEF (Neural Network Exchange Format) or provide conversion tools. In practice, ONNX and StableHLO are most common today; however, if your toolchain or vendor uses NNEF, an ML compiler can be a practical way to bring NNEF models onto Vulkan through SPIR‑V or via a WebGPU path. See xref:ML_Inference/Building_the_Inference_Engine/06_nnef_deep_dive.adoc[NNEF Deep Dive] for how to reason about graphs, tensors, and layouts—the same thinking helps you validate compiler output.
+Compilers frequently accept ONNX and/or StableHLO/XLA. Some also support NNEF (Neural Network Exchange Format) or provide conversion tools. In practice, ONNX and StableHLO are most common today; however, if your toolchain or vendor uses NNEF, an ML compiler can be a practical way to bring NNEF models onto Vulkan through SPIR‑V or via a WebGPU path. See xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[NNEF Introduction] for how to reason about graphs, tensors, and layouts—the same thinking helps you validate compiler output.
 
 == When To Choose an ML Compiler
 

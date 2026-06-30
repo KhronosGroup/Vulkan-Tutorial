@@ -148,7 +148,7 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
     // Try STAGE first (physical room-scale origin), fall back to LOCAL (head-locked),
     // then VIEW (eye-relative) — Monado's QWERTY driver only supports LOCAL/VIEW.
     XrReferenceSpaceCreateInfo spaceCreateInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-    spaceCreateInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
+    spaceCreateInfo.poseInReferenceSpace = {{0, 0, 0, 1}, {0, 0, 0}};
     const XrReferenceSpaceType spaceFallbacks[] = {
         XR_REFERENCE_SPACE_TYPE_STAGE,
         XR_REFERENCE_SPACE_TYPE_LOCAL,
@@ -237,6 +237,19 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
     }
 
     return true;
+}
+
+void XrContext::updateReferenceSpacePose(const XrPosef& pose) {
+    if (session == XR_NULL_HANDLE) return;
+    XrSpace newSpace = XR_NULL_HANDLE;
+    XrReferenceSpaceCreateInfo ci{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+    ci.referenceSpaceType = referenceSpaceType;
+    ci.poseInReferenceSpace = pose;
+    if (xrCreateReferenceSpace(session, &ci, &newSpace) == XR_SUCCESS) {
+        if (appSpace != XR_NULL_HANDLE)
+            xrDestroySpace(appSpace);
+        appSpace = newSpace;
+    }
 }
 
 void XrContext::cleanup() {
@@ -388,7 +401,7 @@ void XrContext::createSwapchains(vk::Device device, vk::Format format, vk::Exten
     this->extent = extent;
 
     XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    ci.arraySize = 2;
+    ci.arraySize = 1;
     ci.format = (int64_t)format;
     ci.width = extent.width;
     ci.height = extent.height;
@@ -397,24 +410,30 @@ void XrContext::createSwapchains(vk::Device device, vk::Format format, vk::Exten
     ci.sampleCount = 1;
     ci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 
-    XrSwapchain handle;
-    xrCreateSwapchain(this->session, &ci, &handle);
+    for (uint32_t eye = 0; eye < 2; ++eye) {
+        XrSwapchain handle;
+        XrResult r = xrCreateSwapchain(this->session, &ci, &handle);
+        if (r != XR_SUCCESS) {
+            std::cerr << "[XR] xrCreateSwapchain eye=" << eye << " failed: " << r << std::endl;
+            continue;
+        }
 
-    uint32_t count = 0;
-    xrEnumerateSwapchainImages(handle, 0, &count, nullptr);
-    std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
-    xrEnumerateSwapchainImages(handle, count, &count, (XrSwapchainImageBaseHeader*)images.data());
+        uint32_t count = 0;
+        xrEnumerateSwapchainImages(handle, 0, &count, nullptr);
+        std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+        xrEnumerateSwapchainImages(handle, count, &count, (XrSwapchainImageBaseHeader*)images.data());
 
-    SwapchainData data;
-    data.handle = handle;
-    data.images = std::move(images);
-    this->swapchains.push_back(std::move(data));
+        SwapchainData data;
+        data.handle = handle;
+        data.images = std::move(images);
+        this->swapchains.push_back(std::move(data));
+    }
 }
 
-std::vector<vk::Image> XrContext::enumerateSwapchainImages() {
+std::vector<vk::Image> XrContext::enumerateSwapchainImages(uint32_t swapchainIdx) {
     std::vector<vk::Image> vkImages;
-    if (!swapchains.empty()) {
-        for (const auto& img : swapchains[0].images) {
+    if (swapchainIdx < swapchains.size()) {
+        for (const auto& img : swapchains[swapchainIdx].images) {
             vkImages.push_back(vk::Image(img.image));
         }
     }
@@ -422,24 +441,51 @@ std::vector<vk::Image> XrContext::enumerateSwapchainImages() {
 }
 
 void XrContext::waitSwapchainImage() {
-    if (swapchains.empty()) return;
     XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
     wi.timeout = XR_INFINITE_DURATION;
-    xrWaitSwapchainImage(swapchains[0].handle, &wi);
+    for (auto& sc : swapchains) {
+        XrResult r = xrWaitSwapchainImage(sc.handle, &wi);
+        if (r != XR_SUCCESS) {
+            std::cerr << "[XR] xrWaitSwapchainImage failed: " << r << std::endl;
+        }
+    }
 }
 
 uint32_t XrContext::acquireSwapchainImage() {
     if (swapchains.empty()) return 0;
     XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     uint32_t index = 0;
-    xrAcquireSwapchainImage(swapchains[0].handle, &ai, &index);
+    XrResult r = xrAcquireSwapchainImage(swapchains[0].handle, &ai, &index);
+    if (r != XR_SUCCESS) {
+        std::cerr << "[XR] xrAcquireSwapchainImage[0] failed: " << r << std::endl;
+    }
+    for (uint32_t i = 1; i < swapchains.size(); ++i) {
+        uint32_t dummy = 0;
+        xrAcquireSwapchainImage(swapchains[i].handle, &ai, &dummy);
+    }
     return index;
 }
 
 void XrContext::releaseSwapchainImage() {
-    if (swapchains.empty()) return;
     XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    xrReleaseSwapchainImage(swapchains[0].handle, &ri);
+    for (auto& sc : swapchains) {
+        xrReleaseSwapchainImage(sc.handle, &ri);
+    }
+}
+
+static const char* xrSessionStateName(XrSessionState s) {
+    switch (s) {
+        case XR_SESSION_STATE_UNKNOWN:     return "UNKNOWN";
+        case XR_SESSION_STATE_IDLE:        return "IDLE";
+        case XR_SESSION_STATE_READY:       return "READY";
+        case XR_SESSION_STATE_SYNCHRONIZED: return "SYNCHRONIZED";
+        case XR_SESSION_STATE_VISIBLE:     return "VISIBLE";
+        case XR_SESSION_STATE_FOCUSED:     return "FOCUSED";
+        case XR_SESSION_STATE_STOPPING:    return "STOPPING";
+        case XR_SESSION_STATE_LOSS_PENDING: return "LOSS_PENDING";
+        case XR_SESSION_STATE_EXITING:     return "EXITING";
+        default: return "?";
+    }
 }
 
 void XrContext::pollEvents() {
@@ -447,13 +493,22 @@ void XrContext::pollEvents() {
     while (xrPollEvent(instance, &event) == XR_SUCCESS) {
         if (event.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
             auto* stateEvent = reinterpret_cast<XrEventDataSessionStateChanged*>(&event);
+            std::cout << "[XR] Session state: " << xrSessionStateName(sessionState)
+                      << " -> " << xrSessionStateName(stateEvent->state) << std::endl;
             sessionState = stateEvent->state;
             if (stateEvent->state == XR_SESSION_STATE_READY) {
                 XrSessionBeginInfo bi{XR_TYPE_SESSION_BEGIN_INFO};
                 bi.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-                xrBeginSession(session, &bi);
+                XrResult r = xrBeginSession(session, &bi);
+                if (r != XR_SUCCESS) {
+                    std::cerr << "[XR] xrBeginSession failed: " << r << std::endl;
+                } else {
+                    std::cout << "[XR] xrBeginSession succeeded" << std::endl;
+                    sessionBegun = true;
+                }
             } else if (stateEvent->state == XR_SESSION_STATE_STOPPING) {
                 xrEndSession(session);
+                sessionBegun = false;
             } else if (stateEvent->state == XR_SESSION_STATE_EXITING ||
                        stateEvent->state == XR_SESSION_STATE_LOSS_PENDING) {
                 // Signal caller to exit
@@ -466,13 +521,24 @@ void XrContext::pollEvents() {
 XrFrameState XrContext::waitFrame() {
     XrFrameWaitInfo wi{XR_TYPE_FRAME_WAIT_INFO};
     this->frameState = {XR_TYPE_FRAME_STATE};
-    xrWaitFrame(this->session, &wi, &this->frameState);
+    XrResult r = xrWaitFrame(this->session, &wi, &this->frameState);
+    static uint32_t waitFrameCount = 0;
+    if (++waitFrameCount <= 5 || waitFrameCount % 100 == 0) {
+        std::cout << "[XR] xrWaitFrame #" << waitFrameCount
+                  << " result=" << r
+                  << " shouldRender=" << this->frameState.shouldRender
+                  << " state=" << sessionState << std::endl;
+    }
     return this->frameState;
 }
 
 void XrContext::beginFrame() {
     XrFrameBeginInfo bi{XR_TYPE_FRAME_BEGIN_INFO};
-    xrBeginFrame(this->session, &bi);
+    XrResult r = xrBeginFrame(this->session, &bi);
+    static uint32_t beginFrameCount = 0;
+    if (++beginFrameCount <= 5 || beginFrameCount % 100 == 0) {
+        std::cout << "[XR] xrBeginFrame #" << beginFrameCount << " result=" << r << std::endl;
+    }
 }
 
 void XrContext::endFrame(const std::array<std::vector<vk::ImageView>, 2>& eyeViews) {
@@ -484,28 +550,40 @@ void XrContext::endFrame(const std::array<std::vector<vk::ImageView>, 2>& eyeVie
     layer.space = this->appSpace;
 
     static XrCompositionLayerProjectionView projectionViews[2];
-    for (uint32_t i = 0; i < 2; ++i) {
-        projectionViews[i] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
-        projectionViews[i].pose = this->views[i].pose;
-        projectionViews[i].fov = this->views[i].fov;
-        projectionViews[i].subImage.swapchain = this->swapchains[0].handle;
-        projectionViews[i].subImage.imageRect = {{0, 0}, {(int32_t)extent.width, (int32_t)extent.height}};
-        projectionViews[i].subImage.imageArrayIndex = i;
+    const bool canSubmitLayer = this->frameState.shouldRender && swapchains.size() >= 2;
+    if (canSubmitLayer) {
+        for (uint32_t i = 0; i < 2; ++i) {
+            projectionViews[i] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+            projectionViews[i].pose = this->views[i].pose;
+            projectionViews[i].fov = this->views[i].fov;
+            projectionViews[i].subImage.swapchain = this->swapchains[i].handle;
+            projectionViews[i].subImage.imageRect = {{0, 0}, {(int32_t)extent.width, (int32_t)extent.height}};
+            projectionViews[i].subImage.imageArrayIndex = 0;
+        }
+        layer.viewCount = 2;
+        layer.views = projectionViews;
     }
-
-    layer.viewCount = 2;
-    layer.views = projectionViews;
 
     static const XrCompositionLayerBaseHeader* layers[1];
     uint32_t layerCount = 0;
-    if (this->frameState.shouldRender) {
+    if (canSubmitLayer) {
         layers[layerCount++] = (XrCompositionLayerBaseHeader*)&layer;
     }
 
     ei.layerCount = layerCount;
     ei.layers = layers;
 
-    xrEndFrame(this->session, &ei);
+    XrResult r = xrEndFrame(this->session, &ei);
+    static uint32_t endFrameCount = 0;
+    if (++endFrameCount <= 5 || endFrameCount % 100 == 0) {
+        std::cout << "[XR] xrEndFrame #" << endFrameCount
+                  << " result=" << r
+                  << " layerCount=" << ei.layerCount << std::endl;
+    }
+    if (r != XR_SUCCESS) {
+        std::cerr << "[XR] xrEndFrame failed: " << r
+                  << " (layerCount=" << ei.layerCount << ")" << std::endl;
+    }
 }
 
 void XrContext::locateViews(XrTime predictedTime) {
@@ -516,7 +594,20 @@ void XrContext::locateViews(XrTime predictedTime) {
 
     XrViewState vs{XR_TYPE_VIEW_STATE};
     uint32_t count = 0;
-    xrLocateViews(this->session, &li, &vs, (uint32_t)this->views.size(), &count, this->views.data());
+    XrResult r = xrLocateViews(this->session, &li, &vs, (uint32_t)this->views.size(), &count, this->views.data());
+    if (r != XR_SUCCESS) {
+        std::cerr << "[XR] xrLocateViews failed: " << r << std::endl;
+    } else {
+        const bool orientationValid = (vs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
+        const bool positionValid    = (vs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) != 0;
+        static bool firstLocate = true;
+        if (firstLocate || !orientationValid || !positionValid) {
+            std::cout << "[XR] locateViews: orientation=" << orientationValid
+                      << " position=" << positionValid
+                      << " viewCount=" << count << std::endl;
+            firstLocate = false;
+        }
+    }
 }
 
 vk::Viewport XrContext::getViewport(uint32_t eye) const {

@@ -40,6 +40,7 @@ public:
     XrInstance getXrInstance() const { return instance; }
     XrSystemId getSystemId() const { return systemId; }
     bool createSession(vk::PhysicalDevice physicalDevice, vk::Device device, uint32_t queueFamilyIndex, uint32_t queueIndex);
+    void updateReferenceSpacePose(const XrPosef& pose);
     void cleanup();
 
 #if defined(PLATFORM_ANDROID)
@@ -54,7 +55,7 @@ public:
     // Swapchain Management (Chapter 3 & 8)
     vk::Extent2D getRecommendedExtent() const;
     void createSwapchains(vk::Device device, vk::Format format, vk::Extent2D extent);
-    std::vector<vk::Image> enumerateSwapchainImages(); // Returns images with 2 layers for multiview
+    std::vector<vk::Image> enumerateSwapchainImages(uint32_t swapchainIdx = 0);
     vk::Extent2D getSwapchainExtent() const { return extent; }
     vk::Format getSwapchainFormat() const { return format; }
 
@@ -64,10 +65,21 @@ public:
 
     // Session lifecycle
     void pollEvents();
+    // True when the session is running and frames should be rendered.
     bool isSessionRunning() const {
         return sessionState == XR_SESSION_STATE_SYNCHRONIZED ||
                sessionState == XR_SESSION_STATE_VISIBLE ||
                sessionState == XR_SESSION_STATE_FOCUSED;
+    }
+    // True when xrWaitFrame/xrBeginFrame/xrEndFrame should be called.
+    // Includes READY state because some runtimes (Monado) require xrWaitFrame
+    // to be called to advance from READY to SYNCHRONIZED.
+    bool isSessionFraming() const {
+        return sessionBegun &&
+               (sessionState == XR_SESSION_STATE_READY ||
+                sessionState == XR_SESSION_STATE_SYNCHRONIZED ||
+                sessionState == XR_SESSION_STATE_VISIBLE ||
+                sessionState == XR_SESSION_STATE_FOCUSED);
     }
     XrSessionState getSessionState() const { return sessionState; }
 
@@ -118,6 +130,7 @@ private:
     XrSystemId systemId;
     XrSession session;
     XrSpace appSpace;
+    bool sessionBegun = false;
     XrReferenceSpaceType referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
 
     uint8_t requiredLuid[VK_LUID_SIZE] = {0};

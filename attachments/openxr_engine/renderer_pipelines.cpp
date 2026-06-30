@@ -378,7 +378,7 @@ bool Renderer::createGraphicsPipeline() {
 
     // Initialize member variable for proper lifetime management
     mainPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .viewMask = xrMode ? 0x3u : 0x0u,
+      .viewMask = 0x0u,
       .colorAttachmentCount = 1,
       .pColorAttachmentFormats = &swapChainImageFormat,
       .depthAttachmentFormat = depthFormat,
@@ -573,7 +573,7 @@ bool Renderer::createPBRPipeline() {
 
     // Initialize member variable for proper lifetime management
     pbrPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .viewMask = xrMode ? 0x3u : 0x0u,
+      .viewMask = 0x0u,
       .colorAttachmentCount = 1,
       .pColorAttachmentFormats = &swapChainImageFormat,
       .depthAttachmentFormat = depthFormat,
@@ -806,7 +806,7 @@ bool Renderer::createCompositePipeline() {
 
     // Dynamic rendering info
     compositePipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .viewMask = xrMode ? 0x3u : 0x0u,
+      .viewMask = 0x0u,
       .colorAttachmentCount = 1,
       .pColorAttachmentFormats = &swapChainImageFormat,
       .depthAttachmentFormat = vk::Format::eUndefined,
@@ -931,7 +931,7 @@ bool Renderer::createDepthPrepassPipeline() {
 
     vk::Format depthFormat = findDepthFormat();
     vk::PipelineRenderingCreateInfo renderingInfo{
-      .viewMask = xrMode ? 0x3u : 0x0u,
+      .viewMask = 0x0u,
       .colorAttachmentCount = 0,
       .pColorAttachmentFormats = nullptr,
       .depthAttachmentFormat = depthFormat
@@ -1086,7 +1086,7 @@ bool Renderer::createLightingPipeline() {
 
     // Initialize member variable for proper lifetime management
     lightingPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .viewMask = xrMode ? 0x3u : 0x0u,
+      .viewMask = 0x0u,
       .colorAttachmentCount = 1,
       .pColorAttachmentFormats = &swapChainImageFormat,
       .depthAttachmentFormat = depthFormat,

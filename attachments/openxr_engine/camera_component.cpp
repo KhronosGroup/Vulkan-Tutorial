@@ -132,9 +132,9 @@ inline glm::mat4 getAsymmetricProjection(const XrFovf& fov, float nearZ, float f
 }
 
 void CameraComponent::SetStereoViews(const XrView& left, const XrView& right) {
-  // 1. Convert OpenXR poses to 4x4 matrices
-  eyeViewMatrices[0] = xrPoseToMatrix(left.pose);
-  eyeViewMatrices[1] = xrPoseToMatrix(right.pose);
+  // 1. Convert OpenXR eye poses (eye-to-world) to view matrices (world-to-eye).
+  eyeViewMatrices[0] = glm::inverse(xrPoseToMatrix(left.pose));
+  eyeViewMatrices[1] = glm::inverse(xrPoseToMatrix(right.pose));
 
   // 2. Build asymmetric projection matrices from FOV tangents
   eyeProjectionMatrices[0] = getAsymmetricProjection(left.fov, nearPlane, farPlane);

@@ -120,9 +120,8 @@ bool Renderer::createSwapChain() {
       swapChainImageFormat = xrContext.getSwapchainFormat();
       swapChainExtent = xrContext.getSwapchainExtent();
 
-      // Use a single swapchain with 2 layers for multiview
-      eyeSwapchainImages[0] = xrContext.enumerateSwapchainImages();
-      eyeSwapchainImages[1].clear(); // Not used in multiview mode
+      eyeSwapchainImages[0] = xrContext.enumerateSwapchainImages(0);
+      eyeSwapchainImages[1] = xrContext.enumerateSwapchainImages(1);
 
       // We still use swapChainImages as a dummy or to track common state if needed
       return true;
@@ -501,11 +500,11 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
 bool Renderer::createImageViews() {
   try {
     if (xrMode) {
-      eyeSwapchainImageViews[0].clear();
-      eyeSwapchainImageViews[1].clear();
-      for (size_t i = 0; i < eyeSwapchainImages[0].size(); ++i) {
-        vk::Image img = eyeSwapchainImages[0][i];
-        eyeSwapchainImageViews[0].emplace_back(createImageView(img, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1, 2)); // 2 layers for multiview
+      for (uint32_t eye = 0; eye < 2; ++eye) {
+        eyeSwapchainImageViews[eye].clear();
+        for (vk::Image img : eyeSwapchainImages[eye]) {
+          eyeSwapchainImageViews[eye].emplace_back(createImageView(img, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1, 1));
+        }
       }
       return true;
     }
@@ -571,7 +570,7 @@ bool Renderer::setupDynamicRendering() {
     renderingInfo = vk::RenderingInfo{
       .renderArea = vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent),
       .layerCount = 1,
-      .viewMask = xrMode ? 0x3u : 0x0u, // 0x3 enables views 0 and 1 for multiview
+      .viewMask = 0x0u,
       .colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size()),
       .pColorAttachments = colorAttachments.data(),
       .pDepthAttachment = &depthAttachment
@@ -979,7 +978,8 @@ void Renderer::drawRenderJob(const vk::raii::CommandBuffer& cmd, const RenderJob
   // In multiview, we only need one set per frame as both views share the same UBO
   uint32_t setIndex = currentFrame;
 
-  // 2. Update UBO using the current template (which has correct multiview matrices if in XR)
+  // 2. Update UBO: stamp per-entity model matrix into the frame template, then flush
+  frameUboTemplate.model = job.transformComp ? job.transformComp->GetModelMatrix() : glm::mat4(1.0f);
   updateUniformBufferInternal(setIndex, job.entity, entityRes, nullptr, frameUboTemplate);
 
   // 3. Bind geometry
@@ -1120,6 +1120,18 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   if (memoryPool)
     memoryPool->setRenderingActive(true);
 
+  // Extract lights into the per-frame storage buffer (mirrors the non-XR path).
+  if (!staticLights.empty()) {
+    std::vector<ExtractedLight> lightsSubset;
+    lightsSubset.reserve(std::min(staticLights.size(), static_cast<size_t>(MAX_ACTIVE_LIGHTS)));
+    for (const auto& L : staticLights) {
+      lightsSubset.push_back(L);
+      if (lightsSubset.size() >= MAX_ACTIVE_LIGHTS) break;
+    }
+    lastFrameLightCount = static_cast<uint32_t>(lightsSubset.size());
+    updateLightStorageBuffer(currentFrame, lightsSubset, camera);
+  }
+
   // Prepare frame-constant UBO data once for both eyes
   // We'll update the eye-specific view/proj matrices inside the eye loop
   prepareFrameUboTemplate(camera);
@@ -1131,9 +1143,11 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   }
   device.resetFences(*inFlightFences[currentFrame]);
 
-  // Execute any pending GPU uploads/preallocations
+  // Execute any pending GPU uploads/preallocations, then flush newly-uploaded
+  // textures into descriptor sets for this frame slot.
   ProcessPendingMeshUploads();
   ProcessPendingEntityPreallocations();
+  ProcessDirtyDescriptorsForFrame(currentFrame);
 
   // Preparation pass: Culling and classification
   // In a real XR engine, we might do this per eye, but for a simple engine,
@@ -1150,12 +1164,39 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     if (entityIt == entityResources.end()) continue;
 
     EntityResources& entityRes = entityIt->second;
+
+    // Skip entities whose GPU resources aren't ready yet
+    auto meshResIt = meshResources.find(meshComponent);
+    if (meshResIt == meshResources.end()) continue;
+    MeshResources& meshRes = meshResIt->second;
+    if (!*meshRes.vertexBuffer || !*meshRes.indexBuffer) continue;
+    if (entityRes.pbrDescriptorSets.empty()) continue;
+
     ensureEntityMaterialCache(entity, entityRes);
+
+    // Initialize descriptor set bindings for this frame slot if not done yet.
+    // Without this the GPU receives uninitialized UBO/sampler descriptors.
+    {
+      std::string texPath = meshComponent->GetBaseColorTexturePath();
+      if (texPath.empty()) texPath = meshComponent->GetTexturePath();
+      if (!entityRes.pbrUboBindingWritten[currentFrame])
+        updateDescriptorSetsForFrame(entity, entityRes, texPath, true,  currentFrame, false, true);
+      if (!entityRes.basicUboBindingWritten[currentFrame])
+        updateDescriptorSetsForFrame(entity, entityRes, texPath, false, currentFrame, false, true);
+      if (!entityRes.pbrImagesWritten[currentFrame]) {
+        updateDescriptorSetsForFrame(entity, entityRes, texPath, true,  currentFrame, true, false);
+        entityRes.pbrImagesWritten[currentFrame] = true;
+      }
+      if (!entityRes.basicImagesWritten[currentFrame]) {
+        updateDescriptorSetsForFrame(entity, entityRes, texPath, false, currentFrame, true, false);
+        entityRes.basicImagesWritten[currentFrame] = true;
+      }
+    }
 
     RenderJob job{
         .entity = entity,
         .entityRes = &entityRes,
-        .meshRes = &meshResources[meshComponent],
+        .meshRes = &meshRes,
         .meshComp = meshComponent,
         .transformComp = entity->GetComponent<TransformComponent>(),
         .isAlphaMasked = entityRes.cachedIsBlended
@@ -1181,7 +1222,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   // 2. Transition image to COLOR_ATTACHMENT_OPTIMAL
   transitionImageLayout(*cmd, swapchainImage, swapChainImageFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
-                        1, 2); // 2 layers
+                        1, 1);
 
   // 3. Prepare Multiview UBO Template
   for (uint32_t eye = 0; eye < 2; ++eye) {
@@ -1200,7 +1241,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
     .loadOp = vk::AttachmentLoadOp::eClear,
     .storeOp = vk::AttachmentStoreOp::eStore,
-    .clearValue = vk::ClearValue{vk::ClearColorValue{std::array<float, 4>{0.1f, 0.1f, 0.1f, 1.0f}}}
+    .clearValue = vk::ClearValue{vk::ClearColorValue{std::array<float,4>{0.1f, 0.1f, 0.1f, 1.0f}}}
   };
 
   // Note: depth buffer must be 2 layers for multiview
@@ -1215,7 +1256,7 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   vk::RenderingInfo rinfo{
     .renderArea = vk::Rect2D({0, 0}, xrContext.getSwapchainExtent()),
     .layerCount = 1,
-    .viewMask = 0x3u, // Enable view 0 and 1
+    .viewMask = 0x0u, // Single-eye rendering; both XR swapchains get the same image
     .colorAttachmentCount = 1,
     .pColorAttachments = &colorAtt,
     .pDepthAttachment = &depthAtt
@@ -1245,13 +1286,6 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   cmd.endRendering();
 
-  // 5. Transition back (OpenXR often expects this or TransferSrcOptimal for blitting)
-  transitionImageLayout(*cmd, swapchainImage, swapChainImageFormat, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal,
-                        1, 2);
-
-  // 6. Release OpenXR swapchain image
-  xrContext.releaseSwapchainImage();
-
   cmd.end();
 
   // --- Submit to Graphics Queue ---
@@ -1270,6 +1304,10 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
     std::lock_guard<std::mutex> lock(queueMutex);
     graphicsQueue.submit(submitInfo, *inFlightFences[currentFrame]);
   }
+
+  // Release the OpenXR swapchain image AFTER submitting rendering work.
+  // The runtime (Monado) will synchronize with the GPU before compositing.
+  xrContext.releaseSwapchainImage();
 
   // ImGui frame must be closed every frame; XR overlay rendering is not yet implemented.
   if (imguiSystem)

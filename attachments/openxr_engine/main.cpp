@@ -116,14 +116,15 @@ void android_main(android_app *app)
  */
 int main(int, char *[])
 {
-	// Prevent libcanberra-gtk-module from loading into this process.  On Wayland,
-	// libdecor-gtk is loaded as a GLFW window decoration backend; it in turn loads
-	// libcanberra-gtk-module which tries to spawn a PulseAudio thread the first time
-	// a GTK event fires.  If the nptl thread-stack cache contains any corrupted entry
-	// (e.g., from Monado shared-memory init), that pa_thread_new call aborts with
-	// "free(): invalid pointer".  We don't use GTK sound themes, so unloading the
-	// module is correct regardless.  GTK_MODULES is Linux-only; no-op on Windows.
+	// Prevent libcanberra-gtk3 from attempting to open a PulseAudio connection.
+	// On Wayland+libdecor-gtk, GLFW loads libcanberra-gtk-module which calls
+	// pa_thread_new() on the first GTK event.  When Monado's shared-memory init
+	// has left a corrupted entry in the nptl thread-stack cache, that call aborts
+	// with "free(): invalid pointer".  Using the null canberra driver suppresses
+	// the PulseAudio path entirely.  We don't use sound feedback, so this is safe
+	// on all platforms.  GTK_MODULES is cleared as a belt-and-suspenders guard.
 #if !defined(_WIN32)
+	setenv("CANBERRA_DRIVER", "null", 1);
 	setenv("GTK_MODULES", "", 1);
 #endif
 

@@ -243,8 +243,9 @@ class Engine
 	CameraComponent *activeCamera = nullptr;
 
 	// Engine state
-	bool initialized = false;
-	bool running     = false;
+	bool initialized    = false;
+	bool running        = false;
+	bool xrSpaceSynced  = false;  // true after reference space aligned to scene camera post-load
 
 	// Delta time calculation
 	// deltaTimeMs: time since last frame in milliseconds (for clarity)

@@ -967,16 +967,10 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     vk::PhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures;
     timelineSemaphoreFeatures.timelineSemaphore = vk::True;
 
-    // NEW: Enable Multiview if in XR mode (Chapter 8)
-    vk::PhysicalDeviceMultiviewFeatures multiviewFeatures;
-    multiviewFeatures.multiview = xrMode ? vk::True : vk::False;
-    multiviewFeatures.pNext = &timelineSemaphoreFeatures;
-
     // Vulkan memory model features (required for some shader operations)
     vk::PhysicalDeviceVulkanMemoryModelFeatures memoryModelFeatures;
     memoryModelFeatures.vulkanMemoryModel = vk::True;
     memoryModelFeatures.vulkanMemoryModelDeviceScope = memoryModelSupported.vulkanMemoryModelDeviceScope ? vk::True : vk::False;
-    memoryModelFeatures.pNext = &multiviewFeatures;
 
     // Buffer device address features (required for some buffer operations)
     vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures;
@@ -990,10 +984,15 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
     vk::PhysicalDeviceVulkan13Features vulkan13Features;
     vulkan13Features.dynamicRendering = vk::True;
     vulkan13Features.synchronization2 = vk::True;
+    // pipelineCreationCacheControl is required by XR_KHR_vulkan_enable2 runtime pipeline cache usage
+    vulkan13Features.pipelineCreationCacheControl = vulkan13Supported.pipelineCreationCacheControl ? vk::True : vk::False;
 
-    // Vulkan 1.1 features: shaderDrawParameters to satisfy SPIR-V DrawParameters capability
+    // Vulkan 1.1 features: shaderDrawParameters + multiview for XR stereo rendering.
+    // Must NOT use a separate VkPhysicalDeviceMultiviewFeatures alongside this struct —
+    // VUID-VkDeviceCreateInfo-pNext-02829 forbids both in the same pNext chain.
     vk::PhysicalDeviceVulkan11Features vulkan11Features{};
     vulkan11Features.shaderDrawParameters = vk::True;
+    vulkan11Features.multiview = (xrMode && vulkan11Supported.multiview) ? vk::True : vk::False;
     // Query extended feature support
 #if !defined(PLATFORM_ANDROID)
     auto featureChain = physicalDevice.getFeatures2<
@@ -1112,8 +1111,7 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
 
     // Chain the feature structures together (build pNext chain explicitly)
     // Base
-    features.pNext = &multiviewFeatures;
-    multiviewFeatures.pNext = &timelineSemaphoreFeatures;
+    features.pNext = &timelineSemaphoreFeatures;
     timelineSemaphoreFeatures.pNext = &memoryModelFeatures;
     memoryModelFeatures.pNext = &bufferDeviceAddressFeatures;
     bufferDeviceAddressFeatures.pNext = &storage8BitFeatures;
@@ -1190,8 +1188,40 @@ bool Renderer::createLogicalDevice(bool enableValidationLayers) {
       .pEnabledFeatures = nullptr // Using pNext for features
     };
 
-    // Create the logical device
-    device = vk::raii::Device(physicalDevice, createInfo);
+    // Create the logical device.
+    // In XR mode use xrCreateVulkanDeviceKHR (XR_KHR_vulkan_enable2) so that Monado's
+    // IPC compositor is initialised with the full vtable (slot 0x8d8).  Without this,
+    // Monado allocates a reduced compositor struct that lacks the per-layer submission
+    // function pointer and crashes in xrEndFrame.
+    if (xrMode) {
+      PFN_xrCreateVulkanDeviceKHR pfnXrCreateVulkanDevice = nullptr;
+      xrGetInstanceProcAddr(xrContext.getXrInstance(), "xrCreateVulkanDeviceKHR",
+                            reinterpret_cast<PFN_xrVoidFunction*>(&pfnXrCreateVulkanDevice));
+      if (pfnXrCreateVulkanDevice) {
+        const VkDeviceCreateInfo* vkCreateInfo = reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo);
+        XrVulkanDeviceCreateInfoKHR xrDeviceCreateInfo{XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR};
+        xrDeviceCreateInfo.systemId = xrContext.getSystemId();
+        xrDeviceCreateInfo.pfnGetInstanceProcAddr = vkGetInstanceProcAddr;
+        xrDeviceCreateInfo.vulkanCreateInfo = vkCreateInfo;
+        xrDeviceCreateInfo.vulkanPhysicalDevice = static_cast<VkPhysicalDevice>(*physicalDevice);
+        xrDeviceCreateInfo.vulkanAllocator = nullptr;
+        VkDevice vkDev = VK_NULL_HANDLE;
+        VkResult vkResult = VK_SUCCESS;
+        XrResult xrResult = pfnXrCreateVulkanDevice(xrContext.getXrInstance(), &xrDeviceCreateInfo, &vkDev, &vkResult);
+        if (xrResult == XR_SUCCESS && vkResult == VK_SUCCESS) {
+          device = vk::raii::Device(physicalDevice, vkDev);
+        } else {
+          std::cerr << "[XR] xrCreateVulkanDeviceKHR failed (xr=" << xrResult << " vk=" << vkResult
+                    << "), falling back to standard device creation\n";
+          device = vk::raii::Device(physicalDevice, createInfo);
+        }
+      } else {
+        std::cerr << "[XR] xrCreateVulkanDeviceKHR not available, falling back to standard device creation\n";
+        device = vk::raii::Device(physicalDevice, createInfo);
+      }
+    } else {
+      device = vk::raii::Device(physicalDevice, createInfo);
+    }
 
     // After logical device is created, we can initialize the OpenXR session
     if (xrMode) {

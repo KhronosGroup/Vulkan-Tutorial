@@ -242,38 +242,43 @@ std::pair<MemoryPool::MemoryBlock *, size_t> MemoryPool::findSuitableBlock(PoolT
   const vk::DeviceSize alignedSize = ((size + alignment - 1) / alignment) * alignment;
   const size_t requiredUnits = static_cast<size_t>((alignedSize + config.allocationUnit - 1) / config.allocationUnit);
 
-  // Search existing blocks for sufficient free space with proper offset alignment
+  // Search existing blocks for sufficient free space with proper offset alignment.
+  // Use nextFreeHint to avoid rescanning already-used space on every allocation.
   for (const auto& block : poolBlocks) {
     const vk::DeviceSize unit = config.allocationUnit;
     const size_t totalUnits = block->freeList.size();
 
-    size_t i = 0;
-    while (i < totalUnits) {
-      // Ensure starting unit produces an offset aligned to 'alignment'
-      vk::DeviceSize startOffset = static_cast<vk::DeviceSize>(i) * unit;
-      if ((alignment > 0) && (startOffset % alignment != 0)) {
-        // Advance i to the next unit that aligns with 'alignment'
-        const vk::DeviceSize remainder = startOffset % alignment;
-        const vk::DeviceSize advanceBytes = alignment - remainder;
-        const size_t advanceUnits = static_cast<size_t>((advanceBytes + unit - 1) / unit);
-        i += std::max<size_t>(advanceUnits, 1);
-        continue;
-      }
+    // Try from the hint first; fall back to 0 if the hint region doesn't fit.
+    for (int pass = 0; pass < 2; ++pass) {
+      size_t i = (pass == 0) ? block->nextFreeHint : 0;
+      const size_t stopAt = (pass == 0) ? totalUnits : block->nextFreeHint;
+      if (i >= stopAt) continue;
 
-      // From aligned i, check for consecutive free units
-      size_t consecutiveFree = 0;
-      size_t j = i;
-      while (j < totalUnits && block->freeList[j] && consecutiveFree < requiredUnits) {
-        ++consecutiveFree;
-        ++j;
-      }
+      while (i < stopAt) {
+        // Ensure starting unit produces an offset aligned to 'alignment'
+        vk::DeviceSize startOffset = static_cast<vk::DeviceSize>(i) * unit;
+        if ((alignment > 0) && (startOffset % alignment != 0)) {
+          const vk::DeviceSize remainder = startOffset % alignment;
+          const vk::DeviceSize advanceBytes = alignment - remainder;
+          const size_t advanceUnits = static_cast<size_t>((advanceBytes + unit - 1) / unit);
+          i += std::max<size_t>(advanceUnits, 1);
+          continue;
+        }
 
-      if (consecutiveFree >= requiredUnits) {
-        return {block.get(), i};
-      }
+        // From aligned i, check for consecutive free units
+        size_t consecutiveFree = 0;
+        size_t j = i;
+        while (j < stopAt && block->freeList[j] && consecutiveFree < requiredUnits) {
+          ++consecutiveFree;
+          ++j;
+        }
 
-      // Move past the checked range
-      i = (j > i) ? j : (i + 1);
+        if (consecutiveFree >= requiredUnits) {
+          return {block.get(), i};
+        }
+
+        i = (j > i) ? j : (i + 1);
+      }
     }
   }
 
@@ -308,6 +313,9 @@ std::unique_ptr<MemoryPool::Allocation> MemoryPool::allocate(PoolType poolType, 
   for (size_t i = startUnit; i < startUnit + requiredUnits; ++i) {
     block->freeList[i] = false;
   }
+  // Advance the hint past the newly allocated region so the next allocation
+  // doesn't rescan already-used space.
+  block->nextFreeHint = startUnit + requiredUnits;
 
   // Create allocation info
   auto allocation = std::make_unique<Allocation>();
@@ -343,6 +351,10 @@ void MemoryPool::deallocate(std::unique_ptr<Allocation> allocation) {
         // Mark units as free
         for (size_t i = startUnit; i < startUnit + numUnits; ++i) {
           block->freeList[i] = true;
+        }
+        // Pull the hint back so freed space can be reused without a full rescan.
+        if (startUnit < block->nextFreeHint) {
+          block->nextFreeHint = startUnit;
         }
 
         block->used -= allocation->size;

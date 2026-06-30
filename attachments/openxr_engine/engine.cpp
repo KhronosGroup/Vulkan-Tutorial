@@ -117,9 +117,9 @@ bool Engine::Initialize(const std::string& appName, int width, int height, bool 
     // Physics system via constructor (GPU enabled)
     physicsSystem = std::make_unique<PhysicsSystem>(renderer.get(), true);
 
-    // ImGui via constructor, then connect audio system
-    imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
-    imguiSystem->SetAudioSystem(audioSystem.get());
+    // ImGui disabled while investigating heap corruption crash in ImGui::NewFrame().
+    // imguiSystem = std::make_unique<ImGuiSystem>(renderer.get(), width, height);
+    // imguiSystem->SetAudioSystem(audioSystem.get());
   } catch (const std::exception& e) {
     std::cerr << "Subsystem initialization failed: " << e.what() << std::endl;
     return false;
@@ -157,23 +157,45 @@ void Engine::Run() {
       // Drive the session state machine; handles xrBeginSession/xrEndSession.
       xrContext.pollEvents();
 
-      if (xrContext.isSessionRunning()) {
+      static int xrWaitLoops = 0;
+      if (!xrContext.isSessionFraming()) {
+        if (++xrWaitLoops % 200 == 0) {  // log every ~2 seconds
+          std::cout << "[XR] Waiting for session (state=" << xrContext.getSessionState() << "), loop=" << xrWaitLoops << std::endl;
+        }
+      } else {
+        xrWaitLoops = 0;
+      }
+
+      static bool frameLoopStarted = false;
+      if (xrContext.isSessionFraming()) {
+        if (!frameLoopStarted) {
+          frameLoopStarted = true;
+          std::cout << "[XR] Entering frame loop (state=" << xrContext.getSessionState() << ")" << std::endl;
+        }
         auto frameState = xrContext.waitFrame();
         xrContext.beginFrame();
 
         deltaTimeMs = CalculateDeltaTimeMs();
         Update(frameState.predictedDisplayTime);
 
-        if (frameState.shouldRender) {
+        // Only render and submit layers when the session is actually running
+        // (SYNCHRONIZED/VISIBLE/FOCUSED). In READY state just pump the frame loop
+        // so the runtime can advance to SYNCHRONIZED.
+        if (frameState.shouldRender && xrContext.isSessionRunning()) {
           Render(frameState.predictedDisplayTime);
         } else {
-          // Frame submitted but not rendered (occluded/minimised) — close ImGui frame.
           if (imguiSystem) ImGui::EndFrame();
+          renderer->TouchWatchdog();
         }
 
+        static uint32_t dbgEndFrameCount = 0;
+        if (++dbgEndFrameCount <= 5 || dbgEndFrameCount % 50 == 0)
+          std::cout << "[Engine] calling endFrame #" << dbgEndFrameCount
+                    << " shouldRender=" << frameState.shouldRender
+                    << " state=" << xrContext.getSessionState() << std::endl;
         xrContext.endFrame(renderer->GetXrImageViews());
       } else {
-        // Session not running: yield to avoid busy-spinning and keep watchdog fed.
+        // Session not yet framing: yield to avoid busy-spinning and keep watchdog fed.
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         renderer->TouchWatchdog();
         deltaTimeMs = std::chrono::milliseconds(10);
@@ -508,6 +530,25 @@ void Engine::Update(XrTime predictedTime) {
         activeCamera->SetStereoViews(views[0], views[1]);
       }
     }
+
+    // 4. After scene loading completes, align the XR reference space to the scene camera.
+    //    This runs once: when the renderer transitions out of loading state.
+    if (!xrSpaceSynced && !renderer->IsLoading() && activeCamera) {
+      auto* owner = activeCamera->GetOwner();
+      auto* tf    = owner ? owner->GetComponent<TransformComponent>() : nullptr;
+      if (tf) {
+        const glm::mat4& M = tf->GetModelMatrix();
+        glm::quat q        = glm::quat_cast(glm::mat3(M));
+        glm::vec3 t        = glm::vec3(M[3]);
+        glm::quat qInv     = glm::conjugate(q);
+        glm::vec3 tInv     = -(glm::mat3_cast(qInv) * t);
+        XrPosef inversePose;
+        inversePose.orientation = {qInv.x, qInv.y, qInv.z, qInv.w};
+        inversePose.position    = {tInv.x, tInv.y, tInv.z};
+        xrContext.updateReferenceSpacePose(inversePose);
+        xrSpaceSynced = true;
+      }
+    }
   }
 
   // Use the standard update with the last calculated delta for simulation consistency
@@ -548,7 +589,7 @@ void Engine::Update(TimeDelta deltaTime) {
   audioSystem->Update(deltaTime);
 
   // Update ImGui system
-  imguiSystem->NewFrame();
+  if (imguiSystem) imguiSystem->NewFrame();
 
   // Update camera controls
   if (activeCamera) {

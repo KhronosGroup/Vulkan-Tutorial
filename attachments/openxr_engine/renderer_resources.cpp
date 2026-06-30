@@ -48,7 +48,7 @@ bool Renderer::createDepthResources() {
   try {
     // Find depth format
     vk::Format depthFormat = findDepthFormat();
-    uint32_t layers = xrMode ? 2 : 1;
+    uint32_t layers = 1;
 
     // Use non-pooled createImage for depth as memoryPool doesn't support layers yet
     auto [image, memory] = createImage(

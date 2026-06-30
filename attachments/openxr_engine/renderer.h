@@ -979,6 +979,13 @@ class Renderer {
     XrContext& GetXrContext() { return xrContext; }
     vk::Format GetSwapChainImageFormat() const { return swapChainImageFormat; }
     void TouchWatchdog() { lastFrameUpdateTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed); }
+    // Process pending GPU uploads and entity preallocations without rendering a frame.
+    // Call this during XR frame-loop iterations that don't render (e.g., READY state)
+    // so work is spread across frames instead of burst-processed on the first render frame.
+    void PumpPendingWork() {
+        ProcessPendingMeshUploads();
+        ProcessPendingEntityPreallocations();
+    }
 
   private:
     // Platform

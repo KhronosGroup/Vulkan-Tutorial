@@ -72,6 +72,7 @@ class MemoryPool
 		void                  *mappedPtr;              // Mapped pointer (if applicable)
 		std::vector<bool>      freeList;               // Free list for sub-allocations
 		vk::DeviceSize         allocationUnit;         // Size of each allocation unit
+		size_t                 nextFreeHint = 0;       // Start scanning from here (updated on alloc/dealloc)
 	};
 
   private:

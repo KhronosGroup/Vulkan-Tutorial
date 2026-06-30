@@ -221,7 +221,7 @@ if(glfw3_FOUND OR GLFW_FOUND)
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 ${CMAKE_CURRENT_SOURCE_DIR}/sample_images
                 $<TARGET_FILE_DIR:${TARGET_NAME}>/sample_images
-            COMMAND ${CMAKE_COMMAND} -E copy
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${CMAKE_CURRENT_SOURCE_DIR}/mnist_weights.bin
                 $<TARGET_FILE_DIR:${TARGET_NAME}>/mnist_weights.bin
             COMMAND ${CMAKE_COMMAND} -E copy_if_different

@@ -4,7 +4,9 @@
 #include <chrono>
 #include <memory>
 #include <fstream>
+#ifdef HAVE_OPENCV
 #include <opencv2/opencv.hpp>
+#endif
 
 #include "common/renderer/renderer.h"
 #include "common/preprocessing/vulkan_preprocessing.h"
@@ -428,6 +430,8 @@ private:
 };
 #endif
 
+#ifdef HAVE_OPENCV
+
 int main(int argc, char** argv) {
     std::string modelPath = "models/mobilenetv2_nnef_optimized";
     std::string labelPath = "data/imagenet_classes.txt";
@@ -656,3 +660,13 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
+#else // HAVE_OPENCV
+
+int main(int, char**) {
+    std::cerr << "embedded_wildlife_cam: built without OpenCV. Camera input is not available.\n";
+    std::cerr << "Install OpenCV and rebuild with -DHAVE_OPENCV to enable camera support.\n";
+    return 1;
+}
+
+#endif // HAVE_OPENCV

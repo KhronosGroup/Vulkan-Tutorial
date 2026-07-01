@@ -1,0 +1,341 @@
+= ML Inference Examples
+
+This directory contains example code for the Machine Learning Inference with Vulkan tutorial series.
+
+== Overview
+
+These examples demonstrate practical implementations of ML inference using Vulkan compute shaders, complementing the tutorial chapters in `en/ML_Inference/`.
+
+== Examples
+
+=== mnist
+Interactive MNIST digit recognition with drawable canvas. Supports multiple backends:
+* **Vulkan Compute**: Custom shaders written in Slang (Default).
+* **ONNX Runtime**: Desktop-standard inference (if available).
+* **IREE**: Modern ML compiler runtime targeting Vulkan SPIR-V.
+* **NNEF**: Engine-centric path using the Khronos Neural Network Exchange Format.
+
+=== classification
+Image classification using MobileNetV2 and ONNX Runtime. Demonstrates Vulkan-based image preprocessing and third-party ML framework integration.
+
+=== iree_vulkan_inference
+Minimal C++ sample demonstrating the compiler/runtime embedding pattern on Vulkan using **IREE**. Shows how to load a pre-compiled model (`.vmfb`) and execute it on the Vulkan HAL.
+
+=== nnef_inference
+Headless C++ sample demonstrating a custom NNEF execution engine. Shows how to parse NNEF models, load binary weights, and execute them using a specialized Vulkan compute shader (`nnef_ops.slang`).
+
+=== nnef_pipeline
+Scripts and examples for converting NNEF models to ONNX and compiling them for Vulkan using IREE. Demonstrates the cross-format interoperability path for embedded and desktop ML.
+
+=== latency_power_sampler
+A tiny benchmark tool to measure p50/p90/p99 latency and system vitals (temperature, clocks) during command execution. Outputs results to a CSV file for analysis or CI integration.
+
+=== embedded_wildlife_cam
+An integrated embedded demo application designed for Raspberry Pi. Demonstrates a real-time pipeline: camera capture → Vulkan preprocessing → ML inference (IREE/NNEF/TFLITE) → overlay. Uses MobileNetV2 for real-world object recognition. Supports a custom GPU-accelerated NNEF backend. Runs headlessly and logs steady-state FPS.
+
+=== ci_validation
+Headless Vulkan application demonstrating CI/CD render validation using Google Test (GTest). Shows how to capture frames offscreen and perform automated perceptual, functional, and semantic checks on the actual MNIST application UI.
+
+=== camera_inference
+Real-time image classification using a webcam stream (OpenCV) and ONNX Runtime. Demonstrates multi-threaded pipeline design for responsive ML applications.
+
+=== rl_exploration
+Autonomous QA agent demonstration using Reinforcement Learning (RL) and GTest. Uses Random Network Distillation (RND) to detect "novel" UI states, demonstrating how curiosity-driven agents can autonomously find bugs or unexpected application behaviors.
+
+=== rt_optimization
+Interactive real-time demonstration of AI-driven Ray Tracing optimization. Implements a multi-pass pipeline including AI-guided adaptive sampling (Error Predictor) and AI Denoising (U-Net), showcasing significant performance gains in Vulkan ray tracing.
+
+== Structure
+
+* `common/renderer/` - Shared Vulkan renderer for GUI examples
+* `common/imgui/` - ImGui integration for user interfaces
+* `common/preprocessing/` - Vulkan compute shaders for image preprocessing
+* `shaders/` - Slang compute shaders
+* `data/` - Model data and assets
+* `third_party/` - Third-party libraries (ONNX Runtime, downloaded by setup script)
+* `models/` - Pre-trained ML models (downloaded by setup script)
+
+== Prerequisites
+
+=== Required
+
+* Vulkan SDK 1.2 or later
+* C{pp}20 compatible compiler (GCC 10+, Clang 10+, MSVC 2019+)
+* CMake 3.20 or later
+* Slang shader compiler (https://shader-slang.com/) for compiling shaders
+* GLFW 3.3+ (for interactive MNIST GUI)
+* Python 3.8+ with PyTorch, torchvision, ONNX, and numpy (for model training)
+
+=== Optional
+
+* ONNX Runtime 1.23.2+ (for third-party ONNX integration examples)
+  - Provides support for **WebGPU (Dawn)** and **DirectML** acceleration.
+* IREE (Intermediate Representation Execution Environment)
+  - Used for the `iree_vulkan_inference` sample.
+  - Automatically downloaded and patched by the setup script.
+* TensorFlow Lite 2.14.0+ (for TensorFlow Lite integration examples)
+
+NOTE: CMake handles all dependency installation automatically. Use `-DML_INSTALL_OPTIONAL_DEPS=ON` to include optional packages, or run the provided setup scripts.
+
+== Hardware Acceleration (GPU)
+
+For ONNX Runtime inference, the examples automatically detect and attempt to use the following GPU backends in order of preference:
+
+*   **WebGPU**: Modern cross-platform GPU API (supported if available in the official build).
+*   **DirectML**: Standard high-performance backend for Windows (DirectX 12).
+*   **CUDA**: Standard high-performance backend for Linux (requires NVIDIA GPU and CUDA drivers).
+*   **CPU**: Fallback when no GPU environment is detected.
+
+NOTE: Per project requirements, halluncinated or non-standard providers like Vulkan or OpenGL are avoided in favor of official ONNX Runtime Execution Providers.
+
+== Building
+
+This tutorial uses the **standard workflow** taught throughout the entire Vulkan tutorial.
+
+=== Step 1: Run Setup Script (Once)
+
+You can run the provided scripts or use the CMake `setup_venv` target:
+
+Linux/macOS:
+[source,bash]
+----
+cd attachments/ml_inference
+./setup_env.sh
+----
+
+Windows:
+[source,bash]
+----
+cd attachments\ml_inference
+setup_env.bat
+----
+
+This downloads all dependencies including the MobileNetV2 model and **ONNX Runtime 1.23.2** (which provides high-performance GPU backends including WebGPU/Dawn).
+
+=== Step 2: Build with CMake
+
+[source,bash]
+----
+mkdir build && cd build
+cmake ..
+cmake --build .
+----
+
+That's it! CMake auto-detects everything the setup script downloaded.
+
+=== CMake Options (Advanced)
+
+[options="header"]
+|===
+| Option | Default | Description
+| `ML_TRAIN_MODELS` | OFF | Automatically train models during build (useful for CI)
+|===
+
+NOTE: `ML_SETUP_PYTHON_ENV` and `ML_INSTALL_OPTIONAL_DEPS` are only used during initial CMake configuration if the venv doesn't exist. For students, use the setup scripts instead.
+
+=== Training the MNIST Model
+
+Train the model using the CMake target (from IDE or command line):
+
+**In your IDE:**
+
+* Build the `train_mnist` target
+
+**From command line:**
+
+[source,bash]
+----
+cd build
+make train_mnist  # Linux/macOS
+# or
+cmake --build . --target train_mnist  # Windows
+----
+
+This creates:
+
+* `mnist_weights.bin` (1.7 MB) - Binary weights for C++ inference
+* `mnist_model.pth` - PyTorch checkpoint
+* `mnist_model.onnx` - ONNX format
+
+Training takes ~3-5 minutes on CPU and achieves >99% accuracy.
+
+=== Running the Examples
+
+All examples are built from a single CMakeLists.txt. After running the setup script once, just use CMake normally.
+
+==== MNIST Digit Recognition
+
+[source,bash]
+----
+cd build
+./mnist  # Linux/macOS
+mnist.exe  # Windows
+----
+
+The application opens a GUI window where you can draw digits and see real-time recognition.
+
+==== Image Classification
+
+[source,bash]
+----
+cd build
+./classification  # Linux/macOS
+classification.exe  # Windows
+----
+
+==== CI Render Validation
+
+[source,bash]
+----
+cd build
+./ci_validation  # Linux/macOS
+ci_validation.exe  # Windows
+----
+
+==== Real-time Camera Inference
+
+[source,bash]
+----
+cd build
+./camera_inference  # Linux/macOS
+camera_inference.exe  # Windows
+----
+
+==== RL Automated Exploration
+
+[source,bash]
+----
+cd build
+./rl_exploration  # Linux/macOS
+rl_exploration.exe  # Windows
+----
+
+==== Ray Tracing Optimization
+
+[source,bash]
+----
+cd build
+./rt_optimization  # Linux/macOS
+rt_optimization.exe  # Windows
+----
+
+==== IREE Vulkan Inference
+
+[source,bash]
+----
+cd build
+./iree_vulkan_inference mnist_model.vmfb --input test_input.npy
+----
+
+==== NNEF Inference
+
+[source,bash]
+----
+cd build
+./nnef_inference --model ./models/mobilenetv2_nnef_optimized --input test_input.bin
+----
+
+==== Latency and Power Sampler
+
+[source,bash]
+----
+cd build
+./latency_power_sampler --cmd "./iree_vulkan_inference mnist_model.vmfb --input test_input.npy" --iters 100 --out results.csv
+----
+
+NOTE: The setup script automatically downloads ONNX Runtime, IREE runtime, and the MobileNetV2 model. CMake auto-detects everything!
+
+NOTE: CMake automatically manages the entire workflow - Python environment, dependencies, shader compilation, and model training!
+
+== Implementation Details
+
+=== MNIST (`mnist`)
+
+The MNIST example demonstrates custom Vulkan compute shaders for neural network inference:
+
+* Drawable 280×280 canvas (10× scaled from 28×28 network input)
+* Real-time probability distribution for digits 0-9
+* Custom compute shaders for matrix operations and activation functions
+* Pure Vulkan implementation (no third-party ML frameworks)
+
+*Controls:*
+
+* *Draw*: Left-click and drag on the canvas
+* *Clear*: 'C' key
+* *Exit*: 'ESC' key
+
+=== Image Classification (`classification`)
+
+The classification example integrates ONNX Runtime with Vulkan:
+
+* Vulkan compute shaders for image preprocessing (resize, normalize)
+* ONNX Runtime for model inference (MobileNetV2)
+* ImageNet 1000-class classification
+* Top-5 predictions with confidence scores
+
+=== CI Render Validation (`ci_validation`)
+
+Demonstrates automated validation of Vulkan rendering pipelines using Google Test:
+
+* **Level 1: Perceptual Similarity**: Uses `lpips_vgg.onnx` to verify that the rendered frame is perceptually correct.
+* **Level 2: Functional UI Validation**: Renders the real MNIST application UI and uses the MNIST OCR engine to "read" programmatically drawn digits, while verifying UI layout fit.
+* **Level 3: Semantic Artifact Detection**: Scans for broken textures or "magenta" error colors in the final output.
+
+=== Ray Tracing Optimization (`rt_optimization`)
+
+Interactive real-time demonstration of a multi-pass AI-driven performance pipeline:
+
+* **Pass 1: Probe Pass (1spp)**: Initial noisy trace used as input for the AI.
+* **Pass 2: AI Variance Prediction**: Uses the `error_predictor.onnx` model to generate a variance heatmap.
+* **Pass 3: Adaptive Targeted Trace**: Performs secondary sampling (up to 32spp) only in areas predicted as high-variance.
+* **Pass 4: AI Denoising**: Uses a U-Net `denoiser.onnx` for final high-quality image reconstruction.
+* **Metrics**: Real-time performance reporting showing total speedup (typically >40x) vs. brute-force 1000spp rendering.
+
+=== RL Automated Exploration (`rl_exploration`)
+
+Autonomous QA agent demonstration using Reinforcement Learning concepts and GTest:
+
+* **Random Network Distillation (RND)**: Uses a fixed target network and a trainable predictor to compute "curiosity" rewards.
+* **Autonomous Discovery**: Demonstrates how an agent can detect "novel" UI states (like a user drawing on the canvas) after becoming familiar with the static application UI.
+* **Headless Testing**: Integrates with the Vulkan headless renderer to perform autonomous exploration in CI environments.
+* **Bug Discovery**: Shows the foundation for agents that learn to find "surprising" states, such as UI glitches, layout overflows, or application crashes.
+
+=== IREE Vulkan Inference (`iree_vulkan_inference`)
+
+Minimal C++ sample demonstrating the compiler/runtime embedding pattern:
+
+* **IREE Vulkan HAL**: Uses IREE's Vulkan driver for hardware acceleration.
+* **Model Deployment**: Demonstrates how to load and run pre-compiled `.vmfb` modules.
+* **Flexible Entry Points**: Automatically detects common entry point names like `module.main` or `module.main_graph`.
+* **Numpy I/O**: Integrated `.npy` file support for easy verification against Python references.
+
+=== NNEF Inference (`nnef_inference`)
+
+Demonstrates a custom, high-performance ML engine path:
+
+* **Direct NNEF Support**: Loads and executes models in the Khronos Neural Network Exchange Format.
+* **Custom Vulkan Backend**: Uses a specialized compute shader (`nnef_ops.slang`) to implement core ML operators (Convolution, Pooling, Linear, etc.) directly on the GPU.
+* **Zero Overhead**: Minimal runtime footprint compared to general-purpose ML frameworks, ideal for engine integration.
+* **Cross-Backend Testing**: Used by the `embedded_wildlife_cam` to provide a native GPU alternative to TFLite and IREE.
+
+== Code Style
+
+All examples follow the tutorial's conventions:
+
+* Slang for compute shaders
+* vk::raii (Vulkan HPP RAII wrappers) for resource management
+* C++20 features and modern C++ practices
+* Comprehensive error checking and validation
+
+== Additional Resources
+
+* Tutorial: `en/ML_Inference/`
+* Vulkan Tutorial: https://vulkan-tutorial.com
+* ONNX Runtime: https://onnxruntime.ai
+* NNEF (Khronos): https://www.khronos.org/nnef
+* IREE: https://iree.dev
+* TensorFlow Lite: https://www.tensorflow.org/lite
+
+== License
+
+See the main repository LICENSE file.

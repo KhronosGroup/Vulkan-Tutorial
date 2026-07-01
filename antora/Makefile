@@ -15,12 +15,22 @@ EXCLUDE = 'index.adoc'
 setup: setup_tutorial
 
 setup_tutorial:
-# In order to keep the image links we need to have the image folder inside the image folder (due to how Antora works)
+	# In order to keep the image links we need to have the image folder inside the image folder (due to how Antora works)
 	mkdir -p $(ROOT)/images/images
 	rsync -a --delete ../images $(ROOT)/images
-	rsync -a --delete ../attachments $(ROOT)
+	# Exclude large and generated build artifacts from attachments to keep Antora fast and avoid glob recursion
+	rsync -a --delete \
+		--exclude '*/.git/' \
+		--exclude '*/.cxx/' \
+		--exclude '*/build/' \
+		--exclude '*/cmake-build-*' \
+		--exclude '*/venv/' \
+		--exclude '*/node_modules/' \
+		--exclude '*/__pycache__/' \
+		../attachments $(ROOT)
 	mkdir -p $(ROOT)/pages
 	rsync -a --delete --exclude ${EXCLUDE} ../en/ $(ROOT)/pages
+	cp ../en/Building_a_Simple_Engine/GUI/index.adoc $(ROOT)/pages/Building_a_Simple_Engine/GUI/index.adoc
 # Use a python script to automat some file content changes that are necessary due to differences between Antora and github
 	python3 make_helper.py
 

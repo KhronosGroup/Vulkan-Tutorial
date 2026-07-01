@@ -1,0 +1,91 @@
+:pp: {plus}{plus}
+
+= Vulkan Compute for ML: Introduction
+
+== Introduction
+
+You've learned what machine learning inference is, how neural networks work, and how to integrate third-party ML libraries with your Vulkan applications. Now it's time to dive deeper: implementing ML inference operations yourself using Vulkan compute shaders.
+
+This chapter bridges the gap between ML concepts and GPU implementation. We'll review Vulkan compute pipelines with an ML focus, implement fundamental operations as compute shaders, build a complete working example, and establish patterns you'll use throughout the rest of the tutorial.
+
+== What This Chapter Covers
+
+This chapter is structured to build your understanding progressively, from Vulkan compute fundamentals to complete ML operations.
+
+*Vulkan Compute Pipeline Review*: We'll start by reviewing Vulkan's compute pipeline, but with a specific focus on ML workloads. You already know how to create compute pipelines from the main tutorial, but ML inference has specific patterns and requirements. We'll discuss descriptor set layouts for tensor data, work group sizing for different operations, and memory access patterns that matter for ML.
+
+*Compute Shaders for ML Operations*: The heart of this chapter is implementing ML operations as compute shaders. We'll start simple—element-wise operations like ReLU activation—and build up to more complex operations like matrix multiplication and convolution. Each operation will be explained both mathematically (what it does) and computationally (how to implement it efficiently on the GPU).
+
+*Data Management*: ML inference involves moving large amounts of data—input tensors, weights, intermediate activations, outputs. We'll cover how to organize this data in GPU memory, how to transfer it efficiently, and how to reuse memory to minimize footprint. This is where theory meets practice: understanding tensor layouts, alignment requirements, and buffer management.
+
+*Synchronization*: Neural networks are sequences of dependent operations. Layer 2 can't start until layer 1 finishes. We'll cover how to use pipeline barriers, memory barriers, and execution dependencies to ensure correct ordering while maximizing parallelism where possible.
+
+*Complete Working Example*: Theory without practice is hollow. We'll build a complete, runnable example: vector addition. This might seem trivial compared to neural networks, but it demonstrates the entire pipeline—loading data, dispatching compute work, synchronizing, reading results—in a form simple enough to understand completely. Once you grasp this pattern, scaling to more complex operations is straightforward.
+
+== Prerequisites
+
+This chapter assumes you're comfortable with Vulkan compute pipelines. Specifically, you should understand:
+
+*Compute Pipeline Basics*: Creating compute pipelines, binding descriptor sets, dispatching work groups. If you need a refresher, revisit the Compute Shader chapters in the main Vulkan tutorial.
+
+*Slang Compute Shaders*: Writing compute shaders in Slang, understanding work group organization, using shared memory. We'll write several compute shaders in this chapter, and you need to be comfortable with the basics.
+
+*Memory Management*: Allocating buffers, managing device memory, transferring data between host and device. ML inference involves significant memory management, and you need to understand Vulkan's memory model.
+
+*Synchronization Primitives*: Pipeline barriers, memory barriers, execution dependencies. We'll use these extensively to coordinate ML operations.
+
+Throughout this chapter, we use vk::raii (Vulkan HPP RAII wrappers) for resource management, consistent with the Building a Simple Engine tutorial. This provides automatic resource cleanup and cleaner code compared to C-style Vulkan API.
+
+You should also understand the ML concepts from the previous chapters—what tensors are, how neural network layers work, what operations like convolution and activation functions do. We'll implement these operations, so you need to know what they're supposed to compute.
+
+== Why This Chapter Matters
+
+The previous chapter covered when to use third-party libraries versus custom implementation. As a reminder: for most production applications, use established libraries like ONNX Runtime or TensorFlow Lite. They're battle-tested, optimized, and maintained.
+
+This chapter takes the "custom implementation" path for two reasons. First, understanding how ML operations map to GPU compute makes you better at using libraries—you'll understand performance characteristics, debug issues more effectively, and make informed optimization decisions. Second, there are specialized scenarios (tight graphics integration, rendering AI, novel operations, embedded constraints) where custom implementation is the right choice.
+
+Even if you never deploy custom implementations in production, the knowledge you gain here is valuable. Let's dive into the technical details.
+
+== What You'll Build
+
+By the end of this chapter, you'll have implemented:
+
+*A complete Vulkan compute infrastructure for ML operations*: Descriptor set layouts, pipeline creation, memory management, and synchronization patterns that work for ML workloads.
+
+*Several fundamental ML operations as compute shaders*: Element-wise operations (ReLU, sigmoid), matrix operations (matrix-vector multiply, matrix-matrix multiply), and the foundation for more complex operations like convolution.
+
+*A working vector addition example*: A complete, runnable application that demonstrates the entire pipeline from data loading to result verification. This serves as a template for more complex operations.
+
+*Patterns and techniques you'll use throughout the tutorial*: Memory management strategies, synchronization patterns, debugging approaches, and optimization techniques that apply to all ML operations.
+
+== How to Use This Chapter
+
+This chapter is hands-on. We'll explain concepts, then implement them. You should follow along, writing and running the code yourself. Don't just read—type the code, compile it, run it, experiment with it.
+
+Start with the Vulkan compute review even if you think you know it. The ML-specific focus will highlight aspects you might not have considered. Then work through the operations in order—each builds on the previous ones.
+
+When we implement operations, we'll show both the mathematical definition and the compute shader implementation. Make sure you understand both. The math tells you what the operation should compute; the shader tells you how to compute it efficiently on the GPU.
+
+The vector addition example is crucial. It's simple enough to understand completely, but complete enough to demonstrate all the patterns you'll use for more complex operations. Study it carefully, make sure you understand every line, and use it as a template for your own implementations.
+
+== What's Inside
+
+Here's what we'll cover in the following sections:
+
+*xref:ML_Inference/Vulkan_Compute_for_ML/02_compute_pipeline_review.adoc[Vulkan Compute Pipeline Review]* - A focused review of Vulkan compute pipelines with emphasis on ML-specific requirements: descriptor layouts for tensors, work group sizing strategies, memory access patterns, and pipeline creation patterns that work well for ML operations.
+
+*xref:ML_Inference/Vulkan_Compute_for_ML/03_element_wise_operations.adoc[Element-Wise Operations]* - The simplest ML operations: ReLU, sigmoid, tanh, and other activation functions. We'll implement these as compute shaders, discussing parallelization strategies, numerical stability, and performance considerations.
+
+*xref:ML_Inference/Vulkan_Compute_for_ML/04_matrix_operations.adoc[Matrix Operations]* - Matrix-vector and matrix-matrix multiplication, the workhorses of neural networks. We'll cover naive implementations, tiled implementations using shared memory, and optimization techniques for different matrix sizes.
+
+*xref:ML_Inference/Vulkan_Compute_for_ML/05_data_management.adoc[Data Management]* - How to organize tensor data in GPU memory, transfer data efficiently, manage memory allocation and reuse, and handle different tensor layouts (NCHW vs NHWC, row-major vs column-major).
+
+*xref:ML_Inference/Vulkan_Compute_for_ML/06_synchronization.adoc[Synchronization]* - Using pipeline barriers, memory barriers, and execution dependencies to coordinate ML operations. We'll cover synchronization patterns for sequential operations, parallel branches, and memory reuse.
+
+*xref:ML_Inference/Vulkan_Compute_for_ML/07_vector_addition_example.adoc[Vector Addition Example]* - A complete, working example that demonstrates the entire pipeline: setting up Vulkan compute, loading data, dispatching work, synchronizing, and verifying results. This serves as a template for more complex operations.
+
+Each section builds on the previous ones, creating a complete picture of how to implement ML inference with Vulkan compute shaders. By the end of this chapter, you'll have both the understanding and the practical code to implement neural network operations on the GPU.
+
+Let's begin by reviewing Vulkan compute pipelines with an ML focus.
+
+xref:ML_Inference/Third_Party_Libraries/16_choosing_compiler.adoc[Previous: Choosing the Right ML Compiler] | xref:ML_Inference/Vulkan_Compute_for_ML/02_compute_pipeline_review.adoc[Next: Vulkan Compute Pipeline Review]

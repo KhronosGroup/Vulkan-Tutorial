@@ -1,0 +1,41 @@
+<svg width="800" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="300" fill="#f9f9f9" />
+
+  <!-- Setpoint -->
+  <circle cx="50" cy="150" r="30" fill="#fff" stroke="#333" stroke-width="2" />
+  <text x="50" y="155" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Target</text>
+  <text x="50" y="170" text-anchor="middle" font-family="Arial" font-size="10">(75°C)</text>
+
+  <!-- Summing Junction -->
+  <circle cx="150" cy="150" r="20" fill="#fff" stroke="#333" stroke-width="2" />
+  <text x="150" y="155" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Σ</text>
+
+  <!-- PID Block -->
+  <rect x="220" y="110" width="120" height="80" rx="5" fill="#e1f5fe" stroke="#01579b" stroke-width="2" />
+  <text x="280" y="155" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold" fill="#01579b">PID Logic</text>
+
+  <!-- System (GPU) -->
+  <rect x="420" y="110" width="150" height="80" rx="5" fill="#ffebee" stroke="#c62828" stroke-width="2" />
+  <text x="495" y="150" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold" fill="#c62828">Vulkan GPU</text>
+  <text x="495" y="170" text-anchor="middle" font-family="Arial" font-size="12" fill="#c62828">(Inference Load)</text>
+
+  <!-- Feedback Path -->
+  <path d="M 570 150 L 650 150 L 650 250 L 150 250 L 150 170" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="400" y="240" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">Actual SoC Temp (°C)</text>
+
+  <!-- Forward Path -->
+  <path d="M 80 150 L 130 150" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <path d="M 170 150 L 220 150" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="195" y="140" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">Error</text>
+
+  <path d="M 340 150 L 420 150" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="380" y="140" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">Duty Cycle</text>
+
+</svg>

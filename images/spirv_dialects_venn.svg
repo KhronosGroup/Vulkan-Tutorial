@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 340" width="780" height="340" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L8,4 z" fill="#4fc3f7"/>
+    </marker>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="openclGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c0392b;stop-opacity:0.75"/>
+      <stop offset="100%" style="stop-color:#e74c3c;stop-opacity:0.55"/>
+    </linearGradient>
+    <linearGradient id="vulkanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8e44ad;stop-opacity:0.75"/>
+      <stop offset="100%" style="stop-color:#9b59b6;stop-opacity:0.55"/>
+    </linearGradient>
+    <linearGradient id="commonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2980b9;stop-opacity:0.70"/>
+      <stop offset="100%" style="stop-color:#3498db;stop-opacity:0.55"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="780" height="340" rx="14" ry="14" fill="url(#bgGrad)"/>
+
+  <!-- Outer SPIR-V border -->
+  <rect x="20" y="20" width="740" height="300" rx="10" ry="10"
+        fill="none" stroke="#4fc3f7" stroke-width="2" stroke-dasharray="8,4" opacity="0.7"/>
+  <!-- SPIR-V label top center -->
+  <text x="390" y="44" text-anchor="middle" font-size="15" font-weight="bold"
+        fill="#4fc3f7" letter-spacing="3" filter="url(#glow)">SPIR-V</text>
+
+  <!-- OpenCL circle -->
+  <ellipse cx="230" cy="180" rx="185" ry="125" fill="url(#openclGrad)" filter="url(#shadow)"/>
+  <!-- Vulkan circle -->
+  <ellipse cx="550" cy="180" rx="185" ry="125" fill="url(#vulkanGrad)" filter="url(#shadow)"/>
+  <!-- Common overlap (drawn on top, blended) -->
+  <ellipse cx="390" cy="180" rx="90" ry="110" fill="url(#commonGrad)" opacity="0.85"/>
+
+  <!-- Circle outlines -->
+  <ellipse cx="230" cy="180" rx="185" ry="125" fill="none" stroke="#e74c3c" stroke-width="1.5" opacity="0.9"/>
+  <ellipse cx="550" cy="180" rx="185" ry="125" fill="none" stroke="#9b59b6" stroke-width="1.5" opacity="0.9"/>
+  <ellipse cx="390" cy="180" rx="90" ry="110" fill="none" stroke="#3498db" stroke-width="1.5" opacity="0.9"/>
+
+  <!-- OpenCL label -->
+  <text x="130" y="120" text-anchor="middle" font-size="13" font-weight="bold" fill="#ff8a80">OpenCL</text>
+  <text x="130" y="136" text-anchor="middle" font-size="11" fill="#ff8a80">dialect</text>
+
+  <!-- OpenCL-only features -->
+  <text x="130" y="162" text-anchor="middle" font-size="10" fill="#ffcdd2">pipes</text>
+  <text x="130" y="177" text-anchor="middle" font-size="10" fill="#ffcdd2">device-side enqueue</text>
+  <text x="130" y="192" text-anchor="middle" font-size="10" fill="#ffcdd2">printf</text>
+  <text x="130" y="207" text-anchor="middle" font-size="10" fill="#ffcdd2">Kernel exec model</text>
+  <text x="130" y="222" text-anchor="middle" font-size="10" fill="#ffcdd2">CrossWorkGroup</text>
+
+  <!-- Common / overlap label -->
+  <text x="390" y="130" text-anchor="middle" font-size="11" font-weight="bold" fill="#e3f2fd">common</text>
+  <text x="390" y="148" text-anchor="middle" font-size="9.5" fill="#bbdefb">GLCompute</text>
+  <text x="390" y="163" text-anchor="middle" font-size="9.5" fill="#bbdefb">StorageBuffer</text>
+  <text x="390" y="178" text-anchor="middle" font-size="9.5" fill="#bbdefb">math built-ins</text>
+  <text x="390" y="193" text-anchor="middle" font-size="9.5" fill="#bbdefb">atomics</text>
+  <text x="390" y="208" text-anchor="middle" font-size="9.5" fill="#bbdefb">barriers</text>
+  <text x="390" y="223" text-anchor="middle" font-size="9.5" fill="#bbdefb">subgroups</text>
+
+  <!-- Vulkan label -->
+  <text x="650" y="120" text-anchor="middle" font-size="13" font-weight="bold" fill="#ce93d8">Vulkan</text>
+  <text x="650" y="136" text-anchor="middle" font-size="11" fill="#ce93d8">dialect</text>
+
+  <!-- Vulkan-only features -->
+  <text x="650" y="162" text-anchor="middle" font-size="10" fill="#e1bee7">ray tracing</text>
+  <text x="650" y="177" text-anchor="middle" font-size="10" fill="#e1bee7">mesh shaders</text>
+  <text x="650" y="192" text-anchor="middle" font-size="10" fill="#e1bee7">push constants</text>
+  <text x="650" y="207" text-anchor="middle" font-size="10" fill="#e1bee7">variable-rate shading</text>
+  <text x="650" y="222" text-anchor="middle" font-size="10" fill="#e1bee7">fragment ops</text>
+
+  <!-- clspv arrow pointing to common/Vulkan overlap area -->
+  <text x="390" y="300" text-anchor="middle" font-size="11" fill="#4fc3f7">clspv targets this region</text>
+  <line x1="390" y1="304" x2="390" y2="291" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.8"/>
+</svg>

@@ -1,0 +1,222 @@
+:pp: {plus}{plus}
+= Skin Once, Use Everywhere
+
+== The Payoff
+
+In the previous two sections, we built a compute skinning pipeline that transforms a rest-pose vertex buffer into an animated vertex buffer, and deposits the results into a dedicated output SSBO. Now we collect the payoff from that investment.
+
+The premise of "Skin Once, Use Everywhere" is that every system that needs animated vertex data should read from the same output buffer. We do not run separate skinning passes for the rasterizer and the ray tracer. We do not approximate the physics collision by using T-pose geometry. We skin once, and everyone gets the same, correct, animated mesh. This section explains how to wire up each of those consumers.
+
+== Consumer 1: The Rasterizer
+
+This is the simplest consumer to wire up because the output vertex buffer was already created with the `VK_BUFFER_USAGE_VERTEX_BUFFER_BIT` flag. From Vulkan's perspective, it is just a vertex buffer. The rasterizer does not know or care that it was written by a compute shader.
+
+The change is minimal. Instead of binding your rest-pose vertex buffer when issuing a draw call for a skinned mesh, you bind the output vertex buffer:
+
+[source,cpp]
+----
+void draw_skinned_mesh(
+    VkCommandBuffer cmd,
+    const SkinComputeResources& skin,
+    VkBuffer index_buffer,
+    uint32_t index_count)
+{
+    // The key change: bind the COMPUTE OUTPUT buffer as the vertex source,
+    // not the original rest-pose vertex buffer.
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &skin.output_vertex_buffer, &offset);
+    vkCmdBindIndexBuffer(cmd, index_buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    // Draw as normal - the rasterizer will read animated positions and normals
+    vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
+}
+----
+
+One important note: the **index buffer** is unchanged. The topology of the mesh—which vertices form which triangles—doesn't change when a character animates. Only the vertex positions, normals, and tangents change. The index buffer always references the rest-pose vertex layout, which now maps directly onto our output buffer's structure since we kept the vertex order identical.
+
+Your vertex shader for skinned meshes also becomes simpler. It no longer needs to perform any skinning math. It simply reads the already-animated position and normal from the buffer and proceeds to clip-space transformation:
+
+[source,slang]
+----
+// skinned_mesh.vert.slang
+// The vertex shader for skinned meshes does NO skinning itself.
+// The compute shader already did the work.
+// Field order matches OutputVertex in renderer_advanced_types.h:
+// position, normal, texcoord, tangent.
+struct VertexInput {
+    float3 position  : POSITION;
+    float3 normal    : NORMAL;
+    float2 texcoord  : TEXCOORD0;
+    float4 tangent   : TANGENT;
+};
+
+struct VertexOutput {
+    float4 clip_pos  : SV_Position;
+    float3 world_pos : TEXCOORD1;
+    float3 normal    : TEXCOORD2;
+    float2 texcoord  : TEXCOORD0;
+};
+
+cbuffer CameraUBO {
+    float4x4 view;
+    float4x4 projection;
+};
+
+[shader("vertex")]
+VertexOutput main(VertexInput input)
+{
+    VertexOutput output;
+    // The position is already in world space — compute shader handled the animation.
+    output.clip_pos  = mul(projection, mul(view, float4(input.position, 1.0)));
+    output.world_pos = input.position;
+    output.normal    = input.normal;
+    output.texcoord  = input.texcoord;
+    return output;
+}
+----
+
+== Consumer 2: The Ray Tracing Acceleration Structure
+
+Ray tracing in Vulkan requires a two-level hierarchy of acceleration structures. The **Bottom-Level Acceleration Structure (BLAS)** stores the actual geometry—the triangles of a specific mesh. The **Top-Level Acceleration Structure (TLAS)** stores instances of BLASes, each with a transform matrix, and is what the ray tracing shaders actually traverse.
+
+For static geometry, you build the BLAS once and never touch it again. For animated, skinned geometry, the vertex positions change every frame, which means the BLAS must also be updated every frame.
+
+Vulkan supports this through **BLAS updates**, also called **BLAS refits**. A refit operation is a fast, in-place update of the acceleration structure that re-triangulates the BVH (Bounding Volume Hierarchy) tree without reconstructing it from scratch. Refits are significantly faster than full rebuilds (typically 5-10x faster), making them suitable for per-frame updates on skinned geometry.
+
+The key to making this work with our shared buffer is simple: when we specify the geometry for the BLAS, we point it at our compute shader's output buffer, not the rest-pose buffer.
+
+[source,cpp]
+----
+// Called at initialization: create the initial BLAS pointing at our output buffer.
+// The BLAS uses our output buffer as its geometry source.
+VkAccelerationStructureGeometryKHR geometry{};
+geometry.sType        = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+
+auto& triangles = geometry.geometry.triangles;
+triangles.sType          = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+triangles.vertexFormat   = VK_FORMAT_R32G32B32_SFLOAT;
+triangles.vertexStride   = sizeof(OutputVertex); // Stride of our output vertex layout
+
+// The crucial line: use the output vertex buffer's device address as the geometry source
+triangles.vertexData.deviceAddress = get_buffer_device_address(device, skin.output_vertex_buffer);
+triangles.maxVertex      = skin.vertex_count - 1;
+triangles.indexType      = VK_INDEX_TYPE_UINT32;
+triangles.indexData.deviceAddress = get_buffer_device_address(device, skin.index_buffer);
+----
+
+Then, every frame—after the compute skinning dispatch and its pipeline barrier—we issue a BLAS refit:
+
+[source,cpp]
+----
+// Called every frame, after the skinning barrier
+void update_blas(
+    VkCommandBuffer cmd,
+    VkAccelerationStructureKHR blas,
+    const VkAccelerationStructureBuildGeometryInfoKHR& build_info_template,
+    uint32_t primitive_count)
+{
+    VkAccelerationStructureBuildGeometryInfoKHR build_info = build_info_template;
+
+    // Specify UPDATE mode (not BUILD) — this is the "refit" operation
+    build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
+    build_info.srcAccelerationStructure = blas; // Refit in-place
+    build_info.dstAccelerationStructure = blas;
+
+    VkAccelerationStructureBuildRangeInfoKHR range_info{};
+    range_info.primitiveCount = primitive_count; // Number of triangles
+
+    const VkAccelerationStructureBuildRangeInfoKHR* p_range_info = &range_info;
+    vkCmdBuildAccelerationStructuresKHR(cmd, 1, &build_info, &p_range_info);
+}
+----
+
+After the refit completes, the BLAS contains the updated geometry, and any ray tracing queries during this frame will intersect the animated mesh correctly. The character's shadows, reflections, and ambient occlusion will all respond to their animated pose, not their T-pose.
+
+One important caveat: BLAS refits work best when the topology doesn't change and the vertex positions don't move dramatically between frames. They are optimal for smooth skeletal animation. If your animation involves vertices moving large distances (such as cloth simulation or a very fast action), a full BLAS rebuild may produce better ray traversal performance, at the cost of the additional rebuild time.
+
+== Consumer 3: Physics System Integration
+
+The physics system is perhaps the most nuanced consumer of the skinned vertex buffer. Unlike the rasterizer and ray tracer—which can directly address GPU buffers—most physics engines (Bullet, Jolt, PhysX) are CPU-side libraries. They calculate collisions and forces entirely on the CPU and have no direct access to GPU memory.
+
+This creates a tension: our animated vertex data is on the GPU, but the physics engine needs it on the CPU.
+
+There are two approaches to resolving this, and the right choice depends on your use case.
+
+=== Approach 1: Bone-Proxy Colliders (Recommended)
+
+For character ragdolls and most gameplay physics, reading back the full mesh vertex buffer is unnecessary and expensive. Instead, we attach simplified **collision shapes**—capsules, boxes, or spheres—to specific bones in the skeleton. We already established this pattern in the "Physics Syncing" section of the previous chapter.
+
+In this approach, we never need to read the actual mesh vertices from the GPU. The physics system operates on the bone proxies, which are driven by the skeleton's joint transforms. Those transforms are already on the CPU (we computed them in the joint matrix calculation step). The mesh skinning on the GPU is purely visual—it makes the character *look* correct.
+
+This is the right approach for 95% of character physics use cases. It is cheap, robust, and gives artists direct control over the collision geometry.
+
+=== Approach 2: Mesh-Accurate Physics Queries (Advanced)
+
+Occasionally, you need physics accuracy that bone proxies cannot provide. Examples include:
+
+- **Cloth and soft-body simulation** where the physics engine must know every vertex's position
+- **Mesh-accurate collision** for very detailed objects like a character's cape interacting with geometry
+- **Physics-based sound triggers** that fire when specific mesh regions collide
+
+In these cases, you need to read back some or all of the output vertex buffer from the GPU to the CPU. This is done using a **staging buffer** and a GPU-to-CPU memory transfer.
+
+[source,cpp]
+----
+// Only do this if you truly need mesh-accurate CPU-side physics.
+// This is expensive: it stalls the GPU pipeline and involves a memory copy.
+void readback_vertices_to_physics(
+    VkCommandBuffer cmd,
+    VkBuffer output_vertex_buffer,
+    VkBuffer staging_buffer,  // CPU-visible (host-coherent) staging buffer
+    uint32_t vertex_count,
+    std::vector<PhysicsVertex>& physics_verts_out)
+{
+    VkBufferCopy copy_region{};
+    copy_region.srcOffset = 0;
+    copy_region.dstOffset = 0;
+    copy_region.size = vertex_count * sizeof(OutputVertex);
+
+    // Copy from GPU-local output buffer to CPU-accessible staging buffer
+    vkCmdCopyBuffer(cmd, output_vertex_buffer, staging_buffer, 1, &copy_region);
+
+    // After the command buffer executes and fences signal, map the staging buffer
+    // and copy the data into the physics system's vertex array.
+    // (This part happens after vkQueueSubmit and fence wait)
+}
+----
+
+This approach adds latency: you are reading data that was computed *this frame* into physics that will affect *next frame's* simulation. For most games, this one-frame lag is acceptable and invisible. For very fast gameplay requiring tight timing, you may need to architect around this latency.
+
+== Putting It Together: The Data Flow
+
+It is worth pausing to appreciate the data flow we have built:
+
+....
+[glTF File on Disk]
+         |
+         | (load at startup)
+         v
+[CPU: Rest-Pose Vertices]  ──upload──>  [GPU: Input Vertex Buffer]
+[CPU: Inverse Bind Matrices]            (never changes again)
+         |
+    (each frame)
+         |
+[CPU: Animation Update]
+[CPU: Scene Graph Update]
+[CPU: Compute Joint Matrices]  ──upload──>  [GPU: Joint Matrix Buffer]
+                                             (updated each frame)
+         |
+    (GPU Compute Dispatch)
+         v
+         [GPU: Output Vertex Buffer]  (animated, correct, up to date)
+        /           |              \
+       v            v               v
+[Rasterizer]  [Ray Tracing BLAS]  [Physics Readback (if needed)]
+....
+
+Every part of the rendering and simulation stack reads from a single, authoritative source of animated vertex data. If the character's arm is raised, the shadow, the reflection, the collision, and the rasterized image all show the arm raised. There is no inconsistency, no double-computation, and no T-pose artifacts.
+
+In the next section, we turn our attention to the quality of the animation itself. We have been assuming linear keyframe interpolation, which is simple but produces robotic, mechanical movement. We will implement cubic spline interpolation for smooth, natural curves, and add the ability to blend between multiple animation clips—including the critical transition from animation to physics-driven ragdoll.
+
+xref:Advanced_glTF/Skeletal_Compute_Skinning/03_compute_skinning.adoc[Previous: The Compute Skinning Pipeline] | xref:Advanced_glTF/Skeletal_Compute_Skinning/05_interpolation_blending.adoc[Next: Interpolation & Blending]

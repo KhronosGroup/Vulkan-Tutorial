@@ -1,0 +1,116 @@
+= Embedded Wildlife Cam (Raspberry Pi)
+:cpp: C++
+
+This sample demonstrates an integrated real‑time ML pipeline designed for the Raspberry Pi (rPi) 4 and 5. It uses headless Vulkan for preprocessing and supports IREE, NNEF (Custom Vulkan), and TensorFlow Lite backends using MobileNetV2.
+
+== Overview
+
+The application follows the "Embedded Applications" chapter's architecture:
+
+1.  **Camera Capture**: Uses OpenCV to capture frames from a CSI or USB camera.
+2.  **Vulkan Preprocessing**: Resizes and normalizes the image on the GPU using a compute shader.
+3.  **Inference**: Executes MobileNetV2 using IREE (SPIR‑V), NNEF (via custom optimized Vulkan engine), or TFLite.
+4.  **Logging**: Outputs steady‑state performance metrics (FPS, latency) to the console.
+
+== Prerequisites
+
+*   **Hardware**: Raspberry Pi 4 or 5 (64‑bit OS recommended).
+*   **OS**: Raspberry Pi OS (Debian based).
+*   **Vulkan Drivers**: `mesa-vulkan-drivers` installed.
+
+== Quick Start
+
+=== 1. Setup the Environment
+Run the setup script to install system dependencies and download the ML runtimes/models:
+
+[source,bash]
+----
+chmod +x rPi/setup_rpi.sh
+./rPi/setup_rpi.sh
+----
+
+=== 2. Build the Application
+Create a build directory and use CMake. You can choose between **NNEF**, **IREE**, **TFLITE**, or **AUTO** (enables all available backends simultaneously).
+
+[source,bash]
+----
+mkdir build && cd build
+# Option A: Auto-detect and enable all (Recommended)
+cmake -DML_BACKEND=AUTO ..
+
+# Option B: Specific backends
+# cmake -DML_BACKEND=NNEF ..
+# cmake -DML_BACKEND=IREE ..
+# cmake -DML_BACKEND=TFLITE ..
+
+cmake --build . --target embedded_wildlife_cam_app
+----
+
+=== 3. Run
+The application dynamically selects the backend based on the model file extension.
+
+[source,bash]
+----
+# Run with NNEF (Directory)
+./rPi/embedded_wildlife_cam_app --model models/mobilenetv2_nnef_optimized --labels data/imagenet_classes.txt
+
+# Run with LiteRT/TFLite (.tflite)
+# Note: Ensure LD_LIBRARY_PATH includes the LiteRT shared libraries
+LD_LIBRARY_PATH=../third_party/tensorflow-lite-2.14.0/lib ./rPi/embedded_wildlife_cam_app --model models/mobilenetv2.tflite --labels data/imagenet_classes.txt
+
+# Run with IREE (.vmfb)
+./rPi/embedded_wildlife_cam_app --model models/mobilenetv2.vmfb --labels data/imagenet_classes.txt
+----
+
+== Model Preparation
+
+Before running the application, you must prepare the models for your chosen backend.
+
+=== NNEF & TFLite
+Use the conversion script to generate optimized NNEF and LiteRT/TFLite models from the base ONNX model:
+
+[source,bash]
+----
+./scripts/convert_mobilenet.py --input models/mobilenetv2-12.onnx
+----
+
+*   **NNEF Output**: `models/mobilenetv2_nnef_optimized/`
+*   **TFLite Output**: `models/mobilenetv2.tflite`
+
+=== IREE
+Compile the model to an IREE VM FlatBuffer (`.vmfb`) for the Vulkan target.
+
+First, export a compatible ONNX model using the provided script (this uses a newer ONNX opset to avoid legalization errors):
+
+[source,bash]
+----
+./venv/bin/python3 scripts/export_mobilenet_iree.py
+----
+
+Then, compile the exported model to `.vmfb`:
+
+[source,bash]
+----
+./scripts/compile_iree.sh models/mobilenetv2_iree.onnx -o models/mobilenetv2.vmfb --target vulkan-spirv
+----
+
+*Note: Some ONNX models from external sources might encounter legalization errors in the IREE importer. Using the export script above ensures compatibility.*
+
+== Key Features
+
+*   **Headless Design**: Does not require an X11 or Wayland window server to be running.
+*   **Zero-Copy (Concept)**: Demonstrates the data flow for moving camera frames to Vulkan textures.
+*   **Dual-Backend**: Switch between a vendor‑neutral compiler (IREE), a custom optimized Vulkan engine (NNEF), and a standard mobile runtime (TFLite) to compare performance.
+
+== Desktop Testing (Simulation)
+
+This sample builds by default on desktop environments as a simulation if no Raspberry Pi is detected.
+
+[source,bash]
+----
+cmake -DML_BACKEND=NNEF ..
+cmake --build . --target embedded_wildlife_cam_app
+./rPi/embedded_wildlife_cam_app --model models/mobilenetv2_nnef_optimized --labels data/imagenet_classes.txt
+----
+
+In simulation mode, the app will generate a dummy video feed if no camera is detected.

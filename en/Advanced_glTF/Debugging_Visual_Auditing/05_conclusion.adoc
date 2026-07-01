@@ -1,0 +1,36 @@
+:pp: {plus}{plus}
+= Debugging: Summary & Series Conclusion
+
+== What We Built in This Chapter
+
+Debugging is not a single tool or technique—it is a methodology: a sequence of questions to ask, in order, that systematically narrows the space of possible failure causes.
+
+We started with debug drawers, which make the invisible physics world visible. The deferred line buffer approach—accumulate segments per frame, upload once, draw in a single call—keeps debug rendering fast enough to leave enabled during development without significantly affecting frame rate. The skeleton drawer shows exactly where the scene graph places each joint in world space, making transform hierarchy errors immediately visible. The collision shape drawer (color-coded green for kinematic, red for dynamic) shows the physics representation alongside the rendered mesh, so you can see instantly whether the physics bodies are tracking the animation correctly. The constraint drawer shows the connection structure of the ragdoll, so when a ragdoll explodes you can see whether the constraints failed (bodies far apart) or were incorrectly set up (wrong anchor points).
+
+Skinning heatmaps moved the diagnostic lens to the vertex skinning data itself. The dominant bone heatmap colorizes each vertex by its most influential joint, revealing stray weight assignments and incorrect bone territories as anomalous colored patches. The weight distribution heatmap colorizes by the complexity of the weight distribution, flagging regions with noisy or overcomplicated weight painting.
+
+RenderDoc analysis provided the GPU-level ground truth: the ability to examine the exact contents of the skinning compute output buffer at the frame level, verify vertex positions against expected values, check normal vector correctness, and step through the shader invocation for a specific suspicious vertex. The discipline of labeling GPU commands and buffers with `vkSetDebugUtilsObjectNameEXT` and `vkCmdBeginDebugUtilsLabelEXT` makes RenderDoc's resource browser navigable rather than overwhelming.
+
+== The Series in Review
+
+Across these eight chapters, we have built a complete production-grade character pipeline on top of Vulkan. Let's trace the full path of data from file to frame:
+
+The **glTF file** carries the skeleton hierarchy, vertex skinning data, animations, physics extras metadata, and morph targets. **Chapter 2** showed how to load that hierarchy into a recursive scene graph with a dirty-flag propagation system that efficiently updates world matrices. **Chapter 3** used the skinning data to build a Vulkan Compute pipeline that deforms the mesh on the GPU, writing the result to a shared buffer consumed by the rasterizer, ray tracing system, and physics queries.
+
+**Chapter 4** established the physics simulation layer: proxy colliders derived from the bone hierarchy, constraints encoding the human range of motion, the three-state ANIMATED/BLENDED/RAGDOLL handoff, and collision filtering via bitmasks. **Chapter 5** added procedural animation on top: CCD and FABRIK IK for foot placement and reaching, look-at controllers for head tracking, and physics-derived lean applied as spine rotations.
+
+**Chapter 6** extended the compute skinning pipeline to support morph targets, using Vulkan 1.4's descriptor indexing to handle an unbounded array of displacement buffers without per-draw descriptor swaps. **Chapter 7** stepped back to establish the production workflow: naming conventions, export settings, automated validation, and reference viewer auditing. **Chapter 8** closed the loop with engine-side debugging tools.
+
+The systems you have built are not demonstrations—they are a production framework. Each one is designed to compose with the others: the IK operates on the same scene graph that the physics system drives; the morph targets integrate with the same compute shader that the ragdoll reads from; the debug drawers use the same physics world data that the ragdoll system writes. This composability is the payoff for the careful architectural decisions made at each stage.
+
+The next characters you build on this foundation will benefit from every lesson learned here. The framework will grow. The asset pipeline will evolve. But the fundamental architecture—scene graph, compute skinning, physics integration, procedural layers—will remain the skeleton on which everything else hangs.
+
+== Verification: What to Look For
+
+To verify your debugging tools:
+
+1.  **Flush Behavior**: Ensure that the `DebugDrawer` correctly clears its line buffer after every `flush()` call. If lines persist from previous frames, the buffer is not being cleared.
+2.  **Coordinate Space**: Verify that your debug lines appear in world space. A common error is passing local-space coordinates to the drawer, which will result in debug geometry following the character incorrectly.
+3.  **RenderDoc Inspection**: Use the **Buffer Viewer** in RenderDoc to inspect your compute skinning output buffer. If the values in the buffer match your expectations but the character is not rendering correctly, the problem is likely in your vertex input description or graphics pipeline state.
+
+xref:Advanced_glTF/Debugging_Visual_Auditing/04_renderdoc_analysis.adoc[Previous: RenderDoc Analysis]

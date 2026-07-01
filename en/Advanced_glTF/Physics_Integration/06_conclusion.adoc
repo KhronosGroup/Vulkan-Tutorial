@@ -1,0 +1,39 @@
+:pp: {plus}{plus}
+= Physics Integration: Conclusion
+
+== What We Built
+
+This chapter constructed the physical layer of our character system, and it is worth stepping back to appreciate how many distinct problems we solved.
+
+We started by establishing *why* you cannot simply hand the physics engine your mesh geometry and expect good results. The practical answer—proxy colliders—sounds like a compromise, but it is not. Capsules and boxes produce more stable simulations, run faster, and require less memory than mesh colliders, all while producing ragdoll behavior that is visually indistinguishable from higher-fidelity approximations. The art of choosing the right shape for each body part is a craft skill that develops with experience, and the glTF extras system we put in place gives artists direct control over those shapes without requiring code changes.
+
+We connected the proxy colliders into a functioning skeleton using physics constraints. The conceptual leap here—understanding that a Ball-and-Socket constraint represents a shoulder, and a Hinge represents a knee—is more important than any of the code. Once you have that mental model, the angular limit values are just numbers to be tuned. The reference humanoid ranges we provided are a starting point, not a specification; every game has a different feel it wants from its characters.
+
+We then solved the **ragdoll handoff problem** properly, which means: initializing physics body velocities from the character's current motion, using a state machine to manage the transition, continuing to feed kinematic updates to the physics engine during the blend so constraint positions are always approximately valid, and then reading physics results back into the scene graph so the compute skinning pipeline sees the correct animated state.
+
+Finally, we addressed self-collision filtering with a bitmask design that prevents the classic "exploding ragdoll" artifact by excluding adjacent constrained body parts from generating contacts with each other, while still allowing the character to interact correctly with the world and with other characters.
+
+== The Tradeoffs You Should Understand
+
+The system we built assumes a fixed topology: one ragdoll per character, one set of bones, one set of constraints. This works well for humanoid characters with a predictable skeletal structure. It is less well-suited for quadrupeds, creatures with unusual anatomy, or procedurally generated characters where the skeleton cannot be known at asset creation time. For those cases, the extras-driven approach becomes more valuable—you can define constraints generically and resolve them at runtime—but you will need more sophisticated tools for authoring and validating the constraint graph.
+
+The blend weight approach we used for the handoff (linearly increasing from 0 to 1 over a fixed duration) is simple and reliable, but it has limitations. A 150ms blend looks great for a character that is falling smoothly. It can look wrong for a character that is hit by a sudden large impulse—in that case, you might want to snap to ragdoll immediately rather than blending. The state machine design we built supports this: you can bypass the BLENDED state entirely and transition directly to RAGDOLL if the incoming impulse exceeds a threshold.
+
+The collision filtering system we built uses a flat bitmask with one bit per body region. This gives you 32 distinct collision layers in a 32-bit mask, which is more than enough for a single character but becomes a constraint for large crowd systems. Jolt Physics and PhysX both offer more sophisticated filtering mechanisms (broad-phase layers, narrow-phase callbacks) that allow you to scale the filtering system to hundreds or thousands of characters.
+
+== What Comes Next
+
+With our visual rendering and physics systems both operating from the same scene graph and producing correct, physics-accurate behavior, we are in a strong position to add the final layer of sophistication: **procedural animation**.
+
+Procedural animation is the discipline of generating or modifying joint transforms at runtime using algorithms, rather than artist-authored keyframes. The most important application for games is **Inverse Kinematics (IK)**: rather than animating the foot's position directly, we compute the necessary joint angles from where we want the foot to land. This allows characters to place their feet correctly on uneven terrain, to reach for objects that aren't in the exact position the animator expected, and to respond to physics events in ways that look natural rather than canned.
+
+Chapter 5 will build an IK system from scratch, starting with the theory of why forward kinematics cannot solve the foot-placement problem and why IK can. We will implement both the simple CCD (Cyclic Coordinate Descent) algorithm and the more accurate FABRIK (Forward And Backward Reaching IK) algorithm, and we will wire them into the same scene graph and animation blending infrastructure we have built throughout this series.
+
+== Verification: What to Look For
+
+To verify your physics integration:
+1.  **Kinematic Sync**: With the character in `ANIMATED` state, enable debug visualization. The collision capsules should perfectly track the rendered mesh as it moves.
+2.  **Ragdoll Handoff**: When triggering a ragdoll, the character should not "pop" or "snap" to a new pose. The transition should be smooth, with the character's momentum preserved.
+3.  **Self-Collision**: Ensure that character limbs do not collide with each other during movement. If limbs are "pushing" each other apart, check your collision filtering bitmasks.
+
+xref:Advanced_glTF/Physics_Integration/05_self_collision_filtering.adoc[Previous: Self-Collision Filtering] | xref:Advanced_glTF/Procedural_Animation_IK/01_introduction.adoc[Next Chapter: Procedural Animation & IK]

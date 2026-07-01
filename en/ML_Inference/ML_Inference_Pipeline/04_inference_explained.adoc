@@ -1,0 +1,480 @@
+:pp: {plus}{plus}
+
+= Inference Explained
+
+== Introduction
+
+In the previous chapter, we explored how neural networks learn—the intricate process of adjusting millions of weights through gradient descent, backpropagation, and iterative optimization. We built understanding from first principles, seeing how networks discover patterns in data through training.
+
+Now we're going to shift our focus entirely. This tutorial series isn't about training neural networks—it's about *using* them. Specifically, it's about taking models that have already been trained and running them efficiently on GPUs using Vulkan compute shaders. This process is called *inference*, and it's fundamentally different from training in ways that matter deeply for implementation.
+
+Understanding this distinction isn't just academic—it shapes every design decision we'll make. The code we write, the memory we allocate, the synchronization we implement, all flow from understanding what inference is and what it isn't.
+
+== Two Phases, Two Worlds
+
+Machine learning has two distinct phases that happen at different times, in different places, with different goals and constraints. Let's understand each clearly.
+
+=== Training: The Learning Phase
+
+Think of training as the research and development phase. Somewhere—maybe in a university lab, maybe at a tech company, maybe on your own workstation—someone is teaching a neural network to perform a task.
+
+They start with a network that knows nothing. The weights are random. If you fed it an image of a cat, it would output nonsense—maybe it would confidently declare it's a toaster. The network hasn't learned anything yet.
+
+Then the training process begins. The network sees millions of examples: images of cats labeled "cat," images of dogs labeled "dog," images of cars labeled "car." For each example, the network makes a prediction. When it's wrong (which is almost always at first), the training algorithm measures how wrong it was and adjusts the weights slightly to do better next time.
+
+This happens millions of times. The network gradually learns patterns: "images with pointy ears and whiskers tend to be cats," "images with wheels and windows tend to be cars." The weights—those millions of numbers we discussed in the previous chapter—slowly shift from random values to meaningful patterns that encode this knowledge.
+
+This process is *expensive*. Training a modern image recognition model on ImageNet might take days or weeks on high-end GPUs. Training a large language model can cost millions of dollars in compute time. It requires massive datasets, careful tuning of learning rates and other hyperparameters, and deep expertise in optimization algorithms.
+
+The good news? You usually don't need to do this yourself. Researchers and companies train models and publish them. You can download a pre-trained model that already knows how to recognize objects, translate languages, or generate images. The hard work of training has already been done.
+
+=== Inference: The Deployment Phase
+
+Inference is what happens after training is complete. You have a trained model—a file containing millions of learned weights. Now you want to *use* it to make predictions on new data.
+
+This is a completely different scenario. The weights are fixed—they're not changing anymore. There's no learning happening, no optimization, no backpropagation. You're simply running data through the network to get predictions.
+
+The constraints are different too. Training happens offline, often on powerful server hardware, and can take as long as it needs. Inference happens in production, often on less powerful devices, and needs to be *fast*. When a user opens your app and points their camera at an object, they expect instant recognition. When a game needs to make an AI decision, it can't wait seconds for a prediction—it needs an answer in milliseconds.
+
+This is where Vulkan comes in. By implementing inference at the Vulkan level, we get fine-grained control over GPU execution. We can optimize for the specific constraints of inference: fixed weights, forward-pass-only execution, real-time performance requirements. We're not building a training system—we're building a deployment system, and that's a very different engineering challenge.
+
+=== Why This Distinction Matters for Implementation
+
+Understanding the training-inference split has practical implications for how we build our Vulkan inference engine.
+
+During training, you need to store intermediate activations from every layer because backpropagation needs them to compute gradients. This means keeping the entire forward pass in memory. For inference, we only need the current layer's activations—once we've computed layer 5's output and passed it to layer 6, we can discard layer 5's activations and reuse that memory. This dramatically reduces memory requirements.
+
+During training, you're processing large batches of examples together (32, 64, 128 or more) because this provides more stable gradient estimates and better GPU utilization. For inference, you might process just one example at a time if you need low latency, or you might batch for throughput—the choice is yours based on your application's needs.
+
+During training, you need automatic differentiation, gradient computation, and optimizer state. For inference, none of this exists. We're implementing a much simpler system: load weights, run forward pass, get output. This simplicity is liberating—we can focus entirely on making the forward pass as fast as possible.
+
+== The Inference Pipeline: Following Data Through the System
+
+Let's trace what actually happens when you run inference. Understanding this flow helps you see where Vulkan fits in and what we need to implement.
+
+=== Stage 1: Input Data Arrives
+
+Your application has some data it wants the model to process. Maybe it's an image from a camera, an audio buffer from a microphone, text from a user, or sensor readings from a device. This data is in whatever format your application naturally produces—an image might be RGB pixels in a buffer, audio might be PCM samples, text might be a string.
+
+This raw data isn't ready for the neural network yet. Models have specific expectations about input format, and we need to meet those expectations.
+
+=== Stage 2: Preprocessing Transforms the Data
+
+Preprocessing is the bridge between your application's data format and the model's expected input format. This stage can involve several transformations, and getting it right is crucial—if your preprocessing doesn't match what the model expects, your predictions will be garbage no matter how good the model is.
+
+==== Image Preprocessing: From Pixels to Tensors
+
+Let's start with images, since they're common in graphics applications and the transformations are intuitive.
+
+*Resizing*: Models are trained on specific input dimensions. A model trained on 224×224 images has learned to recognize patterns at that scale. If you feed it a 1920×1080 image, the patterns are at completely different scales—what should be a face might span the entire input, or what should be a full object might be just a tiny corner. You need to resize first.
+
+But resizing isn't trivial. Do you crop? If so, from where—center crop, random crop? Do you scale? If the aspect ratio doesn't match, do you stretch (distorting the image) or letterbox (adding black bars)? The answer depends on how the model was trained. If it was trained on center-cropped images, you should center-crop during inference. If it was trained on stretched images, you should stretch. Mismatch here degrades accuracy.
+
+*Normalization*: Images typically store pixels as 8-bit integers from 0 to 255. Neural networks work with floating-point numbers, and they're sensitive to the range of input values. Most models expect inputs normalized to a specific range.
+
+Common normalization schemes include:
+
+- Scale to [0, 1]: `pixel_float = pixel_int / 255.0`
+- Scale to [-1, 1]: `pixel_float = (pixel_int / 127.5) - 1.0`
+- Standardization: `pixel_float = (pixel_int - mean) / std` where mean and std are computed from the training dataset
+
+That last one is particularly important. Many models (especially those trained on ImageNet) expect inputs standardized using ImageNet statistics: mean = [0.485, 0.456, 0.406] and std = [0.229, 0.224, 0.225] (per RGB channel). If you don't apply the exact same normalization, the model sees inputs that are out of distribution from what it was trained on, and accuracy suffers.
+
+*Color Space Conversion*: This is a subtle gotcha. OpenCV loads images in BGR order (blue, green, red), while most ML frameworks expect RGB (red, green, blue). If you train a model with one convention and run inference with the other, the model sees red where it expects blue and vice versa. For some models, this completely breaks predictions.
+
+Similarly, some models expect grayscale inputs (single channel), while others expect RGB (three channels). Converting RGB to grayscale isn't just averaging the channels—proper conversion uses weighted sums that account for human perception: `gray = 0.299*R + 0.587*G + 0.114*B`.
+
+*Channel Ordering*: Even within RGB, there are different memory layouts. Some frameworks use "channels last" (height × width × channels), where pixels are stored as RGBRGBRGB... Others use "channels first" (channels × height × width), where all red values come first, then all green, then all blue. Your model expects one or the other, and you need to match it.
+
+==== Text Preprocessing: From Strings to Tokens
+
+Text preprocessing is more complex because it involves linguistic structure, not just numerical transformations.
+
+*Tokenization*: Breaking text into pieces is the first step. The simplest approach is word-level tokenization: "Hello world" becomes ["Hello", "world"]. But this has problems—what about punctuation? What about words the model has never seen?
+
+Modern models use subword tokenization. Algorithms like Byte-Pair Encoding (BPE) or WordPiece break words into smaller units. "unhappiness" might become ["un", "happiness"], allowing the model to understand the word even if it never saw "unhappiness" during training, as long as it saw "un" and "happiness" separately.
+
+Each token gets converted to a numerical ID from a vocabulary. "Hello" might be ID 5234, "world" might be ID 8912. The model works with these IDs, not the original text.
+
+*Sequence Length Handling*: Models have a maximum sequence length—maybe 512 tokens, maybe 1024. If your input is shorter, you pad it with special padding tokens. If it's longer, you truncate it. Where you truncate matters: from the beginning, the end, or intelligently keeping the most important parts?
+
+*Special Tokens*: Most models expect special tokens that mark structure. A [CLS] token at the beginning might indicate "this is the start of a sequence." A [SEP] token might separate different segments. A [PAD] token fills unused positions. These tokens have specific IDs in the vocabulary, and you need to insert them exactly where the model expects.
+
+==== Audio Preprocessing: From Waveforms to Features
+
+Audio preprocessing often involves transforming the raw waveform into a representation that's easier for neural networks to process.
+
+*Resampling*: Audio might be recorded at 48kHz, but your model expects 16kHz. Resampling changes the sample rate, which involves filtering to avoid aliasing and interpolation to generate new samples.
+
+*Mono Conversion*: If your audio is stereo but the model expects mono, you need to combine channels. Simple averaging works: `mono = (left + right) / 2`, but more sophisticated approaches might preserve more information.
+
+*Spectrograms*: Many audio models don't work with raw waveforms—they work with spectrograms, which represent audio in the frequency domain. A spectrogram shows which frequencies are present at each point in time. Computing a spectrogram involves applying a Short-Time Fourier Transform (STFT) to overlapping windows of the audio signal.
+
+Mel spectrograms go further, converting the frequency axis to the mel scale, which better matches human perception of pitch. This is what models like speech recognition systems often expect.
+
+==== Where Preprocessing Happens: CPU vs GPU
+
+Traditionally, preprocessing happens on the CPU. It's relatively lightweight compared to running the neural network, and CPUs handle the varied operations (resizing, color conversion, tokenization) well.
+
+But for performance-critical applications, GPU preprocessing can make a difference. If you're processing video at 60 frames per second, spending 5ms on CPU preprocessing per frame adds up. Moving that to the GPU—implementing resize and normalization as compute shaders—can reduce latency significantly.
+
+The tradeoff is complexity. CPU preprocessing can use existing libraries (OpenCV for images, librosa for audio, tokenizers from ML frameworks). GPU preprocessing means writing custom compute shaders and managing data transfers. For most applications, CPU preprocessing is fine. For latency-critical applications (real-time video processing, interactive AR/VR), GPU preprocessing is worth considering.
+
+==== The Critical Importance of Matching Training
+
+Here's the key insight: preprocessing during inference must *exactly* match preprocessing during training. If the model was trained on images resized with bilinear interpolation, you should use bilinear interpolation during inference. If it was trained with ImageNet normalization, you must use ImageNet normalization during inference.
+
+Mismatches here are a common source of poor inference accuracy. The model works great in the training framework but fails when deployed because preprocessing differs slightly. Always check the model's documentation or training code to understand exactly what preprocessing was used.
+
+=== Stage 3: Neural Network Execution
+
+This is the heart of inference—running the actual neural network. Your preprocessed input data flows through the network, layer by layer, until it reaches the output. This is where all the learning that happened during training gets put to use.
+
+Let's make this concrete with an example. Suppose you're running an image classification model—something like ResNet or MobileNet. Your input is a 224×224×3 tensor (height × width × color channels). That's 150,528 floating-point numbers representing your image.
+
+==== The First Layer: Feature Extraction Begins
+
+The first layer might be a convolution with 64 filters of size 7×7, with a stride of 2. What does this mean in practice?
+
+A convolution is a sliding window operation. Imagine taking a 7×7 magnifying glass and sliding it across your image, one step at a time. At each position, you're looking at a 7×7 patch of pixels (across all 3 color channels, so really 7×7×3 = 147 values). You multiply each of these 147 values by a corresponding learned weight, sum them all up, add a bias term, and that gives you one output value.
+
+Now, you have 64 different filters, each with their own set of 147 weights. So at each position, you compute 64 different output values—one for each filter. Each filter has learned to detect a different pattern: maybe one detects horizontal edges, another detects vertical edges, another detects red regions, and so on.
+
+With a stride of 2, you're moving your window 2 pixels at a time instead of 1, which means your output is half the size in each dimension. So your 224×224×3 input becomes a 112×112×64 output. You've downsampled spatially (from 224×224 to 112×112) but increased the number of channels (from 3 to 64). You're trading spatial resolution for feature richness.
+
+This single convolution layer involves roughly 224 × 224 × 64 × 7 × 7 × 3 = 147 million multiply-add operations. That's a lot of computation, but GPUs excel at exactly this kind of work—the same operation repeated millions of times on different data.
+
+==== Activation Functions: Introducing Non-Linearity
+
+After the convolution, the output flows through an activation function—let's say ReLU. Remember from the previous chapter why this matters: without non-linearity, stacking layers doesn't increase the network's expressive power. The activation function is what allows the network to learn complex patterns.
+
+ReLU is beautifully simple: `output = max(0, input)`. For each of those 112×112×64 = 802,816 values from the convolution, if it's positive, keep it; if it's negative, replace it with zero. This is computationally cheap—just a comparison and a selection—but it's essential for the network to work.
+
+From a GPU perspective, this is an embarrassingly parallel operation. Each output value is independent of all others. You can process thousands of them simultaneously with no synchronization needed between threads.
+
+==== Deeper Layers: Building Hierarchical Features
+
+As data flows deeper into the network, the pattern continues but the features become more abstract. The second convolution layer doesn't see the original image—it sees the output of the first layer, which already represents edges and basic patterns. This second layer learns to combine those edges into more complex shapes: corners, curves, simple textures.
+
+The third layer combines those shapes into even more complex patterns: parts of objects, distinctive textures, recurring motifs. By the time you're 10 or 20 layers deep, the network is detecting high-level concepts: "this looks like fur," "this looks like a wheel," "this looks like a face."
+
+This hierarchical feature learning is one of the key insights that makes deep neural networks so powerful. Early layers learn general, reusable features (edges work for any image). Middle layers learn domain-specific patterns (fur vs. metal vs. glass). Late layers learn task-specific concepts (cat vs. dog vs. car).
+
+==== Batch Normalization: Keeping Values in Range
+
+Many modern networks include batch normalization layers. These layers address a subtle problem: as data flows through many layers, the distribution of values can shift and spread out. Values that started in a reasonable range (say, 0 to 1) might end up with a mean of 100 and a standard deviation of 50 by the time they reach layer 20. This makes training unstable and can hurt inference performance too.
+
+Batch normalization fixes this by normalizing the values at each layer. It computes the mean and standard deviation of the activations, then shifts and scales them to have a mean of 0 and standard deviation of 1 (or close to it, with learned parameters that allow some flexibility).
+
+For inference, there's a simplification: the mean and standard deviation are fixed values that were computed during training. You're not computing statistics on the fly—you're just applying a fixed transformation: `output = (input - mean) / sqrt(variance + epsilon) * scale + shift`. This is still an element-wise operation, but it requires loading those fixed statistics (mean, variance, scale, shift) for each layer.
+
+==== Pooling: Downsampling for Efficiency
+
+Pooling layers reduce spatial dimensions while preserving important information. Max pooling, the most common type, divides the input into small regions (typically 2×2) and outputs only the maximum value from each region.
+
+Why do this? It reduces the amount of data flowing through the network, making subsequent layers faster. It also provides a form of translation invariance—if a feature moves slightly in the image, the max pooling will still capture it as long as it's within the pooling region.
+
+From an implementation perspective, max pooling is straightforward: for each output position, read 4 input values (for 2×2 pooling), find the maximum, write it out. It's parallel across all output positions.
+
+==== Fully Connected Layers: Making the Final Decision
+
+Near the end of the network, after many convolutions have extracted rich features, you typically find fully connected (dense) layers. These layers take all the features and combine them to make the final prediction.
+
+A fully connected layer is just a matrix multiplication. If you have 2048 input features and 1000 output classes, you're multiplying a 1000×2048 weight matrix by your 2048-dimensional input vector. That's 2,048,000 multiply-add operations, all of which can be parallelized.
+
+The final layer typically outputs raw scores (logits) for each class. These aren't probabilities yet—they're just numbers that indicate how strongly the network believes each class is present. Higher numbers mean higher confidence.
+
+==== The Complete Forward Pass
+
+Putting it all together, a complete forward pass through a network like ResNet-50 involves:
+
+- 1 initial convolution layer
+- 16 residual blocks, each containing 3 convolutions, 3 batch normalizations, and 3 ReLU activations, plus skip connections
+- 1 global average pooling layer
+- 1 fully connected layer
+
+That's roughly 50 layers total (hence "ResNet-50"), involving billions of multiply-add operations. On a modern GPU, this entire process completes in just a few milliseconds.
+
+Each layer reads input tensors from GPU memory, performs its computation, and writes output tensors back to GPU memory. The output of one layer becomes the input to the next. Data flows through the network like water through a pipe, transforming at each stage until it emerges as a final prediction.
+
+This is where Vulkan shines. Each layer becomes a compute shader. Tensors live in GPU memory as buffers. We dispatch compute operations to process them, synchronize to ensure correct ordering, and pass data from one layer to the next. The GPU's massive parallelism means we can process thousands of values simultaneously, making inference fast enough for real-time applications.
+
+=== Stage 4: Postprocessing Interprets the Output
+
+The neural network produces raw output, but this output often needs interpretation before it's useful to your application. The raw numbers coming out of the network are just that—numbers. Postprocessing transforms them into actionable information.
+
+==== Classification: From Logits to Labels
+
+For classification models, the output is typically a vector of scores called *logits*—one number for each possible class. If you're classifying images into 1000 categories (like ImageNet), you get 1000 numbers.
+
+These logits aren't probabilities yet. They're raw scores that can be any value—positive, negative, large, small. A logit of 5.2 for "cat" and 2.1 for "dog" means the network is more confident about "cat," but these aren't probabilities you can interpret as percentages.
+
+*Softmax Conversion*: To convert logits to probabilities, you apply the softmax function:
+
+[source]
+----
+probability[i] = exp(logit[i]) / sum(exp(logit[j]) for all j)
+----
+
+This ensures all probabilities are between 0 and 1 and sum to 1. Now you can say "the model is 87% confident this is a cat."
+
+*Finding the Top Prediction*: The simplest postprocessing is finding the maximum probability and returning that class label. This is just a linear scan through the output vector—O(n) where n is the number of classes.
+
+*Top-K Predictions*: Often you want the top 5 predictions, not just the top 1. This helps when the model is uncertain—maybe it's 40% confident it's a "golden retriever," 35% confident it's a "Labrador," and 15% confident it's a "yellow lab." All three are reasonable, and showing all three gives the user more information.
+
+Finding top-K requires a partial sort or a heap-based approach. For K=5 and n=1000 classes, this is still very fast.
+
+*Confidence Thresholding*: Sometimes you only want to return predictions above a certain confidence threshold. If the top prediction is only 30% confident, maybe you should return "uncertain" rather than making a guess. This is application-specific—medical diagnosis might require 95% confidence, while a photo app might accept 50%.
+
+==== Object Detection: From Boxes to Objects
+
+Object detection is more complex. The network outputs multiple detections, each with:
+
+- A bounding box (x, y, width, height)
+- A class label (or probabilities for each class)
+- A confidence score (how sure the network is that there's an object here)
+
+A typical detector might output 10,000+ candidate boxes, most of which are false positives or duplicates.
+
+*Confidence Filtering*: First, filter out low-confidence detections. If a box has confidence below 0.5 (or whatever threshold you choose), discard it. This immediately reduces 10,000 candidates to maybe 100-200.
+
+*Non-Maximum Suppression (NMS)*: Multiple boxes often detect the same object. You might have 5 boxes all detecting the same car, with slightly different positions and sizes. NMS removes these duplicates.
+
+The algorithm works like this:
+1. Sort all boxes by confidence (highest first)
+2. Take the highest-confidence box and add it to the output
+3. Remove all boxes that overlap significantly with this box (typically IoU > 0.5)
+4. Repeat with the remaining boxes
+
+"Overlap" is measured by Intersection over Union (IoU): the area of overlap divided by the area of union. If two boxes overlap by 80%, they're probably detecting the same object, so keep only the higher-confidence one.
+
+NMS is O(n²) in the worst case, but with confidence filtering first, n is small enough that it's fast on CPU. GPU implementations exist for cases with many detections.
+
+*Class-Specific NMS*: Some detectors apply NMS per class. A box detecting "car" doesn't suppress a box detecting "person," even if they overlap. This allows detecting multiple objects in the same location (like a person sitting in a car).
+
+*Coordinate Conversion*: Detectors often output boxes in normalized coordinates (0 to 1) or relative to anchor boxes. You need to convert these to absolute pixel coordinates in your image space. This involves scaling and offsetting based on your image dimensions.
+
+==== Segmentation: From Masks to Regions
+
+Segmentation models output a label for every pixel. For a 224×224 image with 21 classes (like Pascal VOC), the output is a 224×224×21 tensor—21 probability values for each pixel.
+
+*Argmax to Labels*: For each pixel, find which class has the highest probability. This converts the 224×224×21 tensor to a 224×224 label map, where each pixel has a single class ID.
+
+*Mask Smoothing*: The raw output can be noisy—individual pixels might be misclassified. Applying a small amount of smoothing (like a median filter or morphological operations) can clean up the mask.
+
+*Contour Extraction*: If you need object boundaries rather than pixel labels, extract contours from the mask. This gives you polygons or curves that outline each object, which might be more useful than a pixel grid.
+
+*Instance Segmentation*: Some models distinguish between different instances of the same class (two separate cars, not just "car pixels"). Postprocessing involves clustering pixels into instances, often using connected components or more sophisticated algorithms.
+
+==== Generative Models: From Noise to Content
+
+Generative models (like GANs or diffusion models) output images, audio, or text. Postprocessing here is about making the output usable.
+
+*Denormalization*: If the model outputs values in [-1, 1], you need to convert back to [0, 255] for images: `pixel_int = (pixel_float + 1) * 127.5`.
+
+*Clipping*: Ensure values are in valid ranges. Pixel values should be 0-255, audio samples should be in [-1, 1], etc. Clipping prevents artifacts from out-of-range values.
+
+*Format Conversion*: Convert from the model's output format to what your application needs. Maybe the model outputs planar RGB (all reds, then all greens, then all blues) but you need interleaved RGB (RGBRGBRGB...).
+
+==== Where Postprocessing Happens: CPU vs GPU
+
+Like preprocessing, postprocessing traditionally happens on CPU. Operations like finding the maximum, applying NMS, or extracting contours are well-suited to CPU execution and have mature library implementations.
+
+But for high-throughput scenarios, GPU postprocessing can help. If you're running inference on a batch of 32 images and each produces 200 detections, that's 6400 boxes to process. Doing NMS on the GPU might be faster than transferring all that data to CPU, processing it, and transferring results back.
+
+The tradeoff is the same as preprocessing: CPU is simpler and uses existing libraries, GPU is faster for large-scale processing but requires custom implementation.
+
+=== Stage 5: Output Returns to Your Application
+
+Finally, the processed results return to your application. This might be a simple label ("golden retriever"), a list of detected objects with their locations, a generated sentence, or any other output the model produces.
+
+Your application uses this output however it needs to: displaying it to the user, making game logic decisions, triggering actions, or feeding it into another system. The inference pipeline is complete.
+
+== Thinking About Neural Networks as Compute Operations
+
+Now let's shift perspective and think about neural networks from a GPU programming viewpoint. This mental model is crucial for implementing inference with Vulkan.
+
+=== Tensors: The Data Structures
+
+Everything in a neural network operates on *tensors*—multi-dimensional arrays of numbers. A grayscale image is a 2D tensor (height × width). A color image is a 3D tensor (height × width × channels). A batch of images is a 4D tensor (batch × height × width × channels).
+
+From a Vulkan perspective, tensors are just buffers in GPU memory. A 224×224×3 image tensor is a buffer containing 224 × 224 × 3 = 150,528 floating-point numbers. The "shape" of the tensor (224, 224, 3) is metadata that tells us how to interpret the linear buffer as a multi-dimensional structure.
+
+Understanding tensor shapes and how they transform through layers is essential. If a convolution layer takes a 224×224×3 input and produces a 112×112×64 output, you need to allocate a buffer large enough for 112 × 112 × 64 = 802,816 floats. You need to know these shapes to allocate memory correctly.
+
+=== Layers: The Operations
+
+Each layer in a neural network is a specific mathematical operation on tensors. Let's look at the most common types and what they mean for GPU implementation.
+
+*Dense (Fully Connected) Layers* perform matrix multiplication. If your input is a vector of size N and the layer has M outputs, you're multiplying an M×N weight matrix by your N-dimensional input vector, then adding an M-dimensional bias vector. This is a classic matrix-vector multiply, which GPUs handle very efficiently. The challenge is that for large layers (say, 4096 inputs and 4096 outputs), you're multiplying a 4096×4096 matrix, which is 16 million multiply-add operations. Parallelizing this effectively is key to performance.
+
+*Convolutional Layers* slide a small filter (typically 3×3 or 5×5) across the input, computing a weighted sum at each position. With multiple input channels and multiple output filters, this becomes a lot of computation. For a 3×3 convolution with 64 input channels and 128 output filters on a 112×112 image, you're doing roughly 112 × 112 × 64 × 128 × 9 = 1.1 billion multiply-add operations. The good news? These operations are highly parallel—each output position can be computed independently.
+
+*Activation Functions* apply element-wise non-linearities. ReLU is simple: `output = max(0, input)`. Sigmoid requires computing an exponential: `output = 1 / (1 + exp(-input))`. These are embarrassingly parallel—each element is independent—but some activations (like sigmoid) are computationally expensive.
+
+*Pooling Layers* downsample by taking the maximum or average over small regions. Max pooling with a 2×2 window reduces a 112×112 image to 56×56 by taking the maximum of each 2×2 block. This is simple and parallel, but requires careful indexing to ensure you're reading the right input positions.
+
+*Normalization Layers* (like batch normalization) compute statistics (mean and variance) across a dimension, then normalize values using those statistics. This is trickier because computing statistics requires reduction operations—you need to sum values across many elements, which requires synchronization. But once you have the statistics, applying the normalization is straightforward.
+
+=== The Execution Model
+
+From Vulkan's perspective, running inference is a sequence of compute shader dispatches with appropriate synchronization. Let's break down what this means in practice.
+
+==== The Basic Flow
+
+You start by uploading the input tensor to GPU memory. This is a host-to-device transfer—copying data from CPU memory to GPU memory. For a 224×224×3 image (150,528 floats = ~600KB), this transfer is fast on modern systems, but it's still overhead you want to minimize.
+
+Then you dispatch the first layer's compute shader. This shader reads the input tensor and the layer's weights (which are already resident on the GPU, loaded once at startup), performs its computation, and writes to an intermediate tensor. This intermediate tensor lives in GPU memory—no transfer back to CPU.
+
+You insert a memory barrier to ensure the write completes and is visible to subsequent operations. This is crucial for correctness—without it, the next layer might start reading before the previous layer finishes writing, leading to race conditions and incorrect results.
+
+Then you dispatch the second layer's shader, which reads that intermediate tensor and writes to another. And so on, layer by layer, until you reach the final output. Each layer is a compute shader dispatch, each intermediate result is a buffer in GPU memory, and barriers ensure correct ordering.
+
+Finally, you read the output tensor back to CPU memory. This is a device-to-host transfer. For a classification model with 1000 classes, that's just 1000 floats (~4KB)—much smaller than the input.
+
+==== Memory Management: The Challenge of Scale
+
+Here's the problem: neural networks use a lot of memory. Let's trace through ResNet-50 to see why.
+
+Layer 1 (convolution): Input is 224×224×3, output is 112×112×64. That's 150,528 input floats and 802,816 output floats. Plus the weights: 64 filters of size 7×7×3 = 9,408 weights. Total: ~3.8MB for this one layer.
+
+Layer 2 (convolution): Input is 112×112×64, output is 112×112×64. That's 802,816 floats for both input and output, plus weights. Another ~3.2MB.
+
+By the time you're 10 layers deep, you've accumulated tens of megabytes of intermediate tensors. By layer 50, you're looking at hundreds of megabytes.
+
+The naive approach—allocate a separate buffer for each tensor—quickly exhausts GPU memory. A typical mobile GPU might have 2-4GB of memory, and you're sharing that with graphics rendering, textures, and other applications.
+
+==== Memory Reuse: The Solution
+
+The key insight is that most intermediate tensors have short lifetimes. Once layer 5 completes and layer 6 consumes its output, layer 5's output tensor is never needed again. That memory can be reused for layer 7's output.
+
+This is called *memory pooling* or *memory reuse*, and it's essential for running large models on resource-constrained devices.
+
+The algorithm works like this:
+
+1. Analyze the model graph to determine each tensor's lifetime—which layers produce it and which layers consume it.
+2. Identify tensors whose lifetimes don't overlap—they can share the same memory.
+3. Allocate a pool of memory buffers and assign tensors to buffers such that no two overlapping tensors share a buffer.
+
+This is essentially a graph coloring problem. In practice, simple greedy algorithms work well: process layers in order, and for each output tensor, find the first available buffer that's not currently in use.
+
+With memory reuse, ResNet-50's memory footprint drops from hundreds of megabytes to tens of megabytes—a 5-10x reduction. This makes the difference between "doesn't fit on device" and "runs comfortably."
+
+==== Synchronization: Ensuring Correctness
+
+GPUs are massively parallel, but neural network inference is inherently sequential—each layer depends on the previous layer's output. We need synchronization to enforce this ordering while still allowing parallelism where possible.
+
+*Pipeline Barriers*: Vulkan's primary synchronization primitive for compute work. A pipeline barrier says "all operations before this point must complete before any operations after this point begin." You insert barriers between layers to ensure correct ordering.
+
+But barriers have cost—they serialize execution. If you insert a barrier after every single operation, you're forcing the GPU to wait idle between each dispatch, wasting parallelism.
+
+*Granularity Matters*: The trick is finding the right granularity. You don't need a barrier after every operation—you need a barrier when one operation's output becomes another operation's input. If layer 5 writes tensor A and layer 6 reads tensor A, you need a barrier between them. But if layer 5 writes tensor A and layer 7 writes tensor B (and they don't depend on each other), they can run in parallel.
+
+Modern networks often have parallel branches—ResNet has skip connections, Inception has multiple parallel paths. These branches can execute concurrently as long as you synchronize when they merge.
+
+*Memory Barriers vs Execution Barriers*: Vulkan distinguishes between execution dependencies (operation A must finish before operation B starts) and memory dependencies (writes from operation A must be visible to reads in operation B). You need both. A pipeline barrier with appropriate memory barriers ensures both execution order and memory visibility.
+
+==== Work Group Size: Balancing Parallelism and Resources
+
+When you dispatch a compute shader, you specify how many work groups to launch and how many threads (invocations) are in each work group. This choice significantly impacts performance.
+
+*Too Small*: If your work groups are too small (say, 8 threads), you're not utilizing the GPU's parallelism. Modern GPUs can run thousands of threads concurrently, and you're only using a tiny fraction of that capacity.
+
+*Too Large*: If your work groups are too large (say, 1024 threads), you might exceed hardware limits or exhaust shared memory. Each work group needs resources (registers, shared memory), and the GPU can only run as many work groups as resources allow.
+
+*Just Right*: Typical work group sizes are 64, 128, or 256 threads. This balances parallelism (enough threads to keep the GPU busy) with resource usage (not so many that you run out of resources).
+
+The optimal size depends on your shader's resource usage and the specific GPU. Profiling is essential—try different sizes and measure performance.
+
+==== Data Layout: Memory Access Patterns Matter
+
+How you arrange data in memory affects performance dramatically. GPUs have memory hierarchies—global memory (slow but large), shared memory (fast but small), and registers (fastest but tiny). Accessing memory efficiently is crucial.
+
+*Coalesced Access*: GPUs perform best when adjacent threads access adjacent memory locations. If thread 0 reads address 0, thread 1 reads address 4, thread 2 reads address 8, etc., the GPU can coalesce these into a single memory transaction. If threads access random addresses, each becomes a separate transaction, killing performance.
+
+*Tensor Layout*: The order you store tensor elements affects access patterns. "Channels last" (NHWC: batch, height, width, channels) vs "channels first" (NCHW: batch, channels, height, width) can make a 2-3x performance difference depending on the operation.
+
+For convolutions, channels-first often works better because you're reading all channels at each spatial position. For element-wise operations, channels-last might be better. There's no universal answer—it depends on your operations and hardware.
+
+*Shared Memory*: For operations that reuse data (like convolutions, where multiple output positions read the same input values), loading data into shared memory can dramatically reduce global memory traffic. Threads cooperatively load a tile of data into shared memory, synchronize, then all read from the fast shared memory instead of slow global memory.
+
+== Training vs. Inference: A Detailed Comparison
+
+Let's make the differences concrete with a detailed comparison table, because understanding these distinctions guides our implementation choices.
+
+[cols="1,2,2", options="header"]
+|===
+|Aspect |Training |Inference
+
+|*Goal*
+|Learn patterns from data by adjusting weights
+|Apply learned patterns to make predictions on new data
+
+|*Computation*
+|Forward pass (compute outputs) + backward pass (compute gradients via backpropagation)
+|Forward pass only—data flows through the network once
+
+|*Weights*
+|Constantly changing—adjusted after each batch to reduce loss
+|Fixed—loaded from the trained model file and never modified
+
+|*Memory Requirements*
+|Must store all intermediate activations for backpropagation, plus gradients and optimizer state
+|Only needs current layer's activations—can reuse memory as we progress
+
+|*Batch Size*
+|Often large (32, 64, 128+) for stable gradient estimates and efficient GPU use
+|Flexible—can be 1 for low latency or larger for throughput
+
+|*Hardware*
+|Typically high-end GPUs or TPUs with lots of memory
+|Can run on mobile GPUs, embedded devices, or even CPUs
+
+|*Performance Focus*
+|Throughput over hours/days—how many examples per second during long training runs
+|Latency (milliseconds per prediction) for interactive apps, or throughput for batch processing
+
+|*Frameworks*
+|PyTorch, TensorFlow, JAX—designed for automatic differentiation and optimization
+|TFLite, ONNX Runtime, or custom implementations like ours—optimized for forward pass
+
+|*Typical Environment*
+|Development/research environment with powerful hardware and no real-time constraints
+|Production environment with varied hardware and strict latency requirements
+|===
+
+For our Vulkan implementation, the key takeaway is simplicity: we only implement the forward pass. No gradients, no backpropagation, no optimizer state. This makes our task much more manageable while still requiring careful engineering to achieve good performance.
+
+== What We're Building
+
+With this understanding of inference, let's clarify what we're actually building in this tutorial series.
+
+We're creating a Vulkan-based inference engine that can load pre-trained models and run them efficiently on the GPU. This engine will:
+
+*Load models* from standard formats (ONNX or TFLite) and extract the network architecture and learned weights.
+
+*Allocate GPU memory* for tensors—inputs, outputs, intermediate activations, and weights—with smart memory reuse to minimize footprint.
+
+*Implement neural network operations* as Vulkan compute shaders—convolutions, matrix multiplications, activations, pooling, normalization, and other common layer types.
+
+*Execute inference* by dispatching compute shaders in the correct order with appropriate synchronization, ensuring data flows correctly through the network.
+
+*Optimize for performance* by choosing efficient algorithms, minimizing memory bandwidth, and leveraging GPU-specific features.
+
+We're not building a training system. We're not implementing backpropagation or optimizers. We're not handling data augmentation or learning rate schedules. All of that happens elsewhere, during training. We're focused purely on taking a trained model and running it as fast as possible.
+
+This focus makes our task tractable. Inference is simpler than training, but it still requires careful engineering. The performance demands are high—real-time applications need predictions in milliseconds—and Vulkan gives us the low-level control to meet those demands.
+
+== Summary
+
+Inference is the process of using a trained neural network to make predictions on new data. Unlike training, which adjusts weights through backpropagation and optimization, inference uses fixed weights and only performs the forward pass through the network.
+
+The inference pipeline consists of five stages: input data arrives from your application, preprocessing transforms it to the model's expected format, the neural network executes layer by layer, postprocessing interprets the raw output, and the final result returns to your application. Each stage can be optimized for performance, with Vulkan particularly well-suited for the neural network execution stage.
+
+From a Vulkan perspective, neural networks are sequences of compute operations on tensors (multi-dimensional arrays stored in GPU buffers). Each layer is a compute shader that reads input tensors, performs mathematical operations, and writes output tensors. The key challenges—memory management, synchronization, and performance optimization—are exactly what Vulkan is designed to handle.
+
+Understanding the training-inference distinction shapes our implementation: we only need the forward pass, we can reuse memory for intermediate results, and we can optimize specifically for the constraints of deployment rather than training. This focus makes building a Vulkan inference engine tractable while still requiring careful engineering to achieve real-time performance.
+
+With this understanding of what inference is and how it differs from training, we're ready to explore transfer learning strategies that allow us to adapt existing models to new tasks without training from scratch.
+
+xref:ML_Inference/ML_Inference_Pipeline/03_neural_networks_fundamentals.adoc[Previous: Neural Networks Fundamentals] | xref:ML_Inference/ML_Inference_Pipeline/05_transfer_learning.adoc[Next: Transfer Learning]

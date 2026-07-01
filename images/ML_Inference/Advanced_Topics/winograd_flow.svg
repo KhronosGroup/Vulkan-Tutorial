@@ -1,0 +1,49 @@
+<svg width="800" height="300" viewBox="0 0 800 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="300" fill="#f8f9fa" rx="10" ry="10" stroke="#eee" stroke-width="2"/>
+
+  <!-- Flow Container -->
+  <text x="300" y="30" font-family="Arial" font-size="18" font-weight="bold">Winograd F(2,3) Transform Flow</text>
+
+  <!-- Stages -->
+
+  <!-- Input -->
+  <rect x="50" y="100" width="100" height="100" fill="#fff" stroke="#333" stroke-width="2"/>
+  <text x="65" y="155" font-family="Arial" font-size="14" font-weight="bold">Input X</text>
+  <text x="65" y="175" font-family="Arial" font-size="12">(4x4 Tile)</text>
+
+  <!-- Arrow 1 -->
+  <line x1="150" y1="150" x2="200" y2="150" stroke="#333" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="155" y="140" font-family="Arial" font-size="10" font-style="italic">B^T x B</text>
+
+  <!-- Winograd Domain -->
+  <rect x="200" y="80" width="400" height="140" fill="#e7f3ff" stroke="#007bff" stroke-width="3" rx="10"/>
+  <text x="320" y="105" font-family="Arial" font-size="14" font-weight="bold" fill="#0056b3">Winograd Space (4x4)</text>
+
+  <!-- Element-wise Multi -->
+  <circle cx="400" y="150" r="30" fill="white" stroke="#007bff" stroke-width="2"/>
+  <text x="390" y="160" font-family="Arial" font-size="30" font-weight="bold" fill="#007bff">⊙</text>
+
+  <!-- Weight input -->
+  <path d="M 400 20 L 400 120" stroke="#28a745" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="410" y="50" font-family="Arial" font-size="12" font-weight="bold" fill="#28a745">Transformed Weights</text>
+  <text x="410" y="65" font-family="Arial" font-size="10" fill="#28a745">(G g G^T)</text>
+
+  <!-- Arrow 2 -->
+  <line x1="600" y1="150" x2="650" y2="150" stroke="#333" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="605" y="140" font-family="Arial" font-size="10" font-style="italic">A^T [..] A</text>
+
+  <!-- Output -->
+  <rect x="650" y="110" width="80" height="80" fill="#fff" stroke="#333" stroke-width="2"/>
+  <text x="660" y="155" font-family="Arial" font-size="14" font-weight="bold">Output Y</text>
+  <text x="660" y="175" font-family="Arial" font-size="12">(2x2 Tile)</text>
+
+  <!-- Payoff -->
+  <text x="300" y="260" font-family="Arial" font-size="14" font-weight="bold" fill="#dc3545">9 MULTIPLICATIONS → 4 MULTIPLICATIONS (2.25x Faster)</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#333" />
+    </marker>
+  </defs>
+</svg>

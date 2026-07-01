@@ -1,0 +1,136 @@
+:pp: {plus}{plus}
+
+= Integrating Third-Party ML Libraries: Introduction
+
+== Introduction
+
+Let's be direct: for most applications, you shouldn't build your own ML inference engine from scratch. The previous chapter gave you the foundational understanding of how neural networks work, what inference means, and how it maps to GPU execution. That knowledge is valuable—it helps you make informed decisions, debug problems, and optimize performance. But when it comes to actually deploying ML models in production, the smart choice is usually to leverage existing, battle-tested libraries.
+
+This might seem contradictory in a tutorial series about ML inference with Vulkan. Why spend time learning about third-party libraries when the rest of the series teaches you to build your own inference engine? Because understanding both approaches—and knowing when to use each—is what makes you an effective engineer.
+
+This chapter explores how to integrate third-party ML inference libraries with your Vulkan applications. You'll learn how to bridge between ML frameworks and your Vulkan rendering pipeline, share GPU resources efficiently, synchronize between inference and rendering, and choose the right library for your specific needs.
+
+== The Three-Path Philosophy
+
+This tutorial takes a unique teaching approach: throughout the series, wherever possible, we offer *three ways* to achieve your ML inference goals.
+
+*Path 1: Third-Party Libraries* - The recommended approach for most production applications. You'll learn to integrate mature, battle-tested ML frameworks with your Vulkan applications.
+
+*Path 2: Custom Vulkan Implementation* - Building your own inference engine using Vulkan compute shaders. This path teaches you how ML inference actually works at the GPU level.  In this tutorial, this is mostly an academic exercise, but understanding it is crucial for advanced optimization and debugging.  AI is a very sophisticated specialty in Computer Science, and this tutorial can only teach the basics.  If you find your needs require full inference in shader development, I've tried to make this a decent starting point; but by no means should you think this is a comprehensive guide to AI.
+
+*Path 3: ML Compiler* - Use an ML compiler to lower your model to optimized kernels and a minimal runtime (often targeting Vulkan via SPIR‑V). This provides performance and portability beyond generic runtimes without requiring you to hand‑code Vulkan shaders.
+
+Why teach all three? Because someone familiar with the core concepts of the internals is better able to understand how to use the libraries and compilers in production. When you understand how convolutions map to GPU operations, how memory is managed, and where synchronization matters, you become better at debugging, optimization, decision making, and architecture design.
+
+The goal isn't to make you choose a single path—it’s to give you the core understanding of all three, so you can choose the right tool for each situation and apply that understanding effectively.
+
+== Why Use Third-Party Libraries?
+
+Production ML libraries (TensorFlow Lite, ONNX Runtime, PyTorch Mobile, DirectML) offer compelling advantages:
+
+*Battle-Tested Implementations*: Thousands of person-years of engineering effort, deployed in millions of applications. They handle edge cases, numerical stability, platform quirks, and security issues.
+
+*Broad Operator Support*: Hundreds of operations already implemented (convolutions, pooling, normalization, attention mechanisms, embeddings, etc.). Each operation is optimized for different input sizes, data types, and hardware.
+
+*Hardware Acceleration*: Automatic use of specialized AI hardware—Apple Neural Engine, Qualcomm Hexagon DSP, NVIDIA Tensor Cores, AMD Matrix Cores, Intel AMX, and various NPUs. Production libraries leverage hardware that's unavailable to Vulkan compute shaders alone.
+
+*Active Maintenance*: Continuous updates for new operations, performance improvements, bug fixes, hardware support, and security patches. Vulkan applications benefit from ongoing improvements just by updating the library version.
+
+*Reduced Development Time*: ML inference working in days or hours instead of months of implementation, debugging, and optimization.
+
+== When Custom Vulkan Implementation Makes Sense
+
+Despite these advantages, custom implementation is the right choice for specific scenarios:
+
+*Tight Graphics Integration*: When ML features (upscaling, denoising, procedural generation) run every frame within your existing Vulkan rendering pipeline. Custom implementation eliminates data transfers and context switches between separate GPU contexts, saving milliseconds per frame.  Those features are usually quite small and simple networks so they're at the scale where implementing them in compute shaders is an option.
+
+*Rendering AI Techniques*: Gaussian splatting, neural rendering, and graphics-focused AI methods often use lightweight architectures with limited operation sets. Custom implementation provides aggressive optimization for frame-rate-critical techniques.
+
+*Embedded and Resource-Constrained Platforms*: Specialized hardware that supports Vulkan but not standard ML frameworks. Custom implementation provides precise control over memory usage, binary size, and execution—essential for industrial devices, automotive systems, aerospace applications, or IoT devices.  Although, it must be said, that other solutions might fill these areas equally if not better, such as OpenCL or SyCL.  Sometimes you want graphics, and already have a Vulkan context in your embedded system.
+
+*Novel Model Architectures*: Cutting-edge research models using operations not yet supported by standard frameworks. Custom implementation provides flexibility for recent papers or domain-specific operations.  Also, graphics research in neural rendering and procedural generation often requires custom implementations due to the unique nature of the operations.
+
+*Learning and Understanding*: Even if you ultimately use production libraries, understanding ML inference at the Vulkan level makes you better at debugging, optimization, and architectural decisions.
+
+== The Hybrid Approach
+
+In practice, many applications use a hybrid approach: production libraries for most inference workloads, with custom Vulkan implementations for specific performance-critical or tightly-integrated components.
+
+For example, a game might use ONNX Runtime for complex AI behaviors (NPC decision-making, strategy planning, dialogue generation), custom Vulkan shaders for real-time upscaling and denoising, and TensorFlow Lite for mobile deployment of simpler models.
+
+This gives you the best of both worlds: the reliability and broad support of production libraries where they make sense, and the performance and integration benefits of custom implementation where they matter most.
+
+== What This Chapter Covers
+
+This chapter provides comprehensive coverage of integrating third-party ML libraries with Vulkan applications:
+
+=== Library-Specific Chapters
+
+*xref:ML_Inference/Third_Party_Libraries/02_onnx_runtime.adoc[ONNX Runtime]* - Microsoft's framework-agnostic, cross-platform inference engine. Supports models from PyTorch, TensorFlow, and other frameworks. Recommends the **WebGPU** execution provider for generic cross-platform acceleration (utilizing **Vulkan** or **DirectML** natively), while supporting specialized providers like **CUDA** for hardware-specific optimizations.
+
+*xref:ML_Inference/Third_Party_Libraries/03_tensorflow_lite.adoc[TensorFlow Lite]* - Google's mobile-focused library optimized for size, efficiency, and battery life. Excellent quantization support for model compression. Best choice when targeting mobile platforms (Android, iOS).
+
+*xref:ML_Inference/Third_Party_Libraries/04_pytorch_mobile.adoc[PyTorch Mobile]* - Facebook's mobile inference solution with tight PyTorch training workflow integration. Ideal when you're already using PyTorch for training and want seamless training-to-deployment via TorchScript.
+
+*xref:ML_Inference/Third_Party_Libraries/05_directml.adoc[DirectML]* - Microsoft's DirectX 12-based ML library for vendor-agnostic GPU acceleration on Windows. Works with NVIDIA, AMD, and Intel GPUs. Best used via ONNX Runtime's DirectML execution provider.
+
+=== Integration and Optimization Chapters
+
+*xref:ML_Inference/Third_Party_Libraries/06_integration_patterns.adoc[Integration Patterns]* - Three fundamental approaches for bridging Vulkan and ML libraries: separate contexts (simple, CPU-mediated), shared resources (GPU memory sharing), and interleaved execution (unified command stream).
+
+*xref:ML_Inference/Third_Party_Libraries/07_gpu_resource_sharing.adoc[GPU Resource Sharing]* - Technical implementation of zero-copy data transfer using Vulkan external memory extensions, platform-specific handle types, and cross-context synchronization primitives.
+
+*xref:ML_Inference/Third_Party_Libraries/08_data_transfer_optimization.adoc[Data Transfer Optimization]* - Techniques for minimizing transfer overhead, asynchronous transfer queues, memory mapping strategies, and batching for improved throughput.
+
+*xref:ML_Inference/Third_Party_Libraries/09_practical_examples.adoc[Practical Examples]* - Complete working examples for desktop, mobile, and real-time applications with source code, build instructions, and performance analysis.
+
+*xref:ML_Inference/Third_Party_Libraries/10_choosing_library.adoc[Choosing the Right Library]* - Systematic decision framework considering platform support, performance requirements, and integration complexity with recommendation matrices for different use cases.
+
+=== ML Compiler Chapters
+
+*xref:ML_Inference/Third_Party_Libraries/11_ML_Compilers.adoc[ML Compilers Overview]* - What ML compilers are and when to use them.
+*xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE]* - Vulkan‑centric compiler/runtime with AOT/JIT options and mobile/desktop focus.
+*xref:ML_Inference/Third_Party_Libraries/13_apache_tvm.adoc[Apache TVM]* - End‑to‑end compiler stack with auto‑tuning and Vulkan/OpenCL backends.
+*xref:ML_Inference/Third_Party_Libraries/14_mojo_max.adoc[Mojo / MAX]* - Modular’s compiler‑driven inference with developer‑friendly workflows.
+*xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA]* - XLA/StableHLO ecosystem with multiple backends, including Vulkan via IREE.
+*xref:ML_Inference/Third_Party_Libraries/16_choosing_compiler.adoc[Choosing the Right ML Compiler]* - Decision guidance across compilers and model formats (including NNEF considerations).
+
+== How to Navigate This Chapter
+
+This chapter is designed to be both a tutorial and a reference. Here's how to use it effectively:
+
+*If you're new to ML library integration*: Read sequentially through the library-specific chapters (02-05) to understand your options, then proceed to integration patterns (06-08) to learn implementation techniques.
+
+*If you know which library you need*: Skip directly to that library's chapter (e.g., if you're targeting mobile, go straight to TensorFlow Lite). Then read the integration chapters (06-08) for implementation guidance.
+
+*If you're optimizing an existing integration*: Focus on chapters 07-08 (GPU Resource Sharing and Data Transfer Optimization) for advanced techniques.
+
+*If you're deciding between libraries*: Start with chapter 10 (Choosing the Right Library) for a systematic decision framework, then read the relevant library chapters.
+
+*If you only care about one platform*: You can skip libraries that don't support your platform. For example, if you're only targeting Windows desktop, you can skip PyTorch Mobile and focus on ONNX Runtime with DirectML.
+
+== Prerequisites
+
+This chapter assumes you're comfortable with:
+
+*Vulkan Fundamentals*: You should understand Vulkan memory management, command buffers, synchronization primitives (barriers, semaphores, fences), and compute pipelines. If you need a refresher, revisit the main Vulkan tutorial.
+
+*ML Inference Basics*: You should understand what neural network inference is, how data flows through a network, and basic concepts like tensors, layers, and operations. The previous chapter (ML Inference Pipeline) provides this foundation.
+
+*C/C++ Programming*: The examples use C++ with modern features (C++17/20). You should be comfortable with RAII, smart pointers, and basic template usage.
+
+*Build Systems*: Examples use CMake. You should know how to configure and build CMake projects.
+
+You don't need prior experience with the ML libraries we'll cover—we'll introduce each one from scratch.
+
+== A Note on Practicality
+
+This chapter is the most immediately practical in the entire tutorial series. While the rest of the series teaches you the fundamentals of how ML inference works at a low level, this chapter shows you how to actually deploy ML models in production applications today.
+
+For most readers, this chapter will be directly applicable to your projects. You'll learn patterns and techniques you can use immediately. The later chapters on building custom inference engines are valuable for understanding and for specialized use cases, but this chapter is where theory meets practice for the majority of applications.
+
+That said, don't skip the later chapters even if you plan to use production libraries. Understanding how inference works under the hood—what operations are expensive, how memory is managed, where synchronization is needed—makes you much more effective at using and optimizing library-based solutions.
+
+Let's begin by examining the major ML inference libraries and understanding what each one offers.
+
+xref:ML_Inference/ML_Inference_Pipeline/07_mental_model_gpu_execution.adoc[Previous: Mental Model: GPU Execution] | xref:ML_Inference/Third_Party_Libraries/02_onnx_runtime.adoc[Next: ONNX Runtime]

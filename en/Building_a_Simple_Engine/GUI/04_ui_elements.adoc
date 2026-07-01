@@ -1,6 +1,6 @@
 :pp: {plus}{plus}
 
-= GUI: UI Elements and Integration Concepts
+== GUI: UI Elements and Integration Concepts
 
 == UI Elements and Integration Concepts
 

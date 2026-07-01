@@ -1,0 +1,79 @@
+:pp: {plus}{plus}
+
+= Phase 1: System Design (The Design Phase)
+
+== Introduction: The skipped Step
+
+In traditional Vulkan development, the "Planning" phase is often the most skipped step. Developers tend to jump straight into writing the `VkGraphicsPipelineCreateInfo` boilerplate, only to realize halfway through that their descriptor management won't support the new Bindless texture system they want to implement.
+
+In **Collaborative Engineering**, planning is not optional—it is the **Foundation**. By using a high-reasoning model to design your feature *before* you write any code, you ensure that the implementation phase is grounded in a consistent, spec-accurate roadmap.
+
+== The Core Concept: The "Contract"
+
+In **Collaborative Engineering**, we treat the planning phase as a **Technical Contract**. This is a detailed roadmap that defines the "Laws" of the system before any code is written. A successful roadmap for a Vulkan feature must address several critical pillars.
+
+The first pillar is the **Resource Lifecycle**. You must define which buffers, images, and samplers are required, who "owns" them, and exactly when they are created and destroyed. Without this, your AI-assisted implementation will likely suffer from memory leaks or use-after-free errors.
+
+The second pillar is the **Synchronization Strategy**. This is where Vulkan development often fails. Your roadmap should explicitly state the required `VkImageMemoryBarrier2` transitions for every stage of the feature. By defining these transitions in the planning phase, you provide the AI with the "Syntactic Truth" it needs to generate correct synchronization code later.
+
+Finally, you must define the **Interface Boundaries**. How will this new feature interact with your existing `VulkanDevice`, `Swapchain`, or `CommandPool` wrappers? By providing the AI with your existing C{pp} class signatures, you ensure that the new code integrates smoothly into your engine's architecture without requiring massive refactors.
+
+== Why Use a High-Reasoning Model?
+
+Architectural planning requires **Systemic Reasoning**—the ability to hold multiple, interacting systems in mind at once. While small local models are excellent at writing single functions, they can struggle with the high-level implications of a change across your entire engine.
+
+Models like **Claude 4.6** or **GPT-5.3** excel at this phase. They can analyze 500 lines of your engine's existing architecture and suggest how to integrate a new feature without breaking existing synchronization or violating the memory alignment rules of your target hardware.
+
+== Real-World Experience: Designing a Bloom Pipeline
+
+Let's design a modern **Bloom Post-Process Pipeline** using the Collaborative Loop.
+
+=== Step 1: Providing the "Deep Context"
+Do not just ask: *"Design a bloom system."* Instead, feed the AI the results of your **Context Bridge**. Provide the `VulkanContext.hpp` file and your engine's memory management headers.
+**The Prompt:** *"I am implementing a Bloom pass. Our engine uses Vulkan 1.3 with Dynamic Rendering and VMA for memory. Here is our `Renderer` class. Design a Bloom pipeline that uses a 13-tap downsample/upsample chain. Provide a roadmap that defines the class structure and the image layout transitions for each mip-level."*
+
+=== Step 2: Auditing the Roadmap
+The AI generates a plan, and as the human lead, you perform a **Semantic Audit**. For example, if the AI suggests using `STORAGE_IMAGE_OPTIMAL` for your bloom pass, you might realize your target mobile hardware (such as a Mali GPU) performs better if you use `ATTACHMENT_OPTIMAL` with input attachments instead. You can then provide a correction by telling the AI to adjust the roadmap to use subpass-like input attachments for the upsample pass to save bandwidth on mobile.
+
+=== Step 3: Finalizing the "Contract"
+The result is a verified `bloom_design.md` file. This file contains the detailed technical specification that you will use in the next phase to generate the actual code.
+
+== Practical Tutorial: Building a Graphics Feature Roadmap
+
+Planning a complex feature like a **Frame Graph** or a **Clustered Renderer** with an AI is a specific skill. It's the difference between a high-level conversation and a set of engineering blueprints.
+
+Follow this workflow to create a high-quality "Contract" for your next feature:
+
+1.  **Context Loading:**
+    Use your **MCP Tools** (specifically the `mcp-Vulkan` server) to query the latest specification for the feature you want to build. This ensures the AI is using current Vulkan 1.3 or 1.4 extensions instead of legacy patterns.
+
+2.  **Define the "System Boundaries":**
+    Clearly state your engine's constraints.
++
+[source,text]
+----
+I am adding a Bloom pass.
+Our engine uses a fixed 24-bit depth buffer.
+We use VMA for all allocations.
+We are using Dynamic Rendering (no manual RenderPasses).
+----
+
+3.  **Request a Multi-Layered Roadmap:**
+    Ask the assistant to break the plan into three specific layers.
++
+[source,text]
+----
+Generate a 3-layer roadmap:
+1. Architectural Design: (Class hierarchy, state management)
+2. Data Flow: (Descriptor layout, push constants, VMA allocation flags)
+3. Synchronization Map: (Pipeline barriers, layout transitions, and image memory dependencies)
+----
+
+4.  **Refine and Commit (The "Truth" File):**
+    As the human lead, audit the AI's suggestions. Once the plan is solid, have the AI write it to a `DESIGN_DOC.md` file in your repository. Use this file as the "Ground Truth" for the implementation phase.
+
+== Summary: System Design Mastery
+
+Phase 1 is about **Human-AI Collaboration at the Design Level.** By leveraging the reasoning power of high-end LLMs to create a solid "Contract," you turn the overwhelming complexity of Vulkan into a series of well-defined implementation tasks. You have effectively "pre-designed" your architecture before a single line of C{pp} has been written.
+
+Next: xref:AI_Assisted_Vulkan/05_workflow/03_phase_2_implementation.adoc[Phase 2: Implementation & The Implementation Loop]

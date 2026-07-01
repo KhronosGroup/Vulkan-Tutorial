@@ -1,0 +1,311 @@
+:pp: {plus}{plus}
+= Bindless Morph Buffers & Compute Integration
+
+== Why Bindless?
+
+Before Vulkan 1.2's descriptor indexing (formalized in Vulkan 1.3 and fully required in Vulkan 1.4), accessing an array of GPU buffers from a shader required binding each buffer individually, either as a separate descriptor set or as an element in a fixed-size array declared in advance. For morph targets, this creates a practical problem: you would need to either bind all morph target buffers—even the inactive ones—or rebuild descriptor sets every frame as the active set changes.
+
+**Descriptor indexing** (also called bindless rendering) solves this by allowing a shader to index into a descriptor array at runtime using a value computed during execution. You declare a large array of descriptors in your shader, populate it with all your morph target buffers at load time, and then at dispatch time supply a list of *which indices to read from*—the currently active morph targets and their weights. The GPU uses a descriptor index (a plain integer) to look up the correct buffer handle, without any CPU-side re-binding.
+
+The Vulkan feature we specifically need is `VK_EXT_descriptor_indexing` (core in Vulkan 1.2) with the `shaderStorageBufferArrayNonUniformIndexing` feature enabled.
+
+=== Enabling Device Features
+
+To use bindless morph buffers, you must enable the corresponding features during logical device creation. In Vulkan 1.4, these features are part of the core spec, but they still must be explicitly requested in the `VkPhysicalDeviceFeatures2` chain:
+
+[source,cpp]
+----
+// 1. Check for support
+VkPhysicalDeviceDescriptorIndexingFeatures indexing_features {};
+indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+
+VkPhysicalDeviceFeatures2 device_features {};
+device_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+device_features.pNext = &indexing_features;
+
+vkGetPhysicalDeviceFeatures2(physical_device, &device_features);
+
+if (!indexing_features.shaderStorageBufferArrayNonUniformIndexing) {
+    throw std::runtime_error("GPU does not support non-uniform indexing of storage buffers!");
+}
+
+// 2. Enable during device creation
+VkDeviceCreateInfo device_info {};
+device_info.pNext = &device_features; // Includes the requested indexing features
+// ... rest of device creation ...
+----
+
+== Setting Up the Descriptor Infrastructure
+
+We need a descriptor set layout that contains a runtime-sized array of storage buffer descriptors. In Vulkan, this is declared with the `VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT` and `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` flags, which together tell the driver that the array can be partially populated and that only the entries we actually use need to be valid:
+
+[source,cpp]
+----
+void create_morph_descriptor_set_layout(
+    VkDevice device,
+    uint32_t max_morph_targets, // Upper bound on the total number of morph target buffers
+    VkDescriptorSetLayout& out_layout)
+{
+    // Binding 0: runtime-sized array of storage buffers (one per morph target)
+    VkDescriptorSetLayoutBinding binding {};
+    binding.binding            = 0;
+    binding.descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    binding.descriptorCount    = max_morph_targets;
+    binding.stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorBindingFlags flags =
+        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT           |
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags {};
+    binding_flags.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+    binding_flags.bindingCount  = 1;
+    binding_flags.pBindingFlags = &flags;
+
+    VkDescriptorSetLayoutCreateInfo layout_info {};
+    layout_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.pNext        = &binding_flags;
+    layout_info.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+    layout_info.bindingCount = 1;
+    layout_info.pBindings    = &binding;
+
+    vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &out_layout);
+}
+
+void update_morph_descriptors(
+    VkDevice device,
+    VkDescriptorSet descriptor_set,
+    const std::vector<VkBuffer>& morph_buffers)
+{
+    std::vector<VkDescriptorBufferInfo> buffer_infos;
+    std::vector<VkWriteDescriptorSet> writes;
+
+    for (size_t i = 0; i < morph_buffers.size(); ++i) {
+        VkDescriptorBufferInfo info {};
+        info.buffer = morph_buffers[i];
+        info.offset = 0;
+        info.range  = VK_WHOLE_SIZE;
+        buffer_infos.push_back(info);
+
+        VkWriteDescriptorSet write {};
+        write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet          = descriptor_set;
+        write.dstBinding      = 0;
+        write.dstArrayElement = static_cast<uint32_t>(i);
+        write.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.descriptorCount = 1;
+        write.pBufferInfo     = &buffer_infos.back();
+        writes.push_back(write);
+    }
+
+    vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+}
+----
+
+=== Creating the Morph Compute Pipeline
+
+To run our extended compute shader, we need a pipeline that includes the bindless descriptor set. The pipeline layout must account for the bindless array at binding 0 of set 1 (matching our `[[vk::binding(0, 1)]]` declaration):
+
+[source,cpp]
+----
+void create_morph_pipeline(
+    VkDevice device,
+    VkDescriptorSetLayout base_layout,  // Binding set 0 (input/output vertices, joint matrices)
+    VkDescriptorSetLayout morph_layout, // Binding set 1 (bindless morph buffers)
+    VkShaderModule shader_module,
+    VkPipelineLayout& out_layout,
+    VkPipeline& out_pipeline)
+{
+    // 1. Pipeline Layout
+    std::vector<VkDescriptorSetLayout> layouts = { base_layout, morph_layout };
+
+    VkPushConstantRange push_range {};
+    push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push_range.offset     = 0;
+    push_range.size       = sizeof(PushConstants);
+
+    VkPipelineLayoutCreateInfo layout_info {};
+    layout_info.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.setLayoutCount = static_cast<uint32_t>(layouts.size());
+    layout_info.pSetLayouts    = layouts.data();
+    layout_info.pushConstantRangeCount = 1;
+    layout_info.pPushConstantRanges    = &push_range;
+
+    vkCreatePipelineLayout(device, &layout_info, nullptr, &out_layout);
+
+    // 2. Compute Pipeline
+    VkComputePipelineCreateInfo pipeline_info {};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipeline_info.layout = out_layout;
+    pipeline_info.stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipeline_info.stage.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipeline_info.stage.module = shader_module;
+    pipeline_info.stage.pName  = "main";
+
+    vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &out_pipeline);
+}
+----
+
+When you allocate the descriptor set from this layout, you specify the actual count of descriptors you want (which can be less than `max_morph_targets`). Once allocated, you populate the array using `vkUpdateDescriptorSets` as shown above. This is a one-time setup at load time—the buffers themselves don't change, only the weights used to blend them.
+
+== Morph Target Animation
+
+Driving morph weights at runtime is done via glTF animation channels with the `weights` path. Unlike translation (vec3) or rotation (quat), a morph weight channel produces a scalar value (or an array of scalars if multiple morph targets are animated in the same channel).
+
+[source,cpp]
+----
+void update_morph_weights(
+    const AnimationChannel& channel,
+    const AnimationSampler& sampler,
+    float current_time,
+    std::vector<float>& mesh_weights)
+{
+    if (channel.path != AnimationChannel::WEIGHTS) return;
+
+    // Find the keyframe interval [t0, t1]
+    uint32_t k = find_keyframe(sampler, current_time);
+    float t0 = sampler.inputs[k];
+    float t1 = sampler.inputs[k+1];
+    float factor = (current_time - t0) / (t1 - t0);
+
+    // Sample the weights for all targets in this mesh
+    uint32_t target_count = mesh_weights.size();
+    for (uint32_t i = 0; i < target_count; ++i) {
+        float w0 = sampler.values[k * target_count + i].x;
+        float w1 = sampler.values[(k+1) * target_count + i].x;
+
+        // Linear interpolation is typically sufficient for facial expressions
+        mesh_weights[i] = glm::mix(w0, w1, factor);
+    }
+}
+----
+
+These weights are then packed into the `PushConstants` and sent to the compute shader.
+
+== The Extended Compute Shader
+
+We need to extend the skinning compute shader from Chapter 3 to apply morph target displacements before the skeletal skinning step. The morph application and the skeletal skinning are both linear operations on the same vertex buffer, so they compose cleanly: apply morphs first (which moves the vertex in the bind pose), then apply skeletal skinning (which transforms the morphed bind pose into the animated world pose).
+
+Here is the extended shader in Slang. The key additions are the `morphTargets` bindless buffer array, the `MorphWeightBlock` parameter, and the morph accumulation loop:
+
+[source,slang]
+----
+// morph_accumulate.slang — combines morph target accumulation with skeletal skinning.
+// Requires: VK_EXT_descriptor_indexing, runtimeDescriptorArray.
+
+// Same C-array struct layout as skinning.slang (matches GPU buffer memory layout).
+struct InputVertex  { float p[3]; float n[3]; float uv[2]; float t[4]; };
+struct OutputVertex { float p[3]; float n[3]; float uv[2]; float t[4]; };
+
+// Set 0: per-mesh buffers (same 5-binding layout as the base skinning shader)
+[[vk::binding(0, 0)]] StructuredBuffer<InputVertex>    base_vertices;
+[[vk::binding(1, 0)]] RWStructuredBuffer<OutputVertex> output_vertices;
+[[vk::binding(2, 0)]] StructuredBuffer<float4x4>       joint_matrices;
+[[vk::binding(3, 0)]] StructuredBuffer<uint4>          joint_indices;
+[[vk::binding(4, 0)]] StructuredBuffer<float4>         joint_weights;
+
+// Set 1: runtime-length array of morph delta buffers (one StructuredBuffer per target).
+// MorphDelta uses a C-array to match GPU buffer layout.
+struct MorphDelta { float d[3]; };
+[[vk::binding(0, 1)]] StructuredBuffer<MorphDelta> morph_targets[];
+
+// MorphWeightBlock must match SkinPushConstants::MorphWeightBlock in renderer_advanced_types.h.
+struct MorphWeightBlock {
+    float    weights[24];     // Blending weights for the active targets
+    uint32_t active_count;    // How many entries in weights[] are valid
+    uint32_t apply_skinning;  // 1 = also apply skeletal skinning, 0 = morph only
+    uint32_t pad[2];
+};
+
+struct PushConstants {
+    uint32_t         vertex_count;
+    uint32_t         morph_indices[24]; // Which descriptor slot each active target lives in
+    MorphWeightBlock morph_weights;
+};
+[[vk::push_constant]] PushConstants pc;
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void main(uint3 dispatch_id : SV_DispatchThreadID)
+{
+    uint vertex_idx = dispatch_id.x;
+    if (vertex_idx >= pc.vertex_count) return;
+
+    InputVertex base = base_vertices[vertex_idx];
+    float3 base_pos = float3(base.p[0], base.p[1], base.p[2]);
+    float3 base_nrm = float3(base.n[0], base.n[1], base.n[2]);
+    float4 base_tan = float4(base.t[0], base.t[1], base.t[2], base.t[3]);
+
+    // --- Pass 1: morph target accumulation ---
+    float3 morphed_position = base_pos;
+    float3 morphed_normal   = base_nrm;
+
+    for (uint m = 0; m < pc.morph_weights.active_count; ++m) {
+        float weight = pc.morph_weights.weights[m];
+        if (abs(weight) < 1e-5f) continue;
+
+        uint slot = pc.morph_indices[m];
+        // NonUniformResourceIndex: different threads may use different descriptor slots.
+        MorphDelta delta_raw = morph_targets[NonUniformResourceIndex(slot)][vertex_idx];
+        float3 delta = float3(delta_raw.d[0], delta_raw.d[1], delta_raw.d[2]);
+        morphed_position += weight * delta;
+    }
+
+    // --- Pass 2: skeletal skinning (same LBS as skinning.slang) ---
+    uint4  j_idx = joint_indices[vertex_idx];
+    float4 j_w   = joint_weights[vertex_idx];
+
+    float4x4 skin_matrix =
+        j_w.x * joint_matrices[j_idx.x] +
+        j_w.y * joint_matrices[j_idx.y] +
+        j_w.z * joint_matrices[j_idx.z] +
+        j_w.w * joint_matrices[j_idx.w];
+
+    float3x3 skin_rot = float3x3(
+        skin_matrix[0].xyz, skin_matrix[1].xyz, skin_matrix[2].xyz);
+
+    float3 final_position = morphed_position;
+    float3 final_normal   = morphed_normal;
+    float3 final_tangent  = base_tan.xyz;
+    if (pc.morph_weights.apply_skinning != 0u) {
+        final_position = mul(skin_matrix, float4(morphed_position, 1.0)).xyz;
+        final_normal   = normalize(mul(skin_rot, morphed_normal));
+        final_tangent  = normalize(mul(skin_rot, base_tan.xyz));
+    }
+
+    // Write to output buffer element-by-element (C-array structs require this).
+    OutputVertex out;
+    out.p[0] = final_position.x;  out.p[1] = final_position.y;  out.p[2] = final_position.z;
+    out.n[0] = final_normal.x;    out.n[1] = final_normal.y;    out.n[2] = final_normal.z;
+    out.t[0] = final_tangent.x;   out.t[1] = final_tangent.y;
+    out.t[2] = final_tangent.z;   out.t[3] = base_tan.w;
+    out.uv[0] = base.uv[0];       out.uv[1] = base.uv[1];
+
+    output_vertices[vertex_idx] = out;
+}
+----
+
+The `NonUniformResourceIndex` annotation is the critical piece that makes the bindless indexing correct. Without it, the GPU driver may assume all threads in a wave (a group of threads that execute in lockstep) are accessing the same descriptor index—which would be incorrect when different characters are being skinned in the same dispatch. `NonUniformResourceIndex` tells the compiler to emit a `NonUniform` decoration on the index, which instructs the hardware to perform a non-uniform texture/buffer fetch that handles the per-thread variation correctly.
+
+== Integrating with the Dispatch Loop
+
+The morph system integrates into the frame loop naturally:
+
+1. **Update weights.** The animation system advances the `WEIGHTS` animation channel and writes new float values into the per-mesh morph weight array.
+2. **Cull inactive targets.** Any morph target with weight below a threshold (typically 0.005) is excluded from the dispatch. Build the compact `morph_indices` and `weights` arrays from only the active targets.
+3. **Push constants.** Fill the `PushConstants` struct with the active target count, the descriptor indices of the active buffers, and their weights.
+4. **Dispatch.** Bind the descriptor set (which has all morph target buffers registered), push constants, and dispatch the compute shader. One thread per vertex.
+5. **Barrier.** Issue a `VkBufferMemoryBarrier2` on the output buffer (same as Chapter 3) before the rasterizer or ray tracing pass reads from it.
+
+The only part that requires care is the per-frame push constant size. With up to 24 active morph targets, `PushConstants` contains 24 indices (96 bytes) plus `MorphWeightBlock` with 24 weights (96 bytes) plus metadata — roughly 200 bytes total. The Vulkan specification guarantees a minimum of 128 bytes of push constant space, but most desktop GPUs support 256 bytes or more. The 24-target cap was chosen to stay within that budget. If you need more simultaneous targets, move the weight data into a small uniform buffer instead.
+
+== Morph Targets and Skeletal Rigs Together
+
+The final question is how morph targets and the joint skeleton cooperate. When a character opens their mouth, this involves both a morph target (sliding the lips and revealing teeth in a complex, non-rigid deformation) and a joint rotation (rotating the jaw bone downward to pull the lower jaw open). These two systems must be applied in the right order and must agree on the base pose.
+
+The rule is: **apply morphs in the bind pose, then apply skeletal skinning.** The bind pose is the rest configuration that the artist sets up in Blender. Morph targets are defined as displacements from this pose. The skeletal inverse bind matrices are also defined relative to this pose. If you apply morphs first (as our shader does), then run the joint influence weighting with the inverse bind matrices, the result is mathematically correct: the morphed geometry in bind pose is transformed by the animation pose, yielding the final animated-and-morphed mesh.
+
+Getting this wrong—applying morph targets after skeletal skinning, or in world space rather than bind space—produces smearing artifacts where facial geometry stretches or fails to follow the jaw bone.
+
+xref:Advanced_glTF/Morph_Targets_Facial_Animation/02_shape_key_ingestion.adoc[Previous: Shape Key Ingestion] | xref:Advanced_glTF/Morph_Targets_Facial_Animation/04_conclusion.adoc[Next: Conclusion]

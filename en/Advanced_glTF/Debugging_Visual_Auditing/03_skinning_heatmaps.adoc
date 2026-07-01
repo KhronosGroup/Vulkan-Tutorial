@@ -1,0 +1,183 @@
+:pp: {plus}{plus}
+= Skinning Heatmaps: Visualizing Weight Painting
+
+== What Heatmaps Reveal
+
+The skeletal skinning process is driven entirely by the per-vertex joint indices and weight values stored in the `JOINTS_0` and `WEIGHTS_0` vertex attributes. These are invisible during normal rendering—the deformation they produce is visible, but the weights themselves are not. When something is wrong with the skinning—pinched geometry at a shoulder, a vertex that stays rigidly attached to the wrong bone, a region that stretches impossibly during animation—the cause is almost always incorrect joint weights. But without a way to visualize the weights, diagnosing the problem is extremely difficult.
+
+A skinning heatmap is a rendering mode where each pixel's color is determined not by the material's PBR properties, but by the skinning weight data for the corresponding vertex. The most useful heatmap is the **dominant bone heatmap**: each vertex is colored based on which joint has the largest influence on it. This immediately shows you the "territory" of each bone—which region of the mesh each bone primarily controls—and makes joint boundary errors obvious. A vertex that is colored with Bone A's color when it should be colored with Bone B's indicates a weight painting error that would cause that vertex to follow the wrong bone.
+
+A second useful heatmap is the **weight distribution heatmap**: each vertex is colored on a heat scale (blue → green → red) based on how many joints influence it and how evenly the weight is distributed. A vertex influenced entirely by one bone shows as pure blue (or some other "cold" color indicating simple, predictable behavior). A vertex with four nearly-equal influences shows as red (complex, potentially artifact-prone). This heatmap helps you identify regions where the weight painting has become noisy or overly complex without artistic intention.
+
+== Implementing the Heatmap Render Mode
+
+The heatmap is rendered by replacing the standard PBR fragment shader with a diagnostic shader that reads the joint indices and weights from the vertex data and converts them to a color. Because the skinning data is part of the vertex format, no additional buffers are needed—we just need to pass the relevant attributes through the vertex pipeline to the fragment stage and compute the color there:
+
+[source,slang]
+----
+// Camera data — declared as a push constant for simplicity.
+struct CameraPushConstants { float4x4 view_proj; };
+[[vk::push_constant]] CameraPushConstants camera;
+
+// Vertex data without embedded joint indices/weights —
+// joint data is stored in separate parallel buffers (same pattern as skinning.slang).
+struct Vertex {
+    float3 position;
+    float3 normal;
+    float4 tangent;
+    float2 texcoord;
+};
+
+// Five bindings: vertex geometry, joint matrices, joint indices, joint weights, joint colors.
+[[vk::binding(0, 0)]] StructuredBuffer<Vertex>    vertices;
+[[vk::binding(1, 0)]] StructuredBuffer<float4x4>  joint_matrices;  // For world position
+[[vk::binding(2, 0)]] StructuredBuffer<uint4>     joint_indices;
+[[vk::binding(3, 0)]] StructuredBuffer<float4>    joint_weights;
+[[vk::binding(4, 0)]] StructuredBuffer<float4>    joint_colors;   // One RGBA per joint
+
+// Vertex shader passes joint data to the fragment stage for coloring.
+struct VertexOut {
+    float4 position : SV_Position;
+    float4 weights  : TEXCOORD0;
+    uint4  joints   : TEXCOORD1;
+};
+
+[shader("vertex")]
+VertexOut vertex_main(uint vertex_id : SV_VertexID)
+{
+    Vertex v   = vertices[vertex_id];
+    uint4 j_idx = joint_indices[vertex_id];
+    float4 j_w  = joint_weights[vertex_id];
+
+    // Apply skinning to get world position (same LBS as skinning.slang)
+    float4x4 skin_matrix =
+        j_w.x * joint_matrices[j_idx.x] +
+        j_w.y * joint_matrices[j_idx.y] +
+        j_w.z * joint_matrices[j_idx.z] +
+        j_w.w * joint_matrices[j_idx.w];
+
+    VertexOut out;
+    out.position = mul(camera.view_proj, mul(skin_matrix, float4(v.position, 1.0)));
+    out.weights  = j_w;
+    out.joints   = j_idx;
+    return out;
+}
+
+// Colors each pixel by the dominant (highest-weight) joint using a per-joint color table.
+[shader("fragment")]
+float4 fragment_dominant_bone(VertexOut input) : SV_Target
+{
+    uint  dominant = 0;
+    float max_w    = input.weights.x;
+
+    if (input.weights.y > max_w) { max_w = input.weights.y; dominant = 1; }
+    if (input.weights.z > max_w) { max_w = input.weights.z; dominant = 2; }
+    if (input.weights.w > max_w) { max_w = input.weights.w; dominant = 3; }
+
+    uint actual_joint = input.joints[dominant];
+    return joint_colors[actual_joint];
+}
+----
+
+The `jointColors` buffer contains one RGBA color per joint in the skeleton. These colors should be visually distinct so that adjacent bone territories are immediately differentiable. A simple approach is to distribute colors uniformly around the HSV color wheel:
+
+[source,cpp]
+----
+std::vector<glm::vec4> generate_joint_colors(uint32_t joint_count)
+{
+    std::vector<glm::vec4> colors(joint_count);
+    for (uint32_t i = 0; i < joint_count; ++i) {
+        float hue = static_cast<float>(i) / joint_count; // 0..1
+        // Convert HSV (hue, 1, 1) to RGB
+        float h = hue * 6.0f;
+        float x = 1.0f - std::abs(std::fmod(h, 2.0f) - 1.0f);
+        glm::vec3 rgb;
+        if      (h < 1) rgb = {1, x, 0};
+        else if (h < 2) rgb = {x, 1, 0};
+        else if (h < 3) rgb = {0, 1, x};
+        else if (h < 4) rgb = {0, x, 1};
+        else if (h < 5) rgb = {x, 0, 1};
+        else            rgb = {1, 0, x};
+        colors[i] = glm::vec4(rgb, 1.0f);
+    }
+    return colors;
+}
+----
+
+== Reading the Heatmap
+
+Looking at the dominant bone heatmap of a well-painted character, you should see clearly separated color regions with smooth gradients at the boundaries. The thigh should be entirely one color. The shin should be entirely another. The transition between them at the knee should be a narrow band where the skin blends between the two bones.
+
+**Problems to look for:**
+
+If a small patch of one color appears in the middle of another color's territory—say, a yellow vertex in the middle of a red region—this is a stray vertex group assignment. A vertex that was accidentally assigned to the wrong bone. During animation, this vertex will follow the wrong bone and produce a "pixel" of visible geometry displacement. In Blender, you can locate this vertex using Weight Paint mode on the affected bone.
+
+If the color transition between two bones is very abrupt—the colors change immediately with no blending zone—this indicates that the weight painting has zero smooth falloff between the bones. The mesh will crease sharply at the joint rather than deforming smoothly. Add a gradient of weight values in the transition zone.
+
+If the entire mesh is a single color, the character is either very simple (only one bone influences all vertices, which is rare) or the weight data was not exported correctly (all vertices defaulted to the first bone).
+
+== The Weight Distribution Heatmap
+
+For the weight distribution heatmap, the fragment shader computes a "complexity score" for each vertex—how many joints have significant influence—and maps it to a heat color scale:
+
+[source,slang]
+----
+[shader("fragment")]
+float4 fragment_weight_distribution(VertexOut input) : SV_Target
+{
+    // Count how many joints have non-trivial influence on this vertex.
+    // "Non-trivial" means weight > 0.05 (5% or more).
+    float complexity = 0.0f;
+    float4 w = input.weights;
+    if (w.x > 0.05f) complexity += 1.0f;
+    if (w.y > 0.05f) complexity += 1.0f;
+    if (w.z > 0.05f) complexity += 1.0f;
+    if (w.w > 0.05f) complexity += 1.0f;
+
+    // Normalize to 0..1 range (0 = single bone, 1 = four bones)
+    float t = (complexity - 1.0f) / 3.0f;
+
+    // Map to a blue (simple) -> green (moderate) -> red (complex) heat scale
+    float3 cool_color = float3(0, 0, 1);
+    float3 warm_color = float3(1, 0, 0);
+    float3 mid_color  = float3(0, 1, 0);
+
+    float3 color;
+    if (t < 0.5f) color = lerp(cool_color, mid_color, t * 2.0f);
+    else          color = lerp(mid_color, warm_color, (t - 0.5f) * 2.0f);
+
+    return float4(color, 1.0f);
+}
+----
+
+A well-painted character will show blue and green regions everywhere except at the major joints (shoulder, hip, knee, elbow), where you expect and want multiple bone influences. If large regions of the mesh are red, the weight painting is unnecessarily complex in those areas and may benefit from cleanup.
+
+== Switching to Heatmap Mode at Runtime
+
+To switch between the normal PBR pipeline and the heatmap pipeline at runtime, you have two options:
+
+1. **Multiple Pipelines**: Create two separate `VkPipeline` objects using the same `VkPipelineLayout`. One pipeline uses the PBR fragment shader, and the other uses the heatmap fragment shader. At render time, simply bind the desired pipeline.
+2. **Specialization Constants**: Use a Vulkan specialization constant to toggle the heatmap logic within a single fragment shader.
+
+If you choose the multiple pipeline approach (recommended for clarity), you must ensure the `jointColors` buffer is bound when in heatmap mode:
+
+[source,cpp]
+----
+// Bind the appropriate pipeline
+if (render_mode == RenderMode::HEATMAP) {
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, heatmap_pipeline);
+
+    // Bind the joint colors buffer (assumes it's in a separate descriptor set)
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
+                           2, 1, &joint_colors_descriptor_set, 0, nullptr);
+} else {
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_pipeline);
+}
+
+// Issue the draw call as usual
+vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
+----
+
+This allows you to audit your assets live in the engine, which is far more effective than relying on static analysis in a 3D tool.
+
+xref:Advanced_glTF/Debugging_Visual_Auditing/02_debug_drawers.adoc[Previous: Debug Drawers] | xref:Advanced_glTF/Debugging_Visual_Auditing/04_renderdoc_analysis.adoc[Next: RenderDoc Analysis]

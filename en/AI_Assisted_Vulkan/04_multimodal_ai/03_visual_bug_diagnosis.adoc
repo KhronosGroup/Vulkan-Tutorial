@@ -1,0 +1,75 @@
+:pp: {plus}{plus}
+
+= Visual Bug Diagnosis: Identifying Graphics Artifacts
+
+== Introduction: The Artifact Hunt
+
+In the life of a Vulkan developer, the "Black Screen" is only the first hurdle. Once you finally have images on the screen, the real challenge begins: **The Artifact Hunt.** Visual bugs like flickering, jagged shadows, and texture anomalies are the hallmarks of subtle state errors or synchronization hazards.
+
+To truly master **Collaborative Engineering**, we use Multimodal AI to identify these artifacts and translate them back into the Vulkan code that caused them.
+
+== The Core Concept: Pixels as Symptoms
+
+In **Collaborative Engineering**, we treat pixels as symptoms. Just as a doctor uses an X-ray to diagnose a fracture, a graphics developer uses a screenshot to diagnose a state mismatch. Most Vulkan bugs follow predictable visual patterns that an AI can be trained to recognize.
+
+=== 1. Z-Fighting (Depth Fighting)
+
+**The Visual Symptom:** You see two overlapping surfaces "flickering" or showing a jagged, alternating pattern between them as the camera moves.
+**The Real-World Experience:** You are building a large outdoor scene. Your floor tiles and your ground plane are perfectly aligned, but as you move away, they begin to flicker and "pop."
+**The AI Diagnosis:** You upload a screenshot to your Multimodal AI. It identifies the pattern as **Z-fighting**. It doesn't just suggest "checking your code"; it explains that your **Near Plane** value (`0.0001f`) is likely too small for your **Far Plane** (`10,000f`), causing a loss of depth precision in a 24-bit depth buffer. It recommends a near plane of `0.1f` to regain stability.
+
+=== 2. Shadow Acne (Self-Shadowing)
+
+**The Visual Symptom:** Strange, dark, striped or "moiré" patterns on the surface of an object that is supposed to be lit.
+**The Real-World Experience:** You've just implemented your first **Directional Light**. The floor looks like it's covered in barcodes.
+**The AI Diagnosis:** The AI, seeing the "stripes," identifies the issue as **Shadow Acne**. It suggests that your `depthBiasConstantFactor` or `slopeFactor` in your `VkPipelineRasterizationStateCreateInfo` is too low for your shadow map's current resolution. It explains the relationship between the light's angle and the bias required to prevent the shadow from "sampling itself."
+
+== The Diagnostic Prompting Template: Pixel-to-Code Correlation
+
+To get a high-quality diagnosis from a Multimodal AI, you must provide a combination of **Visual Evidence** and **Systemic Context**.
+
+Start by capturing a high-resolution **Screenshot** of the artifact. This is the "Symptom" the AI will analyze. Next, provide the **System Context**—tell the assistant exactly what kind of renderer you are using (e.g., Clustered Forward, Deferred) and what GPU you are targeting. Finally, ask a **Specific Question** that focuses the AI's analysis on the problem area.
+
+For example, you might say: *"Analyze the jagged, barcode-like shadows on the ground in this 4K screenshot. I am using a Cascaded Shadow Map system with Vulkan 1.3. Identify the likely artifact and suggest which `VkPipelineRasterizationStateCreateInfo` settings I should adjust to mitigate this 'Shadow Acne' without losing depth detail."*
+
+By providing this triple-threat of information (Image, Context, and Goal), you ensure that the AI's response is grounded in the actual engineering requirements of your Vulkan engine, rather than just a generic guess based on a low-resolution thumbnail.
+
+== Practical Tutorial: The AI-Assisted Debugging Workflow
+
+To get a high-quality diagnosis from a Multimodal AI, you must provide a combination of **Visual Evidence** and **Systemic Context**. This turns the AI from a "guessing game" into a precise diagnostic tool.
+
+Follow this step-by-step process for identifying any visual artifact:
+
+*  **Capture High-Resolution Evidence:**
+    Take a 4K screenshot of the artifact. If the bug is a flickering or motion-based issue, take a short screen recording (MP4) if your AI supports video, or a series of frames to show the "temporal" nature of the bug.
+
+*  **Define the "Hardware Baseline":**
+    Provide the AI with your GPU's specs and the Vulkan features you are using.
+
+[source,text]
+----
+I am running on an NVIDIA RTX 4070 with Vulkan 1.3.
+I am using a 24-bit D24_UNORM_S8_UINT depth buffer format.
+----
+
+*  **The "Symptom to Spec" Prompt:**
+    Use a structured prompt that describes the visual symptom and asks for a spec-level diagnosis.
+[source,text]
+----
+Reference the screenshot file: xxx.png
+Analyze the 'jagged' alternating pixels between the two overlapping planes
+in this image. I am currently using a 0.01 to 10000.0 depth range.
+Diagnose the artifact and suggest the specific Vulkan depth bias or
+projection matrix adjustments needed to resolve it.
+----
+
+*  **Execute the "Verify-Fix" Loop:**
+    The AI suggests a fix (e.g., *"Use a logarithmic depth buffer"*). You then ask it to generate the GLSL code for the vertex shader and the C{pp} code to enable the `VK_EXT_depth_clip_enable` feature if needed.
+
+== Summary: From Pixels to Code
+
+By training your AI to recognize these patterns, you reduce the "Guesswork" phase of debugging. The AI points to the most likely cause, and you—the human engineer—verify the code. This is the heart of the **Collaborative Loop**: the AI identifies a potential problem, and you verify and fix the root cause.
+
+However, as we will see in the next chapter, it is critical to understand the **Limits** of this visual reasoning. The AI can suggest the "Why," but it still lacks the "Ground Truth" of your actual GPU hardware unless you provide it through the **Context Bridge**.
+
+Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/04_expectations_limits.adoc[Expectations & Limits]

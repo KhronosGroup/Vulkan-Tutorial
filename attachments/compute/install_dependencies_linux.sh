@@ -5,13 +5,25 @@
 # slangc must be provided by the Vulkan SDK (1.4.335+).
 #
 # Chapter 05 (OpenCL on Vulkan) requires the OpenCL ICD loader + headers and the
-# clspv compiler + clvk runtime. These are ALWAYS built by this script (there is
-# no opt-out): the Chapter 05 sample cannot run without clspv. Building clspv
-# pulls in LLVM, so the first run can take 20-40 minutes.
+# clspv compiler + clvk runtime to RUN. By default this script ALWAYS builds
+# them: the Chapter 05 sample cannot run without clspv. Building clspv pulls in
+# LLVM, so the first run can take 20-40 minutes.
 #
-# This script takes no options. clspv/clvk are built into ~/opencl-on-vulkan.
+# Pass --skip-clspv-clvk (or set SKIP_CLSPV_CLVK=1) to skip that source build.
+# CMake's find_program/find_library calls degrade gracefully without them:
+# the Chapter 05 binary still builds (with its clspv AOT path and clvk runtime
+# path disabled), which is all a build-only smoke test needs. Use this only
+# for CI build verification — it does not produce a runnable Chapter 05 demo.
+# clspv/clvk are built into ~/opencl-on-vulkan.
 
 set -e
+
+SKIP_CLSPV_CLVK="${SKIP_CLSPV_CLVK:-0}"
+for arg in "$@"; do
+    case "$arg" in
+        --skip-clspv-clvk) SKIP_CLSPV_CLVK=1 ;;
+    esac
+done
 
 TOOLS_DIR="${HOME}/opencl-on-vulkan"
 
@@ -89,9 +101,16 @@ case $PM in
         ;;
 esac
 
+if [ "$SKIP_CLSPV_CLVK" = "1" ]; then
+    echo ""
+    echo "======================================================="
+    echo "  Skipping clspv + clvk build (--skip-clspv-clvk)"
+    echo "  Chapter 05 will build with its AOT/runtime paths disabled."
+    echo "======================================================="
+else
 # ---------------------------------------------------------------------------
-# Chapter 05 (REQUIRED): build clspv (OpenCL C -> SPIR-V) and clvk (OpenCL 3.0
-# on Vulkan). The Chapter 05 sample cannot run without these.
+# Chapter 05 (REQUIRED to run): build clspv (OpenCL C -> SPIR-V) and clvk
+# (OpenCL 3.0 on Vulkan). The Chapter 05 sample cannot run without these.
 # ---------------------------------------------------------------------------
 echo ""
 echo "======================================================="
@@ -147,6 +166,7 @@ echo "  export PATH=\"$TOOLS_DIR/clspv/build/bin:\$PATH\""
 echo "Verify the layered OpenCL platform is visible:"
 echo "  clinfo -l        # should list a 'clvk' platform"
 echo ""
+fi
 echo "======================================================="
 echo "  Vulkan SDK (with slangc) must be installed separately"
 echo "======================================================="

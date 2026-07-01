@@ -1,0 +1,67 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+Supporting Quad-Views (N=4) in our `simple_game_engine` requires us to move from a single-layer swapchain to a multi-layer composition in `renderer_rendering.cpp`. *This is currently left as an exercise for the reader to implement.*
+
+== Multi-Layer Swapchain Composition
+
+In `renderer_rendering.cpp`, we update `Render` to submit multiple projection layers to OpenXR. Each eye will have a peripheral (wide FOV) and a foveal (narrow, high-res) layer.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ...
+    if (xrMode) {
+        // Define two layers for the XR compositor:
+        // Layer 0: Peripheral (Wide FOV)
+        // Layer 1: Foveal (Narrow FOV, High-Res)
+        std::vector<XrCompositionLayerProjection> layers;
+
+        for (uint32_t eye = 0; eye < 2; ++eye) {
+            // Retrieve views from OpenXR (N=4)
+            // xrContext provides these based on xrLocateViews
+            auto const& views = xrContext.getQuadViews();
+
+            // Populate peripheral layer
+            layers[0].views[eye].pose = views[0 + eye].pose;
+            layers[0].views[eye].fov = views[0 + eye].fov;
+            layers[0].views[eye].subImage.swapchain = *xrPeripheralSwapchain;
+
+            // Populate foveal layer (the "inset")
+            layers[1].views[eye].pose = views[2 + eye].pose;
+            layers[1].views[eye].fov = views[2 + eye].fov;
+            layers[1].views[eye].subImage.swapchain = *xrFovealSwapchain;
+        }
+
+        // Submit multi-layer composition to OpenXR
+        xrContext.submitLayers(layers);
+    }
+}
+----
+
+== Handling High-Fidelity Insets
+
+In our `createGraphicsPipeline`, we ensure our `viewMask` is expanded if we are rendering all 4 views in a single pass.
+
+[source,cpp]
+----
+// renderer_resources.cpp
+bool Renderer::createGraphicsPipeline() {
+    // ...
+    vk::PipelineRenderingCreateInfo renderingInfo{
+        .viewMask = xrMode ? 0xF : 0x0, // 0xF enables views 0, 1, 2, 3
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapChainImageFormat
+    };
+
+    pipelineInfo.pNext = &renderingInfo;
+    // ...
+}
+----
+
+== Why These Changes?
+
+By moving to a multi-layer composition, we enable "Foveal Rendering" where the engine renders the center of the user's view at a much higher resolution than the periphery. Because our engine's `Render` loop is already dynamic, it can seamlessly switch between these views and layers, ensuring that the user always experiences the highest fidelity where they are actually looking.
+
+xref:OpenXR_Vulkan_Spatial_Computing/09_Quad_Views_Foveated/03_multi_layer_composition.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/10_Variable_Rate_Shading/01_introduction.adoc[Next]

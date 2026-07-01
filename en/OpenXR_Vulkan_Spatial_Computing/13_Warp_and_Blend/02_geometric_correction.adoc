@@ -1,0 +1,75 @@
+:pp: {plus}{plus}
+= Geometric Correction & Edge Blending
+
+Geometric correction transforms a rectilinear image into a "warped" one that looks correct when projected onto physical surfaces like curved screens or corners.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Beyond the OpenXR Standard**.
+
+While standard HMD runtimes handle warping internally, for custom projector setups or curved display walls, you must implement your own geometric correction. You use Vulkan's compute shaders and subgroup operations to implement pixel-perfect edge blending and warping that goes beyond the standard HMD-focused OpenXR model.
+
+== The Concept: Reverse Lookup
+
+To understand warping, you must think in reverse. Instead of asking "Where does this source pixel go?", we ask **"For this pixel on my wall, where should I look in my rendered frame?"**
+
+1.  **Rectilinear Source**: A standard 3D render (straight lines, 90-degree corners).
+2.  **Physical Destination**: A curved screen or a corner where walls meet.
+3.  **The Warp Map**: A Look-Up Table (LUT) that maps every destination pixel to a $(u, v)$ coordinate in the source render.
+
+The runtime maintains a persistent database of "Warp Meshes" and calculates the projective transformations (keystoning) required to "square up" the image for physical surfaces.
+
+== Implementing the Warp Map
+
+The "brain" of this operation is the **Warp Map**, typically a `vk::raii::Image` containing floating-point data. We use a compute shader to perform the reverse lookup:
+
+[source,cpp]
+----
+// Configure the warp map texture binding using designated initializers
+vk::DescriptorImageInfo warpMapInfo{
+    .sampler = *pointSampler,
+    .imageView = *warpMapView,
+    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+};
+
+vk::WriteDescriptorSet descriptorWrite{
+    .dstSet = *warpDescriptorSet,
+    .dstBinding = 0,
+    .descriptorCount = 1,
+    .descriptorType = vk::DescriptorType::eSampledImage,
+    .pImageInfo = &warpMapInfo
+};
+----
+
+In Slang, the compute kernel maps destination pixels to source coordinates:
+
+[source,slang]
+----
+// Compute-based warping kernel in Slang
+void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
+    // 1. Look up where this wall pixel should sample from the rendered image
+    float2 sourceUV = warpMap.Load(int3(dispatchThreadID.xy, 0));
+
+    // 2. Sample and write to the final projector output
+    outputTarget[dispatchThreadID.xy] = sourceRender.SampleLevel(linearSampler, sourceUV, 0);
+}
+----
+
+== Advanced: Pixel-Perfect Blending and Dynamic Keystoning
+
+Vulkan allows for a level of precision beyond standard calibration:
+
+*   **Pixel-Perfect Edge Blending**: Using Vulkan's **Subgroup Operations**, you can implement real-time edge blending with pixel-perfect accuracy. This allows you to eliminate "hot spots" in overlapping projector regions dynamically.
+*   **Dynamic Keystoning**: By using compute shaders and tracked object data from OpenXR, you can implement dynamic keystoning that updates your warp map in real-time if a projector is physically moved during the session.
+
+== Luminance Summation and Edge Blending
+
+In a multi-projector setup, the edges overlap. This area will be twice as bright as the rest of the wall. To solve this, we include an alpha channel in our Warp Map that defines a smooth gradient. By multiplying the final color by this alpha, we maintain uniform brightness across the entire wall.
+
+== Precision: Bicubic vs Sinc Filtering
+
+Because warping involves sampling a texture at non-integer coordinates, the quality of your filtering is paramount. While linear filtering is fast, it can lead to "blurring." High-end spatial engines often implement custom **Bicubic** or **Lanczos** filters in the compute shader to preserve sharpness during the coordinate transformation.
+
+TIP: For more information on projective geometry and warping, consult the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#samplers[Vulkan Specification on Samplers], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/03_post_process_warping.adoc[Next]

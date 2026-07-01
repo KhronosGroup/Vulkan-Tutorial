@@ -71,11 +71,13 @@ path = [
     "attachments/ml_inference/**",
     "attachments/compute/**",
     "attachments/advanced_gltf/**",
+    "attachments/openxr_engine/**",
     "en/Synchronization/**",
     "en/ML_Inference/**",
     "en/Advanced_glTF/**",
     "en/AI_Assisted_Vulkan/**",
     "en/Advanced_Vulkan_Compute/**",
+    "en/OpenXR_Vulkan_Spatial_Computing/**",
     "scripts/**",
 ]
 precedence = "closest"

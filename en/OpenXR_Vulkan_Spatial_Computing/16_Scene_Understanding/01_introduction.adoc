@@ -1,0 +1,10 @@
+:pp: {plus}{plus}
+= Scene Understanding: Data Ingestion and Semantic Labels
+
+In previous chapters, we focused on rendering virtual objects into the real world. But true spatial computing is a two-way street. To create convincing interactions—like virtual balls bouncing off your actual coffee table or virtual characters hiding behind your real couch—our engine needs to "see" and "understand" the physical environment.
+
+This is the domain of **Scene Understanding**. In this chapter, we will explore how OpenXR runtimes use sensors like **LiDAR** (Light Detection and Ranging) and depth cameras to build a dynamic 3D model of the user's room. We'll learn how to ingest this data as **Spatial Meshes**, how to use **Semantic Labels** to distinguish a "Floor" from a "Human," and how to achieve ultra-low latency via **Zero-Copy Hand-off** directly into our Vulkan compute pipeline.
+
+By the end of this chapter, you'll understand how to turn the messy physical world into structured geometry that our engine can treat just like any other 3D asset.
+
+xref:OpenXR_Vulkan_Spatial_Computing/15_Plenoptic_Synthesis/04_incorporating_into_the_engine.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/16_Scene_Understanding/02_environmental_ingestion.adoc[Next]

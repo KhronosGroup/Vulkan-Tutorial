@@ -1,0 +1,82 @@
+:pp: {plus}{plus}
+= External Image Negotiation
+
+In a standard Vulkan application, we use `vkCreateSwapchainKHR` to create a surface-bound swapchain. In OpenXR, we replace this entire mechanism with the `XrSwapchain`. Instead of the operating system's windowing system managing the buffers, the **XR Runtime** acts as our swapchain provider.
+
+== Ecosystem Perspective
+
+This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
+
+Inverting the ownership of the swapchain is a fundamental architectural change required by OpenXR. You must negotiate with the runtime to retrieve the images that your engine will render into.
+
+== The Inversion of Control: The Swapchain Provider
+
+To understand this negotiation, you must shift your mindset. In a desktop app, *you* create the swapchain and the OS *consumes* it. In OpenXR, the **Runtime acts as the swapchain provider**, creating the images and "lending" them to you.
+
+*   **VRAM Allocation**: The runtime allocates the VRAM and manages the memory layout, ensuring the images are allocated in a memory region visible to both your engine and the compositor process.
+*   **Memory Tiling and Alignment**: The runtime chooses the optimal tiling and alignment for its internal compositor, ensuring that it can read your frames with maximum bandwidth.
+*   **Efficiency**: By providing the images directly, the runtime can perform **Zero-Copy** hand-offs. When you finish rendering, the runtime takes that exact same memory and uses it for the final compositor pass.
+
+== Enumerating Swapchain Formats
+
+The first step is to query the runtime for its supported `VkFormat` list using `xrEnumerateSwapchainFormats`.
+
+[source,cpp]
+----
+uint32_t formatCount = 0;
+xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);
+std::vector<int64_t> formats(formatCount);
+xrEnumerateSwapchainFormats(xrSession, formatCount, &formatCount, formats.data());
+----
+
+It is important to note that OpenXR returns these as `int64_t` values, which we must cast to `VkFormat` (or `vk::Format` in our RAII engine). Usually, we want a high-dynamic-range (**HDR**) format like `VK_FORMAT_R16G16B16A16_SFLOAT` or a standard **SRGB** format like `VK_FORMAT_R8G8B8A8_SRGB`.
+
+**Advanced: Handling Format and Usage Restrictions**:
+While OpenXR limits the available swapchain formats to a specific enumerated list, Vulkan allows you to go further:
+*   **Custom Internal Formats**: You can render to a custom internal format (such as a highly optimized compressed format) and perform a final **Image Copy** or **Blit** to the OpenXR-supported swapchain at the last moment.
+*   **Storage Image Usage**: Some runtimes may not support `VK_IMAGE_USAGE_STORAGE_BIT` for their swapchain images. In these cases, you can use Vulkan to create a separate storage image, perform your compute work, and copy the results into the XR swapchain.
+
+== Creating the XrSwapchain
+
+Once we have chosen a format, we fill out an `XrSwapchainCreateInfo` structure using designated initializers.
+
+[source,cpp]
+----
+XrSwapchainCreateInfo createInfo{
+    .type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
+    .format = chosenVulkanFormat,
+    .sampleCount = 1,
+    .width = viewWidth,
+    .height = viewHeight,
+    .faceCount = 1,
+    .arraySize = 1, // 1 for standard mono/stereo, more for multiview
+    .mipCount = 1
+};
+
+XrSwapchain xrSwapchain;
+xrCreateSwapchain(xrSession, &createInfo, &xrSwapchain);
+----
+
+== Retrieving the Raw Images
+
+After creating the `XrSwapchain`, we need to get the actual `VkImage` handles so we can wrap them in our engine's abstractions. We use `xrEnumerateSwapchainImages` to retrieve an array of `XrSwapchainImageVulkanKHR` structures.
+
+[source,cpp]
+----
+uint32_t imageCount = 0;
+xrEnumerateSwapchainImages(xrSwapchain, 0, &imageCount, nullptr);
+std::vector<XrSwapchainImageVulkanKHR> xrImages(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+xrEnumerateSwapchainImages(xrSwapchain, imageCount, &imageCount, (XrSwapchainImageBaseHeader*)xrImages.data());
+----
+
+Each `XrSwapchainImageVulkanKHR` contains a `VkImage` handle. It is these handles that we will feed into our engine's RAII system.
+
+== Why "Zero-Copy" Matters: The Compositor Pipeline
+
+By negotiating the images this way, we ensure a **Zero-Copy** hand-off. When we finish rendering, we don't copy our frame to a separate buffer. Instead, we simply signal to the runtime that we are done with its image. The runtime then takes that exact same memory and uses it for the final compositor pass (distortion correction, chromatic aberration, etc.).
+
+This efficiency is the difference between a high-performance 90Hz experience and a laggy, uncomfortable one. In the next section, we'll see how to wrap these raw Vulkan handles into the engine's `vk::raii` abstractions.
+
+TIP: For more details, consult the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xpspec.html#xrEnumerateSwapchainFormats[OpenXR Specification], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+
+xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/01_introduction.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/03_raii_resource_integration.adoc[Next]

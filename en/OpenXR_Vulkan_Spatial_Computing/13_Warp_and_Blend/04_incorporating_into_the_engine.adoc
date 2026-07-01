@@ -1,0 +1,74 @@
+:pp: {plus}{plus}
+= Incorporating into the Engine
+
+The addition of **Warp and Blend** capabilities allows our `simple_game_engine` to handle geometric distortion and multi-projector blending in `renderer_rendering.cpp`. *This is currently left as an exercise for the reader to implement.*
+
+== Enhancing the Post-Processing Chain
+
+In `renderer_rendering.cpp`, we introduce a compute-based "Warp" pass that runs after the main scene rendering is complete.
+
+[source,cpp]
+----
+// renderer_rendering.cpp
+void Renderer::Render(...) {
+    // ... Main Scene Pass (Raster) ...
+
+    // NEW: Post-Process Warp Pass (Compute)
+    // This kernel maps our rectilinear render target to a warped swapchain image
+    auto& cmd = commandBuffers[currentFrame];
+
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *warpPipeline);
+
+    // Bind the Rectilinear Input (Descriptor Set 0)
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *warpPipelineLayout, 0, *rectilinearSets[currentFrame], nullptr);
+
+    // Bind the Warp Map LUT (Descriptor Set 1)
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *warpPipelineLayout, 1, *warpMapSets, nullptr);
+
+    // Dispatch the warp compute kernel
+    uint32_t groupCountX = (swapChainExtent.width + 15) / 16;
+    uint32_t groupCountY = (swapChainExtent.height + 15) / 16;
+    cmd.dispatch(groupCountX, groupCountY, 1);
+}
+----
+
+== Slang Warp Shader Integration
+
+In our `warp.slang` shader, we use the Warp Map LUT to calculate the distorted texture coordinates.
+
+[source,slang]
+----
+// warp.slang
+Texture2D<float3> inputTexture : register(t0);
+Texture2D<float2> warpMap : register(t1); // The LUT
+RWTexture2D<float4> outputSwapchain : register(u0);
+
+[shader("compute")]
+[numthreads(16, 16, 1)]
+void computeMain(uint3 threadID : SV_DispatchThreadID) {
+    // 1. Sample the Warp Map to get the distorted coordinate
+    float2 distortedUV = warpMap.SampleLevel(sampler, float2(threadID.xy) / screenRes, 0);
+
+    // 2. Sample the main scene render target
+    float3 color = inputTexture.SampleLevel(sampler, distortedUV, 0);
+
+    // 3. Apply Edge Blending (alpha ramp) if needed
+    color *= calculateEdgeBlend(threadID.xy);
+
+    outputSwapchain[threadID.xy] = float4(color, 1.0);
+}
+
+// Edge Blending Helper: Multi-projector luminosity matching
+float3 calculateEdgeBlend(uint2 pos) {
+    // Simple 10% overlap ramp for the left-edge of a projector
+    float overlapWidth = screenRes.x * 0.1f;
+    float alpha = clamp(float(pos.x) / overlapWidth, 0.0, 1.0);
+    return float3(alpha, alpha, alpha);
+}
+----
+
+== Why These Changes?
+
+Proper warping and blending are what make a CAVE room feel like a unified environment. By handling distortion in the engine's compute-based post-processing chain, we can support a wide variety of hardware—from curved screens to custom headsets—without changing our core rasterization logic. Because our engine already has a modular `Renderer`, adding this compute pass is a natural extension of our existing frame loop.
+
+xref:OpenXR_Vulkan_Spatial_Computing/13_Warp_and_Blend/03_post_process_warping.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/14_LightField_Theory/01_introduction.adoc[Next]

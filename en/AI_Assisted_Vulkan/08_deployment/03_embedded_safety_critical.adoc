@@ -1,0 +1,95 @@
+:pp: {plus}{plus}
+
+= Embedded & Safety Critical Systems
+
+== Introduction: Managing the Minimums
+
+Embedded systems—like the Raspberry Pi, NVIDIA Jetson, or custom SoC (System on a Chip) hardware—represent the most constrained environments in the Vulkan ecosystem. In these systems, you are often limited by a single gigabyte of shared memory, and your CPU is a fraction of the speed of a desktop processor. In this environment, "Close Enough" is not an option.
+
+In **Collaborative Engineering**, we use our assistant as a **Safety Verification Tool**. We use AI to continuously check our resource allocation against hard hardware limits and to suggest the aggressive quantization needed to fit modern graphics into a "Small" silicon footprint.
+
+== Tutorial: Managing the Embedded Memory Map
+
+Unlike desktop development, embedded development is about **hard limits**. Use your AI assistant to audit your resource allocation against the specific constraints of your SoC.
+
+=== Step 1: Loading the Hardware Profile
+Feed the AI your device's memory map and the requirements for your target resolution.
+
+[source,text]
+----
+I am developing for an NVIDIA Jetson Nano with 4GB of
+unified memory. 512MB is reserved for the display
+controller and OS. Our target is 1080p triple-buffered.
+
+Analyze our 'PoolAllocator.cpp'. We are pre-allocating
+five 64MB heaps. Will this leave enough headroom
+for the swapchain and our G-Buffer?
+----
+
+=== Step 2: Optimizing the Allocation
+When the AI reports the audit results, ask for a refactored allocation strategy that minimizes "Padding Waste."
+
+[source,cpp]
+----
+// Example of an AI-suggested memory allocation for embedded
+VkMemoryAllocateInfo allocInfo = {};
+allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+allocInfo.allocationSize = reclaimedSize; // Optimized size
+// AI will suggest specific memory types for the Jetson's unified memory
+allocInfo.memoryTypeIndex = unifiedMemoryIndex;
+----
+
+== Tutorial: Shader Quantization for Mali/Adreno
+
+For embedded systems, the precision of your shaders has a direct impact on power consumption. Downgrading variables to `mediump` (FP16) can increase performance significantly.
+
+=== Step 1: The Precision Audit
+Provide the AI with your fragment shader and ask it to identify safe candidates for quantization.
+
+[source,text]
+----
+Goose, audit 'PBR.frag' for a Mali-G710 GPU.
+Which variables can we safely downgrade to 'mediump'
+(FP16) without causing visible artifacts in our
+specular reflections or normal mapping?
+----
+
+=== Step 2: Applying the Quantization
+The AI will provide the refactored shader. By switching to `mediump` for normalization and intermediate lighting steps, you reduce register pressure, allowing more threads to run in parallel.
+
+[source,glsl]
+----
+// AI-optimized fragment shader for embedded
+layout(location = 0) out vec4 outColor;
+void main() {
+    mediump vec3 normal = normalize(inNormal);
+    mediump vec3 lightDir = normalize(uBo.lightPos - inPos);
+    // ... lighting calculations at FP16 ...
+}
+----
+
+== Tutorial: Vulkan SC Compliance Check
+
+In automotive and industrial environments, we use **Vulkan SC**. This requires every resource to be pre-allocated.
+
+=== Step 1: The Compliance Audit
+Feed your initialization sequence to the AI and ask it to check for SC 1.0 violations.
+
+[source,text]
+----
+Goose, audit 'VulkanContext::initializeSC'.
+Check if our 'PipelineCache' warming logic is compliant
+with the Vulkan SC 1.0 specification for offline compilation.
+Are we using any illegal dynamic state like 'VK_DYNAMIC_STATE_LINE_WIDTH'?
+----
+
+=== Step 2: The SC Refactor
+If the AI finds a violation (like dynamic line width), ask it to generate the "Pre-Baked" pipeline array needed to maintain compliance.
+
+== Summary: The Precision Partner
+
+Embedded deployment is about **Engineering for the Edge**. By using AI to audit your memory budgets and suggest quantization strategies, you can build a high-performance engine that runs on hardware that others would consider "Too Small."
+
+With the completion of Section 8, you have mastered the art of bringing your AI-assisted Vulkan engine to every corner of the computing world. In the final section of our tutorial, we will provide a comprehensive **FAQ** and a **Final Project** to solidify your skills as a Collaborative Engineer.
+
+Next: xref:AI_Assisted_Vulkan/09_faq.adoc[Common Questions & Troubleshooting (FAQ)]

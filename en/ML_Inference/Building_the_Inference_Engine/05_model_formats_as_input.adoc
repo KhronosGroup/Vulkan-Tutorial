@@ -1,0 +1,194 @@
+:pp: {plus}{plus}
+
+= Model Formats as Input
+
+We've been manually constructing graphs—calling addTensor, addOperation, connecting everything by hand. This taught us what a graph is and how it works. But it's not practical. Real models have hundreds of operations. We need to load them from files.
+
+The industry has solved this problem with standard model formats. Instead of inventing our own, we use what already exists: ONNX, TensorFlow Lite, and NNEF.
+
+== Why Standard Formats?
+
+You can absolutely design a bespoke binary or JSON model description. The problem shows up the moment you try to load models from different training stacks: every framework would need its own exporter. PyTorch today, TensorFlow tomorrow, JAX next week. That is busywork with little payoff.
+
+The industry settled on common formats so we can build one loader and ingest models trained anywhere. PyTorch and TensorFlow export to ONNX or TFLite, and Khronos tooling can emit NNEF or convert into it. With a standard on disk, our job reduces to turning a well‑defined graph into our `ComputationGraph` and running it.
+
+== ONNX: The Comprehensive Format
+
+ONNX (Open Neural Network Exchange) is designed for interoperability. It supports hundreds of operators, multiple data types, and complex graph structures. If you're building for desktop or server, ONNX is probably your choice.
+
+ONNX uses Protocol Buffers for serialization—a binary format defined by a schema. The schema defines message types for models, graphs, nodes, tensors, and attributes. When you parse an ONNX file, you deserialize these protobuf messages.
+
+Inside an ONNX file you will find a model header with version and producer information, a graph that lists operations and the tensors connecting them, a set of initializers that hold trained parameters as constant tensors, and value information carrying shapes and data types that help validate and optimize the graph. All of it is serialized as Protocol Buffer messages.
+
+To read an ONNX file, you use the ONNX C++ library:
+
+[source,cpp]
+----
+#include <onnx/onnx_pb.h>
+#include <fstream>
+
+onnx::ModelProto loadONNX(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    onnx::ModelProto model;
+    model.ParseFromIstream(&input);
+    return model;
+}
+----
+
+That gives you the parsed protobuf. Now you extract what you need:
+
+[source,cpp]
+----
+const auto& graph = model.graph();
+
+// Iterate operations
+for (const auto& node : graph.node()) {
+    std::string opType = node.op_type();  // "Conv", "Relu", "Gemm", etc.
+
+    for (const auto& inputName : node.input()) {
+        // Connect to input tensor
+    }
+
+    for (const auto& outputName : node.output()) {
+        // Connect to output tensor
+    }
+
+    // Extract attributes (kernel_shape, strides, etc.)
+    for (const auto& attr : node.attribute()) {
+        // Store in operation
+    }
+}
+
+// Extract weights
+for (const auto& initializer : graph.initializer()) {
+    std::string name = initializer.name();
+    std::vector<int64_t> shape(initializer.dims().begin(), initializer.dims().end());
+
+    // Get float data
+    const float* data = reinterpret_cast<const float*>(initializer.raw_data().data());
+    size_t count = initializer.raw_data().size() / sizeof(float);
+
+    // Create tensor with this data
+}
+----
+
+The key insight: ONNX gives you the same information we were creating manually—operation types, tensor shapes, connections, learned weights. We just extract it and build our ComputationGraph.
+
+== TensorFlow Lite: The Mobile-Optimized Format
+
+TFLite is designed for mobile and embedded devices. It uses FlatBuffers for serialization—a format optimized for zero-copy access and minimal parsing overhead. You can read parts of the model without deserializing everything.
+
+The structure is similar in spirit to ONNX but optimized for small devices. There is a model object that may contain multiple subgraphs. Operators correspond to nodes but use TFLite’s builtin enumeration. Tensors are explicit for both temporaries and parameters, and the raw bytes for weights live in separate buffers referenced by the tensor metadata. Because it uses FlatBuffers, you can access fields directly from memory without a full deserialize step.
+
+Reading TFLite requires the TFLite schema:
+
+[source,cpp]
+----
+#include "tensorflow/lite/schema/schema_generated.h"
+#include <fstream>
+
+const tflite::Model* loadTFLite(const std::string& path) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    size_t size = input.tellg();
+    input.seekg(0);
+
+    std::vector<char> buffer(size);
+    input.read(buffer.data(), size);
+
+    return tflite::GetModel(buffer.data());
+}
+----
+
+FlatBuffers gives you direct pointers into the memory-mapped file—no deserialization needed:
+
+[source,cpp]
+----
+const tflite::Model* model = loadTFLite("model.tflite");
+const auto* subgraph = model->subgraphs()->Get(0);  // Primary graph
+
+// Iterate operators
+for (size_t i = 0; i < subgraph->operators()->size(); ++i) {
+    const auto* op = subgraph->operators()->Get(i);
+    const auto* opcode = model->operator_codes()->Get(op->opcode_index());
+
+    // Get operator type
+    auto builtin = opcode->builtin_code();  // ADD, CONV_2D, etc.
+
+    // Get inputs/outputs (indices into tensor array)
+    for (int32_t inputIdx : *op->inputs()) {
+        const auto* tensor = subgraph->tensors()->Get(inputIdx);
+        // Process input tensor
+    }
+}
+
+// Extract weights
+for (size_t i = 0; i < subgraph->tensors()->size(); ++i) {
+    const auto* tensor = subgraph->tensors()->Get(i);
+
+    if (tensor->buffer() > 0) {  // Has data (not an intermediate)
+        const auto* buffer = model->buffers()->Get(tensor->buffer());
+        const auto* data = buffer->data();  // Raw bytes
+
+        // Create tensor with this data
+    }
+}
+----
+
+The zero-copy nature means you're reading directly from the file. Fast and memory-efficient.
+
+== NNEF: The Khronos Exchange Format (use it natively)
+
+NNEF (Neural Network Exchange Format) is a Khronos standard that stores a trained model as a readable text graph alongside separate binary files for tensor data. It was designed as an interchange format between tools, compilers, and runtimes. If you value precise, inspectable models and a clean hand‑off into your own IR, NNEF is a good fit.
+
+An NNEF package is usually a directory. The `graph.nnef` file captures operators, tensors, shapes, data types, and attributes in text; the parameters referenced in the graph live in one or more companion binary files. In this tutorial, if your starting point is ONNX and you prefer to standardize on NNEF, treat the ONNX→NNEF step as acquisition. For execution, load NNEF directly with the official Khronos C{pp} parser from NNEF‑Tools rather than converting back to ONNX.
+
+[source,cpp]
+----
+// Abbreviated sketch: ingest NNEF with the official Khronos C++ API,
+// then adapt to our ComputationGraph. See NNEF‑Tools cpp_api.md for exact APIs.
+// Repo: https://github.com/KhronosGroup/NNEF-Tools/tree/main/nnef-pyproject#nnef-parser---repository
+
+#include <nnef.h>          // Provided by NNEF‑Tools
+#include <filesystem>
+
+bool loadNNEFIntoEngine(const std::string& modelDir) {
+    // 1) Parse the text graph + associated weight binaries using the official API
+    //    (Open the directory and let the parser resolve referenced tensor files.)
+    //    Pseudocode:
+    //    nnef::Graph graph = nnef::parseDirectory(modelDir);
+
+    // 2) Create tensors in our engine (I/O + constants)
+    //    Iterate the NNEF graph’s tensors; for constants, map the external binary
+    //    and upload into device buffers.
+
+    // 3) Create operations and wire their inputs/outputs
+    //    For each NNEF node, map op type + attributes to our Operation.
+
+    // Handle common shims: NCHW↔NHWC layout, dtype normalization, default strides/padding.
+    return true;
+}
+----
+
+A few habits make this path smooth. Keep parsing and execution separated so a thin NNEF→IR adapter can feed the same Vulkan code you already use for ONNX and TFLite. When an operator is not supported, fail loudly with a useful message that includes the op name, expected ranks and data types, and what to implement next. And print a compact import summary—inputs and outputs, total parameters, and a quick operator histogram—so students can validate that they loaded the model they think they did.
+
+Once imported, execution is identical to ONNX/TFLite: plan buffers, bind descriptors, and dispatch Vulkan compute. For a concise overview of NNEF’s goals and links to the official spec/tools, see xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[NNEF Introduction].
+
+== ONNX vs TFLite vs NNEF: When to Use Which?
+
+If you are building a desktop or server application and want broad interoperability, ONNX is a pragmatic choice with a mature ecosystem, even if it means parsing a full protobuf upfront. When you target phones or small embedded systems, TFLite’s FlatBuffers and ecosystem around delegates and quantization make it a natural fit. When you want a textual, inspectable exchange format with precise operator intent and a simple bridge into your own IR, use NNEF and load it natively. In this tutorial we keep ONNX as the convenient drop‑in for desktop scenarios and we treat NNEF as a first‑class path through the official parser. All three end up in the same place: a `ComputationGraph` ready to execute.
+
+== From Format to Graph
+
+No matter which format you read, the translation into our IR follows the same arc. First, open the container—deserialize protobuf for ONNX or map the FlatBuffer for TFLite—and start walking the graph. As you encounter tensors, create their counterparts in the engine. As you visit nodes, create operations with their attributes and wire them to the right inputs and outputs. When you see constants, capture their data so it can be uploaded to GPU memory. Finally, record which tensors are the official inputs and outputs of the model. When you are done, you hold a `ComputationGraph` equivalent to the one we built by hand, except it came from a trained file rather than from our own calls to `addTensor` and `addOperation`.
+
+== The Complete Picture
+
+From training to results, the path is straightforward. A framework such as PyTorch or TensorFlow defines and trains a model, then exports it to a standard format. Our engine loads that file, builds a `ComputationGraph`, allocates the necessary GPU buffers, and uploads the learned parameters. At inference time we copy inputs to the device, dispatch operations in dependency order, and read the predictions back. The file format is simply the bridge between the world that trained the network and the runtime that executes it.
+
+== Implementation Note
+
+A production‑quality parser handles many operators, data types, and awkward corner cases, which quickly grows beyond what belongs in an introductory tutorial. The working code that powers this chapter lives in link:/attachments/ml_inference/[ml_inference]. It covers the core operators used here—Dense, Conv2D, ReLU, MaxPool—and the same pattern scales to the rest: read the node, fetch its parameters, wire the tensors. We encourage you to learn the concepts behind this tutorial independently of the code, an example implementation showing all of these concepts is attached to this chapter for when you're ready to see an example implementation.
+
+Next chapter: NNEF Introduction.
+
+xref:ML_Inference/Building_the_Inference_Engine/04_model_representation.adoc[Previous: Model Representation] | xref:ML_Inference/Building_the_Inference_Engine/06_nnef_introduction.adoc[Next: NNEF Introduction]

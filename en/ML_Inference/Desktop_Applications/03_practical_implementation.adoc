@@ -1,0 +1,260 @@
+= CPU Baseline Implementation
+:pp: {plus}{plus}
+:stem: latexmath
+
+Now that you understand how CNNs work, let's build the foundational image classification application. This chapter focuses on getting a working CPU baseline using ONNX Runtime. We'll load models, preprocess images correctly, run inference, and display results.
+
+This baseline is crucial—it gives you a correct reference implementation to verify against when you add GPU acceleration, threading, and camera input in later chapters.
+
+== What We're Building
+
+The application will:
+
+*   Load a pre-trained MobileNetV2 model from ONNX format
+*   Accept images from files or camera
+*   Preprocess them (resize, normalize, layout transformation)
+*   Run inference to get class predictions
+*   Display top-5 results with confidence scores
+
+We'll implement this in stages, verifying correctness at each step.
+
+== Deep Dive: Preprocessing Logic
+
+Before we touch ONNX Runtime, we must understand the "contract" between the model and the data. If you feed the model raw pixel values (0-255), it will give you garbage. You must perform a three-step transformation.
+
+=== 1. Aspect-Aware Resizing
+
+MobileNetV2 expects a square 224×224 input. If your photo is a wide 1920×1080 landscape, you can't just squash it to a square—that would distort the features and make the dog look like a pancake.
+
+[source,cpp]
+----
+// Simple Bilinear Resize (Conceptual)
+// We interpolate between 4 neighboring pixels to get the new value
+float interpolate(float p00, float p01, float p10, float p11, float x_diff, float y_diff) {
+    return p00 * (1 - x_diff) * (1 - y_diff) +
+           p10 * x_diff * (1 - y_diff) +
+           p01 * (1 - x_diff) * y_diff +
+           p11 * x_diff * y_diff;
+}
+----
+
+In a production app, you would usually **Crop** the center of the image to maintain the aspect ratio, then resize that square crop to 224×224.
+
+=== 2. Normalization: The Magic Numbers
+
+Neural networks are trained on specific statistical distributions. For ImageNet models, the standard is:
+
+[latexmath]
+++++
+\text{Normalized} = \frac{(\text{Pixel} / 255.0) - \text{Mean}}{\text{StdDev}}
+++++
+
+The "Magic Numbers" for ImageNet are:
+*   **Mean**: `[0.485, 0.456, 0.406]` (R, G, B)
+*   **StdDev**: `[0.229, 0.224, 0.225]`
+
+[source,cpp]
+----
+// Normalization in C++
+float r = (pixel.r / 255.0f - 0.485f) / 0.229f;
+float g = (pixel.g / 255.0f - 0.456f) / 0.224f;
+float b = (pixel.b / 255.0f - 0.406f) / 0.225f;
+----
+
+These numbers represent the average and variance of the millions of images in the ImageNet dataset. By subtracting the mean, we center the data around zero, which helps the network's activation functions (like ReLU) stay in their most effective range.
+
+=== 3. Layout Transpose: HWC to NCHW
+
+As we discussed in the previous chapter, graphics files use **Interleaved** (HWC) layout: `[R0, G0, B0, R1, G1, B1, ...]`.
+
+Most ML models expect **Planar** (NCHW) layout: `[R0, R1, R2, ..., G0, G1, G2, ..., B0, B1, B2, ...]`.
+
+[source,cpp]
+----
+// Transpose Logic
+std::vector<float> planarData(1 * 3 * 224 * 224);
+for (int y = 0; y < 224; ++y) {
+    for (int x = 0; x < 224; ++x) {
+        int outIdx = y * 224 + x;
+        planarData[0 * 224 * 224 + outIdx] = r_val;
+        planarData[1 * 224 * 224 + outIdx] = g_val;
+        planarData[2 * 224 * 224 + outIdx] = b_val;
+    }
+}
+----
+
+== Getting the Model and Labels
+
+Download the pre-trained MobileNetV2 model:
+
+[source,bash]
+----
+cd ml_inference
+mkdir -p models
+cd models
+wget https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx
+----
+
+You also need ImageNet class labels (imagenet_labels.txt) - a 1000-line text file mapping class IDs to names. You can grab this from any ImageNet classification project on GitHub.
+
+== CPU Baseline Implementation
+
+Start simple: load image, preprocess on CPU, run ONNX Runtime inference, display results.
+
+[source,cpp]
+----
+class ImageClassifier {
+public:
+    ImageClassifier(const std::string& modelPath) {
+        // The Environment is the top-level ONNX Runtime object.
+        // It manages the thread pool for all sessions.
+        env_ = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "ImageClassifier");
+
+        // SessionOptions allow us to tune performance.
+        Ort::SessionOptions options;
+
+        // ENABLE_ALL turns on constant folding, node fusion, and more.
+        options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+        // We can also set how many threads ONNX should use for math.
+        // For a CPU baseline, 4 threads is a good starting point.
+        options.SetIntraOpNumThreads(4);
+
+        session_ = Ort::Session(env_, modelPath.c_str(), options);
+    }
+
+    std::vector<Prediction> classify(const std::string& imagePath);
+
+private:
+    std::vector<float> preprocessImage(const std::string& path);
+    std::vector<float> runInference(const std::vector<float>& input);
+
+    Ort::Env env_;
+    Ort::Session session_{nullptr};
+    // ...
+};
+----
+
+=== Inference: The "Forward Pass" in C{pp}
+
+When we run inference, we aren't just calling a function; we are managing a complex exchange of memory.
+
+[source,cpp]
+----
+std::vector<float> ImageClassifier::runInference(const std::vector<float>& input) {
+    // 1. Memory Info: Tells ONNX we are using standard CPU RAM
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+    // 2. Create Input Tensor: This WRAPS our std::vector.
+    // It does NOT copy the data, which is efficient but means
+    // our 'input' vector must stay alive until session_.Run() finishes!
+    std::array<int64_t, 4> input_shape = {1, 3, 224, 224};
+    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+        memory_info, const_cast<float*>(input.data()), input.size(),
+        input_shape.data(), input_shape.size());
+
+    // 3. Run: The heavy lifting happens here.
+    // Note: session_.Run returns a vector of 'Ort::Value' outputs.
+    auto output_tensors = session_.Run(
+        Ort::RunOptions{nullptr},
+        input_names.data(), &input_tensor, 1,
+        output_names.data(), 1);
+
+    // 4. Extract results
+    float* output_data = output_tensors[0].GetTensorMutableData<float>();
+    return std::vector<float>(output_data, output_data + 1000);
+}
+----
+
+=== The Importance of Numerical Stability in Softmax
+
+Once you have the 1000 scores (logits), you must apply Softmax to get probabilities. As we saw in the math section, this involves latexmath:[e^{\text{logit}}].
+
+A logit of 88.0 is common. But latexmath:[e^{88}] is roughly latexmath:[1.6 \times 10^{38}]—the absolute limit of a 32-bit float. A logit of 90.0 will overflow and return `Infinity`, crashing your app or giving you `NaN` (Not a Number) results.
+
+We solve this using the **Max-Subtraction Trick**:
+
+[latexmath]
+++++
+\text{Softmax}(L_i) = \frac{e^{L_i - \max(L)}}{\sum e^{L_j - \max(L)}}
+++++
+
+This mathematically produces the exact same result but ensures the largest input to latexmath:[e^x] is `0.0` (because latexmath:[\max(L) - \max(L) = 0]). Since latexmath:[e^0 = 1.0], we stay perfectly within the safe range of floating-point numbers.
+
+== Debugging Your First Implementation
+
+You can find the complete source code and CMake configuration in the `attachments/ml_inference` folder. To build the example, follow the standard CMake workflow:
+
+[source,bash]
+----
+mkdir build && cd build
+cmake ..
+cmake --build .
+./classification ../test_images/dog.jpg
+----
+
+Expected output:
+
+[source]
+----
+Top 5 predictions:
+Golden retriever: 87.3%
+Labrador retriever: 8.2%
+Cocker spaniel: 2.1%
+...
+----
+
+Congratulations! You've built a working CPU-based image classifier. While it's a bit slow, it provides the perfect baseline for the GPU-accelerated chapters that follow.
+
+== Performance Bottlenecks: Where Does the Time Go?
+
+On a modern CPU (like a 4-core laptop processor), you can expect this classification to take between **50ms and 150ms**.
+
+If you profile your application, you will find an interesting split:
+
+*   **Image Loading & Resize**: 10-20ms (depending on image resolution)
+*   **Normalization & Transpose**: 5-10ms
+*   **Inference (MobileNetV2)**: 40-100ms
+*   **Post-processing (Softmax)**: < 1ms
+
+=== The Hybrid Path
+Wait, if inference takes 80ms, but we want 60 FPS (16.6ms), how do we get there?
+
+This is where the **Hybrid Approach** from the introduction becomes practical.
+
+1.  **Preprocessing on GPU**: In the next chapters, we'll move the Resize and Normalization to a Vulkan Compute shader. This will reduce that 30ms CPU cost to roughly **2ms** on the GPU.
+2.  **Asynchronous Inference**: We'll run the ONNX inference on a background thread. The UI will keep rendering at 60 FPS, and the classification results will update "when they're ready."
+
+By starting with this CPU baseline, you now have a "Ground Truth" implementation. When your Vulkan shader produces weird colors or your async thread crashes, you can always come back to this code to see what the correct values should be.
+
+=== The R/B Channel Swap Pitfall
+
+One of the most common bugs in CV (Computer Vision) is the **RGB vs BGR** mismatch.
+
+*   **stb_image**: Loads as RGB.
+*   **OpenCV**: Loads as BGR.
+*   **MobileNetV2**: Expects RGB.
+
+If your "Golden Retriever" is being classified as a "Blueberry," you likely have your Red and Blue channels swapped. Always verify your loading library's default color order.
+
+== Troubleshooting: Common Pitfalls
+
+Building your first ML pipeline is rarely a "first-time pass" experience. Here are the three most common reasons for getting 0% confidence or wildly incorrect results:
+
+1.  **Normalization Misalignment**: Did you forget to divide by 255.0 before subtracting the mean? If your input is `[0, 255]` but the model expects `[0, 1]`, the ReLU activations will "blow up" and produce extreme values.
+2.  **Layout Confusion**: Are you sure your HWC→NCHW transpose is correct? If you accidentally put Red pixels in the Blue plane, the features (like "skin tone" or "grass color") will be wrong.
+3.  **Model Version Mismatch**: There are dozens of MobileNetV2 versions. Some use 224x224 input, some use 128x128. Some use different normalization constants. Always check the `README` of the model you download from the ONNX Model Zoo.
+
+== Summary
+
+You've built a working CPU baseline image classifier:
+
+*   **Model loading**: ONNX Runtime session with graph optimization
+*   **Preprocessing**: Aspect-aware resize, ImageNet normalization, and HWC→NCHW transpose
+*   **Inference**: ONNX Runtime C{pp} API managing tensor memory
+*   **Post-processing**: Numerically stable Softmax and top-K selection
+*   **Verification**: The foundation for GPU acceleration
+
+This baseline works but is slow. The next chapters accelerate it with GPU preprocessing, add threading for responsiveness, and integrate real-time camera input.
+
+xref:ML_Inference/Desktop_Applications/02_image_classification.adoc[Previous: Image Classification Concepts] | xref:ML_Inference/Desktop_Applications/04_ci_render_validation.adoc[Next: CI/CD Render Validation]

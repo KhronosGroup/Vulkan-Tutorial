@@ -1,0 +1,549 @@
+:pp: {plus}{plus}
+
+= Element-Wise Operations
+
+== Introduction
+
+Element-wise operations are the simplest ML operations and an excellent starting point for implementing neural network layers in Vulkan compute shaders. These operations apply the same function independently to every element in a tensor—no dependencies between elements, perfect parallelism, straightforward implementation.
+
+Think about what "element-wise" means: you have a tensor (a multi-dimensional array of numbers), and you apply the same function to each element independently. If you have a tensor with 1 million elements, you perform 1 million independent function evaluations. There's no communication between elements, no shared state, no complex dependencies. This makes element-wise operations embarrassingly parallel—perfect for GPUs.
+
+Activation functions are the most common element-wise operations in neural networks. As we learned in the ML Inference Pipeline chapter, activation functions introduce non-linearity, allowing neural networks to learn complex patterns. During inference, activation functions are applied after most layers: convolution → activation, fully connected → activation, normalization → activation. They're everywhere, and they need to be fast.
+
+This chapter covers implementing the most common activation functions as Vulkan compute shaders: ReLU (the workhorse of modern networks), sigmoid (still used in specific contexts), and tanh (common in recurrent networks). We'll discuss parallelization strategies, numerical stability considerations, and performance optimization techniques that apply to all element-wise operations.
+
+== Why Element-Wise Operations Matter
+
+Before diving into implementations, let's understand why these operations are important and what makes them challenging despite their simplicity.
+
+=== Computational Intensity
+
+Element-wise operations are computationally cheap—each element requires just a few arithmetic operations. ReLU is literally `max(0, x)`, which is a single comparison and selection. Sigmoid requires an exponential, which is more expensive but still just a handful of operations.
+
+The challenge isn't the computation itself—it's the memory bandwidth. For a tensor with 1 million float32 elements, you're reading 4MB of input data and writing 4MB of output data. On a GPU with 500 GB/s memory bandwidth, that's 8MB / 500 GB/s ≈ 16 microseconds just for memory transfers. The actual computation might take only a few microseconds.
+
+This means element-wise operations are *memory-bound*, not compute-bound. Your optimization focus should be on memory access patterns, not arithmetic efficiency. Coalesced memory access, cache utilization, and minimizing redundant transfers matter more than shaving a few instructions off the computation.
+
+=== Fusion Opportunities
+
+Because element-wise operations are so cheap, running them as separate compute dispatches is wasteful. Each dispatch has overhead: binding pipelines, updating descriptor sets, issuing commands, synchronizing. For a simple ReLU that takes microseconds to execute, the overhead might be larger than the actual work.
+
+The solution is *operation fusion*: combining multiple operations into a single compute shader. Instead of:
+
+[source]
+----
+Convolution → Write to memory → Read from memory → ReLU → Write to memory
+----
+
+You do:
+
+[source]
+----
+Convolution + ReLU → Write to memory
+----
+
+The intermediate result never touches memory—it stays in registers. This eliminates memory bandwidth, reduces latency, and improves throughput. We'll discuss fusion strategies later in this chapter.
+
+=== Numerical Stability
+
+Some activation functions involve exponentials or divisions, which can cause numerical issues. Sigmoid computes `1 / (1 + exp(-x))`. For large negative x, `exp(-x)` overflows to infinity. For large positive x, `exp(-x)` underflows to zero, and you're computing `1 / 1 = 1`, which is correct, but the intermediate overflow is problematic.
+
+Numerical stability isn't just academic—it causes real bugs. Your network might work fine during testing with small inputs, then fail in production when it encounters edge cases. We'll cover stable implementations for each activation function.
+
+== ReLU: The Simplest Activation
+
+ReLU (Rectified Linear Unit) is the most common activation function in modern neural networks. It's defined as:
+
+[source]
+----
+ReLU(x) = max(0, x)
+----
+
+If the input is positive, output it unchanged. If it's negative, output zero. That's it. No exponentials, no divisions, just a comparison and a selection.
+
+=== Why ReLU Dominates
+
+ReLU became the default activation function for deep networks because it solves the vanishing gradient problem that plagued sigmoid and tanh. During training, gradients flow backward through the network. With sigmoid, gradients get multiplied by small numbers (the sigmoid derivative is at most 0.25), and after many layers, gradients vanish to nearly zero. Early layers stop learning.
+
+ReLU's gradient is simple: 1 for positive inputs, 0 for negative inputs. No multiplication by small numbers, no vanishing. This allows training much deeper networks—hundreds of layers instead of just a few dozen.
+
+For inference (our focus), ReLU's advantage is speed. It's the cheapest activation function to compute, making it ideal for real-time applications.
+
+=== Slang Implementation
+
+Here's the complete Slang compute shader for ReLU:
+
+[source,slang]
+----
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint num_elements;
+} pc;
+
+void main() {
+    uint global_id = gl_GlobalInvocationID.x;
+
+    if (global_id >= pc.num_elements) {
+        return;
+    }
+
+    float value = input_data[global_id];
+    output_data[global_id] = max(0.0, value);
+}
+----
+
+Let's break this down:
+
+*Work Group Size*: We use `local_size_x = 256`, meaning each work group has 256 threads. This is a good default for most GPUs—large enough to hide latency, small enough to not exhaust resources. You might tune this for your specific hardware.
+
+*Memory Layout*: Input and output are simple float arrays. We use `readonly` and `writeonly` qualifiers to help the compiler optimize memory access. The GPU knows it doesn't need to worry about read-after-write hazards.
+
+*Push Constants*: We pass the number of elements via push constants. This is faster than using a uniform buffer for small amounts of data. Push constants are embedded directly in the command buffer.
+
+*Bounds Checking*: The `if (global_id >= pc.num_elements)` check handles cases where the number of elements isn't a multiple of the work group size. Without this, threads beyond the array bounds would access invalid memory.
+
+*The Computation*: `max(0.0, value)` is the entire ReLU operation. The GPU compiles this to a single instruction on most hardware.
+
+=== Dispatching the Shader
+
+Here's how you dispatch this shader from your Vulkan application:
+
+[source,cpp]
+----
+// Assuming you've already created the pipeline and descriptor sets
+
+// Update descriptor set with input/output buffers
+vk::DescriptorBufferInfo inputInfo{*inputBuffer, 0, VK_WHOLE_SIZE};
+vk::DescriptorBufferInfo outputInfo{*outputBuffer, 0, VK_WHOLE_SIZE};
+
+vk::WriteDescriptorSet writes[2] = {
+    {
+        .dstSet = *descriptorSet,
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eStorageBuffer,
+        .pBufferInfo = &inputInfo
+    },
+    {
+        .dstSet = *descriptorSet,
+        .dstBinding = 1,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eStorageBuffer,
+        .pBufferInfo = &outputInfo
+    }
+};
+
+device.updateDescriptorSets(writes, nullptr);
+
+// Record commands
+commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *reluPipeline);
+commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                 *pipelineLayout, 0, *descriptorSet, nullptr);
+
+// Push constants
+uint32_t numElements = 1000000;  // 1 million elements
+commandBuffer.pushConstants(*pipelineLayout,
+                           vk::ShaderStageFlagBits::eCompute, 0, sizeof(uint32_t), &numElements);
+
+// Dispatch: ceil(numElements / 256) work groups
+uint32_t numWorkGroups = (numElements + 255) / 256;
+commandBuffer.dispatch(numWorkGroups, 1, 1);
+----
+
+The key calculation is the number of work groups: `(numElements + 255) / 256`. This is ceiling division—we round up to ensure we have enough threads to cover all elements.
+
+=== Performance Considerations
+
+ReLU is so fast that the bottleneck is almost always memory bandwidth, not computation. Here are strategies to maximize performance:
+
+*Coalesced Memory Access*: Our shader accesses memory sequentially—thread 0 reads element 0, thread 1 reads element 1, etc. This allows the GPU to coalesce multiple reads into a single memory transaction. If threads accessed memory randomly, performance would drop significantly.
+
+*Vectorization*: Instead of processing one float per thread, you can process multiple floats using vector types (vec2, vec4). This can improve throughput on some GPUs:
+
+[source,slang]
+----
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    vec4 input_data[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer OutputBuffer {
+    vec4 output_data[];
+};
+
+void main() {
+    uint global_id = gl_GlobalInvocationID.x;
+
+    if (global_id >= pc.num_elements) {
+        return;
+    }
+
+    vec4 value = input_data[global_id];
+    output_data[global_id] = max(vec4(0.0), value);
+}
+----
+
+Now each thread processes 4 floats. You dispatch `numElements / 4` work groups. This can improve performance by 10-30% on some hardware.
+
+*In-Place Operation*: If you don't need to preserve the input, you can write the output back to the input buffer, eliminating one buffer allocation and halving memory bandwidth:
+
+[source,slang]
+----
+layout(set = 0, binding = 0) buffer InOutBuffer {
+    float data[];
+};
+
+void main() {
+    uint global_id = gl_GlobalInvocationID.x;
+
+    if (global_id >= pc.num_elements) {
+        return;
+    }
+
+    data[global_id] = max(0.0, data[global_id]);
+}
+----
+
+This is safe because each thread only accesses its own element—no race conditions.
+
+== Sigmoid: The Classic Activation
+
+Sigmoid is defined as:
+
+[source]
+----
+sigmoid(x) = 1 / (1 + exp(-x))
+----
+
+It maps any input to the range (0, 1), making it useful for binary classification (output represents probability) and gates in recurrent networks (LSTM, GRU).
+
+Sigmoid was the dominant activation function in early neural networks but has largely been replaced by ReLU for hidden layers. However, it's still used in specific contexts: output layers for binary classification, attention mechanisms, and gating functions.
+
+=== The Numerical Stability Problem
+
+The naive implementation has a serious problem. For large negative x (say, x = -100), `exp(-x) = exp(100)` overflows to infinity. Then `1 / (1 + infinity) = 0`, which is mathematically correct, but the intermediate overflow can cause NaN or other issues depending on the hardware.
+
+For large positive x (say, x = 100), `exp(-x) = exp(-100)` underflows to zero. Then `1 / (1 + 0) = 1`, which is correct. But we've wasted computation on an exponential that underflows.
+
+The solution is to use different formulations for positive and negative inputs:
+
+For x >= 0:
+
+[source]
+----
+sigmoid(x) = 1 / (1 + exp(-x))
+----
+
+For x < 0:
+
+[source]
+----
+sigmoid(x) = exp(x) / (1 + exp(x))
+----
+
+The second formulation is mathematically equivalent (multiply numerator and denominator by exp(x)), but it avoids overflow. For negative x, exp(x) is always less than 1, so no overflow.
+
+=== Slang Implementation
+
+Here's the numerically stable sigmoid implementation:
+
+[source,slang]
+----
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint num_elements;
+} pc;
+
+float sigmoid(float x) {
+    if (x >= 0.0) {
+        // For positive x, use standard formulation
+        return 1.0 / (1.0 + exp(-x));
+    } else {
+        // For negative x, use exp(x) / (1 + exp(x)) to avoid overflow
+        float exp_x = exp(x);
+        return exp_x / (1.0 + exp_x);
+    }
+}
+
+void main() {
+    uint global_id = gl_GlobalInvocationID.x;
+
+    if (global_id >= pc.num_elements) {
+        return;
+    }
+
+    float value = input_data[global_id];
+    output_data[global_id] = sigmoid(value);
+}
+----
+
+The `sigmoid` function handles both cases. The branch might seem expensive, but modern GPUs handle branches well when threads in a warp/wavefront take the same path (which is common—inputs are often similar in magnitude).
+
+=== Performance Considerations
+
+Sigmoid is more expensive than ReLU because of the exponential. On most GPUs, `exp()` takes 10-20 cycles compared to 1-2 cycles for `max()`. This means sigmoid is 5-10x slower than ReLU for the same number of elements.
+
+However, sigmoid is still memory-bound for large tensors. The exponential adds latency, but memory bandwidth remains the bottleneck.
+
+*Approximations*: If you need maximum performance and can tolerate slight inaccuracy, you can use polynomial approximations for sigmoid. These trade accuracy for speed:
+
+[source,slang]
+----
+// Fast sigmoid approximation (less accurate)
+float fast_sigmoid(float x) {
+    return 0.5 + 0.5 * (x / (1.0 + abs(x)));
+}
+----
+
+This approximation is much faster (no exponential) but less accurate, especially for large |x|. Use it only if profiling shows sigmoid is a bottleneck and accuracy requirements allow it.
+
+== Tanh: The Symmetric Activation
+
+Tanh (hyperbolic tangent) is defined as:
+
+[source]
+----
+tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
+----
+
+It maps inputs to the range (-1, 1), making it zero-centered (unlike sigmoid, which outputs 0 to 1). This zero-centering is useful for certain architectures, particularly recurrent networks.
+
+Tanh is mathematically related to sigmoid:
+
+[source]
+----
+tanh(x) = 2 * sigmoid(2x) - 1
+----
+
+This relationship suggests we could implement tanh using sigmoid, but computing it directly is more efficient.
+
+=== Numerical Stability
+
+Tanh has similar numerical issues to sigmoid. For large positive x, `exp(-x)` underflows. For large negative x, `exp(x)` underflows. The stable formulation is:
+
+For x >= 0:
+
+[source]
+----
+tanh(x) = (1 - exp(-2x)) / (1 + exp(-2x))
+----
+
+For x < 0:
+
+[source]
+----
+tanh(x) = (exp(2x) - 1) / (exp(2x) + 1)
+----
+
+=== Slang Implementation
+
+Here's the numerically stable tanh implementation:
+
+[source,slang]
+----
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint num_elements;
+} pc;
+
+float tanh_stable(float x) {
+    if (x >= 0.0) {
+        float exp_neg_2x = exp(-2.0 * x);
+        return (1.0 - exp_neg_2x) / (1.0 + exp_neg_2x);
+    } else {
+        float exp_2x = exp(2.0 * x);
+        return (exp_2x - 1.0) / (exp_2x + 1.0);
+    }
+}
+
+void main() {
+    uint global_id = gl_GlobalInvocationID.x;
+
+    if (global_id >= pc.num_elements) {
+        return;
+    }
+
+    float value = input_data[global_id];
+    output_data[global_id] = tanh_stable(value);
+}
+----
+
+Alternatively, many Slang implementations provide a built-in `tanh()` function that's already numerically stable. You can use it directly:
+
+[source,slang]
+----
+output_data[global_id] = tanh(input_data[global_id]);
+----
+
+Check your GPU vendor's documentation to see if the built-in is optimized for your hardware.
+
+== Operation Fusion
+
+As mentioned earlier, running activation functions as separate dispatches is inefficient. Fusion combines multiple operations into a single shader, eliminating intermediate memory transfers.
+
+=== Fusing Convolution and ReLU
+
+A common pattern is convolution followed by ReLU. Instead of:
+
+1. Dispatch convolution shader → write results to buffer
+2. Insert pipeline barrier
+3. Dispatch ReLU shader → read from buffer, write to another buffer
+
+You do:
+
+1. Dispatch fused convolution+ReLU shader → write final results directly
+
+Here's a simplified example of a fused shader:
+
+[source,slang]
+----
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) readonly buffer WeightBuffer {
+    float weights[];
+};
+
+layout(set = 0, binding = 2) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+// ... push constants for dimensions ...
+
+void main() {
+    // Compute convolution (simplified)
+    float sum = 0.0;
+    // ... convolution computation ...
+
+    // Apply ReLU immediately, before writing to memory
+    float activated = max(0.0, sum);
+
+    // Write final result
+    output_data[output_index] = activated;
+}
+----
+
+The key is that `sum` never leaves registers—it's computed, activated, and written in one pass. This eliminates one buffer allocation and two memory transfers (write intermediate result, read it back).
+
+=== Benefits of Fusion
+
+*Reduced Memory Bandwidth*: Fewer reads and writes means less pressure on memory bandwidth, which is often the bottleneck.
+
+*Lower Latency*: Fewer dispatches means less overhead from command submission, pipeline binding, and synchronization.
+
+*Better Cache Utilization*: Data stays in cache between operations instead of being evicted and reloaded.
+
+The downside is increased shader complexity and reduced modularity. You need separate fused shaders for each combination (conv+ReLU, conv+sigmoid, etc.). For production systems, the performance benefits usually outweigh the complexity cost.
+
+== Batching and Memory Access Patterns
+
+When processing multiple tensors (batching), memory layout affects performance significantly.
+
+=== Contiguous vs Strided Access
+
+If your batch of tensors is laid out contiguously in memory:
+
+[source]
+----
+[tensor0_element0, tensor0_element1, ..., tensor1_element0, tensor1_element1, ...]
+----
+
+Then sequential threads access sequential memory locations, enabling coalesced access. This is the ideal case.
+
+If tensors are interleaved:
+
+[source]
+----
+[tensor0_element0, tensor1_element0, tensor2_element0, tensor0_element1, tensor1_element1, ...]
+----
+
+Then threads access memory with strides, reducing coalescing efficiency. Performance can drop by 2-3x.
+
+Whenever possible, arrange your data for contiguous access. If you must use strided access, consider using shared memory to improve access patterns.
+
+=== Multi-Dimensional Tensors
+
+For multi-dimensional tensors (e.g., 4D tensors with shape [batch, channels, height, width]), you need to map 3D thread IDs to linear buffer indices.
+
+[source,slang]
+----
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint z = gl_GlobalInvocationID.z;
+
+    // Map 3D coordinates to linear index
+    // Assuming NCHW layout: [batch, channels, height, width]
+    uint index = z * (channels * height * width) +
+                 channel * (height * width) +
+                 y * width +
+                 x;
+
+    if (x >= width || y >= height || z >= batch) {
+        return;
+    }
+
+    output_data[index] = max(0.0, input_data[index]);
+}
+----
+
+You dispatch with 3D work groups: `vkCmdDispatch(cmd, width/16, height/16, batch)`.
+
+This approach works well for 2D and 3D tensors. For higher dimensions, you might flatten some dimensions or use multiple dispatches.
+
+== Summary
+
+Element-wise operations are the simplest ML operations but require careful implementation for optimal performance. Key takeaways:
+
+*ReLU* is the fastest and most common activation function. Its implementation is trivial (`max(0, x)`), making it ideal for real-time inference.
+
+*Sigmoid* and *tanh* require numerically stable implementations to avoid overflow/underflow. Use different formulations for positive and negative inputs.
+
+*Memory bandwidth* is the bottleneck for element-wise operations, not computation. Focus on coalesced memory access and minimizing transfers.
+
+*Operation fusion* eliminates intermediate memory transfers by combining multiple operations into a single shader. This is essential for performance in production systems.
+
+*Batching* and proper memory layout ensure efficient GPU utilization. Contiguous memory access enables coalescing, while strided access hurts performance.
+
+With these element-wise operations implemented, you have the building blocks for activation functions in your neural network inference engine. The next chapter covers matrix operations—the computational workhorses of neural networks.
+
+xref:ML_Inference/Vulkan_Compute_for_ML/02_compute_pipeline_review.adoc[Previous: Compute Pipeline Review] | xref:ML_Inference/Vulkan_Compute_for_ML/04_matrix_operations.adoc[Next: Matrix Operations]

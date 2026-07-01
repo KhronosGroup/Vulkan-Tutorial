@@ -1,6 +1,6 @@
 :pp: {plus}{plus}
 
-= GUI: Input Handling
+== GUI: Input Handling
 
 == Input Handling
 

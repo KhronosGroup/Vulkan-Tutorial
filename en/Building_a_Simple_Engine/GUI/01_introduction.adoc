@@ -1,6 +1,6 @@
 :pp: {plus}{plus}
 
-= GUI: Introduction
+== GUI: Introduction
 
 == Introduction
 

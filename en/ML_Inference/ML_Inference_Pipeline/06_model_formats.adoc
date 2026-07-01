@@ -1,0 +1,512 @@
+:pp: {plus}{plus}
+
+= Model Formats
+
+Here's a scenario you'll encounter constantly in machine learning: you've trained a beautiful model in PyTorch. It works great. Now you need to deploy it on an Android phone, integrate it with a Vulkan-based game engine, and maybe run it on a server too. Each environment has different constraints, different hardware, different optimization needs.
+
+Do you maintain separate implementations for each platform? Do you rewrite your model in different frameworks? How do you ensure they all produce the same results?
+
+This is the problem that model formats solve. They're the bridge between training and deployment, between frameworks and hardware, between research and production. Understanding them is essential for practical ML inference work.
+
+== The Tower of Babel Problem
+
+In the early days of deep learning (which, remarkably, was only about a decade ago), every framework had its own way of representing models. This fragmentation created a crisis that threatened to slow the entire field's progress.
+
+=== The Framework Explosion
+
+Around 2015-2017, deep learning exploded in popularity. Suddenly, dozens of frameworks emerged, each with its own philosophy and approach:
+
+*TensorFlow* (Google, 2015): Built around static computation graphs. You define your model structure upfront, then execute it. Great for production deployment and optimization, but the static graph made debugging and experimentation harder.
+
+*PyTorch* (Facebook, 2016): Built around dynamic computation graphs (define-by-run). You build the graph as you execute, making debugging intuitive and experimentation fast. Researchers loved it, but deployment was initially challenging.
+
+*Caffe* (Berkeley, 2014): One of the first popular frameworks, focused on computer vision. Used prototxt files to define models—human-readable but verbose. Great for CNNs, less flexible for other architectures.
+
+*MXNet* (Apache, 2015): Designed for efficiency and scalability, with support for multiple languages. Used its own JSON-based format for model serialization.
+
+*Theano* (Montreal, 2007): The grandfather of modern frameworks, pioneered automatic differentiation. Used Python pickle for serialization, which was fragile and Python-specific.
+
+Each framework had strengths, and researchers naturally gravitated to different tools for different tasks. But this created a massive problem for deployment.
+
+=== The Lock-In Problem
+
+Imagine this scenario, which played out thousands of times in companies worldwide:
+
+Your research team trains a state-of-the-art model in PyTorch. They achieve 95% accuracy on your task—better than anything you've had before. They're excited to deploy it.
+
+But your production infrastructure is built on TensorFlow. Your deployment pipeline, monitoring tools, and optimization workflows all assume TensorFlow models. Your mobile app uses TensorFlow Lite. Your edge devices run TensorFlow Lite for Microcontrollers.
+
+What do you do?
+
+*Option 1: Reimplement in TensorFlow*. This means manually translating every layer, every operation, every detail from PyTorch to TensorFlow. It takes weeks. You introduce bugs. The TensorFlow version gets 92% accuracy instead of 95%—something got lost in translation, but what? You spend more weeks debugging. By the time you're done, the research team has moved on to a better model, and you need to start over.
+
+*Option 2: Deploy PyTorch in production*. This means rebuilding your entire deployment infrastructure. PyTorch's mobile support was immature in 2017-2018. Your edge devices can't run PyTorch at all. This option isn't even feasible.
+
+*Option 3: Give up*. The model never makes it to production. All that research effort is wasted.
+
+This wasn't a hypothetical problem—it was the reality for most organizations trying to deploy deep learning models. The framework you chose for training locked you into that framework's ecosystem for deployment.
+
+=== The Interoperability Crisis
+
+The problem went beyond individual companies. The entire field suffered:
+
+*Research Reproducibility*: A paper published with a Caffe model couldn't easily be reproduced in TensorFlow. Researchers had to reimplement from scratch, often getting different results. Was the difference due to implementation details, or was the original paper wrong?
+
+*Model Sharing*: Pre-trained models were framework-specific. A great ResNet implementation in PyTorch couldn't be used by TensorFlow users. The community's knowledge was fragmented.
+
+*Hardware Optimization*: Hardware vendors (NVIDIA, Intel, ARM, etc.) had to support every framework separately. Optimizing for TensorFlow didn't help PyTorch users. This slowed hardware innovation.
+
+*Tool Development*: Every tool—profilers, visualizers, optimizers—had to be built separately for each framework. The ecosystem was fragmented and inefficient.
+
+=== The Solution: Interchange Formats
+
+The industry needed a common language—a way to represent neural networks that's independent of the training framework and optimized for deployment. This led to the development of several interchange formats, each solving slightly different problems.
+
+The key insight was separation of concerns: training and inference are different tasks with different requirements. Training needs flexibility, automatic differentiation, and optimization algorithms. Inference needs efficiency, small size, and broad hardware support.
+
+An interchange format sits between these worlds. You train in whatever framework you prefer, export to the interchange format, then deploy using whatever runtime works best for your target platform. The format breaks the lock-in.
+
+Two major formats emerged to solve this problem, each with a different focus:
+
+*TensorFlow Lite* (2017): Google's solution for mobile deployment. Focused on small size, fast execution, and aggressive optimization.
+
+*ONNX* (2017): A collaboration between Microsoft, Facebook, and others. Focused on cross-framework compatibility and broad ecosystem support.
+
+Let's explore each in detail.
+
+== TensorFlow Lite: Mobile-First Optimization
+
+Google faced a specific challenge: they had TensorFlow, a powerful training framework, but it was far too large and complex for mobile devices. A full TensorFlow runtime might be hundreds of megabytes. Mobile apps need to be small, fast, and battery-efficient.
+
+TensorFlow Lite was born from this constraint. It's not just a file format—it's an entire ecosystem designed for mobile and embedded deployment.
+
+=== The Design Philosophy
+
+The key insight was that inference doesn't need all the machinery of training. You don't need automatic differentiation, you don't need optimizer implementations, you don't need the flexibility to define arbitrary new operations.
+
+What you need is:
+
+- A compact representation of the model
+- A small runtime that can execute it efficiently
+- Tools to optimize the model for size and speed
+
+TFLite provides all three, with a laser focus on mobile constraints.
+
+=== The Format: FlatBuffers for Efficiency
+
+The format itself is based on FlatBuffers, a serialization library Google developed specifically for efficiency. Unlike JSON or Protocol Buffers, FlatBuffers doesn't require parsing—you can access data directly from the serialized format.
+
+This matters for mobile devices. Parsing a 50MB model file takes time and memory. With FlatBuffers, you memory-map the file and access it directly. Loading is nearly instantaneous, and you don't need extra memory for a parsed representation.
+
+Models are stored in compact binary format (.tflite files). A typical ResNet-50 model is about 100MB in TensorFlow's SavedModel format, but only 25MB in TFLite after optimization. This 4x reduction comes from quantization, which we'll discuss next.
+
+=== Quantization: The Killer Feature
+
+TFLite's real power comes from its optimization tools, and *quantization* is the standout feature.
+
+Neural networks typically use 32-bit floating-point numbers for weights and activations. Each weight is 4 bytes. A model with 25 million parameters is 100MB.
+
+Quantization converts these to 8-bit integers. Each weight becomes 1 byte. The same 25 million parameter model is now 25MB—a 4x reduction.
+
+But doesn't this hurt accuracy? Surprisingly, not much. For many models, quantization causes less than 1% accuracy loss. Some models even improve slightly (the reduced precision acts as regularization).
+
+The benefits go beyond size:
+
+*Faster Inference*: Integer operations are faster than floating-point on most mobile processors. Quantized models run 2-4x faster.
+
+*Lower Power*: Integer operations consume less power. This extends battery life—crucial for mobile devices.
+
+*Hardware Acceleration*: Many mobile processors have specialized integer arithmetic units. Quantized models can leverage these for even more speedup.
+
+TFLite supports several quantization schemes:
+
+*Post-Training Quantization*: The simplest approach. Take a trained float32 model and convert it to int8. No retraining needed. Works well for many models.
+
+*Quantization-Aware Training*: Train the model with quantization in mind. During training, simulate the effects of quantization so the model learns to be robust to it. Produces better accuracy than post-training quantization, but requires retraining.
+
+*Dynamic Range Quantization*: Quantize weights to int8 but keep activations as float32. A middle ground that's easier to apply than full quantization.
+
+=== The Runtime: Small and Optimized
+
+The TFLite runtime is designed for resource-constrained devices:
+
+*Size*: The core runtime is about 300KB. With all operators included, it's still under 1MB. Compare this to TensorFlow's hundreds of megabytes.
+
+*Dependencies*: Minimal dependencies. The runtime is nearly self-contained, making it easy to integrate into mobile apps.
+
+*ARM Optimization*: Heavily optimized for ARM processors using NEON SIMD instructions. Mobile devices are almost all ARM-based, so this optimization matters.
+
+*Delegate Support*: TFLite supports "delegates" that offload computation to specialized hardware. GPU delegates use OpenGL ES or Vulkan. NPU delegates use neural processing units. This allows leveraging whatever acceleration the device provides.
+
+=== The Ecosystem: Tools and Models
+
+TFLite has a mature ecosystem:
+
+*TFLite Converter*: Converts TensorFlow models (SavedModel, Keras, concrete functions) to TFLite format. Handles quantization, optimization, and validation.
+
+*TFLite Model Maker*: High-level API for training and converting models. Handles common tasks (image classification, object detection, text classification) with minimal code.
+
+*TFLite Support Library*: Handles preprocessing and postprocessing. Provides utilities for image resizing, normalization, and result interpretation.
+
+*Model Zoo*: Hundreds of pre-trained models ready to use. Image classification, object detection, pose estimation, segmentation, and more.
+
+*Benchmarking Tools*: Measure inference time and memory usage on real devices. Essential for optimization.
+
+=== The Tradeoffs
+
+TFLite isn't perfect:
+
+*TensorFlow Lock-In*: While you can convert from other frameworks (PyTorch → ONNX → TensorFlow → TFLite), it's not always smooth. TFLite is designed for TensorFlow models.
+
+*Operator Coverage*: TFLite supports a subset of TensorFlow operations. Most common models work fine, but cutting-edge architectures might use unsupported operations.
+
+*Quantization Limitations*: Not all models quantize well. Recurrent networks and attention mechanisms can be sensitive to quantization. You might need quantization-aware training.
+
+*Mobile Focus*: TFLite is optimized for mobile/embedded. For desktop or server deployment, other formats might be better.
+
+=== When TFLite Makes Sense
+
+TFLite is ideal when:
+
+*Deploying on Mobile*: Android and iOS apps. TFLite has first-class support on both platforms.
+
+*Size Matters*: Your app size budget is tight. TFLite's aggressive optimization keeps models small.
+
+*Battery Life Matters*: Mobile devices running on battery. TFLite's efficiency extends battery life.
+
+*TensorFlow Ecosystem*: You're already using TensorFlow for training. The conversion path is smooth and well-documented.
+
+*Pre-Trained Models*: You want to use pre-trained models from TensorFlow Hub. Many are already available in TFLite format.
+
+For game development targeting mobile platforms, TFLite is often the best choice. The tooling is mature, the documentation is excellent, and the performance is hard to beat.
+
+== ONNX: The Universal Translator
+
+While Google was solving the mobile problem with TFLite, the broader industry faced a different challenge: interoperability. Researchers might train in PyTorch, but production systems use TensorFlow. Or vice versa. Companies might use multiple frameworks for different projects. Every framework transition meant reimplementation and validation.
+
+The Open Neural Network Exchange (ONNX) format emerged from a collaboration between Microsoft, Facebook, and others to solve this problem. The goal was ambitious: create a format that any framework can export to and any runtime can execute.
+
+=== The Design: A Common Language
+
+ONNX is more than just a file format—it's a specification for representing neural network operations. Think of it as a programming language for neural networks, with a well-defined syntax and semantics.
+
+The core idea is an *operator set*: a comprehensive list of operations (convolution, matrix multiplication, activation functions, pooling, normalization, etc.) with precise definitions. Each operator specifies:
+
+- What inputs it takes (tensors of what shapes and types)
+- What outputs it produces
+- What parameters it has (stride, padding, etc.)
+- Exactly how it computes outputs from inputs
+
+When PyTorch exports to ONNX, it's translating its internal operations into this common language. A PyTorch `Conv2d` becomes an ONNX `Conv` operator with specific parameters. When an ONNX runtime loads the model, it knows exactly what each operation means and how to execute it.
+
+=== The Format: Protocol Buffers
+
+ONNX uses Protocol Buffers (protobuf) for serialization. Protobuf is a binary format developed by Google, widely used in industry for efficient data serialization.
+
+The format stores:
+
+- *Graph structure*: Nodes (operations) and edges (data flow between operations)
+- *Operator types*: Which ONNX operator each node uses
+- *Attributes*: Parameters for each operator (kernel size, stride, etc.)
+- *Initializers*: The learned weights and biases
+- *Metadata*: Model version, producer information, etc.
+
+ONNX models are typically larger than TFLite models because they don't apply aggressive quantization by default. A ResNet-50 in ONNX format is about 100MB (same as TensorFlow SavedModel), compared to 25MB for quantized TFLite.
+
+=== Extensibility: Growing with the Field
+
+One of ONNX's key strengths is extensibility. The field of deep learning evolves rapidly—new layer types, new architectures, new operations appear constantly.
+
+ONNX handles this through *operator versioning*. The operator set evolves over time:
+
+- ONNX 1.0 (2017): ~60 operators
+- ONNX 1.6 (2020): ~150 operators
+- ONNX 1.13 (2023): ~180 operators
+
+When a new operation becomes common, it gets added to the standard. Models specify which ONNX version they use, ensuring compatibility.
+
+ONNX also supports *custom operators*. If you need an operation not in the standard set, you can define your own. This is crucial for cutting-edge research where new operations are invented regularly.
+
+=== The Ecosystem: Tools and Runtimes
+
+ONNX has a rich ecosystem:
+
+*Converters*:
+
+- PyTorch → ONNX: Built into PyTorch, excellent support
+- TensorFlow → ONNX: Via tf2onnx, works well for most models
+- Keras → ONNX: Via keras2onnx or tf2onnx
+- Scikit-learn → ONNX: Via sklearn-onnx, for traditional ML models
+
+*Optimizers*:
+
+- ONNX Runtime's optimization passes: Fuse operations, eliminate redundant nodes, constant folding
+- ONNX Simplifier: Simplifies complex graphs, makes them easier to deploy
+- ONNX Optimizer: Graph-level optimizations
+
+*Runtimes*:
+
+- ONNX Runtime (Microsoft): High-performance, supports CPU, WebGPU, DirectML, CUDA
+- TensorRT (NVIDIA): Optimized for NVIDIA GPUs
+- OpenVINO (Intel): Optimized for Intel hardware
+- ONNX.js: Run ONNX models in web browsers
+- Custom runtimes: Many companies build their own
+
+*Validation Tools*:
+
+- ONNX Checker: Validates model correctness
+- ONNX Shape Inference: Infers tensor shapes throughout the graph
+- Netron: Visualizes ONNX models, essential for debugging
+
+=== The Practical Impact
+
+ONNX breaks framework lock-in. Here's a real-world workflow:
+
+1. Research team trains a model in PyTorch (their preferred framework)
+2. Export to ONNX with one line of code: `torch.onnx.export(model, ...)`
+3. Validate the export: run inference in both PyTorch and ONNX Runtime, verify outputs match
+4. Deploy using ONNX Runtime on servers (optimized for production)
+5. Convert ONNX → TFLite for mobile deployment
+6. Convert ONNX → TensorRT for NVIDIA GPU deployment
+
+One model, multiple deployment targets, no manual reimplementation.
+
+=== The Tradeoffs
+
+ONNX isn't perfect:
+
+*Size*: ONNX models are larger than TFLite models. No aggressive quantization by default. For mobile deployment, you might need to convert ONNX → TFLite.
+
+*Conversion Issues*: Not all operations convert perfectly. Dynamic shapes, control flow, and custom operations can be problematic. You might need to modify your model to make it ONNX-compatible.
+
+*Runtime Performance Varies*: ONNX Runtime is fast, but performance depends on which execution provider you use (WebGPU, DirectML, CPU, etc.). Some runtimes are better optimized than others.
+
+*Operator Coverage*: While ONNX supports many operators, cutting-edge research might use operations not yet in the standard. You'd need custom operators, which reduces portability.
+
+=== When ONNX Makes Sense
+
+ONNX is ideal when:
+
+*Cross-Framework Compatibility*: You train in one framework but deploy in another. ONNX is the bridge.
+
+*Multiple Deployment Targets*: You need to deploy on servers, edge devices, and mobile. ONNX can convert to target-specific formats.
+
+*Desktop/Server Deployment*: Size is less critical than on mobile. ONNX's larger models are acceptable.
+
+*Flexibility*: You want to switch frameworks without reimplementing everything. ONNX provides that flexibility.
+
+*Ecosystem*: You want access to a rich ecosystem of tools, optimizers, and runtimes.
+
+For Vulkan-based inference engines, ONNX is often the best choice. It's framework-agnostic, well-documented, and has excellent tooling. The principles we'll cover in this tutorial apply to ONNX models, though they work for other formats too.
+
+== Converting Between Formats: The Reality
+
+In practice, you'll rarely use just one format. The typical workflow involves conversion, often through multiple steps. Understanding common conversion paths and their pitfalls helps you navigate this landscape successfully.
+
+=== Common Conversion Workflows
+
+*PyTorch → ONNX → TFLite (Mobile Deployment)*:
+
+1. Train in PyTorch (researcher-friendly, flexible)
+2. Export to ONNX: `torch.onnx.export(model, dummy_input, "model.onnx")`
+3. Convert ONNX to TensorFlow: Use `onnx-tf` converter
+4. Convert TensorFlow to TFLite: Use TFLite converter with quantization
+5. Deploy on Android/iOS
+
+This path is common because PyTorch is popular for research, but TFLite is best for mobile deployment.
+
+*TensorFlow → TFLite + ONNX (Multi-Platform)*:
+
+1. Train in TensorFlow (production-friendly, mature)
+2. Convert to TFLite for mobile: Direct conversion with TFLite converter
+3. Convert to ONNX for other platforms: Use `tf2onnx`
+4. Deploy TFLite on mobile, ONNX elsewhere
+
+This path leverages TensorFlow's broad support while maintaining flexibility.
+
+*ONNX as Universal Hub*:
+
+1. Train in any framework (PyTorch, TensorFlow, etc.)
+2. Export to ONNX (most frameworks support this)
+3. Convert ONNX to target format as needed:
+   - ONNX → TFLite for mobile
+   - ONNX → TensorRT for NVIDIA GPUs
+   - ONNX → OpenVINO for Intel hardware
+
+ONNX becomes your universal intermediate representation, giving maximum flexibility.
+
+=== Validation: The Critical Step
+
+Every conversion is a potential source of bugs. Validation is not optional—it's essential.
+
+*Numerical Validation*:
+
+Run the same inputs through both the original model and the converted model. Compare outputs:
+
+[source,python]
+----
+# Original PyTorch model
+pytorch_output = model(input_tensor)
+
+# Converted ONNX model
+onnx_session = onnxruntime.InferenceSession("model.onnx")
+onnx_output = onnx_session.run(None, {"input": input_numpy})
+
+# Compare
+difference = np.abs(pytorch_output.numpy() - onnx_output)
+max_diff = np.max(difference)
+print(f"Maximum difference: {max_diff}")
+----
+
+What's acceptable? Floating-point operations aren't exact, so small differences are normal. A maximum difference of 1e-5 to 1e-6 is typical and acceptable. Differences larger than 1e-3 suggest a problem.
+
+*Statistical Validation*:
+
+Run inference on a validation set (hundreds or thousands of examples). Compare:
+
+- Accuracy: Does the converted model achieve the same accuracy?
+- Top-5 accuracy: For classification, do the top predictions match?
+- Mean absolute error: For regression, is the average error the same?
+
+If accuracy drops by more than 1%, investigate. The conversion likely has issues.
+
+*Visual Validation*:
+
+For vision models, visualize outputs:
+
+- Classification: Do predictions match?
+- Object detection: Do bounding boxes align?
+- Segmentation: Do masks look identical?
+
+Visual inspection often catches issues that numerical comparisons miss.
+
+=== Common Conversion Pitfalls
+
+*Dynamic Shapes*:
+
+Some frameworks support dynamic input shapes (batch size can vary). Others require fixed shapes. Converting from dynamic to fixed requires specifying concrete shapes, which might not match your deployment needs.
+
+Solution: Export with the shapes you'll use in production. If you need multiple shapes, export multiple models.
+
+*Custom Operations*:
+
+If your model uses custom operations (operations you defined yourself), they might not convert. Standard formats only support standard operations.
+
+Solution: Reimplement custom operations using standard operations, or add custom operator support to your target format (advanced).
+
+*Control Flow*:
+
+Models with if-statements or loops (dynamic control flow) are hard to convert. Not all formats support control flow.
+
+Solution: Avoid control flow if possible. Use fixed-size operations instead. If unavoidable, choose formats that support control flow (ONNX does, TFLite has limited support).
+
+*Quantization Mismatch*:
+
+Converting to TFLite with quantization can cause accuracy loss if not done carefully. The quantization scheme matters.
+
+Solution: Use quantization-aware training if accuracy drops too much. Validate thoroughly after quantization.
+
+*Operator Version Mismatch*:
+
+ONNX operators evolve over time. A model exported with ONNX 1.10 might use operators not supported in ONNX 1.6.
+
+Solution: Check operator versions. Update your runtime if needed, or export with an older ONNX version.
+
+=== Debugging Conversion Issues
+
+When conversion fails or produces wrong results:
+
+*Check Operator Support*:
+
+Does the target format support all operations in your model? Use format-specific tools to check:
+
+- ONNX: `onnx.checker.check_model(model)`
+- TFLite: Check TFLite operator compatibility
+
+*Visualize the Graph*:
+
+Use Netron (netron.app) to visualize both the original and converted models. Look for:
+
+- Missing operations
+- Incorrect connections
+- Shape mismatches
+
+*Simplify the Model*:
+
+If a complex model fails to convert, try converting a simpler version:
+
+- Remove custom operations
+- Use fixed shapes instead of dynamic
+- Simplify control flow
+
+Once the simple version works, gradually add complexity back until you find the problematic component.
+
+*Check Framework Versions*:
+
+Conversion tools are sensitive to framework versions. Ensure you're using compatible versions:
+
+- PyTorch 1.10+ for good ONNX export
+- TensorFlow 2.x for tf2onnx
+- Latest onnx-tf for ONNX → TensorFlow
+
+=== Best Practices
+
+*Export Early, Export Often*:
+
+Don't wait until your model is fully trained to test conversion. Export early in development to catch conversion issues before they become blockers.
+
+*Document Preprocessing*:
+
+Record exactly what preprocessing your model expects. This information must transfer with the model, or inference will fail.
+
+*Version Everything*:
+
+Track framework versions, converter versions, and model versions. Reproducibility requires knowing exactly what tools were used.
+
+*Automate Validation*:
+
+Build automated tests that validate converted models. Run these tests in CI/CD to catch regressions.
+
+*Keep Original Models*:
+
+Always keep the original model in its native format. Converted models are for deployment, but the original is your source of truth for retraining or reconversion.
+
+== Choosing a Format for Vulkan Inference
+
+For our Vulkan-based inference implementation, which format should you use?
+
+The honest answer: it depends on your source and your priorities.
+
+*If you're starting with TensorFlow models and targeting mobile*, TFLite is the path of least resistance. The format is well-documented, the models are optimized, and you'll find plenty of examples.
+
+*If you need flexibility and cross-framework support*, ONNX is your best bet. It's the most universal format, with the richest ecosystem. You can work with models from any framework and have good tooling for optimization.
+
+For this tutorial series, we'll primarily work with ONNX. It gives us the flexibility to use models from any framework, has good tooling, and a large model zoo. But the principles we'll cover apply to any format—they all represent the same underlying concepts (layers, weights, operations), just with different serialization.
+
+== What These Formats Actually Contain
+
+Regardless of which format you choose, they all contain the same essential information:
+
+*Network architecture*: The structure of the model—what layers exist, how they're connected, what operations each layer performs. This is the blueprint for inference.
+
+*Weights and biases*: The learned parameters—millions of floating-point numbers that encode what the model learned during training. This is the bulk of the file size.
+
+*Metadata*: Information about input and output shapes, data types, preprocessing requirements, and other details needed to use the model correctly.
+
+*Operator definitions*: Specifications of what each operation does—how convolution works, what activation functions do, etc. This might be implicit (referencing a standard operator set) or explicit (including custom operation definitions).
+
+When we implement Vulkan inference, we'll parse these formats to extract this information, load the weights into GPU memory, and implement the operations as compute shaders. The format is just the packaging—the real work is in the execution.
+
+== Summary
+
+Model formats solve the problem of moving trained models from research frameworks to production deployment. Two major formats dominate: TFLite (mobile-optimized) and ONNX (framework-agnostic).
+
+TFLite excels at mobile deployment with aggressive optimization tools, particularly quantization. ONNX provides universal compatibility across frameworks with a rich ecosystem.
+
+In practice, format conversion is common, with typical workflows involving multiple steps (PyTorch→ONNX→TFLite for mobile, or using ONNX as a universal intermediate format). Each format contains the same essential information: network architecture, learned weights, metadata, and operator definitions.
+
+For Vulkan inference, ONNX provides the best balance of flexibility and ecosystem support, though the principles apply to any format. Understanding these formats prepares us to load models and map them to GPU execution.
+
+With this understanding of how models are packaged and transferred, we're ready to explore the mental model for how these models map to GPU execution with Vulkan.
+
+xref:ML_Inference/ML_Inference_Pipeline/05_transfer_learning.adoc[Previous: Transfer Learning] | xref:ML_Inference/ML_Inference_Pipeline/07_mental_model_gpu_execution.adoc[Next: Mental Model: GPU Execution]

@@ -1,0 +1,463 @@
+:pp: {plus}{plus}
+= Compute on Android
+
+== Setting Up Your Android Development Environment
+
+Before writing a single line of Vulkan compute code for Android, you need a working native-development environment. This section walks through every component, from IDE installation to shader compilation in the build system.
+
+=== Android Studio
+
+link:https://developer.android.com/studio[Android Studio] (https://developer.android.com/studio) is the official IDE for Android development and the only one with first-class support for the NDK native debugger. Download the latest stable release for your host OS and install it. The free Community edition is sufficient.
+
+After the first launch, open **Settings → Appearance & Behavior → System Settings → Android SDK → SDK Tools** and install:
+
+*   **NDK (Side by side)** — the Native Development Kit. Choose the latest stable version. The NDK bundles the `aarch64-linux-android` Clang toolchain you need to compile C{pp} for ARM64 Android.
+*   **CMake** — Android Studio ships its own CMake instance that integrates with the Gradle build. Install CMake 3.22 or later.
+
+The minimum Android API level for a conformant Vulkan 1.0 implementation is **API 24 (Android 7.0)**. For Vulkan 1.1 and most features this tutorial assumes you need **API 28+**. For Vulkan 1.3 features (including the `VK_KHR_synchronization2` barrier APIs used throughout this series) target **API 33+**.
+
+=== Project Structure for a Vulkan Compute Application
+
+Android Studio's "Native C{pp}" project template gives you the right skeleton. Your native source and CMake build script live under `app/src/main/cpp/`:
+
+[source]
+----
+app/
+├── src/
+│   └── main/
+│       ├── AndroidManifest.xml
+│       ├── assets/           ← compiled .spv shader files go here
+│       ├── cpp/
+│       │   ├── CMakeLists.txt
+│       │   └── compute_app.cpp
+│       └── jniLibs/
+│           └── arm64-v8a/    ← clvk shared library goes here (see below)
+----
+
+Your `CMakeLists.txt` finds the system Vulkan headers through the NDK and links against the system Vulkan loader:
+
+[source,cmake]
+----
+cmake_minimum_required(VERSION 3.22)
+project(my_compute_app)
+
+# Android provides Vulkan headers and the loader stub; they are part of the NDK.
+find_library(vulkan-lib vulkan)
+
+add_library(my_compute SHARED compute_app.cpp)
+
+target_link_libraries(my_compute
+    ${vulkan-lib}
+    android          # for AAssetManager
+    log)             # for __android_log_print
+
+# Use C++20 for the structured bindings and std::stop_token used in this tutorial.
+target_compile_features(my_compute PRIVATE cxx_std_20)
+----
+
+The matching block in `app/build.gradle` (Kotlin DSL) points Gradle at that CMakeLists:
+
+[source,kotlin]
+----
+android {
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                cppFlags("-std=c++20")
+                arguments("-DANDROID_STL=c++_shared")
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+}
+----
+
+=== Compiling Shaders as Part of the Gradle Build
+
+The `.spv` files that end up in `assets/` should be generated automatically at build time, not checked in as binary blobs. Add a custom Gradle task that invokes your shader compiler before the `preBuild` phase.
+
+The following example uses **Slang** (`slangc`), which is the primary shading language for this tutorial series. Download a release binary from link:https://github.com/shader-slang/slang/releases[github.com/shader-slang/slang/releases] and place it somewhere on your `PATH` (or hardcode the path in the Gradle task).
+
+[source,kotlin]
+----
+// build.gradle.kts  (app module)
+tasks.register<Exec>("compileShaders") {
+    val srcDir  = file("src/main/cpp/shaders")
+    val outDir  = file("src/main/assets")
+    outDir.mkdirs()
+
+    // Compile every .slang file in the shaders directory.
+    srcDir.listFiles { f -> f.extension == "slang" }?.forEach { shader ->
+        commandLine(
+            "slangc",
+            shader.absolutePath,
+            "-profile", "spirv_1_5",
+            "-o", File(outDir, shader.nameWithoutExtension + ".spv").absolutePath
+        )
+    }
+    description = "Compile Slang shaders to SPIR-V assets"
+}
+
+tasks.named("preBuild") { dependsOn("compileShaders") }
+----
+
+For teams using **GLSL** instead, replace `slangc` with `glslangValidator -V`. The invocation is analogous; the important point is that the compiled `.spv` lands in `src/main/assets/` so that `AAssetManager` can open it at runtime (see the shader-loading code in the next section).
+
+=== Deploying to a Device and Using ADB
+
+Android Debug Bridge (`adb`) is bundled with the Android SDK (`platform-tools/adb`). Add its directory to your `PATH`. Common commands during Vulkan compute development:
+
+[source,bash]
+----
+# Confirm device is visible and show its Android/API versions.
+adb devices -l
+
+# Check which Vulkan version the device reports (requires jq).
+adb shell cmd gpu vkjson | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['devices'][0]['properties']['apiVersion'])"
+
+# Watch logcat output, filtered to your app tag and the Vulkan validation layer.
+adb logcat -s MyComputeApp VALIDATION
+
+# Push a file (e.g., a test dataset) directly to the app's sandbox.
+adb push test_input.bin /data/local/tmp/test_input.bin
+
+# Pull a result file back to the host.
+adb pull /data/local/tmp/result.bin ./result.bin
+----
+
+=== Debugging Native Code with LLDB in Android Studio
+
+Android Studio attaches the LLDB debugger to your native code automatically when you run in **Debug** mode. In your `Run/Debug Configuration`, under **Debugger**, choose **Dual** (Java + Native) or **Native** for a pure-NDK app. From that point, setting breakpoints in your C{pp} files, inspecting `VkResult` variables, and stepping through dispatch code works identically to a desktop LLDB session.
+
+For GPU-level debugging — inspecting descriptor sets, tracking VRAM usage, and capturing command buffer recordings — use **Android GPU Inspector (AGI)**, which is separate from Android Studio. See the profiling section below for the download link.
+
+== From Desktop Dispatch to Mobile Dispatch
+
+The good news is that a Vulkan compute pipeline is *the same object* on Android as it is on the desktop. The `VkPipeline`, `VkDescriptorSet`, `vkCmdDispatch`, and barrier code you wrote in the previous chapters compile and run unchanged. What changes is everything *around* the dispatch: how you create the device, how you obtain SPIR-V, how you query capabilities, and how you read results back on a unified-memory architecture.
+
+If you have not yet built a Vulkan application for Android, work through the xref:14_Android.adoc[Android] chapter of the main tutorial first. It covers the `VK_KHR_android_surface` extension, the `ANativeWindow`, and the Gradle/NDK build flow. Here we assume you already have a running Android Vulkan app and want to add compute to it.
+
+== Loading the Driver: The Vulkan Loader on Android
+
+On most Android 8.0+ devices the system ships a Vulkan loader, but for maximum compatibility (and to pick up the latest validation layers during development) it is common to bundle the **Vulkan Loader** from the NDK and load `libvulkan.so` dynamically with a function-pointer loader such as `volk`. This is exactly the pattern used elsewhere in this tutorial:
+
+[source,cpp]
+----
+// Load the Vulkan entry points provided by the Android system driver.
+if (volkInitialize() != VK_SUCCESS) {
+    // No Vulkan-capable driver on this device — fall back to a CPU path.
+    return false;
+}
+----
+
+A real shipping app should always have a graceful fallback for devices without a conformant Vulkan driver.
+
+== Getting SPIR-V onto the Device
+
+On the desktop you usually compile your Slang or GLSL shaders to SPIR-V at build time and load the `.spv` file from disk. On Android the same `.spv` works unchanged — the only difference is *where it lives* and *how you read it*. The standard approach is to compile the shader during the Gradle build (with `slangc` or `glslangValidator` invoked from a Gradle task) and package the resulting `.spv` as an APK **asset**. At runtime you read it through the `AAssetManager` rather than `std::ifstream`:
+
+[source,cpp]
+----
+// 'mgr' comes from the ANativeActivity / android_app you already have.
+std::vector<uint32_t> loadSpirvAsset(AAssetManager* mgr, const char* name) {
+    AAsset* asset = AAssetManager_open(mgr, name, AASSET_MODE_BUFFER);
+    if (!asset) throw std::runtime_error("missing shader asset");
+    size_t size = AAsset_getLength(asset);
+    std::vector<uint32_t> code(size / sizeof(uint32_t));
+    AAsset_read(asset, code.data(), size);
+    AAsset_close(asset);
+    return code;
+}
+----
+
+That `std::vector<uint32_t>` feeds straight into `VkShaderModuleCreateInfo` exactly as on the desktop. Nothing about the SPIR-V itself is mobile-specific; do *not* maintain a separate "mobile" shader unless a queried limit forces a different workgroup size.
+
+== Querying What the Phone Can Actually Do
+
+Mobile drivers vary enormously in the limits and features they expose. Before dispatching, query the limits that matter for compute and *clamp your workgroup configuration to them*:
+
+[source,cpp]
+----
+VkPhysicalDeviceProperties props{};
+vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+const uint32_t maxInvocations = props.limits.maxComputeWorkGroupInvocations;
+const uint32_t maxSharedBytes = props.limits.maxComputeSharedMemorySize;
+const uint32_t* maxCount       = props.limits.maxComputeWorkGroupCount;
+const uint32_t* maxSize        = props.limits.maxComputeWorkGroupSize;
+----
+
+Two limits bite mobile developers far more often than desktop developers:
+
+*   **`maxComputeSharedMemorySize`** is frequently *much* smaller on mobile (16 KB is common, versus 32–64 KB on desktop). A tiling or reduction kernel tuned for a desktop LDS budget may simply fail to create its pipeline on a phone.
+*   **`maxComputeWorkGroupInvocations`** can be as low as 128 on some parts. A `local_size_x = 256` shader that runs fine on your laptop will be rejected by the driver here.
+
+For subgroup work, query the subgroup size and supported operations explicitly — many mobile GPUs report a `subgroupSize` of 4, 8, 16, 32, *or* 64 depending on the vendor:
+
+[source,cpp]
+----
+VkPhysicalDeviceSubgroupProperties subgroup{
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES
+};
+VkPhysicalDeviceProperties2 props2{
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+    .pNext = &subgroup
+};
+vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
+// subgroup.subgroupSize and subgroup.supportedOperations tell you what is safe.
+----
+
+Never hard-code a subgroup size on mobile. Use `VK_EXT_subgroup_size_control` if you need a guaranteed full subgroup, or query and branch.
+
+== Enabling the Features You Actually Use
+
+The biggest single difference between a robust mobile app and one that crashes on a competitor's phone is *defensive feature enabling*. Where a desktop app can often assume FP16 and Buffer Device Address are present, on mobile you must check each feature and enable only what the device reports. Chain the feature structs, query them, and pass the same chain to `VkDeviceCreateInfo`:
+
+[source,cpp]
+----
+VkPhysicalDeviceShaderFloat16Int8Features f16{
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES
+};
+VkPhysicalDevice16BitStorageFeatures storage16{
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES,
+    .pNext = &f16
+};
+VkPhysicalDeviceFeatures2 features2{
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+    .pNext = &storage16
+};
+vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
+
+// Decide your shader variant from what is ACTUALLY supported.
+const bool useFp16 = f16.shaderFloat16 && storage16.storageBuffer16BitAccess;
+
+// Pass the very same (now-populated) chain to device creation so the
+// features you rely on are turned on:
+VkDeviceCreateInfo deviceInfo{
+    .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    .pNext = &features2,
+    // ...queue create infos, enabled extensions...
+};
+----
+
+If `useFp16` comes back false, fall back to your FP32 pipeline rather than failing. This single pattern — query, decide, enable, fall back — is what makes a compute app portable across the fragmented Android device fleet.
+
+== Tile-Based GPUs Change the Rules
+
+The single most important architectural fact about mobile GPUs is that almost all of them are **Tile-Based Deferred Rendering (TBDR)** or tile-based immediate-mode designs. The GPU has a small amount of very fast **on-chip tile memory**, and main memory bandwidth to the unified system RAM is comparatively scarce and *power-hungry*.
+
+For graphics this drives the famous "avoid mid-frame `vkCmdLoadOp`/`storeOp` round-trips" guidance. For **compute**, the consequence is just as important:
+
+*   Every byte you read from or write to a `VkBuffer` in device memory costs real **energy**, not just time. On mobile, DRAM traffic is often the dominant term in your power budget.
+*   This makes the subgroup and shared-memory techniques from Chapters 3 and 4 even *more* valuable than on desktop: keeping data on-chip is not just a speed optimization, it directly extends battery life and avoids thermal throttling.
+
+A naive kernel that bounces large intermediate buffers through DRAM may "work" on a phone but drain the battery and throttle within seconds. We will return to this in the next section.
+
+== Reading Results Back on Unified Memory
+
+Almost all mobile and embedded GPUs share a single physical pool of memory with the CPU (a **Unified Memory Architecture**, or UMA). This is a gift for compute read-back: there is usually a memory type that is both `DEVICE_LOCAL` and `HOST_VISIBLE`, so you can often skip the staging-buffer copy that is mandatory on a discrete desktop GPU.
+
+[source,cpp]
+----
+// Prefer a heap that is both device-local and host-visible (typical on UMA mobile parts).
+VkMemoryPropertyFlags want =
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+----
+
+You still need correct synchronization. After the dispatch, insert a barrier that makes the shader's writes *available* to the host, then wait on a fence before mapping and reading the buffer — exactly the discipline established in the Synchronization material. UMA removes the copy, not the need for visibility operations. Here is the complete read-back path:
+
+[source,cpp]
+----
+// 1. Record dispatch, then a buffer barrier into the HOST domain.
+VkBufferMemoryBarrier2 toHost{
+    .sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+    .srcStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+    .dstStageMask  = VK_PIPELINE_STAGE_2_HOST_BIT,
+    .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
+    .buffer        = resultBuffer,
+    .size          = VK_WHOLE_SIZE,
+};
+VkDependencyInfo dep{
+    .sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+    .bufferMemoryBarrierCount = 1,
+    .pBufferMemoryBarriers    = &toHost,
+};
+vkCmdPipelineBarrier2(cmd, &dep);
+vkEndCommandBuffer(cmd);
+
+// 2. Submit and wait on a fence (NOT vkQueueWaitIdle on the UI thread).
+vkQueueSubmit2(computeQueue, 1, &submitInfo, fence);
+vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+
+// 3. Map the UMA buffer directly — no staging copy needed.
+void* mapped = nullptr;
+vkMapMemory(device, resultMemory, 0, VK_WHOLE_SIZE, 0, &mapped);
+// If the memory type is NOT HOST_COHERENT, invalidate it first:
+//   vkInvalidateMappedMemoryRanges(...) before reading.
+std::memcpy(hostResults.data(), mapped, byteCount);
+vkUnmapMemory(device, resultMemory);
+----
+
+The one mobile-specific subtlety is coherency: if the heap you allocated is host-visible but *not* `HOST_COHERENT` (common on some parts), you must call `vkInvalidateMappedMemoryRanges` before the `memcpy`, or you may read stale CPU-cache data.
+
+== Keeping the Dispatch Off the Main Thread
+
+Android delivers UI and input on the main (UI) thread, and blocking it for more than a few milliseconds causes an "Application Not Responding" (ANR) dialog. Long-running compute must be submitted from a worker thread and synchronized back with a `VkFence` or timeline semaphore, never by stalling the render thread with `vkQueueWaitIdle` on the UI thread.
+
+A practical pattern is to own a dedicated compute thread that pulls jobs from a queue, submits them, waits on the fence, and posts the result back to the UI/render thread:
+
+[source,cpp]
+----
+void computeWorker(std::stop_token stop) {
+    while (!stop.stop_requested()) {
+        Job job = jobQueue.popBlocking();      // wait for work
+        recordAndSubmit(job);                  // vkQueueSubmit2(..., job.fence)
+        vkWaitForFences(device, 1, &job.fence,  // block HERE, off the UI thread
+                        VK_TRUE, UINT64_MAX);
+        vkResetFences(device, 1, &job.fence);
+        postResultToMainThread(job);           // e.g. via a lock-free queue
+    }
+}
+----
+
+Note also that Android may call your `onPause`/`onDestroy` and tear down the `ANativeWindow` while a dispatch is in flight. Guard your compute submissions so they either complete or are cancelled cleanly on lifecycle transitions, and never touch the swapchain from the compute thread.
+
+== Using clvk on Android
+
+Chapter 5 introduced `clvk` as a conformant OpenCL 3.0 runtime layered on Vulkan. On Android, the same library lets you run existing OpenCL C kernels — and any host code that calls `clCreateContext`, `clEnqueueNDRangeKernel`, and friends — on the device's Vulkan driver without touching a single line of either the kernel or the host application code.
+
+=== Building clvk for Android
+
+Cross-compiling `clvk` for Android requires the NDK. Clone `clvk` and its dependencies, then pass a CMake Android toolchain file:
+
+[source,bash]
+----
+# On your host Linux or macOS build machine.
+git clone --recursive https://github.com/kpet/clvk.git
+cd clvk && mkdir build-android && cd build-android
+
+cmake .. \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+    -DANDROID_ABI=arm64-v8a \
+    -DANDROID_PLATFORM=android-28 \
+    -DCLVK_COMPILER_AVAILABLE=OFF   # disable the JIT compiler; use pre-compiled SPIR-V
+
+ninja OpenCL
+----
+
+The `CLVK_COMPILER_AVAILABLE=OFF` flag tells `clvk` not to bundle `clspv` for runtime kernel compilation (which is large). Instead, compile your OpenCL C kernels to SPIR-V on the *host* at build time with `clspv`, package the resulting `.spv` as an APK asset, and load it at runtime. This is the same pattern you use for native Vulkan shaders, and it eliminates JIT compilation overhead on the device.
+
+The build produces `libOpenCL.so`. Copy it into your Android project's `jniLibs/arm64-v8a/` directory so the Gradle packager includes it in the APK.
+
+=== Loading the clvk OpenCL Library from NDK Code
+
+Android does not have a system OpenCL loader on most devices. Load `clvk`'s `libOpenCL.so` explicitly at startup before calling any OpenCL function:
+
+[source,cpp]
+----
+#include <dlfcn.h>
+
+void* clvkLib = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
+if (!clvkLib) {
+    // clvk not available — fall back to a native Vulkan path or skip CL code.
+    LOGE("clvk not found: %s", dlerror());
+    return false;
+}
+// Resolve function pointers through the ICD loader that clvk implements.
+auto clCreateContext_fn = (clCreateContext_fn_t)dlsym(clvkLib, "clCreateContext");
+// ... resolve remaining functions ...
+----
+
+For real projects it is cleaner to use the **OpenCL-ICD-Loader** (link:https://github.com/KhronosGroup/OpenCL-ICD-Loader[github.com/KhronosGroup/OpenCL-ICD-Loader]) compiled for Android with `OPENCL_ICD_LOADER_DISABLE_LAYER_SETTINGS=ON`. Point it at `libOpenCL.so` from `clvk` by setting the environment variable `OPENCL_ICD_FILENAMES` in JNI before any OpenCL call:
+
+[source,cpp]
+----
+// Call this once in your JNI_OnLoad or early init.
+setenv("OPENCL_ICD_FILENAMES",
+       "/data/app/<your.package>/lib/arm64/libOpenCL.so",
+       1 /* overwrite */);
+----
+
+=== A Complete clvk Workflow on Android
+
+Here is the full pipeline: kernel compiled on the host with `clspv`, packaged as an APK asset, and dispatched at runtime through the OpenCL API backed by `clvk`:
+
+*Host build step (run from your desktop during the Gradle `compileShaders` task):*
+
+[source,bash]
+----
+# Compile the OpenCL C kernel to SPIR-V.
+clspv scale.cl -o scale.spv --spv-version=1.5
+# The .spv file is added to src/main/assets/ and packed into the APK.
+----
+
+*Device runtime (NDK C{pp}):*
+
+[source,cpp]
+----
+// 1. Read the pre-compiled SPIR-V from the APK asset.
+AAsset* asset = AAssetManager_open(mgr, "scale.spv", AASSET_MODE_BUFFER);
+size_t   spvSize = AAsset_getLength(asset);
+std::vector<uint8_t> spv(spvSize);
+AAsset_read(asset, spv.data(), spvSize);
+AAsset_close(asset);
+
+// 2. Create an OpenCL context on the first available platform (= clvk / Vulkan).
+cl_platform_id platform;
+clGetPlatformIDs(1, &platform, nullptr);
+cl_device_id device;
+clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
+cl_context ctx = clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
+
+// 3. Build a program from SPIR-V (no runtime compilation needed).
+cl_program program = clCreateProgramWithIL(ctx, spv.data(), spv.size(), nullptr);
+clBuildProgram(program, 1, &device, nullptr, nullptr, nullptr);
+
+// 4. Create a kernel object and buffers, enqueue the work, read back results.
+cl_kernel kernel = clCreateKernel(program, "scale", nullptr);
+cl_command_queue queue = clCreateCommandQueueWithProperties(ctx, device, nullptr, nullptr);
+
+cl_mem buf = clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizeof(float) * N, nullptr, nullptr);
+clSetKernelArg(kernel, 0, sizeof(cl_mem), &buf);
+size_t globalSize = N;
+clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &globalSize, nullptr, 0, nullptr, nullptr);
+clFinish(queue);                         // wait for GPU completion
+
+float result[N];
+clEnqueueReadBuffer(queue, buf, CL_TRUE, 0, sizeof(result), result, 0, nullptr, nullptr);
+----
+
+Under the hood, every one of those calls is translated by `clvk` into Vulkan commands dispatched on the same driver — and `vkCmdDispatch` — that your native Vulkan code would use. The functional result is identical.
+
+=== When to Use clvk vs. Native Vulkan on Android
+
+Both approaches are legitimate. The right choice depends on your existing codebase and constraints:
+
+[cols="1,1,1"]
+|===
+|Criterion |clvk / OpenCL |Native Vulkan
+
+|Existing OpenCL codebase |*Perfect fit* — zero rewrite |Requires kernel + host port
+|Subgroup and push-constant control |Limited |Full
+|Binary size |+1–2 MB (`libOpenCL.so`) |No overhead
+|Feature coverage |OpenCL 3.0 subset |Full Vulkan feature set
+|Profiler support |Limited (no GPU frame capture) |Full AGI / vendor tool support
+|===
+
+If you are starting a new Android compute project with no prior OpenCL investment, native Vulkan compute gives you more control and better tooling. If you are porting an existing OpenCL library — a vision algorithm, an ML runtime, or a physics solver — `clvk` is often the fastest path to a working device deployment.
+
+== Summary
+
+Compute on Android is the Vulkan you already know, with three caveats: query and respect the *much tighter* device limits, treat DRAM traffic as a power cost rather than just a latency cost, and exploit unified memory to simplify read-back while still honoring the memory model. For new projects, build directly against the NDK Vulkan headers and use Android Studio's native debugger; for porting an existing OpenCL codebase, integrate `clvk` as a shared library and compile kernels ahead-of-time with `clspv`. In the next section we turn these observations into a concrete optimization strategy.
+
+xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/01_introduction.adoc[Previous: Introduction] | xref:Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/03_mobile_optimization.adoc[Next: Optimizing for Mobile GPUs]

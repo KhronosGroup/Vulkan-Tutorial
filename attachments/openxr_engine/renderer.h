@@ -1920,8 +1920,6 @@ class Renderer {
     vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
     bool hasStencilComponent(vk::Format format);
 
-    std::vector<char> readFile(const std::string& filename);
-
     // Background uploader helpers
     void StartUploadsWorker(size_t workerCount = 0);
     void StopUploadsWorker();
@@ -1941,6 +1939,7 @@ class Renderer {
 
     // Upload perf getters
   public:
+    std::vector<char> readFile(const std::string& filename);
     bool fileExists(const std::string& filename);
     uint64_t GetBytesUploadedTotal() const {
       return bytesUploadedTotal.load(std::memory_order_relaxed);

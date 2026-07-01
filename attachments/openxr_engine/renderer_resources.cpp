@@ -683,7 +683,7 @@ bool Renderer::createTextureSampler(TextureResources& resources) {
 }
 
 // Load texture from file (public wrapper for createTextureImage)
-bool Renderer::LoadTexture(const std::string& texturePath) {
+bool Renderer::LoadTexture(const std::string& texturePath, bool /*cachePixels*/) {
   ensureThreadLocalVulkanInit();
   if (texturePath.empty()) {
     std::cerr << "LoadTexture: Empty texture path provided" << std::endl;
@@ -760,7 +760,8 @@ bool Renderer::LoadTextureFromMemory(const std::string& textureId,
                                      const unsigned char* imageData,
                                      int width,
                                      int height,
-                                     int channels) {
+                                     int channels,
+                                     bool) {
   ensureThreadLocalVulkanInit();
   const std::string resolvedId = ResolveTextureId(textureId);
   std::cout << "[LoadTextureFromMemory] start id=" << textureId << " -> resolved=" << resolvedId << " size=" << width << "x" << height << " ch=" << channels << std::endl;
@@ -3000,7 +3001,7 @@ bool Renderer::updateLightStorageBuffer(uint32_t frameIndex, const std::vector<E
 }
 
 // Asynchronous texture loading implementations using ThreadPool
-std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical) {
+std::future<bool> Renderer::LoadTextureAsync(const std::string& texturePath, bool critical, bool) {
   if (texturePath.empty()) {
     return std::async(std::launch::deferred, [] { return false; });
   }
@@ -3038,7 +3039,8 @@ std::future<bool> Renderer::LoadTextureFromMemoryAsync(const std::string& textur
                                                        int width,
                                                        int height,
                                                        int channels,
-                                                       bool critical) {
+                                                       bool critical,
+                                                       bool) {
   if (!imageData || textureId.empty() || width <= 0 || height <= 0 || channels <= 0) {
     return std::async(std::launch::deferred, [] { return false; });
   }

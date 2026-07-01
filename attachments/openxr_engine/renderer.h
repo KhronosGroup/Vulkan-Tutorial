@@ -449,14 +449,14 @@ class Renderer {
 	 * @param texturePath The path to the texture file.
 	 * @return True if the texture was loaded successfully, false otherwise.
 	 */
-    bool LoadTexture(const std::string& texturePath);
+    bool LoadTexture(const std::string& texturePath, bool cachePixels = false);
 
     // Asynchronous texture loading APIs (thread-pool backed).
     // The 'critical' flag is used to front-load important textures (e.g.,
     // baseColor/albedo) so the scene looks mostly correct before the loading
     // screen disappears. Non-critical textures (normals, MR, AO, emissive)
     // can stream in after geometry is visible.
-    std::future<bool> LoadTextureAsync(const std::string& texturePath, bool critical = false);
+    std::future<bool> LoadTextureAsync(const std::string& texturePath, bool critical = false, bool cachePixels = false);
 
     /**
 	 * @brief Load a texture from raw image data in memory.
@@ -471,7 +471,8 @@ class Renderer {
                                const unsigned char* imageData,
                                int width,
                                int height,
-                               int channels);
+                               int channels,
+                               bool cachePixels = false);
 
     // Asynchronous upload from memory (RGBA/RGB/other). Safe for concurrent calls.
     std::future<bool> LoadTextureFromMemoryAsync(const std::string& textureId,
@@ -479,7 +480,8 @@ class Renderer {
                                                  int width,
                                                  int height,
                                                  int channels,
-                                                 bool critical = false);
+                                                 bool critical = false,
+                                                 bool cachePixels = false);
 
     // Progress query for UI
     uint32_t GetTextureTasksScheduled() const {
@@ -1939,6 +1941,7 @@ class Renderer {
 
     // Upload perf getters
   public:
+    bool fileExists(const std::string& filename);
     uint64_t GetBytesUploadedTotal() const {
       return bytesUploadedTotal.load(std::memory_order_relaxed);
     }

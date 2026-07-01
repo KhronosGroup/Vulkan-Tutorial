@@ -16,6 +16,7 @@
  */
 #include "renderer.h"
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -110,6 +111,10 @@ std::vector<char> Renderer::readFile(const std::string& filename) {
     std::cerr << "Failed to read file: " << e.what() << std::endl;
     throw;
   }
+}
+
+bool Renderer::fileExists(const std::string& filename) {
+  return std::filesystem::exists(filename);
 }
 
 // Create shader module

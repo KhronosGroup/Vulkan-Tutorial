@@ -1,0 +1,55 @@
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="white"/>
+
+  <!-- Inputs -->
+  <rect x="50" y="50" width="120" height="80" rx="5" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
+  <text x="110" y="95" font-family="Arial" font-size="14" text-anchor="middle" fill="#01579b">Reference Image</text>
+
+  <rect x="50" y="270" width="120" height="80" rx="5" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
+  <text x="110" y="315" font-family="Arial" font-size="14" text-anchor="middle" fill="#01579b">Test Image</text>
+
+  <!-- Shared CNN -->
+  <rect x="250" y="80" width="180" height="240" rx="10" fill="#f5f5f5" stroke="#424242" stroke-width="2"/>
+  <text x="340" y="110" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#424242">Shared CNN</text>
+  <text x="340" y="130" font-family="Arial" font-size="12" text-anchor="middle" fill="#424242">(Pre-trained VGG-16)</text>
+
+  <!-- Layer boxes -->
+  <rect x="270" y="150" width="140" height="30" rx="3" fill="#fff9c4" stroke="#fbc02d" stroke-width="1"/>
+  <text x="340" y="170" font-family="Arial" font-size="12" text-anchor="middle" fill="#fbc02d">Conv Layer 1</text>
+
+  <rect x="270" y="200" width="140" height="30" rx="3" fill="#fff9c4" stroke="#fbc02d" stroke-width="1"/>
+  <text x="340" y="220" font-family="Arial" font-size="12" text-anchor="middle" fill="#fbc02d">Conv Layer 2</text>
+
+  <rect x="270" y="250" width="140" height="30" rx="3" fill="#fff9c4" stroke="#fbc02d" stroke-width="1"/>
+  <text x="340" y="270" font-family="Arial" font-size="12" text-anchor="middle" fill="#fbc02d">Conv Layer N</text>
+
+  <!-- Arrows from Inputs to CNN -->
+  <path d="M 170 90 L 250 150" fill="none" stroke="#01579b" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 170 310 L 250 250" fill="none" stroke="#01579b" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Distance calculation -->
+  <rect x="520" y="140" width="180" height="120" rx="10" fill="#f1f8e9" stroke="#33691e" stroke-width="2"/>
+  <text x="610" y="170" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#33691e">Feature Comparison</text>
+  <text x="610" y="195" font-family="Arial" font-size="12" text-anchor="middle" fill="#33691e">Squared Distance</text>
+  <text x="610" y="215" font-family="Arial" font-size="12" text-anchor="middle" fill="#33691e">Σ (w_i * dist_i)</text>
+
+  <!-- Arrows from Layers to Comparison -->
+  <path d="M 410 165 L 520 180" fill="none" stroke="#fbc02d" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <path d="M 410 215 L 520 200" fill="none" stroke="#fbc02d" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <path d="M 410 265 L 520 220" fill="none" stroke="#fbc02d" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+  <!-- Final Output -->
+  <circle cx="750" cy="200" r="40" fill="#ffebee" stroke="#c62828" stroke-width="2"/>
+  <text x="750" y="195" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#c62828">LPIPS</text>
+  <text x="750" y="215" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#c62828">Score</text>
+
+  <path d="M 700 200 L 710 200" fill="none" stroke="#33691e" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Definitions -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="context-stroke" />
+    </marker>
+  </defs>
+</svg>

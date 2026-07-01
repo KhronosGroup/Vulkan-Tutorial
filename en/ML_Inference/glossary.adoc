@@ -1,0 +1,181 @@
+= Glossary: Machine Learning Inference
+
+This glossary provides definitions for key terms used throughout the Machine Learning Inference tutorial series.
+
+[glossary]
+Activation Function::
+A mathematical function applied to the output of a neural network layer that introduces non-linearity. This allows the network to learn complex patterns. Common examples include ReLU, Sigmoid, and Tanh.
+
+AI-based Upscaling::
+Technologies (like DLSS or FSR) that use machine learning to render images at a lower resolution and intelligently upscale them to a higher resolution, improving performance while maintaining visual quality.
+
+Artificial Neural Network (ANN)::
+A computational model inspired by the structure and function of biological brains, consisting of interconnected "neurons" that process information in layers.
+
+Backpropagation::
+The algorithm used during the training phase to calculate the gradient of the loss function with respect to the network's weights, allowing them to be updated to reduce error.
+
+Batch size::
+The number of training examples or inference requests processed together in a single pass. Larger batch sizes can improve throughput but increase memory usage and latency.
+
+Bias::
+An additional parameter in a neural network layer that allows the activation function to be shifted, helping the model better fit the underlying data.
+
+Channel Ordering::
+The memory layout of tensor data. "Channels Last" (NHWC) stores pixel colors together (RGBRGB...), while "Channels First" (NCHW) stores all values for one channel, then the next (RRR...GGG...BBB...).
+
+Compute Shader::
+A shader stage in Vulkan used for general-purpose parallel computation on the GPU, essential for implementing custom machine learning inference.
+
+Convolution::
+A fundamental operation in many neural networks (especially for image processing) that involves sliding a small matrix (kernel) over an input to extract features like edges or textures.
+
+Denoising::
+The process of using machine learning models to remove noise from images, particularly useful in real-time ray tracing to produce clean results with fewer samples.
+
+Element-Wise Operation::
+An operation that applies a function to every element of a tensor independently. Activation functions are typical examples of element-wise operations.
+
+Feature Extractor::
+The initial part of a neural network that identifies patterns (edges, textures, shapes) in input data. In transfer learning, the feature extractor of a pre-trained model is often reused.
+
+Fine-tuning::
+A transfer learning technique where a pre-trained model is further trained on a new, smaller dataset to adapt it to a specific task.
+
+FlatBuffers::
+An efficient cross-platform serialization library (used by TFLite) that allows accessing serialized data without a separate parsing step, ideal for memory-constrained environments.
+
+Forward Pass::
+The process of moving input data through the layers of a neural network to produce an output. In inference, only the forward pass is executed.
+
+Frozen Layers::
+Layers in a pre-trained model whose weights are not updated during fine-tuning. This preserves the general-purpose features learned in the original training.
+
+Fully Connected Layer::
+A layer in a neural network where every neuron is connected to every neuron in the previous layer. Also known as a Dense layer.
+
+GPU (Graphics Processing Unit)::
+A specialized hardware accelerator designed for massive parallel processing, making it highly effective for both graphics rendering and machine learning workloads.
+
+Gradient Descent::
+An optimization algorithm used during training to minimize the model's error by iteratively adjusting weights in the direction that most reduces the loss.
+
+Inference::
+The process of using a *trained* machine learning model to make predictions or classifications on new, unseen data. This tutorial focuses on efficient inference on the GPU.
+
+Kernel / Filter::
+A small matrix of weights used in a convolution operation to detect specific features in the input data.
+
+Latency::
+The time it takes for a single input to be processed by a model and produce an output. Low latency is critical for real-time applications like games or interactive AR.
+
+Layer::
+A functional block within a neural network that performs a specific type of computation (e.g., convolution, pooling, or activation) on its input.
+
+Machine Learning (ML)::
+A subset of artificial intelligence focused on building systems that learn patterns from data and improve their performance through experience rather than explicit programming.
+
+Memory Reuse / Memory Pooling::
+An optimization technique where buffers for intermediate tensors are shared or recycled to reduce the total GPU memory footprint.
+
+Model::
+The mathematical representation of a learned pattern, consisting of a network architecture and the weights/biases learned during training.
+
+Neuroplasticity::
+The biological ability of the brain to reorganize itself by forming new neural connections. In artificial networks, this concept is reflected in the adjustment of connection weights during learning.
+
+Normalization::
+A technique used to scale input data or intermediate activations to a standard range (e.g., 0 to 1 or mean 0 and variance 1), improving training stability and inference performance.
+
+ONNX (Open Neural Network Exchange)::
+An open-source format for representing machine learning models, designed to allow interoperability between different frameworks like PyTorch and TensorFlow.
+
+Operation Fusion::
+A performance optimization technique where multiple operations (e.g., a convolution followed by a ReLU) are combined into a single compute shader to reduce memory bandwidth and dispatch overhead.
+
+Padding::
+The process of adding extra values (usually zeros) around the edges of an input tensor to allow a convolution kernel to process the edges correctly and control the output size.
+
+Perceptron::
+One of the simplest types of artificial neurons, which takes several binary inputs and produces a single binary output based on a weighted sum.
+
+Pooling::
+A down-sampling operation that reduces the spatial dimensions (width and height) of a tensor, helping to reduce computational load and making the model more robust to small variations in input position.
+
+Postprocessing::
+Operations performed on the raw output of a model to transform it into a usable format (e.g., applying Softmax to get probabilities or mapping coordinates back to an image).
+
+Preprocessing::
+Operations performed on raw input data (e.g., resizing images, normalizing pixel values) to prepare it for a machine learning model.
+
+Pre-trained Model::
+A model that has already been trained on a large, general-purpose dataset (like ImageNet) and can be used directly for inference or as a starting point for transfer learning.
+
+Quantization::
+The process of reducing the numerical precision of a model's weights and activations (e.g., from 32-bit floats to 8-bit integers) to reduce model size and increase execution speed.
+
+Reduction Operation::
+An operation that combines multiple elements of a tensor into a single value (e.g., sum, mean, or max), often used in pooling or normalization layers.
+
+ReLU (Rectified Linear Unit)::
+A common activation function defined as `f(x) = max(0, x)`. It is computationally efficient and helps prevent the vanishing gradient problem during training.
+
+Semantic Segmentation::
+The task of labeling every pixel in an image with a category (e.g., "road", "car", "sky"), providing a detailed understanding of the scene.
+
+Sigmoid::
+An activation function that maps any input value to a range between 0 and 1, often used in binary classification or for specific gating mechanisms.
+
+Skip Connection / Residual Connection::
+A structural element in neural networks (like ResNet) that allows data to bypass one or more layers, helping to prevent the vanishing gradient problem in very deep networks.
+
+Softmax::
+An activation function often used in the final layer of a classification model to transform a vector of numbers into a probability distribution that sums to 1.
+
+Stride::
+The number of pixels or elements the kernel moves at each step during a convolution or pooling operation. A stride greater than 1 results in down-sampling.
+
+Tanh (Hyperbolic Tangent)::
+An activation function that maps input values to a range between -1 and 1, often used in recurrent neural networks.
+
+Tensor::
+A multi-dimensional array of numbers (the generalization of scalars, vectors, and matrices) used as the primary data structure in machine learning.
+
+TFLite (TensorFlow Lite)::
+A lightweight framework designed for running machine learning models on mobile, embedded, and IoT devices with a focus on low latency and small footprint.
+
+Throughput::
+The total number of inputs a model can process per unit of time (e.g., frames per second). High throughput is important for processing large datasets efficiently.
+
+Tokenization::
+The process of breaking down text into smaller units (tokens), such as words or subwords, that can be converted into numerical values for a model.
+
+Training::
+The initial phase of building an ML model where it "learns" from a dataset by adjusting its internal parameters (weights and biases) to minimize error.
+
+Transfer Learning::
+A technique where a pre-trained model (trained on a large dataset) is used as a starting point for a new, related task, significantly reducing the amount of data and time needed for training.
+
+Weights::
+The learnable parameters of a neural network that determine the strength and direction of influence one neuron has on another.
+
+Intermediate Representation (IR)::
+An abstract program representation used by compilers between high‑level models and low‑level machine code or kernels. In ML, IRs make it possible to run common optimizations (fusion, layout transforms, quantization) before generating target‑specific code such as SPIR‑V or LLVM.
+
+MLIR (Multi‑Level Intermediate Representation)::
+A compiler infrastructure for building domain‑specific IRs and transformations. Projects like IREE use MLIR to represent and lower ML graphs toward backends such as Vulkan (via SPIR‑V), Metal, CUDA, or CPU.
+
+Dialect (MLIR)::
+In MLIR, a dialect is a collection of operations and types that model a particular domain or compilation stage. Examples relevant to this tutorial include StableHLO (portable ML graph ops), Linalg (linear algebra building blocks), TOSA (portable NN ops), and MHLO (an older dialect closely related to StableHLO). Compilers compose and transform between dialects on the way to target code such as SPIR‑V for Vulkan.
+
+StableHLO::
+A standardized ML IR (part of OpenXLA) that captures model graphs in a portable form. Many frameworks/tools can export to StableHLO, and downstream compilers (e.g., IREE or XLA) can consume it. See xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA].
+
+XLA (Accelerated Linear Algebra)::
+An ML compiler (within OpenXLA) commonly used by TensorFlow and JAX. XLA lowers StableHLO/HLO to optimized executables for CPUs/GPUs. For Vulkan targets in this tutorial, we use IREE rather than XLA directly. See xref:ML_Inference/Third_Party_Libraries/15_openxla.adoc[OpenXLA].
+
+OpenXLA::
+An umbrella project that includes StableHLO, XLA, IREE, and related tooling. It standardizes export formats (StableHLO) and provides compilers/runtimes that produce efficient artifacts for diverse backends.
+
+SPIR‑V::
+The portable binary intermediate language for Vulkan shaders and compute kernels. ML compilers like IREE emit SPIR‑V when targeting Vulkan so models execute via Vulkan compute pipelines.

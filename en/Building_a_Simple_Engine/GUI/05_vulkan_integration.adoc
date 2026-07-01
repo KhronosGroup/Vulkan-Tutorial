@@ -1,6 +1,6 @@
 :pp: {plus}{plus}
 
-= GUI: Vulkan Integration
+== GUI: Vulkan Integration
 
 == Vulkan Integration
 

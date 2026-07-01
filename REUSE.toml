@@ -68,7 +68,9 @@ SPDX-License-Identifier = "BSD-3-Clause"
 [[annotations]]
 path = [
     "attachments/simple_engine/**",
+    "attachments/ml_inference/**",
     "en/Synchronization/**",
+    "en/ML_Inference/**",
     "en/AI_Assisted_Vulkan/**",
     "scripts/**",
 ]

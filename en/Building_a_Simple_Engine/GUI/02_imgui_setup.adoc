@@ -1,6 +1,6 @@
 :pp: {plus}{plus}
 
-= GUI: Setting Up Dear ImGui
+== GUI: Setting Up Dear ImGui
 
 == Setting Up Dear ImGui
 

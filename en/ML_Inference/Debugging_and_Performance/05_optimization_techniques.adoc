@@ -1,0 +1,182 @@
+= Optimization Techniques: Squeezing the Silicon
+:pp: ++
+:stem: latexmath
+
+Profiling has identified your bottlenecks. You know which layers are slow and whether you are bound by memory bandwidth or compute throughput. Now, it is time to apply the **Optimization Recipes** that turn a prototype into a production-grade inference engine.
+
+In this chapter, we will master the three pillars of GPU optimization: **Data Reuse** (Tiling), **Instruction Efficiency** (Fusion), and **Hardware Acceleration** (FP16/Quantization). These aren't just micro-optimizations; applied correctly, they can provide a **10x to 50x** speedup over naive implementations.
+
+== The GPU Memory Hierarchy: The Speed of Light
+
+To optimize, you must understand the "Cost of Distance."
+
+[cols="1,2,2"]
+|===
+| Memory Type | Latency (Approx) | Bandwidth
+
+| **Registers**
+| 1 cycle
+| > 100 TB/s
+
+| **Shared Memory (L1)**
+| 20-30 cycles
+| 10-20 TB/s
+
+| **VRAM (DRAM)**
+| 400-800 cycles
+| 0.5-2 TB/s
+|===
+
+Every time your shader reads from VRAM, it's like a person driving across the country to get a glass of water. **Optimization is the art of keeping that water in the kitchen (Shared Memory) or in your hand (Registers).**
+
+== Shared Memory Tiling: The Software Cache
+
+Most ML kernels (Convolution, Matrix Multiplication) are **Memory Bound**. The compute units are hungry for data, but the memory bus is too slow. The solution is **Shared Memory**—a pool of high-speed memory that lives directly on the Compute Unit.
+
+=== The Concept: Tile and Halo
+Think of a 3x3 convolution. Every output pixel needs a 3x3 patch of input. If you calculate 256 output pixels (16x16 workgroup) naively:
+*   Each thread loads 9 pixels.
+*   Total loads: latexmath:[256 \times 9 = 2,304].
+
+In a **Tiled** approach, the threads cooperatively load a single 18x18 "Tile" into shared memory.
+*   Total loads: latexmath:[18 \times 18 = 324].
+*   **The Gain**: latexmath:[7\times] reduction in VRAM traffic.
+
+=== Implementing the Tile
+To implement this, we must calculate the **Local ID** (position within the tile) and handle the **Halo** (the extra pixels needed around the edges).
+
+[source,glsl]
+----
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// 16x16 output + 1 pixel halo on each side = 18x18
+shared float tile[18][18];
+
+void main() {
+    ivec2 localPos = ivec2(gl_LocalInvocationID.xy);
+    ivec2 globalPos = ivec2(gl_GlobalInvocationID.xy);
+
+    // 1. Cooperative Load: Each thread loads its 'center' pixel
+    // Shift by 1 to leave room for the top/left halo
+    tile[localPos.y + 1][localPos.x + 1] = inputData[globalPos];
+
+    // 2. Halo Load: Specific threads load the edges
+    if (localPos.x == 0) tile[localPos.y + 1][0] = inputData[globalPos - ivec2(1, 0)];
+    if (localPos.x == 15) tile[localPos.y + 1][17] = inputData[globalPos + ivec2(1, 0)];
+    if (localPos.y == 0) tile[0][localPos.x + 1] = inputData[globalPos - ivec2(0, 1)];
+    if (localPos.y == 15) tile[17][localPos.x + 1] = inputData[globalPos + ivec2(0, 1)];
+
+    // 3. Memory Handshake
+    memoryBarrierShared();
+    barrier();
+
+    // 4. Compute: Every read now comes from fast shared memory!
+    float sum = 0.0;
+    for(int m = -1; m <= 1; m++) {
+        for(int n = -1; n <= 1; n++) {
+            sum += tile[localPos.y + 1 + m][localPos.x + 1 + n] * weights[...];
+        }
+    }
+}
+----
+
+=== Avoiding Bank Conflicts
+Shared memory is organized into **Banks**. If two threads in a warp try to access different numbers in the *same* bank at the same time, the GPU stalls. This is a **Bank Conflict**.
+
+**Pro Tip**: If your tile width is a multiple of the bank count (usually 32), add 1 to the width: `shared float tile[18][19]`. This "swizzles" the memory layout so that vertical columns no longer fall into the same bank.
+
+== Kernel Fusion: Fighting the Memory Wall
+
+In a typical network, you might have: **Convolution latexmath:[\to] Bias Add latexmath:[\to] Batch Norm latexmath:[\to] ReLU**.
+
+If you implement these as four separate kernels, you are writing and reading from VRAM four times.
+[latexmath]
+++++
+\text{Naive Traffic} = \text{Read(In)} + \text{Write(Conv)} + \text{Read(Conv)} + \text{Write(Bias)} + \dots
+++++
+
+**Kernel Fusion** merges these into a single compute dispatch. The intermediate values stay in the GPU's **Registers**.
+
+=== The Fused Recipe
+A professional "Fused Convolution" kernel looks like this:
+
+[source,glsl]
+----
+void main() {
+    // 1. The Heavy Work
+    float sum = performConvolution(); // Stays in registers!
+
+    // 2. The 'Free' Operations
+    // These take 0.001ms because the GPU was already waiting for memory
+    sum += bias[channel];
+    sum = (sum - mean) * invStdDev;
+    sum = max(0.0, sum);
+
+    // 3. ONE write to VRAM
+    outputData[idx] = sum;
+}
+----
+
+Fusion is the single most effective way to optimize deep networks like MobileNet or ResNet, where many layers are tiny and bandwidth-limited.
+
+== Vectorization: NC/4HW4 Layout
+
+Most GPUs have 128-bit wide memory buses. If you read a single `float` (32-bit), you are only using 25% of the potential bandwidth.
+
+Advanced ML engines use **NC/4HW4** layout. This means you group 4 channels together into a single `vec4`.
+
+*   Instead of `float data[]`, your buffer is `vec4 data[]`.
+*   A single load instruction now fetches 4 channels at once.
+*   The GPU hardware is optimized for `vec4` dot products.
+
+[latexmath]
+++++
+\text{Throughput Gain} \approx 4\times
+++++
+
+In your shader, your inner loop becomes:
+[source,glsl]
+----
+vec4 input_v = inputBuffer[idx];
+vec4 weight_v = weightBuffer[idx];
+sum += dot(input_v, weight_v);
+----
+
+== Subgroup Shuffles: Communication Without Memory
+
+If you need to share data between threads (like in a Max-Pool or Softmax), don't reach for Shared Memory immediately. Use **Subgroup Shuffles** (requires `GL_KHR_shader_subgroup_basic`).
+
+A shuffle allows thread 0 to "reach out" and read a register directly from thread 1.
+
+[source,glsl]
+----
+float myValue = ...;
+// Find the maximum value across all 32 threads in the warp
+float maxVal = subgroupMax(myValue);
+----
+
+This is **10x faster** than Shared Memory because it never touches any memory controller—it happens entirely within the execution unit's register file.
+
+== Async Compute: Overlapping the World
+
+Vulkan allows you to submit work to multiple **Queues**. If your ML inference is running on the **Compute Queue**, it can run simultaneously with your UI rendering on the **Graphics Queue**.
+
+*   **The Secret**: If your GPU has idle compute units while it’s busy rasterizing shadows, the Compute Queue will "fill the gaps," effectively making your ML inference cost **Zero milliseconds** of frame time.
+
+=== The Multi-Queue Handshake
+Use **Timeline Semaphores** to coordinate:
+1.  Graphics Queue signals "Frame Ready".
+2.  Compute Queue waits, runs Preprocessing + Inference, signals "Result Ready".
+3.  Graphics Queue waits, renders the AI labels on the next frame.
+
+== Summary: The Optimization Workflow
+
+1.  **Fuse** everything. Never write intermediate results to VRAM.
+2.  **Vectorize** your data into `vec4` (NC/4HW4) to saturate the memory bus.
+3.  **Tile** high-intensity convolutions using Shared Memory.
+4.  **Use Subgroups** for reductions (Max, Sum) to avoid Shared Memory stalls.
+5.  **Overlap** everything with Async Compute.
+
+With these techniques, you have transformed your Vulkan implementation from a functional prototype into a high-performance engine capable of real-time AI in the most demanding environments.
+
+xref:ML_Inference/Debugging_and_Performance/04_performance_profiling.adoc[Previous: Performance Profiling] | xref:ML_Inference/Desktop_Applications/01_introduction.adoc[Next: Desktop Applications]

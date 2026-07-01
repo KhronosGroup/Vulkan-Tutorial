@@ -1,0 +1,134 @@
+:pp: {plus}{plus}
+
+= Machine Learning Inference with Vulkan: Introduction
+
+== Introduction
+
+Welcome to the "Machine Learning Inference with Vulkan" tutorial series! This series explores the exciting intersection of Vulkan's powerful compute capabilities and modern machine learning inference, showing you how to leverage your GPU for high-performance AI workloads.
+
+=== A New Frontier
+
+While the previous tutorial series introduced you to Vulkan's graphics and compute fundamentals, this series takes you into the world of machine learning inference—running trained neural networks efficiently on the GPU using Vulkan compute shaders. You'll learn how to bridge the gap between ML frameworks and low-level GPU programming, gaining control and performance that high-level frameworks often can't provide.
+
+This series targets readers who have completed the xref:00_Introduction.adoc[Vulkan Tutorial] and feel comfortable with compute shaders and GPU programming concepts. We'll focus on practical implementation: loading models, transferring data efficiently, implementing neural network operations in compute shaders, and optimizing for real-time performance. If you haven't worked with the compute pipeline yet, revisit the Compute Shader chapters in the main tutorial before continuing.
+
+=== Should You Build Your Own? A Practical Perspective
+
+Before we dive deep into implementing ML inference with Vulkan, let's address the most important question: *should you actually do this?*
+
+For the vast majority of applications, our professional recommendation is clear: *use existing ML inference libraries*. Mature frameworks like TensorFlow Lite, ONNX Runtime, PyTorch Mobile, and platform-specific solutions (Core ML on iOS, ML Kit on Android, DirectML on Windows) provide:
+
+* *Battle-tested implementations* - Years of optimization and bug fixes
+* *Broad model support* - Hundreds of operation types already implemented
+* *Hardware acceleration* - Automatic use of GPUs, NPUs, and specialized AI accelerators
+* *Active maintenance* - Regular updates for new hardware and techniques
+* *Production reliability* - Used by millions of applications worldwide
+
+These libraries represent thousands of person-years of engineering effort. Unless you have specific constraints that prevent their use, leveraging this work is the smart choice.
+
+==== When Custom Vulkan Implementation Makes Sense
+
+So why does this tutorial exist? Because there are real scenarios where building your own inference engine with Vulkan is not just viable—it's the best architectural choice:
+
+*Graphics Integration*: If you're building a game or graphics application that already uses Vulkan for rendering, integrating ML inference into your existing Vulkan pipeline can be more efficient than bridging to a separate ML framework. You avoid data transfers between different GPU contexts, can share memory and synchronization primitives, and maintain a unified codebase.
+
+*Rendering AI Techniques*: Techniques like Gaussian splatting, neural rendering, and other graphics-focused AI methods often use lightweight activation functions and simple network architectures. These "simple AI" approaches are particularly well-suited for custom Vulkan implementation because the computational overhead is manageable, and tight integration with your rendering pipeline provides significant performance benefits.
+
+*Embedded and Resource-Constrained Platforms*: Some embedded systems or specialized hardware don't support standard ML frameworks but do support Vulkan. Custom implementation gives you precise control over memory usage and performance characteristics critical for resource-constrained environments.
+
+*Novel Model Architectures*: If you're working with cutting-edge research models that use operations not yet supported by standard frameworks, implementing them directly in Vulkan compute shaders might be faster than waiting for framework support or working around limitations.
+
+*Cross-Platform Consistency*: Vulkan runs on Windows, Linux, Android, and increasingly on other platforms. If you need identical inference behavior across diverse platforms and existing frameworks show subtle differences, a custom Vulkan implementation provides that consistency.
+
+*Learning and Understanding*: Even if you ultimately use existing libraries in production, understanding ML inference at the Vulkan level makes you a better engineer. You'll understand performance characteristics, debug issues more effectively, and make better architectural decisions.
+
+==== The Hybrid Approach
+
+In practice, many applications use a hybrid approach: standard ML frameworks for most inference workloads, with custom Vulkan implementations for specific performance-critical or tightly-integrated components. This tutorial prepares you for both scenarios—understanding the fundamentals deeply enough to make informed decisions about when to use each approach.
+
+We'll dedicate an entire chapter to integrating third-party ML libraries with Vulkan applications, showing you how to bridge between frameworks and your Vulkan rendering pipeline. This ensures you can choose the right tool for each part of your application.
+
+=== What to Expect
+
+The "Machine Learning Inference with Vulkan" series is designed to give you both understanding and practical skills. We'll cover:
+
+1. *ML Inference Fundamentals* - What machine learning inference is, how it works, and how to think about neural networks as compute operations.
+
+2. *Integrating Third-Party ML Libraries* - A comprehensive guide to using established ML inference frameworks (TensorFlow Lite, ONNX Runtime, PyTorch Mobile, DirectML) within Vulkan applications. This is the recommended approach for most production applications, and we dedicate significant coverage to bridging between ML frameworks and Vulkan rendering pipelines.
+
+3. *Model Formats and Loading* - Working with popular formats like TFLite and ONNX, and understanding how to load and prepare models for GPU execution.
+
+4. *Vulkan Compute for ML* - Implementing neural network operations using compute shaders, managing memory efficiently, and handling synchronization.
+
+5. *Building Custom Inference Engines* - For specialized use cases where third-party libraries don't meet your needs, learn to build your own inference engine from scratch.
+
+6. *Performance Optimization* - Techniques for maximizing throughput, minimizing latency, and making the most of your GPU hardware, whether using third-party libraries or custom implementations.
+
+7. *Practical Applications* - Real-world examples that combine ML inference with graphics rendering and interactive applications, demonstrating both third-party library integration and custom Vulkan implementations.
+
+Throughout this series, we encourage you to experiment with different models, try various optimization strategies, and adapt the techniques to your specific use cases. Machine learning inference is a rapidly evolving field, and understanding it at the Vulkan level gives you the flexibility to implement cutting-edge techniques—whether by integrating existing libraries or building custom solutions.
+
+=== The Three-Path Teaching Approach
+
+This tutorial takes a unique approach: wherever possible, we teach *three* methods of achieving ML inference goals.
+
+*Path 1: Third-Party Libraries* - The recommended approach for most production applications. You'll learn to integrate mature ML frameworks (TensorFlow Lite, ONNX Runtime, PyTorch Mobile, DirectML) with your Vulkan applications, bridging between ML inference and your rendering pipeline.
+
+*Path 2: Custom Vulkan Implementation* - Building your own inference engine using Vulkan compute shaders. This path provides deep insight into how ML inference actually works at the GPU level, helping you understand what happens "under the hood" of those third-party libraries.
+
+*Path 3: ML Compiler* - Use an ML compiler (IREE, Apache TVM, OpenXLA, MAX/Mojo) to lower models into optimized kernels for Vulkan and other backends. This strikes a balance between ease of integration and performance/portability.
+
+Why teach all three? Because understanding the internals makes you better at using libraries and compilers in production. When you know how convolutions map to GPU operations, how memory is managed, and where synchronization matters, you make better architectural decisions, debug issues more effectively, and optimize more intelligently. Someone familiar with the core concepts of the internals is better able to understand how to use these tools in production.
+
+Throughout the tutorial, you'll get practice across the three approaches. The chapters on fundamentals and Vulkan compute teach you to implement operations yourself. The third-party libraries chapter shows production-ready solutions. The ML Compilers section introduces a compiler-driven path that often provides near hand-written performance with minimal runtime overhead.
+
+=== How to Use This Tutorial
+
+Each chapter builds on the previous ones to create a complete understanding of ML inference with Vulkan. Read each chapter thoroughly before implementing, take time to understand the concepts, and don't hesitate to revisit the main Vulkan tutorial when you need to refresh your knowledge of compute pipelines or memory management. The code examples are starting points—extend them, optimize them, and make them your own.
+
+Let's begin our journey into ML inference with these chapters:
+
+1. xref:ML_Inference/ML_Inference_Pipeline/01_introduction.adoc[ML Inference Pipeline] - Understanding machine learning, neural networks, inference, transfer learning, model formats (TFLite and ONNX), and the mental model for ML workloads on GPUs.
+
+2. xref:ML_Inference/Third_Party_Libraries/01_introduction.adoc[Integrating Third-Party ML Libraries] - *The recommended approach for most applications.* Comprehensive coverage of using TensorFlow Lite, ONNX Runtime, PyTorch Mobile, and DirectML within Vulkan applications. Learn to bridge between ML frameworks and Vulkan rendering pipelines, share GPU resources, synchronize between inference and rendering, handle data transfers efficiently, and choose the right library for your use case. Includes complete working examples for desktop, mobile, and embedded platforms.
+
+3. xref:ML_Inference/Vulkan_Compute_for_ML/01_introduction.adoc[Vulkan Compute for ML] - Reviewing Vulkan compute pipelines, implementing compute shaders for ML operations, managing data transfers, synchronization with barriers and events, and building a complete "hello world" vector addition example.
+
+4. xref:ML_Inference/Building_the_Inference_Engine/05_model_formats_as_input.adoc[Models and Data] - Understanding ML model formats in depth, the anatomy of neural network models, exporting models from PyTorch and TensorFlow, model inspection and simplification tools, and translating between formats.
+
+5. xref:ML_Inference/Building_the_Inference_Engine/01_introduction.adoc[Building the Inference Engine] - For specialized use cases: Loading models to Vulkan objects, parsing model files, creating network graphs, extracting weights, implementing common NN layers (convolution, pooling, activation functions, fully connected) in GLSL and Slang, and building a complete MNIST inference example.
+
+6. xref:ML_Inference/Advanced_Topics/01_introduction.adoc[Advanced Topics] - Quantization (what it is, why it matters, types, implementing quantized kernels), vendor-specific optimizations, debugging and validation techniques, performance tuning, and best practices including async compute for both third-party libraries and custom implementations.
+
+7. xref:ML_Inference/Embedded_Applications/01_introduction.adoc[Deployment] - Cross-platform deployment strategies: desktop applications (command-line and graphics engine integration with CI validation), Android apps (permissions, asset management, real-time inference), and embedded devices (cross-compilation, memory optimization, battery considerations, headless execution with SLAM examples). Covers deployment for both third-party library integration and custom Vulkan inference engines.
+
+xref:conclusion.adoc[Previous: Main Tutorial Conclusion] | xref:ML_Inference/ML_Inference_Pipeline/01_introduction.adoc[Next: ML Inference Pipeline]
+
+=== Getting Started with ML Tools
+
+To follow along with this tutorial series, you'll need to set up a few additional tools beyond the standard Vulkan development environment:
+
+*Python and ML Frameworks*
+
+Most ML models are trained using Python-based frameworks. You'll need:
+
+- *Python 3.8 or later* - For running model conversion scripts and working with ML libraries
+- *PyTorch or TensorFlow* - At least one major ML framework for understanding model formats and performing conversions
+- *ONNX Runtime* (optional) - Useful for working with ONNX models and validating conversions
+
+*Model Conversion Tools*
+
+Different model formats require different tools:
+
+- *TensorFlow Lite Converter* - For working with TFLite models
+- *ONNX tools* - For ONNX model manipulation and optimization
+
+*Vulkan Compute Setup*
+
+Ensure your Vulkan development environment supports compute:
+
+- Verify your GPU supports Vulkan compute queues
+- Confirm you can run the compute shader examples from the main tutorial
+- Have profiling tools ready (RenderDoc, Nsight, or similar) for performance analysis
+
+We'll provide detailed setup instructions in the first chapter, but having these tools ready will help you follow along more smoothly. The focus will be on practical implementation, so you'll be writing and running code from the start.

@@ -1,0 +1,46 @@
+<svg width="800" height="300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="white"/>
+
+  <!-- Camera -->
+  <rect x="20" y="100" width="100" height="100" rx="10" fill="#eceff1" stroke="#455a64" stroke-width="2"/>
+  <text x="70" y="145" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#455a64">Camera</text>
+  <text x="70" y="165" font-family="Arial" font-size="12" text-anchor="middle" fill="#455a64">(Producer)</text>
+
+  <!-- Capture Thread -->
+  <rect x="180" y="80" width="140" height="140" rx="10" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
+  <text x="250" y="140" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#1976d2">Capture Thread</text>
+  <text x="250" y="160" font-family="Arial" font-size="12" text-anchor="middle" fill="#1976d2">Grabs cv::Mat</text>
+
+  <!-- Queue -->
+  <rect x="380" y="100" width="100" height="100" rx="5" fill="#f5f5f5" stroke="#424242" stroke-width="2" stroke-dasharray="5,5"/>
+  <text x="430" y="145" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#424242">Queue</text>
+  <text x="430" y="165" font-family="Arial" font-size="12" text-anchor="middle" fill="#424242">(Buffer)</text>
+
+  <!-- Inference Thread -->
+  <rect x="540" y="80" width="140" height="140" rx="10" fill="#fff3e0" stroke="#ef6c00" stroke-width="2"/>
+  <text x="610" y="140" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#ef6c00">Inference Thread</text>
+  <text x="610" y="160" font-family="Arial" font-size="12" text-anchor="middle" fill="#ef6c00">(Consumer)</text>
+  <text x="610" y="180" font-family="Arial" font-size="12" text-anchor="middle" fill="#ef6c00">ONNX Runtime</text>
+
+  <!-- Main Loop / Renderer -->
+  <rect x="720" y="100" width="60" height="100" rx="5" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2"/>
+  <text x="750" y="140" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#7b1fa2">Vulkan</text>
+  <text x="750" y="160" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#7b1fa2">UI</text>
+
+  <!-- Arrows -->
+  <path d="M 120 150 L 180 150" fill="none" stroke="#455a64" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 320 150 L 380 150" fill="none" stroke="#1976d2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 480 150 L 540 150" fill="none" stroke="#424242" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 680 150 L 720 150" fill="none" stroke="#ef6c00" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Async Label -->
+  <text x="400" y="50" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#d32f2f">Asynchronous Pipeline</text>
+
+  <!-- Definitions -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="context-stroke" />
+    </marker>
+  </defs>
+</svg>

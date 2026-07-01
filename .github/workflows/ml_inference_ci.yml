@@ -173,7 +173,7 @@ jobs:
         run: |
           # These directories are not tracked by git but are referenced in post-build
           # copy_directory commands. Create them so the build does not fail.
-          mkdir -p models data sample_images
+          mkdir -p models/mobilenetv2_nnef_optimized data sample_images
           touch mnist_model.onnx mnist_model.onnx.data mnist_weights.bin
 
       - name: Configure

@@ -30,4 +30,4 @@ Multimodal AI is a powerful tool for the rapid identification of graphics artifa
 
 With the completion of Section 4, you have integrated visual reasoning into your AI toolbelt. In the next section, we will bring everything together into a **Complete Workflow**, moving from high-level architectural planning to the line-by-line implementation of your Vulkan features.
 
-Next: xref:../05_workflow/01_introduction.adoc[Workflow: Architecture to Implementation]
+Next: xref:AI_Assisted_Vulkan/05_workflow/01_introduction.adoc[Workflow: Architecture to Implementation]

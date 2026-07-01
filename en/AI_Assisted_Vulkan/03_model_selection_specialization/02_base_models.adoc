@@ -109,4 +109,4 @@ The most successful developers are those who treat their AI models as a dynamic 
 
 In the next chapter, we will look at the **Hardware Requirements** and show you the exact formulas for calculating your VRAM budget.
 
-Next: xref:03_hardware_vram.adoc[Hardware & VRAM Budgeting]
+Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/03_hardware_vram.adoc[Hardware & VRAM Budgeting]

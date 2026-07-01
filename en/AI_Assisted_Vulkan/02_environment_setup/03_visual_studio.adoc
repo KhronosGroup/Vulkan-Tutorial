@@ -40,7 +40,7 @@ the current offset and buffer size.
 ----
 
 === Step 3: Local Private Specialist (Continue)
-For privacy-sensitive rendering logic, configure the **Continue** extension to use a local **Qwen 3-Coder** model and the **Vulkan MCP**. This assumes you have already built the `mcp-Vulkan` server as described in xref:01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[the Environment Setup introduction].
+For privacy-sensitive rendering logic, configure the **Continue** extension to use a local **Qwen 3-Coder** model and the **Vulkan MCP**. This assumes you have already built the `mcp-Vulkan` server as described in xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[the Environment Setup introduction].
 
 [source,json]
 ----
@@ -67,12 +67,12 @@ The biggest "Quality of Life" improvement is treating boilerplate as **Intent**.
 
 To reach the **Common Point** required for the rest of this tutorial, your Visual Studio environment should be configured with a **Hybrid Model Strategy**. This includes a solution-aware model like **GitHub Copilot** for high-level architectural tasks and cross-file planning within your `.sln`, as well as a local specialist via the **Continue** extension for cost-effective iteration and privacy-sensitive code generation.
 
-Once these are linked to your IDE (via Copilot and Continue), you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to xref:05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
+Once these are linked to your IDE (via Copilot and Continue), you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
 
 == Summary: The Windows Professional
 
 An AI-enhanced Visual Studio environment is more than just a code generator; it is a **Diagnostic Hub**. By bridging the IDE's comprehensive debugging tools with both cloud-based reasoning models and local specialized models, you create a workflow where the AI helps you not just write Vulkan code, but understand the deep "why" behind every bitmask and memory barrier.
 
-Next, we will jump to the **goose native agent** experience. You may want to look at the **Native-First Hybrid** strategy for xref:04_xcode_apple.adoc[Xcode & Apple Silicon] to get an idea of other environments.
+Next, we will jump to the **goose native agent** experience. You may want to look at the **Native-First Hybrid** strategy for xref:AI_Assisted_Vulkan/02_environment_setup/04_xcode_apple.adoc[Xcode & Apple Silicon] to get an idea of other environments.
 
-xref:01_introduction.adoc[Previous: Environment Introduction] | xref:05_goose_native_agent.adoc[Next: Goose Native Agent]
+xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[Previous: Environment Introduction] | xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Next: Goose Native Agent]

@@ -84,4 +84,4 @@ With the GPUInfo MCP server connected, your assistant doesn't guess. It uses the
 
 By connecting your AI to the **Vulkan Registry** and building a custom **GPUInfo Connector**, you transform it into a **Hardware-Aware Assistant**. It no longer relies on static training data; it uses the same "Live Source of Truth" that professional graphics engineers use to design high-performance, cross-platform engines.
 
-Next: xref:03_agentic_automation_qa.adoc[Agentic Automation & Audits]
+Next: xref:AI_Assisted_Vulkan/07_advanced_mcp/03_agentic_automation_qa.adoc[Agentic Automation & Audits]

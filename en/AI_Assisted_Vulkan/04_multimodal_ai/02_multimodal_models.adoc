@@ -58,4 +58,4 @@ By adding a Multimodal model to your toolbelt, you provide your assistant with t
 
 In the next chapter, we will put these models to work as we explore **Visual Bug Diagnosis** and the most common graphics artifacts in Vulkan.
 
-Next: xref:03_visual_bug_diagnosis.adoc[Visual Bug Diagnosis]
+Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/03_visual_bug_diagnosis.adoc[Visual Bug Diagnosis]

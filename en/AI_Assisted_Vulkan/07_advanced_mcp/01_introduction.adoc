@@ -32,9 +32,9 @@ AI models are highly efficient at reasoning about this structured data when they
 
 In this section, we will move from "Consumer" to "Creator" of AI tools:
 
-1.  **xref:02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]:** How to provide your assistant with real-time access to the official spec and hardware limits.
-2.  **xref:03_agentic_automation_qa.adoc[Agentic Automation & Audits]:** Using AI to autonomously analyze CI/CD failures and perform "Performance Scans" on your command buffer recording logic.
+1.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]:** How to provide your assistant with real-time access to the official spec and hardware limits.
+2.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/03_agentic_automation_qa.adoc[Agentic Automation & Audits]:** Using AI to autonomously analyze CI/CD failures and perform "Performance Scans" on your command buffer recording logic.
 
 By the end of this journey, you will have built a suite of custom tools that make your AI assistant an expert not just in Vulkan, but in your specific hardware ecosystem and engineering pipeline.
 
-Next: xref:02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]
+Next: xref:AI_Assisted_Vulkan/07_advanced_mcp/02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]

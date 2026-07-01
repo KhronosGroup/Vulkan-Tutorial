@@ -76,4 +76,4 @@ Generate a 3-layer roadmap:
 
 Phase 1 is about **Human-AI Collaboration at the Design Level.** By leveraging the reasoning power of high-end LLMs to create a solid "Contract," you turn the overwhelming complexity of Vulkan into a series of well-defined implementation tasks. You have effectively "pre-designed" your architecture before a single line of C{pp} has been written.
 
-Next: xref:03_phase_2_implementation.adoc[Phase 2: Implementation & The Implementation Loop]
+Next: xref:AI_Assisted_Vulkan/05_workflow/03_phase_2_implementation.adoc[Phase 2: Implementation & The Implementation Loop]

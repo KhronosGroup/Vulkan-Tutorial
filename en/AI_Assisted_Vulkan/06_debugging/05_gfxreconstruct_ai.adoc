@@ -116,4 +116,4 @@ The AI uses the **GFXReconstruct MCP tool** to scan the calls. It finds that in 
 
 GFXReconstruct gives your AI assistant **Timeline Context**. By moving beyond the single-frame snapshot of RenderDoc, you allow the AI to reason about the **Narrative of your Engine**—how it starts, how it allocates, and how it fails over time. This is the hallmark of a professional **Collaborative Engineering** workflow.
 
-Next: xref:../07_advanced_mcp/01_introduction.adoc[Advanced MCP Tooling & Automation]
+Next: xref:AI_Assisted_Vulkan/07_advanced_mcp/01_introduction.adoc[Advanced MCP Tooling & Automation]

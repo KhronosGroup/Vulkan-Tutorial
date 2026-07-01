@@ -72,4 +72,4 @@ By training your AI to recognize these patterns, you reduce the "Guesswork" phas
 
 However, as we will see in the next chapter, it is critical to understand the **Limits** of this visual reasoning. The AI can suggest the "Why," but it still lacks the "Ground Truth" of your actual GPU hardware unless you provide it through the **Context Bridge**.
 
-Next: xref:04_expectations_limits.adoc[Expectations & Limits]
+Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/04_expectations_limits.adoc[Expectations & Limits]

@@ -147,4 +147,4 @@ By combining the **Pre-trained Weights** of a base model with the **Global Truth
 
 In the final chapter of this section, we will explore the ultimate form of specialization: **Fine-Tuning (LoRA)** to "bake" your engine's intuitive laws directly into the model's weights and how to deploy your resulting specialist to a shared team server.
 
-Next: xref:05_fine_tuning_lora.adoc[Fine-Tuning for Your Engine (LoRA)]
+Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/05_fine_tuning_lora.adoc[Fine-Tuning for Your Engine (LoRA)]

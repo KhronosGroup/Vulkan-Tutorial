@@ -39,4 +39,4 @@ Finally, for those who want a highly specialized assistant, we explore **Fine-Tu
 
 By the end of this section, you will no longer be using a "generic" AI. You will have a specialized, Vulkan-aware assistant that understands both the global standards of graphics programming and the local "laws" of your specific codebase.
 
-Next: xref:02_base_models.adoc[Selecting the Base Model]
+Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/02_base_models.adoc[Selecting the Base Model]

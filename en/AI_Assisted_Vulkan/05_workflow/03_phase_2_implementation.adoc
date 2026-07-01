@@ -50,4 +50,4 @@ Shader development is where local models can accelerate iteration, though result
 
 By using a local specialist to handle the "Heavy Lifting" of Vulkan's verbosity, you turn a multi-day implementation task into a series of 15-minute iteration cycles. You remain the **Director**, ensuring every line of code matches the high-level architecture, while the AI manages the low-level precision.
 
-Next: xref:04_phase_3_refactoring.adoc[Phase 3: Automated Evolution]
+Next: xref:AI_Assisted_Vulkan/05_workflow/04_phase_3_refactoring.adoc[Phase 3: Automated Evolution]

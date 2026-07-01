@@ -40,7 +40,7 @@ The AI provides the exact code change, tailored to your engine's RAII wrappers. 
 
 == Advanced: The "Always-Current" VUID Dictionary
 
-One of the most powerful aspects of this workflow is using **MCP** to query the **live Vulkan Spec**. As discussed in xref:../02_environment_setup/07_mcp_context_bridge.adoc[The Context Bridge], your assistant can query the `vk.xml` file on your disk. This means that if a new VUID is introduced in Vulkan 1.4, your AI knows the rule the same day you update your SDK, even if the model itself was trained years ago.
+One of the most powerful aspects of this workflow is using **MCP** to query the **live Vulkan Spec**. As discussed in xref:AI_Assisted_Vulkan/02_environment_setup/06_mcp_context_bridge.adoc[The Context Bridge], your assistant can query the `vk.xml` file on your disk. This means that if a new VUID is introduced in Vulkan 1.4, your AI knows the rule the same day you update your SDK, even if the model itself was trained years ago.
 
 == Practical Tutorial: Performing a VUID Auto-Fix
 
@@ -86,4 +86,4 @@ In most use cases, in an IDE with the chat interface, one can simply copy the VU
 
 By using AI as a bridge between the Validation Layers and your source code, you move directly from **Error** to **Understanding** to **Solution.** You are no longer "guessing" why a barrier failed; you are receiving a spec-accurate, codebase-consistent diagnosis.
 
-Next: xref:03_renderdoc_ai_integration.adoc[AI + RenderDoc Integration]
+Next: xref:AI_Assisted_Vulkan/06_debugging/03_renderdoc_ai_integration.adoc[AI + RenderDoc Integration]

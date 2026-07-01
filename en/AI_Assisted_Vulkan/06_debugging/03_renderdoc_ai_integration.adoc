@@ -86,4 +86,4 @@ It can also audit memory alignment by checking if your vertex buffer offset (e.g
 
 By integrating AI with RenderDoc, you turn graphics debugging into a high-level conversation. You no longer spend your afternoon clicking through nested menus in a GUI; you simply ask the AI to **Find and Explain** the state mismatch. This is a significant efficiency gain for a graphics engineer.
 
-Next: xref:04_shader_debugging_logs.adoc[Shader Debugging & Log Parsing]
+Next: xref:AI_Assisted_Vulkan/06_debugging/04_shader_debugging_logs.adoc[Shader Debugging & Log Parsing]

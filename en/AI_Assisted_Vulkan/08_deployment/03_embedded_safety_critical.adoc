@@ -92,4 +92,4 @@ Embedded deployment is about **Engineering for the Edge**. By using AI to audit 
 
 With the completion of Section 8, you have mastered the art of bringing your AI-assisted Vulkan engine to every corner of the computing world. In the final section of our tutorial, we will provide a comprehensive **FAQ** and a **Final Project** to solidify your skills as a Collaborative Engineer.
 
-Next: xref:../09_faq.adoc[Common Questions & Troubleshooting (FAQ)]
+Next: xref:AI_Assisted_Vulkan/09_faq.adoc[Common Questions & Troubleshooting (FAQ)]

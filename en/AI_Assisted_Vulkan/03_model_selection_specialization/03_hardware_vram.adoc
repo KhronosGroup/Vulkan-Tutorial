@@ -94,4 +94,4 @@ If your hardware is limited, you must become a **Resource Manager**:
 
 Hardware budgeting is the "secret sauce" of a stable AI-assisted environment. By understanding your VRAM footprint and proactively managing your KV Cache and Quantization, you ensure that your AI assistant remains a helpful co-author rather than a resource-hungry rival to your graphics engine.
 
-Next: xref:04_rag_mcp_specialization.adoc[Ground Truth: MCP & RAG Specialization]
+Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/04_rag_mcp_specialization.adoc[Ground Truth: MCP & RAG Specialization]

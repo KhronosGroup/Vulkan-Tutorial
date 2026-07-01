@@ -24,7 +24,7 @@ By using **mcp-Vulkan**, you can simply tell your assistant: *"Use the Vulkan MC
 
 === Building the Server
 
-If you have not already built the server, see xref:01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[First Step: Building the Vulkan MCP Server] in the Environment Setup introduction. That section covers cloning the repository and running `npm install && npm run build` inside the `mcp-Vulkan/vulkan/` subdirectory.
+If you have not already built the server, see xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[First Step: Building the Vulkan MCP Server] in the Environment Setup introduction. That section covers cloning the repository and running `npm install && npm run build` inside the `mcp-Vulkan/vulkan/` subdirectory.
 
 === Connecting mcp-Vulkan to Goose (The Agentic Common Point)
 
@@ -64,4 +64,4 @@ The Model Context Protocol is the final piece of the environmental puzzle. It tr
 
 Next, we move to **Section 3: Model Selection & Specialization**, where we will choose the specific model to inhabit this powerful environment.
 
-xref:05_goose_native_agent.adoc[Previous: Goose & Local Intelligence] | xref:../03_model_selection_specialization/01_introduction.adoc[Next: Model Selection & Specialization]
+xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Previous: Goose & Local Intelligence] | xref:AI_Assisted_Vulkan/03_model_selection_specialization/01_introduction.adoc[Next: Model Selection & Specialization]

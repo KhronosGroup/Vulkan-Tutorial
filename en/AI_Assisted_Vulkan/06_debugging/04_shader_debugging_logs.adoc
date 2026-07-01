@@ -85,4 +85,4 @@ With the completion of Section 6, you have built a complete, AI-enhanced forensi
 
 In the next section, we move into **Advanced MCP Tooling**, where you will learn how to build your own custom tools to give your AI direct access to the Vulkan Registry and hardware limits.
 
-Next: xref:05_gfxreconstruct_ai.adoc[AI-Assisted Trace Analysis: GFXReconstruct]
+Next: xref:AI_Assisted_Vulkan/06_debugging/05_gfxreconstruct_ai.adoc[AI-Assisted Trace Analysis: GFXReconstruct]

@@ -97,4 +97,4 @@ By using this "On-Chip" data flow, you reduce VRAM bandwidth by up to 70%, signi
 
 Mobile Vulkan is about **Bandwidth Management**. By using AI to automate the JNI "Glue" and optimize your subpass dependencies for Tiled GPUs, you ensure that your engine remains fast and battery-efficient. You move from being a "C{pp} Coder" to a **Mobile Graphics Engineer**, managing the complex interplay between the platform's native code and the GPU's hardware architecture.
 
-Next: xref:03_embedded_safety_critical.adoc[Embedded & Safety Critical Systems]
+Next: xref:AI_Assisted_Vulkan/08_deployment/03_embedded_safety_critical.adoc[Embedded & Safety Critical Systems]

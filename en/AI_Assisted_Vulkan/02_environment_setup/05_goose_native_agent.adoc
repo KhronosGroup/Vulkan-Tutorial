@@ -144,4 +144,4 @@ This unified environment is where the real work of **Collaborative Engineering**
 
 Next, we will look at the final piece of the environment puzzle: **The Context Bridge (MCP)**.
 
-xref:01_introduction.adoc[Previous: Environment Introduction] |  xref:06_mcp_context_bridge.adoc[Next: The Context Bridge (MCP)]
+xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[Previous: Environment Introduction] |  xref:AI_Assisted_Vulkan/02_environment_setup/06_mcp_context_bridge.adoc[Next: The Context Bridge (MCP)]

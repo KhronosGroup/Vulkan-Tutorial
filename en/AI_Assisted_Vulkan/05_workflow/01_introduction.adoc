@@ -26,10 +26,10 @@ By following this structured workflow, you ensure that the AI remains grounded i
 
 Throughout this section, we will walk through a concrete, real-world task: **Implementing a modern Bloom Post-Process Pipeline.**
 
-1.  **xref:02_phase_1_planning.adoc[Phase 1: System Design]:** You will learn how to prompt a model to design a technical roadmap. We'll discuss how to define the "Resource Lifecycle" and the specific layout transitions required for a downsample/upsample chain.
-2.  **xref:03_phase_2_implementation.adoc[Phase 2: The Implementation Loop]:** We will move to your local specialist. You will learn how to use your technical roadmap as context to generate the necessary pipelines and compute shaders with near-zero manual typing.
-3.  **xref:04_phase_3_refactoring.adoc[Phase 3: Automated Evolution]:** Finally, we will use an AI agent to verify our implementation—checking for synchronization hazards and ensuring our memory usage matches the hardware limits we defined in the **Context Bridge**.
+1.  **xref:AI_Assisted_Vulkan/05_workflow/02_phase_1_planning.adoc[Phase 1: System Design]:** You will learn how to prompt a model to design a technical roadmap. We'll discuss how to define the "Resource Lifecycle" and the specific layout transitions required for a downsample/upsample chain.
+2.  **xref:AI_Assisted_Vulkan/05_workflow/03_phase_2_implementation.adoc[Phase 2: The Implementation Loop]:** We will move to your local specialist. You will learn how to use your technical roadmap as context to generate the necessary pipelines and compute shaders with near-zero manual typing.
+3.  **xref:AI_Assisted_Vulkan/05_workflow/04_phase_3_refactoring.adoc[Phase 3: Automated Evolution]:** Finally, we will use an AI agent to verify our implementation—checking for synchronization hazards and ensuring our memory usage matches the hardware limits we defined in the **Context Bridge**.
 
 By the end of this journey, you will have a repeatable "Blueprint" for building complex graphics features using AI as a deeply informed extension of your own engineering expertise.
 
-Next: xref:02_phase_1_planning.adoc[Phase 1: System Design]
+Next: xref:AI_Assisted_Vulkan/05_workflow/02_phase_1_planning.adoc[Phase 1: System Design]

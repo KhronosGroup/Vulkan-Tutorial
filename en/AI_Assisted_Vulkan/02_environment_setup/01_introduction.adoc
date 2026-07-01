@@ -71,4 +71,4 @@ Finally, we dive into the **Context Bridge**. You will learn how to use the **Mo
 
 Next, we will begin with the **Standard Bearers** of C{pp} development.
 
-xref:../introduction.adoc[Previous: Introduction] | xref:02_jetbrains_clion_android_studio.adoc[Next: JetBrains CLion & Android Studio]
+xref:AI_Assisted_Vulkan/introduction.adoc[Previous: Introduction] | xref:AI_Assisted_Vulkan/02_environment_setup/02_jetbrains_clion_android_studio.adoc[Next: JetBrains CLion & Android Studio]

@@ -167,4 +167,4 @@ By completing this lab, you have practiced managing the complexity of a modern V
 
 AI assistance does not replace the need to understand Vulkan; it reduces the time spent on boilerplate and repetitive lookups so you can focus on the decisions that matter. The Vulkan specification remains your authoritative reference, and your judgment as an engineer remains the critical ingredient. What changes is how efficiently you can navigate that specification and iterate on your implementation.
 
-Next: xref:../conclusion.adoc[Main Tutorial Conclusion]
+Next: xref:conclusion.adoc[Main Tutorial Conclusion]

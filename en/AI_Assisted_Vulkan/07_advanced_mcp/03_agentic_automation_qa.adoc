@@ -186,4 +186,4 @@ Agentic automation is the ultimate goal of the AI-assisted workflow. By using AI
 
 In the final section of our tutorial, we move to **Deployment**, where we explore how to bring these AI-assisted workflows to Android, iOS, and Embedded systems.
 
-Next: xref:../08_deployment/01_introduction.adoc[Desktop, Mobile, and Embedded Deployment]
+Next: xref:AI_Assisted_Vulkan/08_deployment/01_introduction.adoc[Desktop, Mobile, and Embedded Deployment]

@@ -94,10 +94,10 @@ The biggest "Quality of Life" win is diagnosing **Shader Translation Errors**. W
 
 To reach the **Common Point** required for the rest of this tutorial, your Apple environment should be configured with a **Native-Agent Hybrid Strategy**. This setup uses Xcode 26's native AI for real-time Predictive Code Completion and Swift-to-C{pp} bridging, an autonomous agent like **Goose** (powered by Claude 4.6) for high-level reasoning and complex cross-file refactoring of translation layers, and an MLX-optimized local model like **Qwen 3-Coder** via Ollama to leverage your Mac's Unified Memory for free, high-speed iteration.
 
-Once these are active, you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to the **Common Point**: xref:05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
+Once these are active, you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to the **Common Point**: xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
 
 == Summary: The Apple Specialist
 
 An AI-enhanced Apple developer lab is more than just a code generator; it is a **Native-to-Spec Bridge**. By leveraging Xcode 26's integrated intelligence alongside autonomous agents and the unique memory architecture of Apple Silicon, you transform your workflow into a cross-platform workflow that is as deeply aware of Metal's nuances as it is of the Vulkan specification. Whether you are optimizing for the broad reach of MoltenVK or the cutting-edge performance of KosmicKrisp, your AI assistant ensures you stay focused on the graphics, not the glue.
 
-xref:01_introduction.adoc[Previous: Environment Introduction] | xref:05_goose_native_agent.adoc[Next: Goose Native Agent]
+xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[Previous: Environment Introduction] | xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Next: Goose Native Agent]

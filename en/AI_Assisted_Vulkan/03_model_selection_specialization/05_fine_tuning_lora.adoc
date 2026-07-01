@@ -146,4 +146,4 @@ With the completion of Section 3, you have established a comprehensive specializ
 
 Your assistant is now fully specialized. In the next section, we will give your assistant visual reasoning capabilities as we explore **Multimodal AI** and its ability to diagnose visual graphics bugs like shadow acne and Z-fighting.
 
-Next: xref:../04_multimodal_ai/01_introduction.adoc[Multimodal AI: Visual Reasoning Capabilities]
+Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/01_introduction.adoc[Multimodal AI: Visual Reasoning Capabilities]

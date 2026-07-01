@@ -28,11 +28,11 @@ Vulkan's validation errors are notoriously dense. A VUID like `VUID-VkGraphicsPi
 
 In the following chapters, we will build your "Forensic Lab":
 
-1.  **xref:02_vuid_autofix.adoc[The VUID Auto-Fix]:** How to use your assistant to get instant code corrections from raw error strings.
-2.  **xref:03_renderdoc_ai_integration.adoc[AI + RenderDoc Integration]:** Using autonomous agents to analyze your GPU captures to identify redundant state changes and sync hazards.
-3.  **xref:04_shader_debugging_logs.adoc[Shader Logs & API Dumps]:** Analyzing the underlying behavior of your app by feeding high-volume API logs to an AI to find the source of a state mismatch.
-4.  **xref:05_gfxreconstruct_ai.adoc[AI + GFXReconstruct]:** Capturing and auditing multi-frame Vulkan call streams for driver regressions and resource lifecycle hazards.
+1.  **xref:AI_Assisted_Vulkan/06_debugging/02_vuid_autofix.adoc[The VUID Auto-Fix]:** How to use your assistant to get instant code corrections from raw error strings.
+2.  **xref:AI_Assisted_Vulkan/06_debugging/03_renderdoc_ai_integration.adoc[AI + RenderDoc Integration]:** Using autonomous agents to analyze your GPU captures to identify redundant state changes and sync hazards.
+3.  **xref:AI_Assisted_Vulkan/06_debugging/04_shader_debugging_logs.adoc[Shader Logs & API Dumps]:** Analyzing the underlying behavior of your app by feeding high-volume API logs to an AI to find the source of a state mismatch.
+4.  **xref:AI_Assisted_Vulkan/06_debugging/05_gfxreconstruct_ai.adoc[AI + GFXReconstruct]:** Capturing and auditing multi-frame Vulkan call streams for driver regressions and resource lifecycle hazards.
 
 By the end of this journey, you will no longer fear the "Black Screen." You will have a systematic, AI-driven process for diagnosing even the most elusive Vulkan bugs.
 
-Next: xref:02_vuid_autofix.adoc[The VUID Auto-Fix]
+Next: xref:AI_Assisted_Vulkan/06_debugging/02_vuid_autofix.adoc[The VUID Auto-Fix]

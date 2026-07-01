@@ -26,9 +26,9 @@ Deployment is where "Syntactic Noise" becomes a blocker to portability.
 
 In this final section, we move from the "Lab" to the "World":
 
-1.  **xref:02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]:** Automating JNI boilerplate and optimizing for Tiled GPU architectures.
-2.  **xref:03_embedded_safety_critical.adoc[Embedded & Safety Critical Systems]:** Managing strict hardware limits and memory-constrained environments.
+1.  **xref:AI_Assisted_Vulkan/08_deployment/02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]:** Automating JNI boilerplate and optimizing for Tiled GPU architectures.
+2.  **xref:AI_Assisted_Vulkan/08_deployment/03_embedded_safety_critical.adoc[Embedded & Safety Critical Systems]:** Managing strict hardware limits and memory-constrained environments.
 
 By the end of this journey, you will be able to take your Vulkan application from a single-platform prototype to a globally portable, high-performance engine that runs optimally on every device it touches.
 
-Next: xref:02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]
+Next: xref:AI_Assisted_Vulkan/08_deployment/02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]

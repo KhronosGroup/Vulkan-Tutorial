@@ -56,4 +56,4 @@ Phase 3 is the culmination of the **Collaborative Loop**. By using autonomous ag
 
 With the completion of Section 5, you have mastered the **Feature Lifecycle**: from Cloud-based Design, through Local-based Implementation, to Autonomous Evolution. In the next section, we will explore the "Dark Arts" of **Pro-Level Debugging with AI and RenderDoc.**
 
-Next: xref:../06_debugging/01_introduction.adoc[Pro-Level Debugging with AI & RenderDoc]
+Next: xref:AI_Assisted_Vulkan/06_debugging/01_introduction.adoc[Pro-Level Debugging with AI & RenderDoc]

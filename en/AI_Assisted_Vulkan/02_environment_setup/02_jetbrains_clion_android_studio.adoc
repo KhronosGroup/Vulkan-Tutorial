@@ -26,7 +26,7 @@ JetBrains has integrated the **Model Context Protocol (MCP)** directly into thei
 
 **Adding the Vulkan MCP to AI Assistant:**
 
-To provide your Cloud-based assistant (like **Claude 4.6** or **GPT-5.3**) with the ground truth of the Vulkan specification, follow these steps. This assumes you have already built the `mcp-Vulkan` server as described in xref:01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[the Environment Setup introduction].
+To provide your Cloud-based assistant (like **Claude 4.6** or **GPT-5.3**) with the ground truth of the Vulkan specification, follow these steps. This assumes you have already built the `mcp-Vulkan` server as described in xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[the Environment Setup introduction].
 
 1.  Open **Settings** (`Ctrl+Alt+S` or `Cmd+,`).
 2.  Navigate to **Tools > AI Assistant > MCP Servers**.
@@ -79,7 +79,7 @@ Both strategies can natively be used within the JetBrains AI task window, allowi
 
 To reach the **Common Point** required for the rest of this tutorial, you should have your IDE configured with at least two endpoints: a high-reasoning **Cloud Model** for architectural planning and complex debugging, and a fast, **Local Model** for implementation and cost-effective iteration.
 
-Once these are linked to your IDE's indexer (via AI Assistant, Junie, or Continue), you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to the **Common Point**: xref:05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
+Once these are linked to your IDE's indexer (via AI Assistant, Junie, or Continue), you have reached the "Base Camp" of AI-assisted development. To complete your environment, you must now proceed to the **Common Point**: xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Goose & Local Intelligence] to set up your autonomous agent and local inference engine.
 
 == Android Studio: The Gemini Advantage
 
@@ -103,6 +103,6 @@ The biggest win in this environment is the ability to perform **Semantic Refacto
 
 Using CLion and Android Studio for AI-assisted Vulkan is about leveraging **Semantic Analysis**. By ensuring the AI "sees" what the compiler sees, you reduce the "Context Gap" and transform your IDE into a powerful, collaborative lab where the AI acts as a deeply informed extension of your own engineering expertise.
 
-Next, we will jump to the **goose native agent**  experience.  You may want to look at the **Windows** specific xref:03_visual_studio.adoc[Visual Studio] instructions to get an idea of other environments.
+Next, we will jump to the **goose native agent**  experience.  You may want to look at the **Windows** specific xref:AI_Assisted_Vulkan/02_environment_setup/03_visual_studio.adoc[Visual Studio] instructions to get an idea of other environments.
 
-xref:01_introduction.adoc[Previous: Environment Introduction] | xref:05_goose_native_agent.adoc[Next: Goose Native Agent]
+xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[Previous: Environment Introduction] | xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Next: Goose Native Agent]

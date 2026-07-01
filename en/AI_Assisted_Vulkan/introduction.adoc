@@ -18,7 +18,7 @@ With the rise of Large Language Models (LLMs) like **Qwen 3-Coder** and autonomo
 
 == Who is the Audience?
 
-This series is designed for **Intermediate Vulkan developers** who have completed the core xref:../00_Introduction.adoc[Vulkan Tutorial] and are ready to supercharge their workflow. You should already understand the fundamentals, such as pipelines, descriptor sets, and the common pitfalls of queue presentation. If you're looking for more efficiency and are curious about how to safely and effectively integrate AI into a high-performance C{pp} codebase without getting bogged down in boilerplate, this series is for you.
+This series is designed for **Intermediate Vulkan developers** who have completed the core xref:00_Introduction.adoc[Vulkan Tutorial] and are ready to supercharge their workflow. You should already understand the fundamentals, such as pipelines, descriptor sets, and the common pitfalls of queue presentation. If you're looking for more efficiency and are curious about how to safely and effectively integrate AI into a high-performance C{pp} codebase without getting bogged down in boilerplate, this series is for you.
 
 == Why AI for Vulkan?
 
@@ -36,15 +36,15 @@ In this series, we move beyond generic chat-bots. We will build a specialized **
 
 Throughout this tutorial, we will systematically build an AI-enhanced graphics lab:
 
-1.  **xref:02_environment_setup/01_introduction.adoc[The Modern AI Toolbelt]:** Transforming your IDE (CLion, Android Studio, Visual Studio, or Xcode) into an AI-enhanced hub and setting up your first autonomous agent.
-2.  **xref:03_model_selection_specialization/01_introduction.adoc[Model Selection & Specialization]:** Deep dives into VRAM budgeting, quantization, and the "Intelligence-to-Performance" ratio.
-3.  **xref:04_multimodal_ai/01_introduction.adoc[Multimodal AI]:** Diagnosing visual bugs and analyzing your frames directly with AI.
-4.  **xref:05_workflow/01_introduction.adoc[Workflow: System Design to Implementation]:** Mastering the "Collaborative Loop" from high-level planning to shader implementation.
-5.  **xref:06_debugging/01_introduction.adoc[Pro-Level Debugging]:** Using AI to solve Validation Layer errors and analyze RenderDoc captures.
-6.  **xref:07_advanced_mcp/01_introduction.adoc[Advanced MCP Tooling]:** Building custom tools that let your AI query hardware limits and the Vulkan Registry.
-7.  **xref:08_deployment/01_introduction.adoc[Deployment Automation]:** Streamlining the path to Android, iOS, and Desktop.
-8.  **xref:10_final_project.adoc[The AI-Driven Graphics Lab]:** A comprehensive capstone project implementing a Dual-Filtering Blur system using every tool in the AI toolbelt.
+1.  **xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[The Modern AI Toolbelt]:** Transforming your IDE (CLion, Android Studio, Visual Studio, or Xcode) into an AI-enhanced hub and setting up your first autonomous agent.
+2.  **xref:AI_Assisted_Vulkan/03_model_selection_specialization/01_introduction.adoc[Model Selection & Specialization]:** Deep dives into VRAM budgeting, quantization, and the "Intelligence-to-Performance" ratio.
+3.  **xref:AI_Assisted_Vulkan/04_multimodal_ai/01_introduction.adoc[Multimodal AI]:** Diagnosing visual bugs and analyzing your frames directly with AI.
+4.  **xref:AI_Assisted_Vulkan/05_workflow/01_introduction.adoc[Workflow: System Design to Implementation]:** Mastering the "Collaborative Loop" from high-level planning to shader implementation.
+5.  **xref:AI_Assisted_Vulkan/06_debugging/01_introduction.adoc[Pro-Level Debugging]:** Using AI to solve Validation Layer errors and analyze RenderDoc captures.
+6.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/01_introduction.adoc[Advanced MCP Tooling]:** Building custom tools that let your AI query hardware limits and the Vulkan Registry.
+7.  **xref:AI_Assisted_Vulkan/08_deployment/01_introduction.adoc[Deployment Automation]:** Streamlining the path to Android, iOS, and Desktop.
+8.  **xref:AI_Assisted_Vulkan/10_final_project.adoc[The AI-Driven Graphics Lab]:** A comprehensive capstone project implementing a Dual-Filtering Blur system using every tool in the AI toolbelt.
 
 By the end of this journey, you will be capable of leveraging current AI models for building complex graphics systems with a level of speed and precision that would have been significantly more difficult to achieve just a few years ago.
 
-Let's begin: xref:02_environment_setup/01_introduction.adoc[Next: The Modern AI Toolbelt]
+Let's begin: xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[Next: The Modern AI Toolbelt]

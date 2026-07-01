@@ -37,7 +37,7 @@ You are likely hitting a **Timeout Detection and Recovery (TDR)** event because 
 **Q: "I downloaded a model in Ollama, but it fails to run or crashes my system. What happened?"**
 
 **A: The VRAM/GPU RAM Limit.**
-Just because a model is downloaded doesn't mean it can run on your current hardware. If you attempt to load a model (like a 30B Qwen 3-Coder) that exceeds your available VRAM, Ollama may attempt to "offload" layers to your system RAM, which is significantly slower and can lead to a system-wide freeze or a "Device Lost" error in your Vulkan application. Always check the model size against your **VRAM Budgeting Formula** (from xref:03_model_selection_specialization/03_hardware_vram.adoc[Chapter 3.3]) before attempting to run it.
+Just because a model is downloaded doesn't mean it can run on your current hardware. If you attempt to load a model (like a 30B Qwen 3-Coder) that exceeds your available VRAM, Ollama may attempt to "offload" layers to your system RAM, which is significantly slower and can lead to a system-wide freeze or a "Device Lost" error in your Vulkan application. Always check the model size against your **VRAM Budgeting Formula** (from xref:AI_Assisted_Vulkan/03_model_selection_specialization/03_hardware_vram.adoc[Chapter 3.3]) before attempting to run it.
 
 **Q: "Should I use the Ollama WebUI (localhost) or the Windows Native App?"**
 
@@ -55,4 +55,4 @@ The transition to **Collaborative Engineering** requires a shift in mindset. You
 
 In our final chapter, we will put every tool and concept into practice with the **AI-Driven Graphics Lab**.
 
-Next: xref:10_final_project.adoc[Final Project: The AI-Driven Graphics Lab]
+Next: xref:AI_Assisted_Vulkan/10_final_project.adoc[Final Project: The AI-Driven Graphics Lab]

@@ -69,6 +69,7 @@ SPDX-License-Identifier = "BSD-3-Clause"
 path = [
     "attachments/simple_engine/**",
     "en/Synchronization/**",
+    "en/AI_Assisted_Vulkan/**",
     "scripts/**",
 ]
 precedence = "closest"

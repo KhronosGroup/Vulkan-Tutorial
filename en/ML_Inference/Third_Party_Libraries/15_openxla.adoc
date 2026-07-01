@@ -1,0 +1,53 @@
+:pp: {plus}{plus}
+
+= OpenXLA: XLA, StableHLO, and Where Vulkan Fits
+
+== Overview
+
+OpenXLA is the umbrella for XLA, StableHLO, and related projects (including IREE) that together form a modern, open ML compiler stack. StableHLO is the standardized IR that many frameworks can export to (JAX and TensorFlow most directly), and XLA provides mature lowering to CPU and GPU backends. Vulkan is typically reached via IREE, which consumes StableHLO/MLIR and emits SPIR‑V.
+
+Why this page exists: in the IREE chapter we mention StableHLO and XLA early. This short chapter gives you the mental model so those terms don’t feel like inside baseball.
+
+== How to think about it
+
+Treat StableHLO as the language your model speaks after export. From that common language, you choose a downstream compiler for your target. If you’re headed to Vulkan, you’ll use IREE to lower StableHLO to SPIR‑V and ship a small runtime that records Vulkan dispatches. If you’re targeting CUDA/ROCm/CPU, you’ll stay with XLA’s backends (or other downstreams) and never touch Vulkan.
+
+This separation is useful because training teams can standardize on producing StableHLO, while deployment teams choose the right downstream per platform without changing the training export.
+
+Practical note: today, StableHLO export is most straightforward from JAX and TensorFlow; other ecosystems may require a conversion hop. When your end target is Vulkan, prefer StableHLO → IREE so you stay on a well‑supported path in this tutorial.
+
+== A tiny practical workflow (Vulkan case)
+
+Export to StableHLO from training (or convert), compile with IREE for Vulkan using `--iree-hal-target-backends=vulkan`, then load the `.vmfb` in your app via IREE’s runtime. The full, step‑by‑step version is in xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE].
+
+If your team already uses XLA in training, the StableHLO/IREE path minimizes friction when targeting Vulkan.
+
+== Limitations and expectations
+
+OpenXLA/XLA themselves do not directly target Vulkan in the way you’d ship a Vulkan binary. Vulkan is a first‑class target of IREE. Keep the mental model clear: StableHLO → IREE → SPIR‑V (Vulkan) for this tutorial.
+
+== Incorporating IREE output into a Vulkan app
+
+IREE compiles your model to an artifact (commonly a `.vmfb` bytecode or ahead‑of‑time compiled module) and executes it via the IREE runtime. In a Vulkan application, this looks and feels just like using any other model runtime (e.g., ONNX Runtime or TFLite):
+
+- Initialize the runtime and select the Vulkan HAL backend
+- Load the compiled artifact
+- Create input/output buffers (usually via runtime helpers)
+- Invoke functions by name and read back results
+
+In other words, you embed IREE’s runtime library alongside your app, and let it own the SPIR‑V modules, descriptor sets, and dispatch scheduling.
+
+=== “Can I integrate the compiled model without IREE’s runtime?”
+
+Conceptually, IREE lowers to SPIR‑V kernels plus host‑side scheduling logic; however, the artifact and the runtime share an ABI that isn’t exported as “drop‑in” SPIR‑V + standalone host code. Extracting kernels and re‑implementing the host scheduling inside your own Vulkan engine is theoretically possible but not a supported/stable path today—you’d be relying on internal details and would need to replicate significant parts of the runtime (descriptor management, push constants, synchronization, pipelines, etc.).
+
+Practical guidance for this tutorial:
+
+- Treat IREE as a runtime you link and call, the same way you would link ONNX Runtime or TFLite. The xref:ML_Inference/Third_Party_Libraries/12_iree.adoc[IREE chapter] shows the minimal embedding.
+- If your app needs tighter interop (e.g., sharing a VkDevice or memory), look for the runtime’s supported hooks rather than trying to bypass it entirely.
+
+== NNEF interop
+
+If your source is NNEF, convert to ONNX or StableHLO first. From StableHLO, follow the IREE flow to reach Vulkan. This keeps the pipeline simple and repeatable.
+
+xref:ML_Inference/Third_Party_Libraries/14_mojo_max.adoc[Previous: Mojo / MAX] | xref:ML_Inference/Third_Party_Libraries/16_choosing_compiler.adoc[Next: Choosing the Right Compiler]

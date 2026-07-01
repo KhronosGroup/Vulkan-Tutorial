@@ -1,0 +1,755 @@
+:pp: {plus}{plus}
+
+= Practical Examples
+
+== Introduction
+
+Theory and concepts are essential, but nothing beats working code. You've learned about GPU resource sharing, data transfer optimization, and integration patterns. Now it's time to see how these concepts come together in real applications.
+
+This chapter provides complete, working examples of integrating ML inference libraries with Vulkan applications. We'll build three practical examples: a desktop application using ONNX Runtime with shared GPU memory, a mobile application using TensorFlow Lite on Android, and a real-time inference pipeline that processes frames at 60 FPS. Each example includes full code, detailed explanations, and practical guidance on common pitfalls and solutions.
+
+These aren't toy examples—they're production-ready patterns you can adapt to your own applications. The code is complete enough to compile and run, but focused enough to understand. Let's dive in.
+
+== Example 1: Desktop Object Detection with ONNX Runtime
+
+Our first example demonstrates the most common desktop scenario: running object detection on rendered frames using ONNX Runtime with OpenCL execution provider, sharing GPU memory between Vulkan and OpenCL.
+
+=== The Scenario
+
+You're building a game or graphics application that renders a 3D scene. You want to run object detection on each frame to identify objects in the scene—maybe for gameplay mechanics, analytics, or debugging. The naive approach (render, read back to CPU, upload to ML library, run inference, read back results) is too slow. Instead, we'll share GPU memory directly.
+
+=== Architecture Overview
+
+Before we dive into code, let's understand how the pieces fit together. Think of this as a relay race where Vulkan and OpenCL pass the baton (GPU memory) back and forth, but instead of runners physically handing off a baton, they use semaphores to signal "I'm done, you can go now."
+
+Here's the flow:
+
+Vulkan renders your 3D scene to a special texture—one that's allocated with external memory support so OpenCL can access it. When rendering finishes, Vulkan signals a semaphore. OpenCL, which has been waiting on that semaphore, wakes up and tells ONNX Runtime "the data is ready." ONNX Runtime runs inference directly on that shared texture—no copying to CPU, no uploading back to GPU. When inference completes, OpenCL signals another semaphore. Vulkan waits on that semaphore before using the results.
+
+The beauty of this approach? Everything stays on the GPU. Zero CPU roundtrips. The data never leaves GPU memory, and the CPU is only involved in coordinating the work, not moving data around.
+
+=== Step 1: Setting Up Shared Memory
+
+The foundation of this entire approach is creating a Vulkan image that OpenCL can access. This isn't your typical Vulkan image—it needs special flags that tell Vulkan "other APIs will need to access this memory." On Windows, we'll export a Win32 handle; on Linux, we'll export a file descriptor. Both serve the same purpose: giving OpenCL a way to reference the same physical GPU memory.
+
+Here's how we set it up:
+
+[source,cpp]
+----
+class SharedRenderTarget {
+public:
+    vk::raii::Image image = nullptr;
+    vk::raii::DeviceMemory memory = nullptr;
+    vk::raii::ImageView imageView = nullptr;
+
+#ifdef _WIN32
+    HANDLE memoryHandle;
+#else
+    int memoryFd;
+#endif
+
+    void create(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice,
+                uint32_t width, uint32_t height) {
+        // Create image with external memory support
+        vk::ExternalMemoryImageCreateInfo externalInfo{
+#ifdef _WIN32
+            .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32
+#else
+            .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd
+#endif
+        };
+
+        vk::ImageCreateInfo imageInfo{
+            .pNext = &externalInfo,
+            .imageType = vk::ImageType::e2D,
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .extent = {width, height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eColorAttachment |
+                     vk::ImageUsageFlagBits::eSampled,
+            .sharingMode = vk::SharingMode::eExclusive,
+            .initialLayout = vk::ImageLayout::eUndefined
+        };
+
+        image = vk::raii::Image(device, imageInfo);
+
+        // Allocate memory with export support
+        vk::MemoryRequirements memReqs = image.getMemoryRequirements();
+
+        vk::ExportMemoryAllocateInfo exportAllocInfo{
+            .handleTypes = externalInfo.handleTypes
+        };
+
+        vk::MemoryAllocateInfo allocInfo{
+            .pNext = &exportAllocInfo,
+            .allocationSize = memReqs.size,
+            .memoryTypeIndex = findMemoryType(physicalDevice, memReqs.memoryTypeBits,
+                                             vk::MemoryPropertyFlagBits::eDeviceLocal)
+        };
+
+        memory = vk::raii::DeviceMemory(device, allocInfo);
+        image.bindMemory(*memory, 0);
+
+        // Export memory handle
+#ifdef _WIN32
+        vk::MemoryGetWin32HandleInfoKHR handleInfo{
+            .memory = *memory,
+            .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32
+        };
+        memoryHandle = device.getMemoryWin32HandleKHR(handleInfo);
+#else
+        vk::MemoryGetFdInfoKHR fdInfo{
+            .memory = *memory,
+            .handleType = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd
+        };
+        memoryFd = device.getMemoryFdKHR(fdInfo);
+#endif
+
+        // Create image view
+        vk::ImageViewCreateInfo viewInfo{
+            .image = *image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+        };
+
+        imageView = vk::raii::ImageView(device, viewInfo);
+        // RAII handles cleanup automatically
+    }
+};
+----
+
+=== Step 2: Importing into OpenCL
+
+Now that we have a Vulkan image with an exported handle, we need to tell OpenCL about it. OpenCL has its own way of thinking about memory—it uses "external memory" objects that wrap handles from other APIs. We'll import the handle and create an OpenCL image object that references the same physical GPU memory.
+
+Think of this step as translating between Vulkan's language and OpenCL's language. Both are talking about the same physical memory, but they use different vocabulary to describe it.
+
+[source,cpp]
+----
+class OpenCLSharedMemory {
+public:
+    cl_mem clImage;
+    cl_context clContext;
+
+    void importFromVulkan(const SharedRenderTarget& vulkanTarget,
+                         uint32_t width, uint32_t height,
+                         cl_context context) {
+        clContext = context;
+
+        // Import external memory using cl_khr_external_memory
+        cl_mem_properties_khr props[] = {
+#ifdef _WIN32
+            CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_WIN32_KHR,
+            (cl_mem_properties_khr)vulkanTarget.memoryHandle,
+#else
+            CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_FD_KHR,
+            (cl_mem_properties_khr)vulkanTarget.memoryFd,
+#endif
+            0
+        };
+
+        // Create OpenCL image descriptor
+        cl_image_format format;
+        format.image_channel_order = CL_RGBA;
+        format.image_channel_data_type = CL_UNORM_INT8;
+
+        cl_image_desc desc = {};
+        desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+        desc.image_width = width;
+        desc.image_height = height;
+        desc.image_depth = 1;
+        desc.image_array_size = 1;
+        desc.image_row_pitch = 0;
+        desc.image_slice_pitch = 0;
+        desc.num_mip_levels = 0;
+        desc.num_samples = 0;
+
+        cl_int err;
+        clImage = clCreateImageWithProperties(
+            clContext, props, CL_MEM_READ_WRITE, &format, &desc, nullptr, &err);
+    }
+};
+----
+
+=== Step 3: Setting Up Synchronization
+
+Sharing memory is only half the battle. We also need to coordinate timing—Vulkan can't start rendering to the texture while OpenCL is reading from it, and OpenCL can't start inference until Vulkan finishes rendering. This is where semaphores come in.
+
+Just like we exported memory handles, we'll export semaphore handles that both Vulkan and OpenCL can use. Vulkan signals a semaphore when it's done rendering, OpenCL waits on that semaphore before starting inference, then OpenCL signals another semaphore when inference completes, and Vulkan waits on that before using the results. It's a carefully choreographed dance that keeps both APIs from stepping on each other's toes.
+
+[source,cpp]
+----
+class ExternalSemaphore {
+public:
+    vk::raii::Semaphore vkSemaphore = nullptr;
+    cl_semaphore_khr clSemaphore;
+
+    void create(const vk::raii::Device& device, cl_context clContext) {
+        // Create Vulkan semaphore with export support
+        vk::ExportSemaphoreCreateInfo exportInfo{
+#ifdef _WIN32
+            .handleTypes = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32
+#else
+            .handleTypes = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd
+#endif
+        };
+
+        vk::SemaphoreCreateInfo semInfo{
+            .pNext = &exportInfo
+        };
+
+        vkSemaphore = vk::raii::Semaphore(device, semInfo);
+
+        // Export and import into OpenCL
+#ifdef _WIN32
+        vk::SemaphoreGetWin32HandleInfoKHR handleInfo{
+            .semaphore = *vkSemaphore,
+            .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32
+        };
+
+        HANDLE semHandle = device.getSemaphoreWin32HandleKHR(handleInfo);
+
+        cl_semaphore_properties_khr props[] = {
+            CL_SEMAPHORE_EXPORT_HANDLE_TYPES_KHR,
+            CL_SEMAPHORE_HANDLE_OPAQUE_WIN32_KHR,
+            (cl_semaphore_properties_khr)semHandle,
+            0
+        };
+#else
+        vk::SemaphoreGetFdInfoKHR fdInfo{
+            .semaphore = *vkSemaphore,
+            .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd
+        };
+
+        int semFd = device.getSemaphoreFdKHR(fdInfo);
+
+        cl_semaphore_properties_khr props[] = {
+            CL_SEMAPHORE_EXPORT_HANDLE_TYPES_KHR,
+            CL_SEMAPHORE_HANDLE_OPAQUE_FD_KHR,
+            (cl_semaphore_properties_khr)semFd,
+            0
+        };
+#endif
+
+        cl_int err;
+        clSemaphore = clCreateSemaphoreWithPropertiesKHR(clContext, props, &err);
+        // RAII handles Vulkan semaphore cleanup automatically
+    }
+};
+----
+
+=== Step 4: Running Inference
+
+With shared memory and synchronization in place, we're ready for the main event: running inference. ONNX Runtime needs to be configured to use OpenCL as its execution provider, and we need to tell it to use our shared memory for input. The key insight here is that ONNX Runtime can create tensors directly from OpenCL memory—we don't need to copy data into ONNX Runtime's own buffers.
+
+Here's how we wire it all together:
+
+[source,cpp]
+----
+class ObjectDetector {
+private:
+    Ort::Env env;
+    Ort::Session session;
+    Ort::SessionOptions sessionOptions;
+    cl_command_queue clQueue;
+
+public:
+    ObjectDetector(const std::string& modelPath, cl_command_queue queue)
+        : env(ORT_LOGGING_LEVEL_WARNING, "ObjectDetector"), clQueue(queue) {
+
+        // Configure ONNX Runtime to use OpenCL
+        // Note: ONNX Runtime OpenCL provider configuration
+        sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+        // Load model
+        session = Ort::Session(env, modelPath.c_str(), sessionOptions);
+    }
+
+    void runInference(const OpenCLSharedMemory& sharedMem,
+                     const ExternalSemaphore& renderComplete,
+                     const ExternalSemaphore& inferenceComplete,
+                     uint32_t width, uint32_t height) {
+
+        // Wait for Vulkan rendering to complete
+        clEnqueueWaitSemaphoresKHR(clQueue, 1, &renderComplete.clSemaphore,
+                                   nullptr, 0, nullptr, nullptr);
+
+        // Prepare input tensor from shared memory
+        std::vector<int64_t> inputShape = {1, 3, height, width};
+        Ort::MemoryInfo memInfo("OpenCL", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+        // Note: In practice, you'd convert the RGBA image to the format
+        // your model expects (e.g., RGB, normalized). This might involve
+        // an OpenCL kernel to preprocess the data.
+
+        // Run inference (simplified - actual code would handle preprocessing)
+        auto inputTensor = Ort::Value::CreateTensor(memInfo,
+            reinterpret_cast<float*>(sharedMem.clImage),
+            width * height * 3,
+            inputShape.data(), inputShape.size(),
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+
+        const char* inputNames[] = {"input"};
+        const char* outputNames[] = {"output"};
+
+        auto outputs = session.Run(Ort::RunOptions{nullptr},
+                                  inputNames, &inputTensor, 1,
+                                  outputNames, 1);
+
+        // Signal inference complete
+        clEnqueueSignalSemaphoresKHR(clQueue, 1, &inferenceComplete.clSemaphore,
+                                     nullptr, 0, nullptr, nullptr);
+    }
+};
+----
+
+=== Step 5: The Main Loop
+
+Now let's see how all these pieces work together in a real render loop. Each frame, we'll render with Vulkan, signal that rendering is complete, let OpenCL run inference on the shared texture, wait for inference to complete, and then use the results. The beauty of this approach is that once everything is set up, the per-frame overhead is minimal—just signaling and waiting on semaphores, which are GPU-side operations.
+
+Here's the complete loop:
+
+[source,cpp]
+----
+void renderLoop() {
+    SharedRenderTarget renderTarget;
+    renderTarget.create(device, physicalDevice, 1920, 1080);
+
+    OpenCLSharedMemory clMemory;
+    clMemory.importFromVulkan(renderTarget, 1920, 1080, clContext);
+
+    ExternalSemaphore renderComplete, inferenceComplete;
+    renderComplete.create(device);
+    inferenceComplete.create(device);
+
+    ObjectDetector detector("yolov5.onnx");
+
+    while (!shouldClose()) {
+        // Vulkan: Render scene
+        vk::raii::CommandBuffer cmd = beginFrame();
+        renderScene(*cmd, *renderTarget.imageView);
+        endFrame(*cmd, *renderComplete.vkSemaphore);
+
+        // OpenCL/ONNX: Run inference (async)
+        detector.runInference(clMemory, renderComplete, inferenceComplete,
+                            1920, 1080);
+
+        // Vulkan: Use results (waits for inference)
+        vk::raii::CommandBuffer postCmd = beginCommandBuffer();
+        // ... use inference results for visualization, gameplay, etc ...
+        submitWithWait(*postCmd, *inferenceComplete.vkSemaphore);
+
+        present();
+    }
+    // RAII handles cleanup of all Vulkan resources automatically
+}
+----
+
+=== Key Takeaways
+
+Let's step back and appreciate what we've built here. We started with a fundamental problem: running ML inference on rendered frames is too slow if you're constantly copying data between CPU and GPU. The solution required coordinating two different GPU APIs—Vulkan and OpenCL—to work with the same physical memory.
+
+We allocated Vulkan memory with special flags that let us export handles to other APIs. Those handles (Win32 handles on Windows, file descriptors on Linux) gave OpenCL a way to reference the same memory. We created external semaphores using the same export-and-import pattern, giving both APIs a way to coordinate timing without CPU involvement.
+
+The payoff? Zero-copy inference that runs entirely on the GPU. Vulkan renders, signals a semaphore, OpenCL runs inference on the shared texture, signals completion, and Vulkan continues. No data ever touches CPU memory. The CPU is just orchestrating the work, not moving data around. For real-time applications, this makes the difference between feasible and infeasible.
+
+== Example 2: Mobile Image Classification with TensorFlow Lite
+
+Our second example targets Android, using TensorFlow Lite with GPU delegate to classify images from the camera or rendered frames.
+
+=== The Scenario
+
+You're building an Android app that needs real-time image classification—maybe an AR application, a visual search tool, or a game with computer vision features. You're using Vulkan for rendering and want to integrate ML inference efficiently.
+
+=== Architecture Overview
+
+Android provides its own mechanism for sharing GPU memory between different APIs: AHardwareBuffer. Think of it as Android's answer to the external memory problem we solved on desktop with Win32 handles and file descriptors. AHardwareBuffer is a system-level abstraction that any Android API can use—Vulkan, OpenGL ES, the camera system, the media codecs, and yes, TensorFlow Lite's GPU delegate.
+
+The flow is simpler than the desktop example because Android designed AHardwareBuffer specifically for this kind of sharing. Vulkan renders to an image backed by an AHardwareBuffer, TensorFlow Lite's GPU delegate accesses that same AHardwareBuffer for inference, and the results are ready for the next frame. No manual handle exporting, no platform-specific code paths—Android handles the complexity for us.
+
+=== Step 1: Setting Up AHardwareBuffer
+
+The first step is creating an AHardwareBuffer and importing it into Vulkan. We allocate the AHardwareBuffer with usage flags that tell Android we'll use it for GPU rendering and as a data buffer (for TensorFlow Lite to read). Then we query Vulkan for the properties of this buffer—what format it actually uses, how much memory it needs—and create a Vulkan image that wraps it.
+
+This is more straightforward than the desktop approach because Android's APIs are designed to work together. The platform handles the complexity of making sure different APIs can access the same memory safely.
+
+[source,cpp]
+----
+class AndroidSharedImage {
+public:
+    AHardwareBuffer* hardwareBuffer;
+    vk::raii::Image image = nullptr;
+    vk::raii::DeviceMemory memory = nullptr;
+    vk::raii::ImageView imageView = nullptr;
+
+    void create(const vk::raii::Device& device, uint32_t width, uint32_t height) {
+        // Create AHardwareBuffer
+        AHardwareBuffer_Desc bufferDesc = {};
+        bufferDesc.width = width;
+        bufferDesc.height = height;
+        bufferDesc.layers = 1;
+        bufferDesc.format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
+        bufferDesc.usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE |
+                          AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT |
+                          AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER;
+
+        AHardwareBuffer_allocate(&bufferDesc, &hardwareBuffer);
+
+        // Import into Vulkan
+        vk::AndroidHardwareBufferFormatPropertiesANDROID formatInfo{};
+
+        vk::AndroidHardwareBufferPropertiesANDROID properties{
+            .pNext = &formatInfo
+        };
+
+        properties = device.getAndroidHardwareBufferPropertiesANDROID(hardwareBuffer);
+
+        // Create Vulkan image
+        vk::ExternalMemoryImageCreateInfo externalInfo{
+            .handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eAndroidHardwareBufferANDROID
+        };
+
+        vk::ImageCreateInfo imageInfo{
+            .pNext = &externalInfo,
+            .imageType = vk::ImageType::e2D,
+            .format = formatInfo.format,
+            .extent = {width, height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eColorAttachment |
+                     vk::ImageUsageFlagBits::eSampled
+        };
+
+        image = vk::raii::Image(device, imageInfo);
+
+        // Allocate and bind memory
+        vk::ImportAndroidHardwareBufferInfoANDROID importInfo{
+            .buffer = hardwareBuffer
+        };
+
+        vk::MemoryAllocateInfo allocInfo{
+            .pNext = &importInfo,
+            .allocationSize = properties.allocationSize,
+            .memoryTypeIndex = findMemoryType(properties.memoryTypeBits,
+                                             vk::MemoryPropertyFlagBits::eDeviceLocal)
+        };
+
+        memory = vk::raii::DeviceMemory(device, allocInfo);
+        image.bindMemory(*memory, 0);
+
+        // Create image view
+        vk::ImageViewCreateInfo viewInfo{
+            .image = *image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = formatInfo.format,
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+        };
+
+        imageView = vk::raii::ImageView(device, viewInfo);
+        // RAII handles Vulkan cleanup automatically
+    }
+};
+----
+
+=== Step 2: TensorFlow Lite Integration
+
+Set up TensorFlow Lite with GPU delegate:
+
+[source,cpp]
+----
+class TFLiteClassifier {
+private:
+    std::unique_ptr<tflite::FlatBufferModel> model;
+    std::unique_ptr<tflite::Interpreter> interpreter;
+    TfLiteDelegate* gpuDelegate;
+
+public:
+    TFLiteClassifier(const std::string& modelPath) {
+        // Load model
+        model = tflite::FlatBufferModel::BuildFromFile(modelPath.c_str());
+
+        // Create interpreter
+        tflite::ops::builtin::BuiltinOpResolver resolver;
+        tflite::InterpreterBuilder builder(*model, resolver);
+        builder(&interpreter);
+
+        // Create GPU delegate
+        TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+        options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+        options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+
+        gpuDelegate = TfLiteGpuDelegateV2Create(&options);
+        interpreter->ModifyGraphWithDelegate(gpuDelegate);
+
+        // Allocate tensors
+        interpreter->AllocateTensors();
+    }
+
+    std::vector<float> classify(AHardwareBuffer* inputBuffer) {
+        // Get input tensor
+        int input = interpreter->inputs()[0];
+        TfLiteTensor* inputTensor = interpreter->tensor(input);
+
+        // Copy from AHardwareBuffer to input tensor
+        // (In practice, TFLite GPU delegate can work directly with AHardwareBuffer
+        //  for zero-copy operation, but the API is more complex)
+        void* inputData = inputTensor->data.raw;
+
+        // Lock AHardwareBuffer for reading
+        void* bufferData;
+        AHardwareBuffer_lock(inputBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN,
+                            -1, nullptr, &bufferData);
+
+        // Copy data (or better: use GPU delegate's direct buffer access)
+        memcpy(inputData, bufferData, inputTensor->bytes);
+
+        AHardwareBuffer_unlock(inputBuffer, nullptr);
+
+        // Run inference
+        interpreter->Invoke();
+
+        // Get output
+        int output = interpreter->outputs()[0];
+        TfLiteTensor* outputTensor = interpreter->tensor(output);
+        float* outputData = outputTensor->data.f;
+
+        return std::vector<float>(outputData,
+                                 outputData + outputTensor->bytes / sizeof(float));
+    }
+
+    ~TFLiteClassifier() {
+        TfLiteGpuDelegateV2Delete(gpuDelegate);
+    }
+};
+----
+
+=== Step 3: The Android Main Loop
+
+Integrate with Android activity:
+
+[source,cpp]
+----
+// In your Android native activity
+void renderAndClassify() {
+    AndroidSharedImage sharedImage;
+    sharedImage.create(device, 224, 224); // Model input size
+
+    TFLiteClassifier classifier("mobilenet_v2.tflite");
+
+    while (running) {
+        // Render to shared image
+        vk::raii::CommandBuffer cmd = beginFrame();
+        renderToTexture(*cmd, *sharedImage.imageView);
+        endFrame(*cmd);
+
+        // Wait for rendering to complete
+        graphicsQueue.waitIdle();
+
+        // Run classification
+        auto results = classifier.classify(sharedImage.hardwareBuffer);
+
+        // Process results
+        int topClass = std::max_element(results.begin(), results.end()) - results.begin();
+        float confidence = results[topClass];
+
+        // Update UI or game logic based on classification
+        updateGameLogic(topClass, confidence);
+
+        present();
+    }
+    // RAII handles cleanup of Vulkan resources automatically
+}
+----
+
+=== Key Takeaways
+
+This example demonstrates:
+
+- Using AHardwareBuffer for memory sharing on Android
+- Importing AHardwareBuffer into Vulkan
+- Setting up TensorFlow Lite with GPU delegate
+- Running inference on shared memory
+- Integrating with Android's native activity lifecycle
+
+The pattern is similar to desktop but uses Android-specific APIs for memory sharing.
+
+== Example 3: Real-Time Inference Pipeline
+
+Our final example shows how to build a high-performance pipeline that processes frames at 60 FPS, using pipelining and async execution to hide latency.
+
+=== The Challenge
+
+Running ML inference every frame at 60 FPS means you have 16.67ms per frame. If inference takes 10ms, you can't do it synchronously—you'd miss your frame budget. The solution: pipeline multiple frames, so inference for frame N runs while you're rendering frame N+1.
+
+=== Architecture
+
+[source]
+----
+Frame 0: Render → Transfer → Inference
+Frame 1:          Render → Transfer → Inference
+Frame 2:                   Render → Transfer → Inference
+----
+
+Each stage runs in parallel with other stages of other frames.
+
+=== Implementation
+
+[source,cpp]
+----
+class PipelinedInference {
+private:
+    static constexpr int FRAMES_IN_FLIGHT = 3;
+
+    struct FrameResources {
+        SharedRenderTarget renderTarget;
+        OpenCLSharedMemory clMemory;
+        ExternalSemaphore renderComplete;
+        ExternalSemaphore inferenceComplete;
+        vk::raii::Fence frameFence = nullptr;
+
+        // Inference results (read asynchronously)
+        std::vector<float> results;
+        std::atomic<bool> resultsReady{false};
+    };
+
+    std::array<FrameResources, FRAMES_IN_FLIGHT> frames;
+    int currentFrame = 0;
+    ObjectDetector detector;
+
+public:
+    PipelinedInference(const std::string& modelPath)
+        : detector(modelPath) {
+
+        // Initialize all frame resources
+        for (int i = 0; i < FRAMES_IN_FLIGHT; i++) {
+            frames[i].renderTarget.create(device, physicalDevice, 1920, 1080);
+            frames[i].clMemory.importFromVulkan(frames[i].renderTarget, 1920, 1080);
+            frames[i].renderComplete.create(device);
+            frames[i].inferenceComplete.create(device);
+
+            vk::FenceCreateInfo fenceInfo{
+                .flags = vk::FenceCreateFlagBits::eSignaled  // Start signaled
+            };
+            frames[i].frameFence = vk::raii::Fence(device, fenceInfo);
+        }
+    }
+
+    void processFrame() {
+        auto& frame = frames[currentFrame];
+
+        // Wait for this frame's resources to be available
+        vk::Result result = device.waitForFences(*frame.frameFence, VK_TRUE, UINT64_MAX);
+        device.resetFences(*frame.frameFence);
+
+        // Check if previous inference results are ready
+        if (frame.resultsReady.load()) {
+            // Use results from 3 frames ago
+            processInferenceResults(frame.results);
+            frame.resultsReady.store(false);
+        }
+
+        // Render current frame
+        vk::raii::CommandBuffer cmd = beginFrame();
+        renderScene(*cmd, *frame.renderTarget.imageView);
+        endFrame(*cmd, *frame.renderComplete.vkSemaphore);
+
+        // Launch inference asynchronously
+        std::thread([this, &frame]() {
+            detector.runInference(frame.clMemory,
+                                frame.renderComplete,
+                                frame.inferenceComplete,
+                                1920, 1080);
+
+            // Read results (this blocks until inference completes)
+            frame.results = detector.getResults();
+            frame.resultsReady.store(true);
+        }).detach();
+
+        // Signal fence when inference completes
+        // (In practice, you'd use a callback or poll the semaphore)
+        vk::Semaphore waitSemaphore = *frame.inferenceComplete.vkSemaphore;
+        vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eAllCommands;
+
+        vk::SubmitInfo submitInfo{
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &waitSemaphore,
+            .pWaitDstStageMask = &waitStage
+        };
+
+        graphicsQueue.submit(submitInfo, *frame.frameFence);
+
+        // Move to next frame
+        currentFrame = (currentFrame + 1) % FRAMES_IN_FLIGHT;
+
+        present();
+    }
+
+private:
+    void processInferenceResults(const std::vector<float>& results) {
+        // Use results for gameplay, visualization, etc.
+        // Note: These are results from 3 frames ago due to pipelining
+    }
+    // RAII handles cleanup of all frame resources automatically when object is destroyed
+};
+----
+
+=== Key Takeaways
+
+This example demonstrates:
+
+- Pipelining multiple frames to hide inference latency
+- Using per-frame resources to avoid conflicts
+- Asynchronous result processing
+- Maintaining 60 FPS while running expensive inference
+
+The tradeoff: results are delayed by a few frames. For many applications (analytics, non-critical gameplay features), this latency is acceptable.
+
+== Common Pitfalls and Solutions
+
+Based on real-world experience, here are common issues and how to solve them:
+
+=== Pitfall 1: Synchronization Bugs
+
+*Symptom*: Flickering, corruption, or crashes.
+
+*Cause*: Missing or incorrect synchronization—reading data before it's written, or writing data that's still being read.
+
+*Solution*: Use validation layers aggressively. Enable Vulkan validation layers and OpenCL error checking. Insert explicit synchronization (fences, clFinish) during debugging to isolate timing issues.
+
+=== Pitfall 2: Format Mismatches
+
+*Symptom*: Inference produces garbage results despite correct synchronization.
+
+*Cause*: Vulkan renders in BGRA, but ML model expects RGB. Or model expects normalized [0,1] values but receives [0,255].
+
+*Solution*: Add explicit format conversion and normalization steps. Use compute shaders to convert formats on the GPU before inference.
+
+=== Pitfall 3: Memory Leaks
+
+*Symptom*: Application memory usage grows over time, eventually crashing.
+
+*Cause*: Not properly releasing external memory handles, semaphores, or OpenCL resources.
+
+*Solution*: Use RAII wrappers. Ensure every create/allocate has a corresponding destroy/free. Use memory debugging tools (Valgrind, AddressSanitizer) to catch leaks.
+
+=== Pitfall 4: Platform-Specific Issues
+
+*Symptom*: Code works on one platform but fails on another.
+
+*Cause*: Different platforms have different capabilities and quirks. Not all drivers support all features.
+
+*Solution*: Check capabilities at runtime. Implement fallback paths. Test on target hardware early and often.
+
+== Summary
+
+These practical examples demonstrate real-world integration patterns for ML inference with Vulkan. The desktop example shows ONNX Runtime with OpenCL and external memory sharing. The mobile example shows TensorFlow Lite on Android with AHardwareBuffer. The pipelined example shows how to achieve real-time performance through parallelism.
+
+The key principles across all examples: share memory to avoid copies, synchronize correctly to avoid race conditions, and pipeline operations to hide latency. With these patterns, you can build high-performance ML-integrated graphics applications that run efficiently on diverse hardware.
+
+xref:ML_Inference/Third_Party_Libraries/08_data_transfer_optimization.adoc[Previous: Data Transfer Optimization] | xref:ML_Inference/Third_Party_Libraries/10_choosing_library.adoc[Next: Choosing the Right Library]

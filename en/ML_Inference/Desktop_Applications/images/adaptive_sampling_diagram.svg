@@ -1,0 +1,54 @@
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="#f8f9fa" />
+
+  <!-- Render Pass 1 -->
+  <g transform="translate(50, 100)">
+    <rect x="0" y="0" width="120" height="80" rx="5" fill="#e9ecef" stroke="#343a40" stroke-width="2"/>
+    <text x="60" y="45" font-family="Arial" font-size="14" text-anchor="middle">Low-Res / 1spp</text>
+    <text x="60" y="65" font-family="Arial" font-size="14" text-anchor="middle">Initial Render</text>
+  </g>
+
+  <!-- AI Analysis -->
+  <g transform="translate(250, 100)">
+    <rect x="0" y="0" width="150" height="80" rx="10" fill="#007bff" stroke="#0056b3" stroke-width="2"/>
+    <text x="75" y="35" font-family="Arial" font-size="14" fill="white" text-anchor="middle">CNN Error</text>
+    <text x="75" y="55" font-family="Arial" font-size="14" fill="white" text-anchor="middle">Predictor</text>
+    <path d="M -80 40 L -5 40" stroke="#343a40" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  </g>
+
+  <!-- Heatmap -->
+  <g transform="translate(480, 100)">
+    <rect x="0" y="0" width="120" height="80" rx="5" fill="url(#heatmapGradient)" stroke="#343a40" stroke-width="2"/>
+    <text x="60" y="110" font-family="Arial" font-size="14" text-anchor="middle">Sampling Heatmap</text>
+    <text x="60" y="45" font-family="Arial" font-size="12" font-weight="bold" fill="white" text-anchor="middle">High Variance</text>
+    <path d="M -80 40 L -5 40" stroke="#343a40" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  </g>
+
+  <!-- Ray Tracer -->
+  <g transform="translate(680, 100)">
+    <rect x="0" y="0" width="100" height="80" rx="5" fill="#28a745" stroke="#1e7e34" stroke-width="2"/>
+    <text x="50" y="35" font-family="Arial" font-size="14" fill="white" text-anchor="middle">Targeted</text>
+    <text x="50" y="55" font-family="Arial" font-size="14" fill="white" text-anchor="middle">Rays</text>
+    <path d="M -80 40 L -5 40" stroke="#343a40" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(50, 250)">
+    <text x="0" y="0" font-family="Arial" font-size="16" font-weight="bold">How it Works:</text>
+    <text x="20" y="30" font-family="Arial" font-size="14">1. Initial quick pass identifies scene complexity.</text>
+    <text x="20" y="55" font-family="Arial" font-size="14">2. AI predicts where noise will be highest.</text>
+    <text x="20" y="80" font-family="Arial" font-size="14">3. Heatmap guides the secondary, high-quality ray dispatch.</text>
+  </g>
+
+  <!-- Gradients -->
+  <defs>
+    <radialGradient id="heatmapGradient">
+      <stop offset="10%" stop-color="#dc3545" />
+      <stop offset="90%" stop-color="#007bff" />
+    </radialGradient>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#343a40" />
+    </marker>
+  </defs>
+</svg>

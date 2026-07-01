@@ -1,6 +1,6 @@
 :pp: {plus}{plus}
 
-= GUI: Conclusion
+== GUI: Conclusion
 
 == Conclusion
 

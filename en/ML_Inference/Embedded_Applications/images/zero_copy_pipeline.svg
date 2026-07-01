@@ -1,0 +1,48 @@
+<svg width="800" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="300" fill="#f9f9f9" />
+
+  <!-- Kernel Space -->
+  <rect x="50" y="50" width="700" height="100" rx="5" fill="#eeeeee" stroke="#999" stroke-width="1" stroke-dasharray="5,5" />
+  <text x="60" y="70" font-family="Arial" font-size="12" fill="#999">Linux Kernel Space</text>
+
+  <!-- Camera Hardware -->
+  <rect x="70" y="70" width="120" height="60" rx="5" fill="#ffecb3" stroke="#ffb300" stroke-width="2" />
+  <text x="130" y="105" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#ffb300">Camera Sensor</text>
+
+  <!-- Physical RAM Buffer (dmabuf) -->
+  <rect x="340" y="70" width="120" height="60" rx="5" fill="#c8e6c9" stroke="#4caf50" stroke-width="2" />
+  <text x="400" y="105" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#4caf50">dmabuf</text>
+  <text x="400" y="120" text-anchor="middle" font-family="Arial" font-size="10" fill="#4caf50">(Shared Memory)</text>
+
+  <!-- User Space -->
+  <text x="60" y="170" font-family="Arial" font-size="12" fill="#999">User Space</text>
+
+  <!-- V4L2 App -->
+  <rect x="250" y="200" width="120" height="60" rx="5" fill="#e3f2fd" stroke="#2196f3" stroke-width="2" />
+  <text x="310" y="235" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#2196f3">V4L2 Interface</text>
+
+  <!-- Vulkan ML Engine -->
+  <rect x="430" y="200" width="150" height="60" rx="5" fill="#f3e5f5" stroke="#9c27b0" stroke-width="2" />
+  <text x="505" y="235" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#9c27b0">Vulkan Compute</text>
+
+  <!-- Flow Arrows -->
+  <!-- Sensor to dmabuf (DMA) -->
+  <path d="M 190 100 L 340 100" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="230" y="90" font-family="Arial" font-size="12" fill="#333">DMA Write</text>
+
+  <!-- V4L2 Control -->
+  <path d="M 310 200 L 310 130" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="240" y="165" font-family="Arial" font-size="12" fill="#333">VIDIOC_EXPBUF</text>
+
+  <!-- Vulkan Import -->
+  <path d="M 505 200 L 505 110 Q 505 100 460 100" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  <text x="515" y="165" font-family="Arial" font-size="12" fill="#333">vkAllocateMemory</text>
+
+</svg>

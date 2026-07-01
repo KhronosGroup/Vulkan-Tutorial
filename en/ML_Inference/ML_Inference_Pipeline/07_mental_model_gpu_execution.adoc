@@ -1,0 +1,155 @@
+:pp: {plus}{plus}
+
+= Mental Model: GPU Execution
+
+We've covered a lot of ground—from what machine learning is, to how neural networks work, to the formats that package trained models. Now it's time to tie everything together with a mental model that connects all these concepts to actual GPU execution with Vulkan.
+
+Think of this chapter as stepping back to see the whole picture. We're going to trace the complete journey from a trained model sitting on disk to inference running on your GPU, identifying the key challenges and design decisions along the way.
+
+== The Journey from Model to GPU
+
+Let's follow a trained model through its complete lifecycle in your application. Understanding this journey helps you see where each piece fits and why it matters.
+
+*Step 1: Training (Not Our Problem)*
+
+Somewhere, someone trained a neural network. Maybe it was you, maybe it was a researcher who published a pre-trained model. They used PyTorch or TensorFlow, fed it millions of examples, and after hours or days of computation, got a trained model. The weights and biases have been learned, the model performs well on test data, and now it's ready for deployment.
+
+This is where our story begins—with a trained model that needs to run efficiently in production.
+
+*Step 2: Export to Inference Format*
+
+The training framework's native format isn't ideal for deployment. It includes training-specific machinery, might be tied to a particular framework version, and isn't optimized for size or loading speed. So the model gets exported to an inference format—TFLite or ONNX.
+
+This export process strips out training-specific components, optimizes the graph (removing unnecessary operations, fusing layers where possible), and packages everything into a compact, standardized format. What you get is a file—maybe a few megabytes to a few hundred megabytes—that contains the network architecture, all the learned weights, and metadata about how to use it.
+
+*Step 3: Load and Parse (Your First Challenge)*
+
+Now your application needs to load this model file. This is your first real challenge: parsing the format-specific structure to extract the information you need.
+
+You're reading a binary file with a specific schema. For ONNX, that means parsing Protocol Buffers. For TFLite, it's FlatBuffers. Each has its quirks, but they all contain the same essential information: what layers exist, how they're connected, what operations each layer performs, and the weights for each operation.
+
+As you parse, you're building an internal representation—a graph structure that captures the model's architecture. Each node in this graph represents an operation (convolution, matrix multiply, activation function, etc.), and edges represent data flow between operations.
+
+*Step 4: Compile to Vulkan (The Translation)*
+
+With the model graph in hand, you need to translate it to Vulkan compute operations. This is where your understanding of both neural networks and Vulkan comes together.
+
+Each operation type in the model needs a corresponding compute shader. A convolution layer needs a convolution shader. A matrix multiplication needs a matrix multiply shader. An activation function needs an activation shader. You're essentially building a library of compute shaders that implement neural network operations.
+
+But it's not just about the shaders. You also need to:
+
+*Allocate GPU memory* for all the tensors—inputs, outputs, intermediate activations, and weights. This is a significant design decision. Do you allocate everything upfront (static allocation) or as needed (dynamic allocation)? Do you reuse memory for intermediate results that are no longer needed?
+
+*Upload weights* to GPU memory. These are the millions of learned parameters that define your model. They're constant during inference, so you upload them once and keep them resident on the GPU.
+
+*Create Vulkan pipelines* for each shader, with appropriate descriptor sets for accessing buffers. This is standard Vulkan work, but the scale might be larger than you're used to—a complex model might have dozens of different operation types.
+
+*Plan the execution order*. The model graph tells you dependencies—which operations must complete before others can start. You need to translate this into a sequence of compute dispatches with appropriate synchronization.
+
+*Step 5: Execute Inference (The Payoff)*
+
+Now you're ready to run inference. Here's what happens for each inference request:
+
+*Transfer input data* to GPU memory. This might be an image, audio buffer, or other input data. The transfer itself is straightforward, but minimizing this overhead is important for latency-sensitive applications.
+
+*Dispatch compute shaders* in the order you planned. Each shader reads its input tensors, performs its operation, and writes output tensors. Data flows through the network, layer by layer, until you reach the final output.
+
+*Synchronize between operations*. This is crucial for correctness. You need to ensure that each operation completes and its writes are visible before dependent operations start. Vulkan gives you several tools for this: pipeline barriers, memory barriers, and semaphores.
+
+*Read results back* to CPU memory. The final output tensor contains your predictions—class probabilities, detected objects, generated text, whatever your model produces.
+
+This entire process—from input to output—needs to happen fast. For real-time applications, you might need to complete inference in just a few milliseconds.
+
+== The Key Challenges
+
+Let's dig deeper into the challenges you'll face at each stage, because understanding these challenges helps you make better design decisions.
+
+=== Challenge 1: Memory Management
+
+Neural networks work with large multi-dimensional arrays (tensors). A single image might be 224×224×3 floats (about 600KB). Intermediate activations can be much larger. A typical model might need hundreds of megabytes of GPU memory.
+
+The naive approach—allocate a new buffer for every tensor—is wasteful. Many intermediate tensors are only needed briefly. Once an operation completes and its outputs are consumed by the next operation, that memory can be reused.
+
+The smart approach is to analyze the model graph and identify which tensors can share memory. If tensor A is only needed for operations 1-3, and tensor B is only needed for operations 5-7, they can use the same memory. This is called *memory reuse* or *memory pooling*, and it can dramatically reduce your memory footprint.
+
+The tradeoff is complexity. Static allocation with memory reuse requires analyzing the entire graph upfront and planning memory usage. Dynamic allocation is simpler but slower and uses more memory. For most applications, the performance benefits of static allocation are worth the implementation complexity.
+
+=== Challenge 2: Synchronization
+
+GPUs are massively parallel, but neural network inference is inherently sequential—each layer depends on the previous layer's output. You can't start layer 5 until layer 4 completes. This creates a tension between parallelism and dependencies.
+
+Vulkan gives you explicit control over synchronization, which is both powerful and dangerous. Too little synchronization, and you get race conditions—operations reading data before it's written, leading to incorrect results. Too much synchronization, and you serialize execution, losing parallelism and performance.
+
+The key is understanding your dependencies precisely. Use pipeline barriers to enforce necessary ordering while allowing independent operations to overlap. For example, if your model has parallel branches (common in modern architectures), those branches can execute concurrently as long as you synchronize when they merge.
+
+=== Challenge 3: Performance Optimization
+
+Getting inference working is one thing. Getting it fast is another. There are many optimization opportunities:
+
+*Operation fusion*: Combining multiple operations into a single shader reduces overhead. For example, convolution followed by activation can be fused into one shader that does both, eliminating an intermediate buffer and a dispatch.
+
+*Memory layout*: How you arrange data in memory affects cache efficiency. Some layouts are better for certain operations. Finding the right layout—or converting between layouts—can significantly impact performance.
+
+*Batching*: Processing multiple inputs together can improve throughput by better utilizing the GPU. Instead of running inference on one image at a time, process 4 or 8 or 16 together. This increases latency but dramatically improves throughput.
+
+*Hardware-specific features*: Modern GPUs have specialized hardware for certain operations. For example, Tensor cores on NVIDIA GPUs, WMMA on AMD, or XMX on Intel accelerate matrix multiplication. Understanding your target hardware and leveraging its capabilities (often via cross-vendor APIs like WebGPU or Vulkan) can provide substantial speedups.
+
+The challenge is knowing which optimizations matter for your specific model and hardware. Profiling is essential—measure where time is actually spent, then optimize those hotspots.
+
+== Thinking in Layers and Operations
+
+As you implement inference, it helps to think about the mapping between neural network concepts and GPU compute operations. Let's make this concrete with examples.
+
+*Dense (Fully Connected) Layer*: This is fundamentally a matrix multiplication followed by an activation function. Your input is a vector (or batch of vectors), your weights are a matrix, and you're computing `output = activation(weights × input + bias)`. On the GPU, this becomes a matrix multiply shader followed by an activation shader. The matrix multiply is the expensive part—it's O(n²) or O(n³) depending on dimensions—so optimizing it matters.
+
+*Convolutional Layer*: This is a sliding window operation. You're taking a small filter (maybe 3×3 or 5×5) and sliding it across your input, computing a weighted sum at each position. With multiple filters and multiple input channels, this becomes a lot of computation. On the GPU, you can parallelize across output positions and channels. Each work group might compute one output tile, with threads within the group handling different channels or positions.
+
+*Pooling Layer*: This is simpler—downsampling by taking the maximum or average over small regions. It's embarrassingly parallel: each output position is independent. Your shader can process many output positions in parallel with minimal synchronization.
+
+*Normalization Layer*: This requires computing statistics (mean, variance) across a dimension, then normalizing. It's trickier because computing statistics requires reduction operations, which need careful synchronization. But once you have the statistics, applying the normalization is straightforward.
+
+Understanding these mappings helps you design efficient shaders and reason about performance. A model with many convolutions will be compute-bound. A model with many small operations will be overhead-bound. Knowing this guides your optimization strategy.
+
+== Putting It All Together
+
+Let's trace through a complete example to make this concrete. Imagine you're running inference on an image classification model—something like ResNet-50.
+
+You start with an image: 224×224×3 pixels. You transfer it to GPU memory—about 600KB. Your first layer is a convolution: 7×7 filters, 64 output channels. You dispatch your convolution shader, which reads the input image and weight tensors, computes the convolution, and writes the output. This output is 112×112×64 (downsampled due to stride).
+
+Next comes batch normalization and ReLU activation. You dispatch shaders for these operations, reading the convolution output and writing normalized, activated results.
+
+Then you enter a series of residual blocks—the core of ResNet. Each block has multiple convolutions, normalizations, and activations, with skip connections that add earlier activations to later ones. You dispatch shaders for each operation, carefully synchronizing to ensure skip connections read the right data.
+
+After many layers, you reach global average pooling—reducing each channel to a single value. Then a final fully connected layer that produces class probabilities. You dispatch these final shaders, and the output is a vector of 1000 probabilities (for ImageNet classes).
+
+Finally, you read this output back to CPU memory. You find the maximum probability, and that's your prediction: "golden retriever" or "coffee mug" or whatever the model thinks the image contains.
+
+This entire process—dozens of shader dispatches, hundreds of megabytes of data flowing through the GPU—completes in milliseconds. That's the power of GPU acceleration for neural network inference.
+
+== Summary
+
+This chapter presented the complete mental model for ML inference with Vulkan, tracing the journey from trained model to GPU execution. The pipeline consists of exporting to an inference format, loading and parsing the model file, compiling to Vulkan compute shaders, and executing inference on the GPU.
+
+The key challenges are memory management (allocating and reusing buffers efficiently), synchronization (enforcing dependencies without over-serializing), and performance optimization (fusion, layout, batching, hardware features). Understanding the mapping between neural network layers and GPU compute operations helps you design efficient implementations.
+
+Throughout this ML Inference Pipeline chapter series, we've built a comprehensive foundation: what machine learning is, how neural networks work, the distinction between training and inference, transfer learning strategies, model formats, and the complete execution pipeline. This conceptual understanding prepares you for the practical implementation in the next chapter, where we'll dive into Vulkan compute shaders for ML workloads.
+
+== Looking Back and Forward
+
+Let's recap what we've learned across this entire chapter series:
+
+We started by understanding that *machine learning* teaches computers to learn from data rather than following explicit rules. This fundamental shift—from programming rules to learning patterns—enables tasks that would be impossible to program explicitly.
+
+We explored *neural networks* as mathematical functions inspired by biological neurons. We saw why *linear functions alone are insufficient*—they collapse into simpler forms—and why *non-linear activation functions* are essential for neural networks to approximate complex functions.
+
+We distinguished *training* from *inference*, understanding that inference is about using trained models efficiently, not about the learning process itself. We explored the *inference pipeline*: preprocessing, neural network execution, and postprocessing.
+
+We learned about *transfer learning*, which allows us to leverage pre-trained models instead of training from scratch. We explored *model formats* (TFLite and ONNX) that bridge training frameworks and deployment environments.
+
+Finally, we traced the *complete pipeline* from trained model to GPU execution, identifying the key challenges in memory management, synchronization, and performance optimization.
+
+With this mental model in place—from mathematical foundations to practical implementation pipeline—you're ready for the technical details. In the next chapter, we'll explore Vulkan compute pipelines specifically for ML workloads, implement basic operations, and build toward a complete inference engine.
+
+The journey from concepts to code begins now.
+
+xref:ML_Inference/ML_Inference_Pipeline/06_model_formats.adoc[Previous: Model Formats] | xref:ML_Inference/Vulkan_Compute_for_ML/01_introduction.adoc[Next: Vulkan Compute for ML]

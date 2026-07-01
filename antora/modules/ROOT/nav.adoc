@@ -21,7 +21,7 @@
 *** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[Introduction]
 *** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/01_Shader_modules.adoc[Shader modules]
 *** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/02_Fixed_functions.adoc[Fixed functions]
-*** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/03_Render_passes.adoc[Render passes]
+*** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/03_Dynamic_rendering.adoc[Dynamic rendering]
 *** xref:03_Drawing_a_triangle/02_Graphics_pipeline_basics/04_Conclusion.adoc[Conclusion]
 ** xref:03_Drawing_a_triangle/03_Drawing/00_Framebuffers.adoc[Drawing]
 *** xref:03_Drawing_a_triangle/03_Drawing/00_Framebuffers.adoc[Framebuffers]

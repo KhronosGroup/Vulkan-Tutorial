@@ -1,0 +1,170 @@
+:pp: {plus}{plus}
+
+= Final Project: The "AI-Driven" Graphics Lab
+
+== Introduction: The Collaborative Capstone
+
+Congratulations! You have built your environment, specialized your models, mastered the "Design-Implementation-Review" cycle, and explored the forensic arts of debugging and deployment. Now, it is time to bring every tool in your new toolbelt together for a final, comprehensive challenge: **The AI-Driven Graphics Lab.**
+
+In this capstone project, you will work within the **Simple Engine** (found in the `attachments/simple_engine/` directory from the Building a Simple Engine tutorial). You will not just "use" AI; you will **Direct** a team of digital specialists as they help you architect, implement, debug, and optimize a complex graphics feature from scratch. This is your final exam in **Collaborative Engineering**.
+
+== The Project: A Dual-Filtering Blur System
+
+You will implement a high-performance **Dual-Filtering Blur** system (based on the techniques used in modern AAA engines). This is more complex than a standard Gaussian blur; it requires a chain of downsample and upsample passes, intricate synchronization barriers, and precise texture sampling logic.
+
+== Tutorial: Setting up the Graphics Lab
+
+To begin your final project, you must set up a clean workspace and prepare your AI assistants with the necessary engine context. Follow these steps to initiate the system design phase.
+
+=== Step 1: Loading the Engine Context
+Provide your AI assistant (Goose or IDE Chat) with the core files of the **Simple Engine**. This ensures the AI understands your specific RAII wrappers, resource management logic, and established coding patterns. Before you begin, ensure your **mcp-Vulkan** and **GPUInfo** MCP servers are active in your configuration. This allows the assistant to cross-reference your code with the official specification and hardware limits in real-time.
+
+[source,bash]
+----
+# Example: Loading context and MCP tools into Goose
+goose session --instruction "Analyze renderer.h and vulkan_device.h. We are implementing a Dual-Filtering Blur system. Use the 'vulkan' MCP to verify spec compliance for all synchronization logic."
+----
+
+=== Step 2: The Architectural Design Prompt
+Use a high-reasoning model (like **Claude 4.6** or **GPT-5.3**) to design the system. Ask for a **Technical Roadmap** that includes the resource lifecycle and synchronization chain, specifically targeting the `vk::raii` (Vulkan-HPP) wrappers used in the engine. **Instruct the model to format its response as a concise, technical 'Contract' and save this output locally as `LLM_NOTES.md`.**
+
+[source,text]
+----
+We are implementing a Dual-Filtering Blur system in our
+Vulkan 1.4 engine (Simple Engine). Based on our
+'vk::raii::Image' and 'vk::raii::Buffer' usage in
+'renderer.h', design a roadmap for:
+
+1. Resource Lifecycle: How many downsample/upsample images
+   do we need for a 5-tap blur?
+2. Synchronization: Define the 'vk::ImageMemoryBarrier2'
+   transitions between each pass using the 'vulkan-raii'
+   paradigm. Use the 'search-vulkan-docs' MCP tool to confirm
+   the latest layout transition rules for Vulkan 1.4.
+3. Hardware Constraints: Use the 'query_gpu_limit' tool (via
+   the 'gpuinfo' MCP) to verify if 'maxDescriptorSetSampledImages'
+   on common mobile GPUs supports our proposed strategy.
+4. Shader Logic: Suggest a Slang/HLSL implementation
+   for the downsample tap.
+
+Format this entire response as a technical contract
+for an implementation model and save it to LLM_NOTES.md.
+----
+
+=== Step 3: Implementation and Refactoring
+Once the design is reviewed and your `LLM_NOTES.md` is ready, task your local specialist (like **Qwen 3-Coder**) to generate the `BlurRenderer` header and implementation. By providing the notes as direct context, you ensure the local model follows the established architectural contract without needing high-reasoning cloud access for the bulk implementation phase.
+
+[source,bash]
+----
+# Example: Using Goose with the local Qwen specialist and design notes
+goose session --instruction "Read LLM_NOTES.md. Based on this technical contract, implement the 'BlurRenderer' class. Ensure you use 'vk::raii' structures and follow the engine's modular pattern."
+----
+
+[source,cpp]
+----
+// Example: AI-generated pipeline creation based on the contract
+vk::raii::Pipeline BlurRenderer::createDownsamplePipeline() {
+    vk::GraphicsPipelineCreateInfo pipelineInfo = {};
+    // AI will fill in the shader stages, vertex input, etc.
+    // using the engine's existing resource managers.
+}
+----
+
+=== Step 4: The Performance Audit
+Finally, use an autonomous agent (like **Goose**) to perform a performance scan of your new feature.
+
+[source,text]
+----
+Goose, audit 'BlurRenderer::recordCommands'.
+Look for redundant descriptor set updates or any
+barriers that are preventing GPU overlap between
+the downsample and upsample stages.
+----
+
+=== Step 5: Autonomous CI/CD and Unit Testing
+To ensure your new feature remains stable across future engine updates, you must integrate it into your continuous integration pipeline. Use your autonomous agent to generate comprehensive unit tests for the `BlurRenderer` and then update your CI configuration to execute these tests on every push.
+
+[source,text]
+----
+Goose, create a new unit test file 'tests/blur_renderer_test.cpp'.
+The test should verify the 'BlurRenderer' resource allocation
+and ensure that the downsample mip-chain dimensions are calculated
+correctly for a 1080p input. Once created, update our
+GitHub Actions workflow in '.github/workflows/main.yml' to
+include a new step that compiles and runs this test.
+----
+
+By tasking the AI with the creation of the test and the update of the pipeline, you ensure that the "Technical Debt" of testing is handled simultaneously with implementation, maintaining a high standard of engineering without manual overhead.
+
+=== Step 6: Multi-Frame Analysis with GFXReconstruct
+To truly verify your synchronization logic across the entire pass-chain of the blur system, you must look beyond a single frame. Use **GFXReconstruct** to capture a stream of API calls and task your autonomous agent with a "Timeline Audit." This is particularly effective for catching race conditions or incorrect image layout transitions that might only manifest intermittently or during the first few frames of initialization.
+
+[source,bash]
+----
+# 1. Capture the trace of your new blur implementation
+VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_gfxreconstruct ./SimpleEngine
+
+# 2. Convert a specific frame range to JSON for the AI to reason about
+# We focus on a small range to stay within the model's context window
+gfxrecon-convert --to-json --frames 5-10 capture.gfxr blur_trace.json
+----
+
+[source,text]
+----
+Goose, I have provided 'blur_trace.json' which contains
+the API stream for our Dual-Filtering Blur system.
+Perform a 'Synchronization Audit':
+
+1. Identify all 'vkCmdPipelineBarrier2' calls related to
+   the 'Blur_Downsample_Mip' images.
+2. Verify that the 'oldLayout' in frame 6 matches the
+   'newLayout' set at the end of frame 5.
+3. Use the 'vulkan' MCP to confirm that we aren't
+   performing any redundant 'UNDEFINED' transitions
+   that would discard tile memory on mobile GPUs.
+
+If you find a hazard, suggest the specific line in
+'BlurRenderer.cpp' that needs adjustment.
+----
+
+By auditing the "Stream of Truth," you ensure that your engine isn't just working by "accident" on your current developer driver, but is strictly compliant with the Vulkan specification across time.
+
+=== Step 7: Visual Frame Inspection with RenderDoc
+While GFXReconstruct provides the multi-frame "Timeline of Truth," **RenderDoc** allows you to perform a deep-dive into the visual state of a single frame. Use the **RenderDoc command-line tool (`renderdoccmd`)** in conjunction with your autonomous agent to verify that each downsample and upsample pass in your blur system is producing the expected visual output. This is especially useful for identifying "Black Textures" or "Sampling Artifacts" that arise from incorrect sampler settings.
+
+[source,bash]
+----
+# 1. Capture a frame from your blur implementation
+# (Assuming RenderDoc is configured to capture on 'F12' or similar)
+./SimpleEngine --capture-frame 60
+
+# 2. Command Goose to perform a visual state audit
+# Note: We use rdc-cli to export the draw call list and pipeline state
+----
+
+[source,text]
+----
+Goose, analyze 'capture_frame_60.rdc' using 'renderdoccmd'.
+We are looking for the 'Blur_Downsample_Pass_2' draw call.
+
+1. List all draw calls and find the one that binds
+   the 'downsample_mip_1' texture as an input.
+2. Export the 'VkSampler' state for this draw call.
+3. Compare the 'minLod' and 'maxLod' settings in the
+   capture against our 'SamplerBuilder' in 'renderer_utils.cpp'.
+4. Check if the 'fragment shader' output is consistently zero.
+
+If you find a mismatch, explain how to refactor the
+'createSampler' logic to ensure we aren't sampling
+beyond the available mip-levels.
+----
+
+By integrating RenderDoc with your AI agent, you move beyond "guessing" why a texture is black. The AI identifies the specific state mismatch (like a misconfigured LOD clamp) and correlates it directly to the line of code in your engine that created the faulty resource.
+
+== Summary: Mastering the Collaborative Engineering Workflow
+
+By completing this lab, you have practiced managing the complexity of a modern Vulkan feature using a **Collaborative Engineering** approach — combining high-reasoning cloud models for architecture, local specialists for implementation, and established tools like RenderDoc and GFXReconstruct for verification.
+
+AI assistance does not replace the need to understand Vulkan; it reduces the time spent on boilerplate and repetitive lookups so you can focus on the decisions that matter. The Vulkan specification remains your authoritative reference, and your judgment as an engineer remains the critical ingredient. What changes is how efficiently you can navigate that specification and iterate on your implementation.
+
+Next: xref:conclusion.adoc[Main Tutorial Conclusion]

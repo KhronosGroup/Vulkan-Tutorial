@@ -1,0 +1,33 @@
+:pp: {plus}{plus}
+
+= Multimodal AI: Visual Reasoning Capabilities
+
+== Introduction: The Visual Nature of Graphics
+
+Vulkan programming is inherently visual. When something goes wrong in your engine, the first evidence isn't usually a crash or a log message; it's a flicker on the screen, a missing shadow, or a strange moiré pattern on a texture.
+
+Until recently, AI assistants were limited to text-based inputs. You had to describe your visual bugs in text: *"The shadows have jagged edges"* or *"The textures are flickering when I move the camera."* This created a massive **Communication Gap**. You knew what the bug looked like, but the AI could only reason about it based on your description. This section introduces **Multimodal AI**, which gives your assistant the ability to analyze your screenshots and diagnose visual errors directly.
+
+== The Core Concept: Pixels to State
+
+A **Multimodal Model** (like **Qwen 3-VL** or **GPT-5.3**) has been trained on both images and text simultaneously. It doesn't just "see" an image as a collection of pixels; it understands the relationship between those pixels and the underlying concepts of graphics engineering.
+
+Consider the case where you are implementing shadow maps for the first time and your shadows are covered in strange, self-shadowing stripes. A generic AI might suggest a shader error or a texture sampling problem if you describe it as "stripes on the floor." However, with a multimodal solution, you can upload a screenshot and the AI immediately identifies the pattern as **Shadow Acne**. It doesn't just give you a generic fix; it explains that your `depthBiasConstantFactor` is too low for your current shadow map resolution and suggests a specific range of values based on the "stair-stepping" it sees in the image.
+
+== Why Multimodal Matters for Vulkan
+
+Vulkan's complexity means that a single visual bug can be caused by dozens of different state mismatches. Flickering could be a synchronization hazard, a depth-testing error, or a swapchain image acquisition race. Similarly, missing meshes could be a back-face culling issue, an incorrect vertex buffer offset, or a shader stage mismatch.
+
+A multimodal assistant acts as a **Visual Analysis Tool**. It analyzes the artifact and identifies potential causes, such as suggesting that triangles popping in and out might indicate Z-fighting. It could then recommend checking your near/far plane ratios in your projection matrix if they look too aggressive for a 24-bit depth buffer.
+
+== The Multimodal Strategy
+
+In the following chapters, we will explore how to integrate visual reasoning into your development loop:
+
+1.  **xref:AI_Assisted_Vulkan/04_multimodal_ai/02_multimodal_models.adoc[The Vision Specialist Models]:** We will introduce the models designed for visual reasoning, such as **Qwen 3-VL** and **Gemma 4**. We'll discuss how these models differ from the coding-only models we explored in the previous section.
+2.  **xref:AI_Assisted_Vulkan/04_multimodal_ai/03_visual_bug_diagnosis.adoc[Visual Bug Diagnosis (The Experience)]:** This is the heart of the section. We will show you how to provide screenshots of common Vulkan errors—like **Shadow Acne**, **Texture Bleeding**, and **Z-fighting**—and how to prompt the AI to identify the underlying Vulkan state mismatch.
+3.  **xref:AI_Assisted_Vulkan/04_multimodal_ai/04_expectations_limits.adoc[Expectations & Limits]:** AI is not an automated "fix-it" tool for hardware. We will discuss the diagnostic role, the limits of sub-pixel resolution, and why the AI still needs your code context to verify its visual analysis.
+
+By the end of this section, you will be able to treat your AI assistant as a diagnostic tool, connecting what you see on the screen with the code that generated it.
+
+Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/02_multimodal_models.adoc[The Vision Specialist Models]

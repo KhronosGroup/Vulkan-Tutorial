@@ -1,0 +1,38 @@
+:pp: {plus}{plus}
+
+= Pro-Level Debugging with AI & RenderDoc
+
+== Introduction: The Diagnostic Paradigm Shift
+
+In traditional graphics development, debugging is a game of "Find the Needle in the Haystack." You are presented with a cryptic **Validation Layer Error (VUID)** or, worse, a "Black Screen," and you must manually trace through 10,000 lines of pipeline state, synchronization barriers, and shader logic to find the single bit that is set incorrectly.
+
+In **Collaborative Engineering**, we move from **Manual Tracing** to **Automated Diagnosis.** We transform our AI assistant from a "Code Writer" into a **diagnostic tool.** This section explores how to use AI to analyze your running application and find the root cause of its failures using the **Evidence Chain**.
+
+== The Core Concept: The "Evidence Chain"
+
+A professional debugging workflow uses three distinct sources of truth to solve a bug:
+
+1.  **The Syntactic Evidence (VUIDs):** The specific error strings from the Vulkan Validation Layers. These tell you *what* rule you broke.
+2.  **The State Evidence (RenderDoc):** The raw state of the GPU—the pipelines, descriptors, and buffers—at the exact moment of the draw call. This tells you *what* the GPU actually saw.
+3.  **The Logical Evidence (The AI Reasoning Engine):** The reasoning power of the AI, which correlates the VUID with the RenderDoc state and your C{pp} source code. This tells you **why** the error happened and how to fix it.
+
+== Why Use AI for Vulkan Debugging?
+
+Vulkan's validation errors are notoriously dense. A VUID like `VUID-VkGraphicsPipelineCreateInfo-pStages-01565` is technically accurate but emotionally exhausting. By feeding these strings and GPU captures into an AI assistant, you give it the ability to:
+
+*   **Translate Cryptic VUIDs:** Instantly explain a complex "Image Layout Mismatch" in plain English, including the likely locations in your code where you forgot the transition.
+*   **Audit GPU State:** "Scan" a RenderDoc capture to identify why a specific descriptor set is "Incompatible" with a pipeline, without you having to manually compare member-by-member.
+*   **Shader Reasoning:** Use variable values from a specific "failing" pixel to find logical errors in your HLSL or Slang code that the compiler couldn't catch.
+
+== The Debugging Roadmap
+
+In the following chapters, we will build your "Forensic Lab":
+
+1.  **xref:AI_Assisted_Vulkan/06_debugging/02_vuid_autofix.adoc[The VUID Auto-Fix]:** How to use your assistant to get instant code corrections from raw error strings.
+2.  **xref:AI_Assisted_Vulkan/06_debugging/03_renderdoc_ai_integration.adoc[AI + RenderDoc Integration]:** Using autonomous agents to analyze your GPU captures to identify redundant state changes and sync hazards.
+3.  **xref:AI_Assisted_Vulkan/06_debugging/04_shader_debugging_logs.adoc[Shader Logs & API Dumps]:** Analyzing the underlying behavior of your app by feeding high-volume API logs to an AI to find the source of a state mismatch.
+4.  **xref:AI_Assisted_Vulkan/06_debugging/05_gfxreconstruct_ai.adoc[AI + GFXReconstruct]:** Capturing and auditing multi-frame Vulkan call streams for driver regressions and resource lifecycle hazards.
+
+By the end of this journey, you will no longer fear the "Black Screen." You will have a systematic, AI-driven process for diagnosing even the most elusive Vulkan bugs.
+
+Next: xref:AI_Assisted_Vulkan/06_debugging/02_vuid_autofix.adoc[The VUID Auto-Fix]

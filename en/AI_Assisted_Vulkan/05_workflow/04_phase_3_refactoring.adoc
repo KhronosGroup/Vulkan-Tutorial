@@ -1,0 +1,59 @@
+:pp: {plus}{plus}
+
+= Phase 3: Automated Evolution (The Review Phase)
+
+== Introduction: The Evolution of an Engine
+
+Vulkan code is not static. What was a "Best Practice" in Vulkan 1.0 (like using `VkRenderPass` and `VkFramebuffer` for every tiny subpass) is now considered "Legacy" in Vulkan 1.3, which prioritizes **Dynamic Rendering**.
+
+This final phase of the workflow is where we move from "Co-Coding" to **Supervision**. We use **Autonomous Agents** (like **Goose**) to perform the "Deep Refactor." Unlike an IDE assistant that focuses on single functions, an agent can "look" across your entire engine to ensure that a major architectural shift is implemented consistently from the initialization code to the final draw call.
+
+== The Core Concept: The "Agentic Shift"
+
+In **Phase 3**, the roles are reversed. You are no longer writing code with the AI's help; you are giving the AI an engineering goal and acting as the **Technical Reviewer**.
+
+*   **The Problem:** You want to migrate your engine from GLSL to **Slang**. This involves updating every shader, changing your descriptor binding logic, and modifying your shader compilation build scripts. For a human, this is a week of tedious, error-prone work.
+*   **The Agentic Solution:** You give an agent access to your terminal and your project. You say: *"Migrate our `post_process/` folder to Slang. Update the `CMakeLists.txt` to use the Slang compiler, refactor the C{pp} to use the new reflection data, and fix any compilation errors."*
+
+The agent doesn't just "suggest" changes. It reads the files, applies the refactor, runs the compiler, sees the errors, and **iterates** until the task is complete.
+
+== Why Use an Autonomous Agent?
+
+Refactoring Vulkan code is often a "House of Cards" task. If you remove a `VkRenderPass`, you must also update:
+
+1.  The `VkGraphicsPipelineCreateInfo` to use `VkPipelineRenderingCreateInfo`.
+2.  The `vkCmdBeginRenderPass` call to `vkCmdBeginRendering`.
+3.  The layout transitions in every affected memory barrier.
+
+An autonomous agent is uniquely suited for this because it can follow the **"Error Chain"** across multiple files, fixing the compilation errors it creates until the system reaches a new stable state.
+
+== Real-World Experience: The "Dynamic Rendering" Migration
+
+Let's see how an agent handles the migration of our Bloom system to Dynamic Rendering.
+
+=== Step 1: Setting the Guardrails
+Before starting, ensure you are on a clean Git branch.
+**Your Role:** You define the scope. *"Only modify the `BloomRenderer` class and its associated shaders. Do not touch the core `VulkanDevice` initialization yet."*
+
+=== Step 2: The Agentic Loop
+You give the command: *"Refactor `BloomRenderer.cpp` to use Dynamic Rendering. Replace all `VkRenderPass` members with `VkPipelineRenderingCreateInfo`. Ensure the image barriers are updated to use `VkImageMemoryBarrier2`."*
+
+You watch the terminal. The agent:
+
+*   Reads the code and identifies the dependency chain.
+*   Modifies the pipelines.
+*   Runs `ninja`.
+*   Sees a "variable not found" error because it forgot to include the `vulkan_core.h` update for synchronization2.
+*   Fixes the include and rebuilds.
+
+=== Step 3: Technical Review
+The build is passing, but is the code *good*?
+**Your Role:** You review the diff. You notice the agent used `IMAGE_LAYOUT_GENERAL` for everything to "make it work." You correct it: *"Optimize the layouts in the Bloom pass to use `ATTACHMENT_OPTIMAL` for the render targets and `READ_ONLY_OPTIMAL` for the source textures."*
+
+== Summary: The Evolving Engine
+
+Phase 3 is the culmination of the **Collaborative Loop**. By using autonomous agents for the "Heavy Refactor," you ensure that your engine never becomes trapped in legacy patterns. You focus on the **Innovation** of your graphics technology, while the AI manages the intricate details of the evolution.
+
+With the completion of Section 5, you have mastered the **Feature Lifecycle**: from Cloud-based Design, through Local-based Implementation, to Autonomous Evolution. In the next section, we will explore the "Dark Arts" of **Pro-Level Debugging with AI and RenderDoc.**
+
+Next: xref:AI_Assisted_Vulkan/06_debugging/01_introduction.adoc[Pro-Level Debugging with AI & RenderDoc]

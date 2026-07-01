@@ -73,6 +73,7 @@ path = [
     "en/Synchronization/**",
     "en/ML_Inference/**",
     "en/Advanced_glTF/**",
+    "en/AI_Assisted_Vulkan/**",
     "scripts/**",
 ]
 precedence = "closest"

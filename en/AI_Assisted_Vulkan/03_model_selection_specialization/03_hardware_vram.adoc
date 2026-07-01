@@ -1,0 +1,97 @@
+:pp: {plus}{plus}
+
+= Hardware & VRAM Budgeting: The Resource Strategy
+
+== Introduction: The Battle for VRAM
+
+Vulkan development is a high-performance pursuit. When you introduce a local AI assistant, you are no longer just competing with other applications for CPU cycles; you are competing with your own engine for **VRAM**.
+
+In the "Collaborative Engineering" era, the GPU is a shared resource. To succeed, you must move beyond "plug and play" and develop a **Resource Strategy** that ensures your AI assistant doesn't starve your Vulkan application of the memory it needs to render a single frame.
+
+== The Core Concept: VRAM Contention & The "Swap Trap"
+
+Most developers think of VRAM as a static bucket. You have 16GB, you use 10GB, you have 6GB left. However, in an AI-assisted environment, your GPU is constantly context-switching between two "heavy" workloads:
+
+1.  **The LLM Inference Engine:** Holding billions of weights in memory to generate code.
+2.  **The Vulkan Application:** Holding textures, buffers, and render targets to display your graphics.
+
+If the combined VRAM requirement exceeds your physical GPU memory, your system will hit the **Swap Trap**. Your OS will begin moving AI weights or Vulkan textures into your much slower System RAM (DDR4/5). For a graphics developer, this is catastrophic: AI generation will slow from 50 tokens per second to 2, and your Vulkan application's frame rate will drop into the single digits.
+
+== The Technical Formula: Calculating Your "True Budget"
+
+To avoid the Swap Trap, you must calculate your VRAM budget using a formula that accounts for more than just the model size. You must also account for the **KV Cache** (the AI's short-term memory).
+
+[source,text]
+----
+Total VRAM - (OS/Desktop + Vulkan Peak + (Model Size * Quantization) + KV Cache) = Safety Margin
+----
+
+*   **OS/Desktop:** Typically **1.5 - 2 GB** on Windows/Linux.
+*   **Vulkan Peak:** The maximum VRAM your engine uses during a heavy debug session.
+*   **Model Size * Quantization:** A **30B model** (like **Qwen 3-Coder**) at **4-bit (Q4_K_M)** quantization is ~18GB, while a **12B model** (like **Mistral-Nemo**) is approximately ~8GB.
+*   **KV Cache Tax:** This is the most overlooked part. As you chat with the AI, it needs memory to remember the previous parts of the conversation. At a **16k context window**, this can consume an additional **1-2 GB** of VRAM.
+
+**Real-World Experience: The 24GB VRAM Budget**
+Imagine you are using an **RTX 4090 (24GB)**.
+
+*   **OS + Vulkan App:** 6GB.
+*   **Qwen 3-Coder (30B) @ Q4_K_M:** 18GB.
+*   **Budget:** `24 - (6 + 18) = 0GB`.
+*   **The Result:** You have **zero** safety margin. As soon as you ask the AI a long question and the KV Cache grows, your system will start swapping. To fix this, you must either use a smaller model (like **Mistral-Nemo 12B** or **Llama 4 (17B)**) or reduce the AI's context window to **4,096 tokens** to reclaim that 1-2 GB of "breathing room."
+
+== Quantization: Optimizing the Model Footprint
+
+You do not need to run a model at its full, uncompressed precision (FP16). Instead, we use **Quantization** to reduce the number of bits used for each weight. Think of it like texture compression (e.g., BC7 or ASTC) for neural networks: you trade a small amount of mathematical precision for a massive reduction in memory footprint.
+
+**The "Sweet Spot" for Graphics Devs:**
+We recommend **4-bit (Q4_K_M)** or **5-bit (Q5_K_M)** quantization.
+
+*   **Why?** At 4-bit, the model's size is reduced by 75%, but its ability to reason about complex C{pp} code remains nearly 98% intact. Going lower than 4-bit (e.g., 2-bit) causes the AI to "lose the plot," leading to hallucinations in your synchronization logic because the weights no longer have enough precision to represent the subtle relationships between Vulkan's state machine transitions.
+
+== Practical Tutorial: How to Quantize a Model
+
+While most developers download pre-quantized models from HuggingFace, a professional graphics engineer should know how to perform this "compression" themselves. This allows you to take a "raw" model (FP16) released by a research lab and immediately optimize it for your local GPU.
+
+The primary tool for this is **llama.cpp**. Here is the step-by-step process:
+
+1.  **Clone and Build the Tools:**
+
+    [source,bash]
+    ----
+    git clone https://github.com/ggerganov/llama.cpp
+    cd llama.cpp
+    make -j  # Builds the quantize and convert binaries
+    ----
+
+2.  **Convert to GGUF Format:**
+    Most models are released in the HuggingFace `SafeTensors` format. You first need to convert them into the `GGUF` format, which is optimized for local inference.
+
+    [source,bash]
+    ----
+    python3 convert_hf_to_gguf.py models/my_vulkan_model/
+    ----
+
+3.  **Run the Quantization:**
+    Now, you apply the compression. We will use the `Q4_K_M` method, which uses a "Medium" 4-bit quantization that balances speed and accuracy.
+
+    [source,bash]
+    ----
+    ./quantize models/my_vulkan_model/model-f16.gguf models/my_vulkan_model/model-Q4_K_M.gguf Q4_K_M
+    ----
+
+4.  **Verification:**
+    The resulting file will be significantly smaller. A **32GB** FP16 model will now be approximately **18GB**. You can now load this file directly into **Ollama** or **LM Studio** and enjoy the extra VRAM "breathing room" for your Vulkan swapchain.
+
+== Mitigating Contention: Professional Strategies
+
+If your hardware is limited, you must become a **Resource Manager**:
+
+1.  **Context Limiting:** In your inference engine (Ollama/LM Studio), manually set the `context_length` to **8192**. This is usually enough for a few files of Vulkan code but small enough to save 1.5GB of VRAM over the default settings.
+2.  **Layer Offloading (The GGUF Strategy):** If you use the **GGUF** format, you can "split" the model. If a model has 60 layers and your GPU is full, you can move 10 layers to your CPU. The AI will be 20% slower, but your Vulkan app will regain 3GB of VRAM and stop stuttering.
+3.  **The "Secondary GPU" Hack:** If you have an old 8GB or 12GB card, install it in your second PCIe slot. Use the **Primary GPU** for your Vulkan app and point **Ollama** exclusively at the **Secondary GPU**. This is the ultimate "No-Contention" setup for professional engine developers.
+
+== Summary: The Strategic Lab
+
+Hardware budgeting is the "secret sauce" of a stable AI-assisted environment. By understanding your VRAM footprint and proactively managing your KV Cache and Quantization, you ensure that your AI assistant remains a helpful co-author rather than a resource-hungry rival to your graphics engine.
+
+Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/04_rag_mcp_specialization.adoc[Ground Truth: MCP & RAG Specialization]

@@ -1,0 +1,90 @@
+:pp: {plus}{plus}
+= Validation: The Khronos glTF-Validator
+
+== Why Validate Before Loading
+
+Your engine's glTF loader is not a general-purpose parser—it is written to handle correctly-formed assets and may silently misbehave or crash when it encounters malformed data. The Khronos glTF-Validator is a reference implementation that checks a glTF file against the full specification and reports every violation, warning, and hint it finds. Running your assets through this tool before loading them in the engine costs seconds and can save hours.
+
+The validator catches a wide range of issues that are easy to accidentally introduce during export:
+
+- Accessor byte offsets that are not properly aligned for the component type (a common issue with custom exporters and Python scripts that write binary data manually).
+- Skin joints that reference nodes not listed in the scene hierarchy.
+- Animation samplers with input arrays that are not strictly monotonically increasing (which violates the spec and can cause interpolation to produce nonsense).
+- Buffer views that overlap or extend beyond the buffer length.
+- Morph target accessors with the wrong vertex count (does not match the base primitive).
+- Missing required fields (a skin without an `inverseBindMatrices` accessor, for example).
+
+Many of these issues would not cause an immediate crash in a lenient loader like tinygltf—they would silently produce wrong data or be ignored. The validator finds them when the asset is still isolated and the source of the error is obvious.
+
+== Installing and Running the Validator
+
+The Khronos glTF-Validator is available as a command-line tool and as a web-based drag-and-drop interface. For integration into a production pipeline, the command-line tool is the right choice. It is distributed as a Dart application; install it via the Dart package manager:
+
+[source,bash]
+----
+# Install Dart SDK (Linux, using apt)
+sudo apt-get update && sudo apt-get install dart
+
+# Install the validator
+dart pub global activate gltf_validator
+
+# Add Dart's global pub cache to your PATH (if not already done)
+export PATH="$PATH:$HOME/.pub-cache/bin"
+----
+
+On macOS with Homebrew:
+
+[source,bash]
+----
+brew install dart
+dart pub global activate gltf_validator
+----
+
+Once installed, validate a file with:
+
+[source,bash]
+----
+gltf_validator character.glb
+----
+
+For CI integration, use the `--format json` flag to get machine-readable output:
+
+[source,bash]
+----
+gltf_validator --format json character.glb > validation_report.json
+----
+
+The validator exits with a non-zero status code if any errors are found, which makes it straightforward to fail a CI build on invalid assets.
+
+== Reading the Validator Output
+
+The validator categorizes its findings into four levels: **Errors**, **Warnings**, **Infos**, and **Hints**.
+
+An **Error** indicates a spec violation that will definitely produce incorrect behavior. If the validator reports any errors, the asset should not be used until they are fixed. Common errors include buffer overflows (an accessor claims to read data that extends beyond the buffer), invalid joint indices (a skin references a node index that doesn't exist), and malformed morph target counts (the number of morph target accessors doesn't match across primitives).
+
+A **Warning** indicates a situation that is technically valid according to the spec but is likely wrong or potentially problematic. Unnormalized skinning weights produce a warning—they are allowed by the spec but almost always indicate an artist workflow problem. Duplicate vertex positions within a primitive are also a warning—they suggest the mesh was not properly welded and may have topology issues.
+
+An **Info** message is informational: the asset has valid but unusual characteristics that might be intentional or might not. A very large number of morph targets (say, 100 or more) generates an info message—not because it's wrong, but because it's unusual enough to warrant attention.
+
+A **Hint** suggests a style or optimization issue that doesn't affect correctness. For example, using 32-bit floats for texture coordinates when 16-bit would be sufficient with no quality loss.
+
+For character assets specifically, pay close attention to warnings about skinning weights and to any errors relating to animation samplers. Animation errors are particularly insidious because they may only manifest at specific points in the animation timeline—a clip that looks correct at frame 0 might produce corrupt data at frame 120 if the sampler's input timestamps are incorrectly formed.
+
+== Integrating Validation into the Build Pipeline
+
+In a team environment, validation should run automatically as part of the asset build pipeline, not as a manual step. The exact integration depends on your build system, but the pattern is always the same: after any glTF export step, run the validator and fail the build if any errors are found.
+
+A simple Makefile rule:
+
+[source,makefile]
+----
+assets/%.glb: blender/%.blend
+	blender -b $< --python scripts/export_gltf.py -- $@
+	gltf_validator $@ || (echo "Validation failed for $@"; exit 1)
+----
+
+This ensures that any `.glb` asset in the `assets/` directory was produced by the Blender export script and passed validation before it was committed. If the validation fails, the build fails, and the error is visible immediately—not three days later when an engineer loads the character and gets a crash.
+
+For Python-based pipelines, the validator can also be invoked programmatically. The `gltf_validator` package exposes a library API that returns structured result objects, which you can inspect to implement custom policies (for example, treating certain info-level messages as errors in your project).
+
+xref:Advanced_glTF/Tooling_Production_Pipeline/02_blender_workflow.adoc[Previous: Blender Workflow] | xref:Advanced_glTF/Tooling_Production_Pipeline/04_gltf_viewer_audit.adoc[Next: glTF Viewer Audit]

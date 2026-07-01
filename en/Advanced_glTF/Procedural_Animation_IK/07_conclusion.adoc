@@ -1,0 +1,41 @@
+:pp: {plus}{plus}
+= Procedural Animation: Summary & What's Next
+
+== What We Built
+
+Over the course of this chapter we moved from a character that plays back artist-authored animations faithfully, to a character that adapts to its environment in real time. The distance between these two things—while it can be measured in lines of code—is far more significant in terms of what players perceive. A character that steps correctly over rocks, turns its head to watch something interesting, and leans naturally into a corner feels *present* in the game world in a way that a purely keyframed character does not.
+
+Let's review what we implemented. We started with the two fundamental IK algorithms: CCD and FABRIK. CCD works joint by joint, rotating each one to bring the end effector incrementally closer to the target, and converges quickly for short chains with tight joint limits. FABRIK thinks in terms of positions rather than rotations, redistributes the chain more evenly, and tends to look more natural for longer chains and full-arm reaching. Both integrate with the scene graph's dirty-flag system: they read world matrices, compute corrections, and write back local rotations.
+
+We then applied CCD to foot placement—the most universally impactful IK application for humanoid characters. Foot placement required us to solve three problems beyond the basic IK: body height adjustment (pelvis must move down to accommodate uneven terrain), foot rotation (the foot must align to the terrain normal, not just reach the right height), and temporal smoothing (raw IK targets snap; smooth targets feel grounded). We also covered the plant weight system that gates IK correction based on whether the foot is in a planted or swing phase, ensuring the IK enhances rather than overrides the base animation.
+
+The look-at controller introduced a purely rotational procedural technique. By computing the angle between the head's current forward direction and the direction to a target, and distributing that angle across a spine-to-head joint chain, we achieve natural head-and-neck tracking. The smoothed target system ensures the tracking responds with an appropriate sense of inertia—fast for an alert character, slow for a relaxed one.
+
+Finally, the physics-driven lean system connects the character's movement physics to its body posture. By computing the effective gravity vector from the character's acceleration, we derive a lean angle that is applied across the spine joints. The result is a character whose body communicates velocity, weight, and direction of travel without a single artist-authored lean animation.
+
+== Tradeoffs to Remember
+
+Every system we built this chapter involves a tradeoff, and it is worth naming them explicitly.
+
+CCD is simpler to implement correctly than FABRIK but can produce biased poses for long chains or extreme reaches. FABRIK is more visually balanced but requires the additional step of converting solved positions back to joint rotations, which introduces complexity around coordinate spaces. For the foot chains typical in humanoid characters, CCD is usually the right default; for spines and full-arm reach, prefer FABRIK.
+
+Foot placement with raycast and pelvis adjustment looks significantly better than no foot placement, but it introduces a latency between terrain change and character adaptation (the smoothing time constant). Aggressive smoothing reduces the latency but increases the chance of visible snapping. Conservative smoothing feels more natural but means the character's feet will float momentarily after stepping off a ledge. Profile this on your target terrain and tune accordingly.
+
+Look-at controllers based on direct rotation work well for moderate angular ranges—perhaps up to 60 or 70 degrees from the rest pose. Beyond that, distributing the rotation across multiple joints helps, but you will hit the limits of what looks natural. For characters that need to look behind them, you typically need to animate a "turn to look" animation that physically turns the body, rather than trying to stretch the look-at angle to 180 degrees.
+
+Physics-driven lean is purely heuristic. Physically correct lean angles (derived from `atan2(acceleration, gravity)`) are often visually too extreme for game characters who are simultaneously performing other exaggerated motions. The `lean_strength` tuning parameter exists precisely because physical accuracy and visual plausibility are not the same thing. Trust your eyes over the formula.
+
+== What Comes Next
+
+In Chapter 6 we turn our attention to **Morph Targets and Facial Animation**. Everything we have done so far has concerned skeletal animation—the hierarchical joint system that deforms the body. Morph targets are a fundamentally different representation: instead of rotating joints, they store per-vertex displacement vectors that blend between facial expressions, lip sync poses, and other continuous shape changes.
+
+Morph targets present a different set of challenges. The vertex count is large—a high-quality face mesh may have tens of thousands of vertices—and the number of active morph targets can be substantial in a cutscene with heavy facial animation. We will use Vulkan 1.4's descriptor indexing to handle the morph target displacement buffers without per-draw descriptor updates, and integrate the morph results with the skinning compute pipeline we built in Chapter 3.
+
+== Verification: What to Look For
+
+To verify your IK implementation:
+1.  **Convergence**: In CCD or FABRIK, monitor the error distance over iterations. It should decrease monotonically. If it oscillates or increases, your joint rotation logic (specifically the parent-to-local space conversion) is likely wrong.
+2.  **Stability**: Test your IK solver with targets that are out of reach. The chain should extend fully toward the target without jittering or spinning wildly.
+3.  **Pelvis Adjustment**: Ensure the character's hips lower correctly when standing on a steep slope. If they do not, the legs will appear over-extended or "stiff."
+
+xref:Advanced_glTF/Procedural_Animation_IK/06_physics_driven_lean.adoc[Previous: Physics-Driven Lean] | xref:Advanced_glTF/Morph_Targets_Facial_Animation/01_introduction.adoc[Next: Morph Targets & Facial Animation]

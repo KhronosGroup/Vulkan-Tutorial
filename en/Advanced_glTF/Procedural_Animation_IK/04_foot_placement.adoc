@@ -1,0 +1,166 @@
+:pp: {plus}{plus}
+= Foot Placement on Uneven Terrain
+
+== Why This Is Harder Than It Sounds
+
+Foot placement is the first practical application most developers want from an IK system, and it reveals several subtleties that the algorithm descriptions above don't fully prepare you for. Getting the feet to touch the ground sounds simple: cast a ray downward from each foot, find where it hits the terrain, and run IK to place the foot there. In practice, there are at least three additional problems you need to solve before this looks correct.
+
+The first problem is **body height**. If you push the feet down to meet the terrain, but the character's body height (the position of the root joint, typically the pelvis or hips) doesn't adjust, you will get a character whose feet are sinking into the floor on one side of a slope while floating in the air on the other. The pelvis needs to move down to accommodate the terrain's lowest foot contact point.
+
+The second problem is **foot rotation**. Dropping the foot down to the terrain surface is only half the correction—the foot also needs to *rotate* to match the terrain normal. A foot planted on a slope should angle itself to conform to the slope, not remain horizontal as if standing on flat ground. This requires computing the terrain normal at the contact point and rotating the foot to align with it.
+
+The third problem is **smoothing**. If you apply IK corrections directly every frame, the feet will jump to the exact IK solution with no inertia. When the terrain surface changes rapidly—say, the character steps from a slope onto a flat area—the foot will snap instantly. In reality, a foot has momentum and should approach its target position over several frames. We need to smooth the IK targets in time, not just compute them.
+
+== The Foot Placement Pipeline
+
+A complete foot placement system has four distinct stages that run in order every frame:
+
+**Stage 1 — Raycast.** For each foot, fire a ray downward (in world space, along the gravity direction) from a position above the foot. The ray origin should be high enough to account for the character potentially being above the terrain—typically the character's full height above the foot position. Record the hit point and the surface normal at each contact.
+
+**Stage 2 — Smooth the targets.** Apply a low-pass filter to the hit positions and normals over time. A simple exponential moving average is sufficient: `smoothed = lerp(smoothed, raw, smoothing_factor * delta_time)`. The smoothing factor controls how quickly the foot "catches up" to the terrain—higher values mean faster response but more snapping. A value around 8 to 12 typically produces natural-looking results.
+
+**Stage 3 — Adjust the pelvis.** Determine how much each foot needs to move vertically (down from its animated position to the smoothed terrain contact). Take the larger of the two vertical adjustments, and move the entire character's root joint down by that amount. This ensures neither foot needs to extend more than necessary to reach the terrain.
+
+**Stage 4 — Solve IK.** Run the IK solver (CCD or FABRIK) on each leg chain, with the smoothed hit point as the target. Then rotate the foot joint to align with the smoothed terrain normal.
+
+== Implementing the Pelvis Adjustment
+
+The pelvis adjustment is handled before the IK solve. We query the desired foot positions and compute the necessary downward offset:
+
+[source,cpp]
+----
+struct FootPlacementData {
+    glm::vec3 target_position;  // Smoothed world-space target for the foot
+    glm::vec3 surface_normal;   // Smoothed terrain normal at the contact point
+    float     ik_weight;        // 0 = no IK, 1 = full IK (for blending)
+};
+
+struct FootPlacementState {
+    FootPlacementData left;
+    FootPlacementData right;
+    glm::vec3 smoothed_pelvis_offset; // Low-pass filtered pelvis height adjustment
+};
+
+void update_foot_targets(
+    const PhysicsWorld&  world,
+    const glm::vec3&     left_foot_world,
+    const glm::vec3&     right_foot_world,
+    float                character_height,
+    float                delta_time,
+    FootPlacementState&  state)
+{
+    const float SMOOTHING = 10.0f;
+
+    auto raycast_foot = [&](const glm::vec3& foot_world) -> std::pair<glm::vec3, glm::vec3> {
+        glm::vec3 ray_origin = foot_world + glm::vec3(0, character_height, 0);
+        glm::vec3 ray_dir    = glm::vec3(0, -1, 0);
+        float     ray_length = character_height * 2.0f;
+
+        // Use the abstract PhysicsWorld::raycast() — keeps this code engine-agnostic.
+        float     out_distance;
+        glm::vec3 out_normal;
+        JPH::BodyID out_body_id;
+
+        if (world.raycast(ray_origin, ray_dir, ray_length,
+                          out_distance, out_normal, out_body_id))
+        {
+            glm::vec3 hit_point = ray_origin + ray_dir * out_distance;
+            return { hit_point, out_normal };
+        }
+        // No hit: keep the animated foot position, flat normal
+        return { foot_world, glm::vec3(0, 1, 0) };
+    };
+
+    auto [left_pos, left_normal]   = raycast_foot(left_foot_world);
+    auto [right_pos, right_normal] = raycast_foot(right_foot_world);
+
+    float t = glm::clamp(SMOOTHING * delta_time, 0.0f, 1.0f);
+
+    state.left.target_position  = glm::mix(state.left.target_position,  left_pos,    t);
+    state.left.surface_normal   = glm::normalize(glm::mix(state.left.surface_normal,   left_normal,  t));
+    state.right.target_position = glm::mix(state.right.target_position, right_pos,   t);
+    state.right.surface_normal  = glm::normalize(glm::mix(state.right.surface_normal,  right_normal, t));
+
+    // Pelvis adjustment: push the pelvis down by the maximum foot drop
+    float left_drop  = left_foot_world.y  - state.left.target_position.y;
+    float right_drop = right_foot_world.y - state.right.target_position.y;
+    float pelvis_drop = std::max(0.0f, std::max(left_drop, right_drop));
+
+    glm::vec3 desired_pelvis_offset(0, -pelvis_drop, 0);
+    state.smoothed_pelvis_offset = glm::mix(
+        state.smoothed_pelvis_offset, desired_pelvis_offset, t);
+}
+----
+
+Notice the use of `std::max(0.0f, ...)` on the pelvis drop. We only push the pelvis *down*, never up. If the terrain is higher than the animated foot position (the character is about to step on a raised surface), the IK will bend the leg to handle it; we don't want the pelvis being pushed skyward on slopes that rise quickly.
+
+== Applying the IK and Foot Rotation
+
+After adjusting the pelvis, the leg chain has been repositioned slightly. We then run the IK solver on each leg, followed by the foot rotation:
+
+[source,cpp]
+----
+void apply_foot_ik(
+    std::vector<Node>&          nodes,
+    const IKChain&              leg_chain,
+    uint32_t                    foot_node_idx,
+    const FootPlacementData&    foot_data,
+    const glm::vec3&            up_axis)
+{
+    // Run the IK solver to place the foot at the target position
+    solve_ccd(nodes, leg_chain, foot_data.target_position);
+
+    // Now rotate the foot to align with the terrain normal.
+    // The foot's "up" direction in its local space needs to align with the surface normal.
+    Node& foot = nodes[foot_node_idx];
+
+    // The foot's current world-space up direction
+    // (assuming the foot's local Y is the "up" direction—adjust for your rig)
+    glm::vec3 foot_current_up = glm::normalize(
+        glm::mat3(foot.world_matrix) * glm::vec3(0, 1, 0));
+
+    float dot = glm::clamp(glm::dot(foot_current_up, foot_data.surface_normal), -1.0f, 1.0f);
+    if (dot < 0.9999f) {
+        float     angle = std::acos(dot);
+        glm::vec3 axis  = glm::normalize(glm::cross(foot_current_up, foot_data.surface_normal));
+
+        glm::quat world_correction = glm::angleAxis(angle, axis);
+        glm::quat new_world_rot    = world_correction * foot.get_world_rotation();
+
+        glm::quat parent_world_rot = (foot.parent_index != INVALID_NODE_INDEX)
+            ? nodes[foot.parent_index].get_world_rotation()
+            : glm::quat(1, 0, 0, 0);
+
+        foot.local_rotation = glm::inverse(parent_world_rot) * new_world_rot;
+        foot.mark_dirty();
+        update_world_matrices_subtree(nodes, foot_node_idx);
+    }
+}
+----
+
+== Blending IK In and Out
+
+There is one more thing we need to handle: the IK system must not fight the animation system when the character is in motion. Consider what happens when a character starts walking. Their feet are lifting off the ground constantly—the animated foot trajectory deliberately lifts each foot through the air during the swing phase. If we run foot placement IK during the swing, the IK system will immediately try to pull the foot back down to the ground, preventing it from lifting at all.
+
+The solution is to gate the IK correction with a **plant weight**: a per-foot value that is 1.0 when the foot should be firmly planted and 0.0 when the foot is in the air. The plant weight transitions smoothly between these extremes.
+
+The plant weight can be derived from the animation itself. Most animation systems annotate walk cycles with **foot contact events**—keyframe-triggered events that mark the moments when each foot makes and breaks contact with the ground. If your animation tool generates these events, listen for them to drive the plant weight.
+
+If foot contact events are not available, you can derive the plant weight heuristically: when the foot's animated velocity (the rate of change of its world position across frames) drops below a threshold, treat the foot as planted. This works reasonably well for walk cycles but can fail for faster gaits.
+
+Once you have the plant weight, apply it as a blend between the animated position and the IK-corrected position:
+
+[source,cpp]
+----
+// After computing the IK target position, blend it with the animated position
+// based on the plant weight. A weight of 1.0 uses full IK; 0.0 uses animation.
+glm::vec3 blended_target = glm::mix(
+    animated_foot_position,
+    foot_data.target_position,
+    foot_data.ik_weight
+);
+----
+
+This makes the foot placement system a layer that enhances the base animation rather than overriding it. When the foot is planted, IK brings it to precise contact with the terrain. When the foot is in the air, IK gracefully fades out, letting the animation play undisturbed.
+
+xref:Advanced_glTF/Procedural_Animation_IK/03_fabrik.adoc[Previous: FABRIK] | xref:Advanced_glTF/Procedural_Animation_IK/05_look_at.adoc[Next: Look-At Controllers]

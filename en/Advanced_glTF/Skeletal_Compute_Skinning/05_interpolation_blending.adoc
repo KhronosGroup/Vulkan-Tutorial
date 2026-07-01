@@ -1,0 +1,306 @@
+:pp: {plus}{plus}
+= Interpolation & Blending
+
+== Why Interpolation Quality Matters
+
+In the "Building a Simple Engine" series, we implemented **linear interpolation** for animation keyframes, which is sometimes called **LERP** for positions and **SLERP** for rotations. Linear interpolation is simple and fast: given two keyframe values and a normalized time factor `t` (between 0 and 1), the result is a straight-line blend between them.
+
+For many applications, this is perfectly adequate. But if you have ever watched a game character whose arm snaps to a different speed at each keyframe, or whose movement feels stiff and mechanical despite clearly having smooth animation curves in the authoring tool, you have witnessed the visual consequence of linear-only interpolation. The velocity of the motion is constant within each keyframe interval but jumps abruptly at the boundary. Animators spend significant time crafting **easing**—the way a motion accelerates into and decelerates out of a pose—and linear interpolation discards all of that work.
+
+glTF supports three interpolation modes in its animation samplers: `LINEAR`, `STEP`, and `CUBICSPLINE`. We already handle `LINEAR` and `STEP` (which is simply "hold the previous value with no transition"). `CUBICSPLINE` is the mode that preserves the animator's easing, and it is what we need to implement to achieve professional-quality character animation.
+
+== Understanding Cubic Spline Interpolation
+
+A **Cubic Hermite Spline** is a mathematical curve that passes through a set of control points (our keyframes) while also respecting **tangent vectors** at each control point. These tangents define the slope—the velocity—of the curve as it approaches and leaves each keyframe.
+
+In glTF's cubic spline format, each keyframe stores three values instead of one:
+
+- An **in-tangent**: the tangent vector as the curve *arrives at* this keyframe
+- A **value**: the actual pose value at this keyframe
+- An **out-tangent**: the tangent vector as the curve *departs from* this keyframe
+
+These tangents are set by the artist in their animation software (Blender, Maya, etc.) to control the shape of the motion curves. When the animator says "I want this arm to ease in slowly and snap out quickly," those intentions are encoded in the tangent values.
+
+The cubic Hermite interpolation formula for a value at time `t` between keyframes `p0` (with out-tangent `m0`) and `p1` (with in-tangent `m1`) is:
+
+....
+h00 = 2t³ - 3t² + 1       (basis function for p0)
+h10 = t³ - 2t² + t        (basis function for m0)
+h01 = -2t³ + 3t²          (basis function for p1)
+h11 = t³ - t²             (basis function for m1)
+
+result = h00 * p0 + h10 * delta_time * m0 + h01 * p1 + h11 * delta_time * m1
+....
+
+The `delta_time` here is the duration of the keyframe interval (the time difference between `p0` and `p1`). It is necessary to scale the tangents correctly—without it, the curve's shape depends on the keyframe timing in an uncontrolled way.
+
+In C{pp}, the implementation for a `glm::vec3` translation channel looks like this:
+
+[source,cpp]
+----
+glm::vec3 cubic_spline_interpolate_vec3(
+    float t,              // Normalized time in [0, 1]
+    float dt,             // Duration of the keyframe interval
+    glm::vec3 p0,         // Previous keyframe value
+    glm::vec3 out_tan0,   // Out-tangent of previous keyframe
+    glm::vec3 p1,         // Next keyframe value
+    glm::vec3 in_tan1)    // In-tangent of next keyframe
+{
+    // Compute the four Hermite basis polynomials
+    float t2 = t * t;
+    float t3 = t2 * t;
+
+    float h00 =  2.0f * t3 - 3.0f * t2 + 1.0f;
+    float h10 =           t3 - 2.0f * t2 + t;
+    float h01 = -2.0f * t3 + 3.0f * t2;
+    float h11 =           t3 -        t2;
+
+    // Combine: value is the weighted sum of the four components
+    return h00 * p0 + h10 * dt * out_tan0
+         + h01 * p1 + h11 * dt * in_tan1;
+}
+----
+
+For rotations, the process is slightly different. Quaternions cannot be blended by direct arithmetic the way vectors can—you must use **Squad** (Spherical Quadrangle interpolation) or, more commonly in game engines, you blend the tangents as vectors and then normalize the resulting quaternion. The glTF specification recommends normalizing the result after the Hermite blend:
+
+[source,cpp]
+----
+glm::quat cubic_spline_interpolate_quat(
+    float t,
+    float dt,
+    glm::quat p0, glm::quat out_tan0,
+    glm::quat p1, glm::quat in_tan1)
+{
+    float t2 = t * t;
+    float t3 = t2 * t;
+
+    float h00 =  2.0f * t3 - 3.0f * t2 + 1.0f;
+    float h10 =           t3 - 2.0f * t2 + t;
+    float h01 = -2.0f * t3 + 3.0f * t2;
+    float h11 =           t3 -        t2;
+
+    // Blend the quaternion components as if they were 4-component vectors
+    glm::vec4 blended =
+          h00 * glm::vec4(p0.x,       p0.y,       p0.z,       p0.w)
+        + h10 * dt * glm::vec4(out_tan0.x, out_tan0.y, out_tan0.z, out_tan0.w)
+        + h01 * glm::vec4(p1.x,       p1.y,       p1.z,       p1.w)
+        + h11 * dt * glm::vec4(in_tan1.x,  in_tan1.y,  in_tan1.z,  in_tan1.w);
+
+    // The glTF spec requires normalization after the cubic blend
+    return glm::normalize(glm::quat(blended.w, blended.x, blended.y, blended.z));
+}
+----
+
+== Integrating Cubic Splines Into the Animation System
+
+To support cubic splines, our `AnimationSampler` data structure needs to store three values per keyframe instead of one. When the sampler's interpolation type is `CUBICSPLINE`, each keyframe in the glTF binary buffer contains `[in_tangent, value, out_tangent]` in that order.
+
+[source,cpp]
+----
+enum InterpolationMode {
+    STEP,
+    LINEAR,
+    CUBICSPLINE
+};
+
+struct AnimationSampler {
+    InterpolationMode interpolation = LINEAR;
+    std::vector<float> inputs;              // Timestamps in seconds
+    std::vector<glm::vec4> outputs_raw;     // Packed: for CUBICSPLINE stores in_tan/value/out_tan triples
+
+    // For CUBICSPLINE, we split the raw data for easier interpolation
+    std::vector<glm::vec4> in_tangents;
+    std::vector<glm::vec4> values;
+    std::vector<glm::vec4> out_tangents;
+};
+
+struct AnimationChannel {
+    enum PathType { TRANSLATION, ROTATION, SCALE, WEIGHTS };
+    PathType path;
+    uint32_t node_index;
+    uint32_t sampler_index;
+};
+----
+
+Our updated sampler loading code must handle this layout:
+
+[source,cpp]
+----
+void load_animation_sampler(
+    const tinygltf::AnimationSampler& gltf_sampler,
+    const tinygltf::Model& model,
+    AnimationSampler& out_sampler)
+{
+    // Parse the interpolation type from the glTF string
+    if (gltf_sampler.interpolation == "LINEAR")           out_sampler.interpolation = LINEAR;
+    else if (gltf_sampler.interpolation == "STEP")        out_sampler.interpolation = STEP;
+    else if (gltf_sampler.interpolation == "CUBICSPLINE") out_sampler.interpolation = CUBICSPLINE;
+
+    // Load the input timestamps (these are always plain floats, no tangents)
+    load_accessor_float(model, gltf_sampler.input, out_sampler.inputs);
+
+    // For CUBICSPLINE, the output accessor contains 3 values per timestamp:
+    // [in_tangent, value, out_tangent]. The total count is 3 * keyframe_count.
+    // For LINEAR/STEP, the output count equals the keyframe count.
+    load_accessor_vec4(model, gltf_sampler.output, out_sampler.outputs_raw);
+
+    if (out_sampler.interpolation == CUBICSPLINE) {
+        // Split the interleaved data into separate arrays
+        size_t keyframe_count = out_sampler.inputs.size();
+        out_sampler.in_tangents.resize(keyframe_count);
+        out_sampler.values.resize(keyframe_count);
+        out_sampler.out_tangents.resize(keyframe_count);
+
+        for (size_t i = 0; i < keyframe_count; ++i) {
+            out_sampler.in_tangents[i]  = out_sampler.outputs_raw[i * 3 + 0];
+            out_sampler.values[i]       = out_sampler.outputs_raw[i * 3 + 1];
+            out_sampler.out_tangents[i] = out_sampler.outputs_raw[i * 3 + 2];
+        }
+    } else {
+        out_sampler.values = out_sampler.outputs_raw;
+    }
+}
+----
+
+== Animation Blending: Cross-Fading Between Clips
+
+Interpolation improves the quality of motion *within* a single animation clip. But a real character engine needs to transition *between* clips—from a walk to a run, from an idle to an attack, or most critically for our purposes, from a scripted animation to a physics-driven ragdoll.
+
+**Cross-fading** is the most common technique. When a transition is triggered, we don't immediately switch to the new clip. Instead, we play both clips simultaneously and blend their output poses together over a short transition period (typically 0.1 to 0.3 seconds). At the start of the transition, the old clip has weight 1.0 and the new clip has weight 0.0. By the end, the weights have reversed. During the transition, both are non-zero and their poses are blended.
+
+The core of this system is a **Pose Blend** function that takes two poses (sets of joint transforms) and a blend factor, and returns a weighted combination:
+
+[source,cpp]
+----
+// A Pose is a snapshot of all joint local transforms for a single frame
+struct Pose {
+    std::vector<glm::vec3> translations;
+    std::vector<glm::quat> rotations;
+    std::vector<glm::vec3> scales;
+};
+
+// Blend two poses together: result = (1-t) * pose_a + t * pose_b
+void blend_poses(const Pose& pose_a, const Pose& pose_b, float t, Pose& out)
+{
+    assert(pose_a.translations.size() == pose_b.translations.size());
+    size_t joint_count = pose_a.translations.size();
+
+    out.translations.resize(joint_count);
+    out.rotations.resize(joint_count);
+    out.scales.resize(joint_count);
+
+    for (size_t i = 0; i < joint_count; ++i) {
+        // Translation and scale use standard linear interpolation
+        out.translations[i] = glm::mix(pose_a.translations[i], pose_b.translations[i], t);
+        out.scales[i]       = glm::mix(pose_a.scales[i],       pose_b.scales[i],       t);
+
+        // Rotation uses spherical linear interpolation (SLERP) for shortest path
+        out.rotations[i] = glm::slerp(pose_a.rotations[i], pose_b.rotations[i], t);
+    }
+}
+----
+
+A cross-fade controller manages the transition state:
+
+[source,cpp]
+----
+struct CrossFadeState {
+    uint32_t  from_clip_index;
+    uint32_t  to_clip_index;
+    float     blend_factor;   // 0.0 = fully from_clip, 1.0 = fully to_clip
+    float     transition_duration;
+    bool      active = false;
+};
+
+void update_cross_fade(CrossFadeState& fade, float delta_time)
+{
+    if (!fade.active) return;
+
+    fade.blend_factor += delta_time / fade.transition_duration;
+    if (fade.blend_factor >= 1.0f) {
+        // Transition complete - snap to the destination clip
+        fade.blend_factor = 1.0f;
+        fade.active = false;
+        // The caller should now update the "current clip" to to_clip_index
+    }
+}
+----
+
+== The Ragdoll Blend: From Animation to Physics
+
+The cross-fade system becomes especially important for the animation-to-ragdoll handoff. This is not merely a cross-fade between two animation clips—it is a transition between the animation system driving the skeleton and the physics system driving it.
+
+Doing this as an abrupt switch creates a jarring visual artifact: the character instantly snaps from their animated pose into whatever pose the physics engine calculated as its initial state. Even if the physics engine starts from the correct pose, the absence of a smooth transition makes the transition look wrong.
+
+Instead, we implement a **Physics Blend Weight**. The animation system continues to calculate its pose. The physics system also calculates its pose (ragdoll). We blend between them based on a `ragdoll_weight` value that we ramp from 0.0 to 1.0 over the transition period.
+
+[source,cpp]
+----
+struct CharacterAnimationState {
+    Pose    animation_pose;  // Pose from the current animation clip
+    Pose    physics_pose;    // Pose from the ragdoll physics simulation
+    float   ragdoll_weight;  // 0.0 = fully animated, 1.0 = fully ragdoll
+    bool    ragdoll_active;  // Is the physics simulation enabled?
+};
+
+void update_character_pose(
+    CharacterAnimationState& state,
+    float delta_time,
+    std::vector<Node>& nodes,
+    const Skin& skin)
+{
+    // Sample the animation clip to get animation_pose (as before)
+    sample_animation(state.animation_pose, delta_time);
+
+    if (state.ragdoll_active) {
+        // Read the physics simulation results into physics_pose
+        read_physics_pose(state.physics_pose, nodes, skin);
+
+        // Ramp the ragdoll weight up to 1.0 over the transition duration
+        state.ragdoll_weight = glm::min(state.ragdoll_weight + delta_time * 5.0f, 1.0f);
+
+        // Blend between animation and physics poses
+        Pose blended_pose;
+        blend_poses(state.animation_pose, state.physics_pose, state.ragdoll_weight, blended_pose);
+
+        // Apply the blended pose to the scene graph nodes
+        apply_pose_to_scene_graph(nodes, blended_pose, skin.joints);
+    } else {
+        // Fully animation-driven: apply directly without blending
+        apply_pose_to_scene_graph(nodes, state.animation_pose, skin.joints);
+    }
+}
+
+// Applies a Pose to the Scene Graph.
+// Parameter order: nodes first, pose second, then the joint index list.
+// (Canonical signature from animation.h.)
+void apply_pose_to_scene_graph(
+    std::vector<Node>&           nodes,
+    const Pose&                  pose,
+    const std::vector<uint32_t>& joint_indices)
+{
+    for (size_t i = 0; i < joint_indices.size(); ++i) {
+        Node& node = nodes[joint_indices[i]];
+
+        node.translation    = pose.translations[i];
+        node.local_rotation = pose.rotations[i];
+        node.scale          = pose.scales[i];
+
+        node.mark_dirty();
+    }
+}
+----
+
+The `ragdoll_weight * 5.0f` multiplier means the transition completes in 0.2 seconds (`1.0 / 5.0`). You can tune this constant to taste—faster transitions look more like a sudden "drop," while slower transitions make the character look like they are being gently handed off to gravity.
+
+One critical implementation detail: when `ragdoll_active` becomes true, we must immediately set the physics body's initial state to match the current animation pose. If the physics simulation starts from an arbitrary or zero pose, the blend will look wrong for the first few frames as the physics system "snaps" to the right starting position. By initializing the physics bodies from the animation pose at the moment of the handoff, the blend begins from a state of near-zero difference, ensuring a seamless transition.
+
+== Summary
+
+With cubic spline interpolation, our animation system now faithfully reproduces the subtle easing and velocity curves that animators craft in their authoring tools. Characters no longer feel like they are driven by mechanical, constant-velocity keyframes.
+
+With cross-fade blending, we can transition smoothly between any two animation clips, and most importantly, we can blend from a scripted animation into a full physics ragdoll simulation in a way that looks natural and responsive.
+
+These two systems—interpolation quality and blending—are what separate animation that merely "works" from animation that *feels alive*.
+
+xref:Advanced_glTF/Skeletal_Compute_Skinning/04_shared_vertex_buffer.adoc[Previous: Skin Once, Use Everywhere] | xref:Advanced_glTF/Skeletal_Compute_Skinning/06_conclusion.adoc[Next: Chapter Conclusion]

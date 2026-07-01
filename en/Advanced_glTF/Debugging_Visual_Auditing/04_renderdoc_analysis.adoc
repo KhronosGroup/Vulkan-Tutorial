@@ -1,0 +1,86 @@
+:pp: {plus}{plus}
+= RenderDoc Analysis: Inspecting the Compute Skinning Output
+
+== What RenderDoc Gives You
+
+RenderDoc is a frame capture and GPU debugger that lets you freeze a single rendered frame, inspect every GPU resource and command at the moment of capture, and re-execute individual draw calls and compute dispatches in isolation. For our character pipeline, its most valuable feature is the ability to examine the contents of any GPU buffer at any point in the frame—including the output buffer of our compute skinning dispatch, before the rasterizer reads from it.
+
+This is the ground-truth check at the GPU level. The reference viewer (Chapter 7) established that the asset itself is correct. The debug drawers show the physics simulation state. RenderDoc answers the narrowest possible question: after the compute skinning shader runs, are the vertex positions and normals in the output buffer geometrically correct? If they are, the rasterizer, materials, and scene graph are fine. If they are not, the error is in the compute skinning pipeline—the shader, the joint matrices, or the input vertex format.
+
+== Capturing a Frame
+
+RenderDoc captures are straightforward: launch your application through RenderDoc, press F12 (or your configured capture key) at the moment you want to capture, and the frame is frozen. You can then open it in RenderDoc's UI.
+
+One important setup step for Vulkan applications: ensure that your application is built without the `-DNDEBUG` flag (or equivalent), and that debug object names are set using `vkSetDebugUtilsObjectNameEXT`. This makes RenderDoc's resource browser comprehensible—instead of seeing `VkBuffer (0x12345678)`, you see `character_skin_output_buffer`. For the compute skinning output buffer specifically:
+
+[source,cpp]
+----
+void set_debug_name(VkDevice device, VkBuffer buffer, const char* name)
+{
+#ifdef VULKAN_DEBUG
+    VkDebugUtilsObjectNameInfoEXT info{};
+    info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+    info.objectType   = VK_OBJECT_TYPE_BUFFER;
+    info.objectHandle = reinterpret_cast<uint64_t>(buffer);
+    info.pObjectName  = name;
+    vkSetDebugUtilsObjectNameEXT(device, &info);
+#endif
+}
+
+// When creating the skinning output buffer:
+set_debug_name(device, skinning_output.buffer, "skinning_output_buffer");
+----
+
+Similarly, label your command buffer sections using `vkCmdBeginDebugUtilsLabelEXT` and `vkCmdEndDebugUtilsLabelEXT`:
+
+[source,cpp]
+----
+VkDebugUtilsLabelEXT label{};
+label.sType      = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+label.pLabelName = "Compute Skinning Pass";
+label.color[0]   = 0.2f; label.color[1] = 0.8f;
+label.color[2]   = 0.2f; label.color[3] = 1.0f;
+vkCmdBeginDebugUtilsLabelEXT(cmd, &label);
+
+// ... dispatch compute skinning ...
+
+vkCmdEndDebugUtilsLabelEXT(cmd);
+----
+
+These labels appear in RenderDoc's event list as named sections, making it trivial to navigate to the skinning dispatch even in a frame with thousands of GPU commands.
+
+== Inspecting the Output Buffer
+
+Once you have a capture, navigate to the compute skinning dispatch in the event list. Select it and open the **Resource Inspector** or **Buffer Viewer** panel. Find the output buffer (named `skinning_output_buffer` if you set the debug name). RenderDoc will let you view the raw contents of this buffer as a structured table.
+
+You need to tell RenderDoc the layout of your vertex struct. In the Buffer Viewer, you can configure the byte offset, stride, and format for each field. For a typical vertex struct:
+
+[source,slang]
+----
+Position:    float3, offset 0,  stride sizeof(Vertex)
+Normal:      float3, offset 12, stride sizeof(Vertex)
+Tangent:     float4, offset 24, stride sizeof(Vertex)
+TexCoord:    float2, offset 40, stride sizeof(Vertex)
+JointIdx:    uint4,  offset 48, stride sizeof(Vertex)
+JointWeight: float4, offset 64, stride sizeof(Vertex)
+----
+
+With this layout configured, RenderDoc will show you a row per vertex with the position, normal, and other fields as human-readable values. Now you can:
+
+**Verify the rest pose.** Pause your application at a frame where the character is in the bind pose (all animations at time 0). The output vertex positions should match the original glTF vertex positions exactly—there should be no deformation in the rest pose. If positions differ from the rest pose when the animation is at time 0, the inverse bind matrices or the joint hierarchy traversal is wrong.
+
+**Verify a known pose.** Move the animation to a frame where you know exactly what the character should look like—say, a T-pose with one arm raised to 90 degrees. Examine a vertex on the raised arm. Its output position should be the original position rotated by 90 degrees around the appropriate axis. If it has moved in the wrong direction, the coordinate space of the joint rotation is wrong.
+
+**Check normals.** Select a vertex on a flat surface. Its normal should be a unit vector pointing away from the surface. If it has significant X or Z components when it should point in Y, or if it has magnitude significantly different from 1.0, the normal transform in the compute shader is incorrect.
+
+**Verify winding order.** In RenderDoc, you can re-draw the mesh as a wireframe overlay. If you see back-facing triangles where the geometry should be front-facing, the winding order in the output buffer has been reversed. This can happen if the skinning shader flips the coordinate system by applying a matrix with a negative determinant (e.g., from a scale of -1 on one axis).
+
+== Using the Shader Debugger
+
+RenderDoc's shader debugger allows you to select any pixel in the captured frame and step through the shader code that produced it. For the compute skinning dispatch, you can select any invocation (by thread group and thread index) and step through the shader execution to see exactly how the output values were computed.
+
+This is most useful when you have a specific suspicious vertex—one whose position in the buffer viewer looks wrong. Find the vertex index, compute the dispatch thread ID (vertex_index / 64 for the group, vertex_index % 64 for the thread), and launch the debugger for that invocation. You can then step through the joint matrix lookup, the linear blend computation, and the position transform, watching each intermediate value. At the point where a value diverges from what you expect, you have found the bug.
+
+The shader debugger is slower to launch and use than simply examining buffer contents, but for subtle numerical errors—wrong sign in a matrix element, wrong axis in a quaternion-to-matrix conversion—it provides the most direct diagnostic path.
+
+xref:Advanced_glTF/Debugging_Visual_Auditing/03_skinning_heatmaps.adoc[Previous: Skinning Heatmaps] | xref:Advanced_glTF/Debugging_Visual_Auditing/05_conclusion.adoc[Next: Conclusion]

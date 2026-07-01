@@ -1,0 +1,119 @@
+:pp: {plus}{plus}
+
+= AI-Assisted Trace Analysis: GFXReconstruct
+
+== Introduction: The Stream of Truth
+
+While **RenderDoc** is the master of the "Frozen Frame," it can sometimes miss the forest for the trees. Many Vulkan bugs—especially synchronization hazards, resource lifecycle issues, and driver-specific regressions—happen across multiple frames or during the initialization phase.
+
+**GFXReconstruct** is the definitive tool for capturing and replaying a stream of Vulkan API calls. It allows you to record every command sent to the GPU, from the first `vkCreateInstance` to the final `vkDestroyDevice`. By combining this "Stream of Truth" with the reasoning power of an AI assistant, you transform a multi-gigabyte trace file into a **searchable, audited knowledge base**.
+
+== Why AI + GFXReconstruct?
+
+In **Collaborative Engineering**, GFXReconstruct provides the raw data, and the AI provides the **Architectural Audit**. A trace can contain millions of calls; an AI can "watch" that stream to identify:
+
+*   **Initialization Hazards:** Did you enable an extension that isn't supported on your target hardware? The AI can cross-reference `gfxrecon-info` output with your `vk.xml` registry context.
+*   **Resource Lifecycle Audits:** Are you destroying a buffer before its last use in a command buffer? The AI can parse the "JSON conversion" of a trace to find the exact call sequence where the object became invalid.
+*   **Driver Regression Analysis:** If a trace works on one driver but fails on another, the AI can audit the trace for "Undefined Behavior" that one driver might be more forgiving of than another.
+
+== Tutorial: The Trace Audit Workflow
+
+To truly leverage GFXReconstruct with an AI agent like **Goose**, you must convert the binary trace into a format the agent can reason about: **JSON**.
+
+Follow these steps to perform an automated trace audit:
+
+1.  **Capture the Trace:**
+    Run your application with the GFXReconstruct layer enabled.
++
+[source,bash]
+----
+# On Windows/Linux
+vkconfig # Use the GUI to enable GFXReconstruct
+# OR use environment variables
+VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_gfxreconstruct ./VulkanApp
+----
++
+This will generate a file like `vulkan_capture_20260313_174700.gfxr`.
+
+2.  **Convert to Structured JSON:**
+    Use the `gfxrecon-convert` tool to transform the binary trace into a structured text format. For long traces, you should filter for a specific frame range to avoid "Context Window" limits.
++
+[source,bash]
+----
+# Convert frames 100 to 110 to JSON
+gfxrecon-convert --to-json --frames 100-110 capture.gfxr capture_frames.json
+----
+
+3.  **The Agentic Audit:**
+    In your Goose session, task the assistant to audit the JSON for specific logical hazards.
++
+[source,text]
+----
+Goose, I have converted a GFXReconstruct trace to JSON.
+Analyze 'capture_frames.json' and find all 'vkCmdPipelineBarrier' calls.
+Compare the 'oldLayout' and 'newLayout' of the 'GBuffer_Diffuse' image.
+Is there any point where we are transitioning FROM 'UNDEFINED'
+after the first frame? If so, this is a redundant clear hazard.
+----
+
+== Advanced: Building the GFXReconstruct MCP Server
+
+To make your assistant truly "Hardware-Aware" and "Trace-Aware," you can build a custom **MCP Server** that wraps the GFXReconstruct CLI. This allows the AI to "query" your trace files directly without you having to manually run shell commands.
+
+Below is a Python implementation of a **GFXReconstruct-Connector** using the MCP SDK:
+
+[source,python]
+----
+import subprocess
+import json
+from mcp.server import McpServer
+
+# Initialize the server
+server = McpServer("GFXReconstruct-Connector")
+
+@server.tool()
+def get_trace_info(file_path: str):
+    """Prints hardware and extension requirements for a .gfxr trace."""
+    result = subprocess.run(
+        ["gfxrecon-info", file_path],
+        capture_output=True, text=True
+    )
+    return result.stdout
+
+@server.tool()
+def extract_frame_json(file_path: str, frame_range: str):
+    """Extracts a range of frames (e.g., '10-15') from a trace to JSON."""
+    output_file = "temp_audit.json"
+    subprocess.run([
+        "gfxrecon-convert", "--to-json",
+        "--frames", frame_range,
+        file_path, output_file
+    ])
+    with open(output_file, "r") as f:
+        return f.read(50000) # Return the first 50k chars for reasoning
+
+if __name__ == "__main__":
+    server.run()
+----
+
+By registering this server in your `goose/config.yaml`, the agent gains the ability to **self-diagnose** traces. You can simply say: *"Goose, analyze the hardware requirements of 'crash.gfxr' and tell me if it uses any extensions that are missing on the M4 Max GPU."*
+
+== Real-World Experience: The "Undefined" Layout Hazard
+
+Imagine you are porting your engine from Windows (NVIDIA) to Android (Qualcomm). On Windows, your engine works perfectly. On Android, you see random "flickering" in your shadow maps.
+
+=== The Manual Attempt
+You spend a day checking your barriers. Everything *looks* correct. You suspect a driver bug, but you have no proof.
+
+=== The AI + GFXReconstruct Solution
+You capture a trace and task your agent: *"Analyze the trace for any 'VkImageMemoryBarrier' that uses 'VK_IMAGE_LAYOUT_UNDEFINED' as the 'oldLayout' on a resource that already contains valid data."*
+
+The AI uses the **GFXReconstruct MCP tool** to scan the calls. It finds that in your "Cascaded Shadow Map" pass, you are incorrectly resetting the layout to `UNDEFINED` for the second cascade, effectively discarding the data from the first cascade. On NVIDIA, the driver was "saving" you by ignoring the undefined transition; on Qualcomm, the tile-based renderer was (correctly) discarding the tile memory.
+
+**The Result:** The AI doesn't just find the bug; it identifies the specific line in your `ShadowRenderer.cpp` where the logic was flawed and provides the fix: `oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`.
+
+== Summary: Capturing the Narrative
+
+GFXReconstruct gives your AI assistant **Timeline Context**. By moving beyond the single-frame snapshot of RenderDoc, you allow the AI to reason about the **Narrative of your Engine**—how it starts, how it allocates, and how it fails over time. This is the hallmark of a professional **Collaborative Engineering** workflow.
+
+Next: xref:AI_Assisted_Vulkan/07_advanced_mcp/01_introduction.adoc[Advanced MCP Tooling & Automation]

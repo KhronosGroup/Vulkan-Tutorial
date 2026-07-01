@@ -1,0 +1,53 @@
+:pp: {plus}{plus}
+
+= Phase 2: Implementation & The Implementation Loop (The Implementation Phase)
+
+== Introduction: Turning the Roadmap into Reality
+
+Phase 1 provided the technical specification—a verified roadmap for our post-process system. Now, we enter **Phase 2: The Implementation Loop**. This is where we turn that design into the verbose, high-precision C{pp} and Slang/HLSL code that Vulkan requires.
+
+In **Collaborative Engineering**, this is the "Implementation" phase. We move from high-reasoning Cloud models to **Task-Specialized Models** like **Qwen 3-Coder (30B)** or **Mistral-Nemo (12B)**. These models excel at the "Syntactic Noise" of Vulkan—the descriptor set updates, the pipeline state objects, and the intricate shader logic—providing near-instant feedback while you type.
+
+== The Core Concept: Conversational Coding
+
+The implementation of a Vulkan feature is not a single "long generation." Instead, it is a series of focused, incremental steps that we call **Conversational Coding**.
+
+*   **The Problem:** You need to write a `VkGraphicsPipelineCreateInfo` for your Bloom upsample pass. In a traditional workflow, you'd spend 20 minutes copying and pasting an existing function and manually changing the blending states and shader stages.
+*   **The AI Solution:** You use your local specialist. You provide the **Technical Roadmap** from Phase 1 as context and say: *"Generate the upsample pipeline state. Use additive blending for the color attachment and ensure the vertex input state matches our `ScreenQuad` class."*
+
+The AI doesn't just "guess." It uses the roadmap's "Contract" to ensure the blending factors are correct and uses your engine's context to match your existing quad-rendering logic.
+
+== Why Use a Local Specialist?
+
+Implementing a graphics feature requires **Zero Latency**. You will find yourself asking hundreds of small, syntactic questions every hour:
+
+*   *"What was the enum for a 1D sampler again?"*
+*   *"Generate the `VkDescriptorImageInfo` array for these mips."*
+*   *"Refactor this shader to use a structured buffer for the bloom weights."*
+
+A local model like **Qwen 3-Coder** or **Mistral-Nemo** (running via Ollama) provides the response in milliseconds. It handles the tedious details so you can stay in your "Creative Flow."
+
+== Real-World Experience: Implementing the Bloom Pass
+
+Continuing with our Bloom example, let's see how the implementation phase unfolds.
+
+=== Step 1: Skeleton Generation
+You point your local AI at the `bloom_design.md` roadmap.
+**The Prompt:** *"Generate the `BloomRenderer.hpp` header. Use the `VulkanDevice` wrapper and implement the `recordDownsampleCommand` and `recordUpsampleCommand` methods as defined in our design doc."*
+**The Result:** A perfectly formatted C{pp} header that matches your engine's RAII wrappers and naming conventions.
+
+=== Step 2: Automating the Verbosity
+Vulkan pipelines are where most bugs are born.
+**The Prompt:** *"In `BloomRenderer.cpp`, implement the pipeline creation logic. Use the roadmap's image layout requirements. For the downsample pass, disable depth testing and set the polygon mode to FILL."*
+**The Result:** 150 lines of correct `VkPipeline` initialization code generated in 5 seconds.
+
+=== Step 3: Shader Iteration
+Shader development is where local models can accelerate iteration, though results require careful review.
+**The Prompt:** *"Generate a Slang shader for the 13-tap downsample filter. Use the Karis average to prevent fireflies in the bloom, as discussed in the roadmap's performance section."*
+**The Result:** A shader implementing the requested technique. However, be aware that most LLMs have been trained primarily on HLSL and GLSL, and will often produce HLSL-style output that needs manual adjustment to compile as valid Slang. Treat the generated shader as a starting point: verify the syntax, check that Slang-specific constructs (e.g., `[shader("fragment")]`, `ParameterBlock`, or `interface` types) are used correctly, and expect to fix several issues before the shader compiles cleanly.
+
+== Summary: The Accelerated Implementation Loop
+
+By using a local specialist to handle the "Heavy Lifting" of Vulkan's verbosity, you turn a multi-day implementation task into a series of 15-minute iteration cycles. You remain the **Director**, ensuring every line of code matches the high-level architecture, while the AI manages the low-level precision.
+
+Next: xref:AI_Assisted_Vulkan/05_workflow/04_phase_3_refactoring.adoc[Phase 3: Automated Evolution]

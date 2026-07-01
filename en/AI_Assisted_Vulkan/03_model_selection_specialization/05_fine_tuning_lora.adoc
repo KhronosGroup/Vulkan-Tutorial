@@ -1,0 +1,149 @@
+:pp: {plus}{plus}
+
+= Fine-Tuning for Your Engine: The "Holy Grail" of Style
+
+== Introduction: The "Digital Senior"
+
+Imagine you have a new hire on your graphics team. They are a brilliant C{pp} programmer and they know the Vulkan spec by heart. However, on their first day, they start writing raw `vkCreateBuffer` calls and using `std::vector` for vertex data. Your engine, however, uses the **Vulkan Memory Allocator (VMA)** and a custom `FixedArray` type for performance. You have to spend the next week "correcting" their style to match your engine's architectural laws.
+
+This is the same challenge we face with even the best base models like **Qwen 3-Coder**. They know Vulkan, but they don't know *your* Vulkan. To solve this, we use **Fine-Tuning**, specifically a technique called **Low-Rank Adaptation (LoRA)**.
+
+== The Core Concept: The "Style Patch"
+
+Traditional fine-tuning requires retraining all billions of parameters in a model—a process that costs thousands of dollars and requires massive GPU clusters. **LoRA** changes the game by training only a tiny "patch" of weights (typically less than 1% of the model's size) that sits on top of the base model. This setup combines the broad knowledge of the **Base Model**, providing general understanding of C{pp} and the Vulkan 1.3 spec, with the specialized voice of the **LoRA Adapter**, which injects your engine's specific naming conventions, abstractions, and "architectural laws."
+
+== The Teacher-Student Pipeline: Cloud-Powered Specialization
+
+To transform a general-purpose 17B or 12B model into a **Specialized SLM**, you need a high-quality "Instruction-Response" dataset. Manually writing thousands of these pairs is impractical for a small team. Instead, we use a high-reasoning Cloud LLM (like **Claude 4.6** or **GPT-5.3**) to "teach" the local model by synthesizing training data from your engine's source code.
+
+This is the **Teacher-Student** paradigm:
+
+1.  **Curation**: You extract your engine's core headers and architectural documentation.
+2.  **Instruction Synthesis (Cloud)**: You provide these files to a Cloud model and task it with generating technical 'Instruction/Response' pairs. Because the Cloud model has massive reasoning capabilities, it can "understand" your API and create complex questions that test that understanding.
+3.  **Local Retraining**: You use this "Cloud-generated Textbook" to fine-tune your local model.
+
+**The "Specialized SLM" Advantage**
+By using a Cloud model as a "Teacher," your local 17B model doesn't just memorize snippets; it learns the **logic** of your engine. It becomes a specialized tool that knows exactly how to use your custom synchronization primitives or memory allocators, often outperforming much larger models that only have general Vulkan knowledge.
+
+== Why LoRA? (The "VMA" Problem)
+
+Every large-scale engine has its own "Vulkan Dialect." One engine might use `vmaCreateBuffer`, while another uses a custom sub-allocation scheme based on Android's `AHardwareBuffer`, and yet another relies on the `vk::raii` C{pp} wrappers.
+
+Without LoRA, you have to constantly use **RAG** or manual prompts to remind the AI of these preferences.
+
+== Real-World Experience: Training the "Style Patch"
+
+You do not need a supercomputer to train a LoRA. A single high-end GPU (like an RTX 3090 or 4090) can train a LoRA for a 17B model (like **Llama 4**) in less than an hour.
+
+**The Workflow:**
+
+1.  **Dataset Collection:** You run a simple script that extracts "Header/Implementation" pairs from your engine's repository. For example, it pairs your `PipelineBuilder.hpp` with a complex `main.cpp` that uses it.
+2.  **The Training Loop:** You use a tool like **Unsloth** to "teach" the model. You will see the "Loss" curve drop as the model stops suggesting generic `VkGraphicsPipelineCreateInfo` and starts suggesting your engine's `GraphicsPipelineBuilder`.
+3.  **The Result:** You load this tiny (50MB) adapter into your IDE (via Ollama or LM Studio). Now, when you start typing a new render pass, the AI automatically uses your engine's specific synchronization wrappers without any extra prompting.
+
+== Practical Tutorial: Training a LoRA Adapter
+
+To specialize a 17B SLM (Small Language Model) like **Llama 4** on your graphics engine, follow this pipeline to curate your dataset and execute the training loop.
+
+=== Step 1: Curate the Synthetic Dataset
+You need a "Synthetic Textbook" of **Instruction-Response pairs**. Use a high-reasoning Cloud model (Claude 4.6/GPT-5.3) to generate this from your engine's source code.
+
+**The "Teacher" Prompt:**
+[source,text]
+----
+I am uploading our core engine headers (Renderer.hpp, Buffer.hpp)
+and three sample apps. Generate 50 technical 'Instruction/Response'
+pairs in JSONL format that teach a model how to:
+1. Initialize our 'GraphicsPipelineBuilder' for a depth-only pass.
+2. Correct the usage of 'vmaCreateBuffer' for a staging buffer.
+3. Implement our custom 'ImageMemoryBarrier' logic for layout transitions.
+----
+
+=== Step 2: Format for Training (JSONL)
+Ensure your data follows the standard training format. Each line in your `train.jsonl` should look like this:
+
+[source,json]
+----
+{"instruction": "Create a vertex buffer using our VMA wrapper.", "input": "Target: 1024 bytes, Usage: VERTEX_BUFFER_BIT", "output": "Buffer::Builder(device).setSize(1024).setUsage(VMA_MEMORY_USAGE_GPU_ONLY).build();"}
+----
+
+=== Step 3: The Training Loop with Unsloth
+Use the **Unsloth** library on a Linux machine with at least 24GB of VRAM (e.g., RTX 3090/4090).
+
+[source,python]
+----
+from unsloth import FastLanguageModel
+import torch
+
+# 1. Load the base model
+model, tokenizer = FastLanguageModel.from_pretrained("unsloth/llama-4-8b-bnb-4bit")
+
+# 2. Add LoRA adapters
+model = FastLanguageModel.get_peft_model(
+    model,
+    r = 16, # Rank (higher = more 'memory' but larger file)
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"],
+    lora_alpha = 16,
+    lora_dropout = 0,
+)
+
+# 3. Start training (pointing to your jsonl file)
+# [Insert standard Unsloth trainer setup here]
+model.save_pretrained_gguf("vulkan_expert_lora", tokenizer, quantization_method = "q4_k_m")
+----
+
+When you execute the training loop, you will see the "Loss" value decrease—mathematical proof that the model is learning your engine's API. This process takes roughly 30 to 60 minutes on an RTX 4090.
+
+== Specializing the SLM: From Generalist to Expert
+
+One of the most powerful aspects of specialized development is that it allows **Small Language Models (SLMs)**—typically models in the 17B to 30B parameter range—to outperform 400B+ parameter "Giant" models in the specific domain of your game engine. By combining the "Style Patch" of a LoRA with the "Ground Truth" of a RAG index, the SLM no longer needs to waste its internal parameters trying to remember general C{pp} patterns; it focuses 100% of its reasoning on the logic you provide in your engine's specific dialect.
+
+In a team environment, you often want a single, high-performance SLM that "knows" your engine deeply—including the LoRA you just trained—without forcing every developer to sacrifice significant VRAM. To set up a shared inference server, start by configuring the host machine (one with substantial VRAM) with **Ollama**. You must explicitly expose the service by setting the `OLLAMA_HOST` environment variable to `0.0.0.0` before running `ollama serve`. Finally, prepare the specialized model by pulling a capable base such as **Qwen 3-Coder (30B)**.
+
+Every developer on the team then configures their local **Goose** instance to use the remote server. The beauty of this setup is the **Local-Agent/Remote-Model** split: the Goose agent remains on the developer's machine with direct access to local files and tools, but it offloads the heavy reasoning "thinking" to the shared server. Because the OpenAI API has become the industry standard for AI communication, we use the `openai` provider in Goose to talk to our remote Ollama server. Open your Goose configuration—located at `~/.config/goose/config.yaml` on Unix-like systems or `%APPDATA%\goose\config.yaml` on Windows—and add a provider entry that treats the remote server as an endpoint, using the host machine's IP address.
+
+[source,yaml]
+----
+models:
+  shared-vulkan-expert:
+    provider: openai
+    base_url: "http://<SERVER_IP_ADDRESS>:11434/v1"
+    model: "qwen3-coder:30b"
+    api_key: "not-needed"
+----
+
+**Why this works:** When you give Goose a task, it first uses its local tools to "Read" your local files. It then packages those file snippets together and sends them over the network to the shared server. The server generates the response and sends it back to your machine, where the local Goose agent then writes the code to your disk. You get the power of a 30B model without using a single byte of your local GPU's VRAM.
+
+To ensure consistency across the team, you must standardize your RAG sources by placing technical manuals and engine specifications in a shared directory tracked by Git. Instruct Goose to always index this directory first to maintain a synchronized "Knowledge Vault."
+
+**Real-World Experience: The Team Audit**
+In this shared configuration, if a developer encounters a new synchronization bug, they can say: *"Goose, query our shared `docs/sync_patterns.md` and the remote 30B model to audit my current pipeline barrier."*
+
+Because the RAG retrieval happens locally, the agent sees the developer's exact line of code. Because the inference happens on the shared server, the agent has the "Reasoning Depth" of a massive model without causing the developer's Vulkan frame rate to drop to zero.
+
+Once you have modified your `config.yaml`, verify that Goose is correctly talking to the shared server by running a simple diagnostic. First, list the available models to ensure the 'shared-vulkan-expert' is visible, then start a session using that specific model.
+
+[source,bash]
+----
+# List available models to ensure the 'shared-vulkan-expert' is visible
+goose models
+
+# Start a session using the shared expert
+goose session --model shared-vulkan-expert
+----
+
+If the connection is successful, you can now task Goose with a complex graphics problem. Because the model is running on the shared server, your local system's VRAM usage will remain stable, even as the AI reasons through a complex 100-line shader.
+
+== RAG vs. LoRA: When to Use Which?
+
+Choosing between these two techniques depends on your goals. Use **RAG** for facts that change often, such as third-party library manuals, project-specific requirements, or your engine's current task list. Use **LoRA** for deep, structural elements—teaching the AI your engine's "Soul," including its naming conventions, memory management philosophy, and specific C{pp} abstractions.
+
+== Summary: The Integrated Engineer
+
+Fine-tuning via LoRA is the final step in creating a truly personalized AI assistant. It bridges the gap between a "generic" programmer and a **Senior Engineer on your specific team**.
+
+With the completion of Section 3, you have established a comprehensive specialized environment. You have selected a base model, calculated a sustainable VRAM budget, integrated ground-truth knowledge via RAG and MCP, injected your engine's unique style using LoRA, and deployed the result to a shared inference host for your team.
+
+Your assistant is now fully specialized. In the next section, we will give your assistant visual reasoning capabilities as we explore **Multimodal AI** and its ability to diagnose visual graphics bugs like shadow acne and Z-fighting.
+
+Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/01_introduction.adoc[Multimodal AI: Visual Reasoning Capabilities]

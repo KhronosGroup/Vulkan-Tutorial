@@ -312,7 +312,7 @@ That's it for all the fixed-function state!
 It's a lot of work to set all of this up from scratch, but the advantage is that we're now nearly fully aware of everything that is going on in the graphics pipeline!
 This reduces the chance of running into unexpected behavior because the default state of certain components is not what you expect.
 
-There is, however, one more object to create before we can finally create the graphics pipeline, and that is a xref:./03_Render_passes.adoc[render pass].
+In the xref:./03_Dynamic_rendering.adoc[next step] we will set up dynamic rendering to tell the graphics pipeline what and how attachments will be used.
 
 link:/attachments/10_fixed_functions.cpp[C{pp} code] /
 link:/attachments/09_shader_base.slang[Slang shader] /

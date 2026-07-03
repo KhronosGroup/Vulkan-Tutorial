@@ -184,6 +184,7 @@ In addition to the basic tutorial teaching how to use Vulkan, there are dedicate
 
 * xref:courses/18_Ray_tracing/00_Overview.adoc[Ray Tracing]
 * xref:Building_a_Simple_Engine/introduction.adoc[Building a simple game engine]
+* xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps]
 * xref:Advanced_Vulkan_Compute/introduction.adoc[Advanced compute techniques]
 * xref:Synchronization/introduction.adoc[Using new synchronization features]
 * xref:Advanced_glTF/introduction.adoc[Advanced glTF]

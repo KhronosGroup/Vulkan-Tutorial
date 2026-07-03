@@ -100,6 +100,7 @@ The texture coordinates determine how the image is actually mapped to the geomet
 struct Vertex
 {
     glm::vec2 pos;
+    glm::vec3 color;
     glm::vec2 texCoord;
 
     static vk::VertexInputBindingDescription getBindingDescription()
@@ -107,17 +108,20 @@ struct Vertex
         return { 0, sizeof(Vertex), vk::VertexInputRate::eVertex };
     }
 
-    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+    static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
     {
         return {{{.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, pos)},
-                 {.location = 1, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, texCoord)}}};
+		         {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)},
+		         {.location = 2, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, texCoord)}}};
     }
 };
 ----
 
-Modify the `Vertex` struct to include a `vec2` for texture coordinates. The color isn't used anymore and can be removed.
+Modify the `Vertex` struct to include a `vec2` for texture coordinates.
 Make sure to also add a `vk::VertexInputAttributeDescription` so that we can access texture coordinates as input in the vertex shader.
 That is necessary to be able to pass them to the fragment shader for interpolation across the surface of the square.
+The color is used in an additional example at the end of the Shaders section but is not needed to display the image and can be removed.
+Just be sure to also update the `vertices` array and shaders accordingly.
 
 [,c++]
 ----
@@ -217,7 +221,7 @@ For example, the following fragment shader produces the result in the image belo
 ----
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
-   return texture.Sample(vertIn.fragTexCoord);
+   return texture.Sample(vertIn.fragTexCoord * 2.0);
 }
 ----
 

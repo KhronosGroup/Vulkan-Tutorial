@@ -548,13 +548,23 @@ void ImGuiSystem::HandleMouse(float x, float y, uint32_t buttons) {
 
   ImGuiIO& io = ImGui::GetIO();
 
-  // Update mouse position
-  io.MousePos = ImVec2(x, y);
+  // Update mouse position (v1.87+ event API)
+  io.AddMousePosEvent(x, y);
 
-  // Update mouse buttons
-  io.MouseDown[0] = (buttons & 0x01) != 0; // Left button
-  io.MouseDown[1] = (buttons & 0x02) != 0; // Right button
-  io.MouseDown[2] = (buttons & 0x04) != 0; // Middle button
+  // Update mouse buttons (v1.87+ event API)
+  // We compare with current state to send events only on change
+  static uint32_t lastButtons = 0;
+  if ((buttons & 0x01) != (lastButtons & 0x01)) {
+    io.AddMouseButtonEvent(0, (buttons & 0x01) != 0);
+  }
+  if ((buttons & 0x02) != (lastButtons & 0x02)) {
+    io.AddMouseButtonEvent(1, (buttons & 0x02) != 0);
+  }
+  if ((buttons & 0x04) != (lastButtons & 0x04)) {
+    io.AddMouseButtonEvent(2, (buttons & 0x04) != 0);
+  }
+
+  lastButtons = buttons;
 }
 
 void ImGuiSystem::HandleKeyboard(uint32_t key, bool pressed) {
@@ -564,17 +574,11 @@ void ImGuiSystem::HandleKeyboard(uint32_t key, bool pressed) {
 
   ImGuiIO& io = ImGui::GetIO();
 
-  // Update key state
+  // Update key state (v1.87+ event API)
+  // GLFW key codes are compatible with ImGuiKey values in modern ImGui backends
   if (key < 512) {
-    io.KeysDown[key] = pressed;
+    io.AddKeyEvent((ImGuiKey)key, pressed);
   }
-
-  // Update modifier keys
-  // Using GLFW key codes instead of Windows-specific VK_* constants
-  io.KeyCtrl = io.KeysDown[341] || io.KeysDown[345]; // Left/Right Control
-  io.KeyShift = io.KeysDown[340] || io.KeysDown[344]; // Left/Right Shift
-  io.KeyAlt = io.KeysDown[342] || io.KeysDown[346]; // Left/Right Alt
-  io.KeySuper = io.KeysDown[343] || io.KeysDown[347]; // Left/Right Super
 }
 
 void ImGuiSystem::HandleChar(uint32_t c) {

@@ -35,3 +35,7 @@ attachments/simple_engine/android/gradlew
 attachments/simple_engine/android/gradlew.bat
 
 attachments/template/build/**
+
+attachments/siggraph2026_vk_tutorial/.git/
+attachments/siggraph2026_vk_tutorial/external/
+attachments/siggraph2026_vk_tutorial/data/external

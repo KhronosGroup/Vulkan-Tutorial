@@ -1,0 +1,9 @@
+build/
+out/
+.vs/
+.cache/
+.vscode/
+__pycache__/
+CMakeUserPresets.json
+compile_commands.json
+imgui.ini

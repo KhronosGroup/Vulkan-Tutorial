@@ -1,0 +1,44 @@
+{
+    "asset": {
+        "generator": "Khronos glTF Blender I/O v5.0.21",
+        "version": "2.0"
+    },
+    "scene": 0,
+    "scenes": [
+        {
+            "name": "Scene",
+            "nodes": [
+                0
+            ]
+        }
+    ],
+    "nodes": [
+        {
+            "camera": 0,
+            "name": "Camera",
+            "rotation": [
+                -0.09229589998722076,
+                0.701057493686676,
+                0.09229591488838196,
+                0.7010573148727417
+            ],
+            "translation": [
+                3.8224692344665527,
+                2.0390522480010986,
+                0.10110342502593994
+            ]
+        }
+    ],
+    "cameras": [
+        {
+            "name": "Camera.002",
+            "perspective": {
+                "aspectRatio": 1.7777777777777777,
+                "yfov": 0.39959651231765747,
+                "zfar": 100,
+                "znear": 0.10000000149011612
+            },
+            "type": "perspective"
+        }
+    ]
+}

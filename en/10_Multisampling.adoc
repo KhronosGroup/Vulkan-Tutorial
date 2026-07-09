@@ -15,7 +15,7 @@ Since there are no displays out there with unlimited resolution, it will always 
 There are a number of ways to fix this, and in this chapter we'll focus on one of the more popular ones: https://en.wikipedia.org/wiki/Multisample_anti-aliasing[Multisample antialiasing] (MSAA).
 
 In ordinary rendering, the pixel color is determined based on a single sample point which in most cases is the center of the target pixel on screen.
-If part of the drawn line passes through a certain pixel but doesn't cover the sample point, that pixel will be left blank, leading to the jagged "staircase" effect.
+If part of a drawn line passes through a certain pixel but doesn't cover the sample point, that pixel will be left blank, leading to the jagged "staircase" effect.
 
 image::/images/aliasing.png[]
 
@@ -41,43 +41,40 @@ vk::SampleCountFlagBits msaaSamples = vk::SampleCountFlagBits::e1;
 ----
 
 By default, we'll be using only one sample per pixel which is equivalent to no multisampling, in which case the final image will remain unchanged.
-The exact maximum number of samples can be extracted from `VkPhysicalDeviceProperties` associated with our selected physical device.
-We're using a depth buffer, so we have to take into account the sample count for both color and depth.
-The highest sample count that both support (and) will be the maximum we can support.
+The exact maximum number of samples can be extracted from `vk::PhysicalDeviceProperties` associated with our selected physical device.
+We're using a depth buffer as well, so we have to take into account the sample count for both color and depth.
+The highest sample count that both support will be the maximum we can support.
 Add a function that will fetch this information for us:
 
 [,c++]
 ----
-vk::SampleCountFlagBits getMaxUsableSampleCount() {
-    vk::PhysicalDeviceProperties physicalDeviceProperties = physicalDevice->getProperties();
+vk::SampleCountFlagBits getMaxUsableSampleCount()
+{
+  vk::PhysicalDeviceProperties physicalDeviceProperties = physicalDevice->getProperties();
 
-    vk::SampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
-    if (counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
-    if (counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
-    if (counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
-    if (counts & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8; }
-    if (counts & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4; }
-    if (counts & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2; }
+  vk::SampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+  if (counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
+  if (counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
+  if (counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
+  if (counts & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8; }
+  if (counts & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4; }
+  if (counts & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2; }
 
-    return vk::SampleCountFlagBits::e1;
+  return vk::SampleCountFlagBits::e1;
 }
 ----
 
 We will now use this function to set the `msaaSamples` variable during the physical device selection process.
-For this, we have to slightly modify the `pickPhysicalDevice` function:
+For this, we slightly extend the `pickPhysicalDevice` function:
 
 [,c++]
 ----
-void pickPhysicalDevice() {
-    ...
-    for (const auto& device : devices) {
-        if (isDeviceSuitable(device)) {
-            physicalDevice = device;
-            msaaSamples = getMaxUsableSampleCount();
-            break;
-        }
-    }
-    ...
+void pickPhysicalDevice()
+{
+  ...
+  physicalDevice = *devIter;
+  msaaSamples    = getMaxUsableSampleCount();
+  ...
 }
 ----
 
@@ -93,30 +90,62 @@ Add the following class members:
 [,c++]
 ----
 ...
-vk::raii::Image colorImage = nullptr;
+vk::raii::Image        colorImage       = nullptr;
 vk::raii::DeviceMemory colorImageMemory = nullptr;
-vk::raii::ImageView colorImageView = nullptr;
+vk::raii::ImageView    colorImageView   = nullptr;
 ...
 ----
 
-This new image will have to store the desired number of samples per pixel, so we need to pass this number to `VkImageCreateInfo` during the image creation process.
+This new image will have to store the desired number of samples per pixel, so we need to pass this number to `vk::ImageCreateInfo` during the image creation process.
 Modify the `createImage` function by adding a `numSamples` parameter:
 
 [,c++]
 ----
-void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::SampleCountFlagBits numSamples, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) const {
-    ...
-    imageInfo.samples = numSamples;
+std::pair<vk::raii::Image, vk::raii::DeviceMemory>
+    createImage(uint32_t                width,
+                uint32_t                height,
+                uint32_t                mipLevels,
+                vk::SampleCountFlagBits numSamples,
+                vk::Format              format,
+                vk::ImageTiling         tiling,
+                vk::ImageUsageFlags     usage,
+                vk::MemoryPropertyFlags properties)
+{
+  vk::ImageCreateInfo imageInfo{.imageType     = vk::ImageType::e2D,
+                                .format        = format,
+                                .extent        = {width, height, 1},
+                                .mipLevels     = mipLevels,
+                                .arrayLayers   = 1,
+                                .samples       = numSamples,
+                                .tiling        = tiling,
+                                .usage         = usage,
+                                .sharingMode   = vk::SharingMode::eExclusive,
+                                .initialLayout = vk::ImageLayout::eUndefined};
     ...
 ----
 
-For now, update all calls to this function using `VK_SAMPLE_COUNT_1_BIT` - we will be replacing this with proper values as we progress with implementation:
+For now, update all calls to this function using `vk::SampleCountFlagBits::e1` - we will be replacing this with proper values as we progress with implementation:
 
 [,c++]
 ----
-createImage(swapChainExtent.width, swapChainExtent.height, 1, vk::SampleCountFlagBits::e1, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage, depthImageMemory);
+std::tie(depthImage, depthImageMemory) = createImage(swapChainExtent.width,
+                                                     swapChainExtent.height,
+                                                     1,
+                                                     vk::SampleCountFlagBits::e1,
+                                                     depthFormat,
+                                                     vk::ImageTiling::eOptimal,
+                                                     vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                                                     vk::MemoryPropertyFlagBits::eDeviceLocal);
 ...
-createImage(texWidth, texHeight, mipLevels, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, textureImage, textureImageMemory);
+std::tie(textureImage, textureImageMemory) =
+    createImage(texWidth,
+                texHeight,
+                mipLevels,
+                vk::SampleCountFlagBits::e1,
+                vk::Format::eR8G8B8A8Srgb,
+                vk::ImageTiling::eOptimal,
+                vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                vk::MemoryPropertyFlagBits::eDeviceLocal);
 ----
 
 We will now create a multi-sampled color buffer.
@@ -126,11 +155,19 @@ Also, this color buffer doesn't need mipmaps since it's not going to be used as 
 
 [,c++]
 ----
-void createColorResources() {
-    vk::Format colorFormat = swapChainImageFormat;
+void createColorResources()
+{
+  vk::Format colorFormat = swapChainSurfaceFormat.format;
 
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,  vk::MemoryPropertyFlagBits::eDeviceLocal, colorImage, colorImageMemory);
-    colorImageView = createImageView(colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
+  std::tie(colorImage, colorImageMemory) = createImage(swapChainExtent.width,
+                                                       swapChainExtent.height,
+                                                       1,
+                                                       msaaSamples,
+                                                       colorFormat,
+                                                       vk::ImageTiling::eOptimal,
+                                                       vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,
+                                                       vk::MemoryPropertyFlagBits::eDeviceLocal);
+  colorImageView                         = createImageView(colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
 }
 ----
 
@@ -138,11 +175,12 @@ For consistency, call the function right before `createDepthResources`:
 
 [,c++]
 ----
-void initVulkan() {
-    ...
-    createColorResources();
-    createDepthResources();
-    ...
+void initVulkan()
+{
+  ...
+  createColorResources();
+  createDepthResources();
+  ...
 }
 ----
 
@@ -151,10 +189,18 @@ Modify `createDepthResources` and update the number of samples used by the depth
 
 [,c++]
 ----
-void createDepthResources() {
-    ...
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage_, depthImageMemory_);
-    ...
+void createDepthResources()
+{
+  ...
+  std::tie(depthImage, depthImageMemory) = createImage(swapChainExtent.width,
+                                                       swapChainExtent.height,
+                                                       1,
+                                                       msaaSamples,
+                                                       depthFormat,
+                                                       vk::ImageTiling::eOptimal,
+                                                       vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                                                       vk::MemoryPropertyFlagBits::eDeviceLocal);
+  ...
 }
 ----
 
@@ -162,106 +208,76 @@ And update the `recreateSwapChain` so that the new color image can be recreated 
 
 [,c++]
 ----
-void recreateSwapChain() {
-    ...
-    createImageViews();
-    createColorResources();
-    createDepthResources();
-    ...
+void recreateSwapChain()
+{
+  ...
+  createImageViews();
+  createColorResources();
+  createDepthResources();
+  ...
 }
 ----
 
-We made it past the initial MSAA setup, now we need to start using this new resource in our graphics pipeline, framebuffer, render pass and see the results!
+We made it past the initial MSAA setup, now we need to start using this new resource in our graphics pipeline and see the results!
 
-== Adding new attachments
+== Using new attachments
 
-Let's take care of the render pass first.
-Modify `createRenderPass` and update color and depth attachment creation info structs:
-
-[,c++]
-----
-void createRenderPass() {
-    ...
-    colorAttachment.samples = msaaSamples;
-    colorAttachment.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    ...
-    depthAttachment.samples = msaaSamples;
-    ...
-----
-
-You'll notice that we have changed the finalLayout from `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` to `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL`.
-That's because multi-sampled images cannot be presented directly.
-We first need to resolve them to a regular image.
-This requirement does not apply to the depth buffer, since it won't be presented at any point.
-Therefore, we will have to add only one new attachment for color, which is a so-called resolve attachment:
+First, tell the graphics pipeline to use more than one sample by modifying `createGraphicsPipeline`:
 
 [,c++]
 ----
-    ...
-    vk::AttachmentDescription colorAttachmentResolve({}, swapChainImageFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::ePresentSrcKHR);
-    ...
-----
-
-The render pass now has to be instructed to resolve multi-sampled color image into regular attachment.
-Create a new attachment reference that will point to the color buffer which will serve as the resolve target:
-
-[,c++]
-----
-    ...
-    vk::AttachmentReference colorAttachmentResolveRef(2, vk::ImageLayout::eColorAttachmentOptimal);
-    ...
-----
-
-Set the `pResolveAttachments` subpass struct member to point to the newly created attachment reference.
-This is enough to let the render pass define a multisample resolve operation which will let us render the image to screen:
-
-----
-    ...
-    subpass.pResolveAttachments = &colorAttachmentResolveRef;
-    ...
-----
-
-Since we're reusing the multi-sampled color image, it's necessary to update
-the `srcAccessMask` of the `VkSubpassDependency`.
-This update ensures that any write operations to the color attachment are completed before later ones begin, thus preventing write-after-write hazards that can lead to unstable rendering results:
-
-[,c++]
-----
-    ...
-    dependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
-    ...
-----
-
-Now update render pass info struct with the new color attachment:
-
-[,c++]
-----
-    ...
-    std::array attachments = {colorAttachment, depthAttachment, colorAttachmentResolve};
-    ...
-----
-
-With the render pass in place, modify `createFramebuffers` and add the new image view to the list:
-
-[,c++]
-----
-void createFramebuffers() {
-        ...
-        vk::ImageView attachments[] = { *colorImageView,  *depthImageView, view };
-        ...
+void createGraphicsPipeline()
+{
+  ...
+  vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = msaaSamples};
+  ...
 }
 ----
 
-Finally, tell the newly created pipeline to use more than one sample by modifying `createGraphicsPipeline`:
+Then we need to extend `recordCommandBuffer`.
+In addition to transitioning the `swapChainImages[imageIndex]` and the `depthImage` from `vk::ImageLayout::eUndefined` to
+`vk::ImageLayout::eColorAttachmentOptimal` and `vk::ImageLayout::eDepthAttachmentOptimal`, respectively, we need to transition the
+new multisampled `colorImage` from `vk::ImageLayout::eUndefined` to `vk::ImageLayout::eColorAttachmentOptimal`:
 
 [,c++]
 ----
-void createGraphicsPipeline() {
-    ...
-    multisampling.rasterizationSamples = msaaSamples;
-    ...
+void recordCommandBuffer(uint32_t imageIndex)
+{
+  ...
+  // Transition the multisampled color image to vk::ImageLayout::eColorAttachmentOptimal
+  transition_image_layout(
+      *colorImage,
+      vk::ImageLayout::eUndefined,
+      vk::ImageLayout::eColorAttachmentOptimal,
+      vk::AccessFlagBits2::eColorAttachmentWrite,
+      vk::AccessFlagBits2::eColorAttachmentWrite,
+      vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+      vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+      vk::ImageAspectFlagBits::eColor);
+  ...
+}
+----
+
+Next, instead of using the `swapChainImageViews[imageIndex]` as the color attachment in the `vk::RenderingInfo` with
+`vk::CommandBuffer::beginRendering`, we're using the `colorImageView` with the `swapChainImageViews[imageIndex]` as the resolve
+image view, using `vk::ResolveModeFlagBits::eAverage` as the resolve mode:
+
+[,c++]
+----
+void recordCommandBuffer(uint32_t imageIndex)
+{
+  ...
+  // Color attachment (multisampled) with resolve attachment
+  vk::RenderingAttachmentInfo colorAttachment = {
+      .imageView          = colorImageView,
+      .imageLayout        = vk::ImageLayout::eColorAttachmentOptimal,
+      .resolveMode        = vk::ResolveModeFlagBits::eAverage,
+      .resolveImageView   = swapChainImageViews[imageIndex],
+      .resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .loadOp             = vk::AttachmentLoadOp::eClear,
+      .storeOp            = vk::AttachmentStoreOp::eStore,
+      .clearValue         = clearColor};
+  ...
 }
 ----
 
@@ -288,19 +304,23 @@ One way to approach this problem is to enable https://docs.vulkan.org/spec/lates
 
 [,c++]
 ----
-
-void createLogicalDevice() {
-    ...
-    deviceFeatures.sampleRateShading = vk::True; // enable sample shading
-    feature for the device
-    ...
+void createLogicalDevice()
+{
+  ...
+  vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+      {.features = {.sampleRateShading = vk::True, .samplerAnisotropy = vk::True}},        // vk::PhysicalDeviceFeatures2
+  ...
 }
 
-void createGraphicsPipeline() {
-    ...
-    multisampling.sampleShadingEnable = vk::True; // enable sample shading in the pipeline
-    multisampling.minSampleShading = .2f; // min fraction for sample shading; closer to one is smoother
-    ...
+void createGraphicsPipeline()
+{
+  ...
+  vk::PipelineMultisampleStateCreateInfo multisampling{
+      .rasterizationSamples = msaaSamples,
+      .sampleShadingEnable  = vk::True,        // enable sample shading in the pipeline
+      .minSampleShading     = 0.2f             // min fraction for sample shading; closer to one is smoother
+  };
+  ...
 }
 ----
 

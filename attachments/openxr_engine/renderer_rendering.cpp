@@ -120,8 +120,7 @@ bool Renderer::createSwapChain() {
       swapChainImageFormat = xrContext.getSwapchainFormat();
       swapChainExtent = xrContext.getSwapchainExtent();
 
-      eyeSwapchainImages[0] = xrContext.enumerateSwapchainImages(0);
-      eyeSwapchainImages[1] = xrContext.enumerateSwapchainImages(1);
+      xrSwapchainImages = xrContext.enumerateSwapchainImages(0);
 
       // We still use swapChainImages as a dummy or to track common state if needed
       return true;
@@ -500,11 +499,10 @@ void Renderer::renderReflectionPass(vk::raii::CommandBuffer& cmd,
 bool Renderer::createImageViews() {
   try {
     if (xrMode) {
-      for (uint32_t eye = 0; eye < 2; ++eye) {
-        eyeSwapchainImageViews[eye].clear();
-        for (vk::Image img : eyeSwapchainImages[eye]) {
-          eyeSwapchainImageViews[eye].emplace_back(createImageView(img, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1, 1));
-        }
+      xrSwapchainImageViews.clear();
+      for (vk::Image img : xrSwapchainImages) {
+        // 2-layer array view: layer 0 = left eye, layer 1 = right eye (multiview target).
+        xrSwapchainImageViews.emplace_back(createImageView(img, swapChainImageFormat, vk::ImageAspectFlagBits::eColor, 1, 2));
       }
       return true;
     }
@@ -1217,12 +1215,12 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
   uint32_t imageIndex = xrContext.acquireSwapchainImage();
   xrContext.waitSwapchainImage();
 
-  vk::Image swapchainImage = eyeSwapchainImages[0][imageIndex];
-  vk::ImageView swapchainView = *eyeSwapchainImageViews[0][imageIndex];
+  vk::Image swapchainImage = xrSwapchainImages[imageIndex];
+  vk::ImageView swapchainView = *xrSwapchainImageViews[imageIndex];
 
-  // 2. Transition image to COLOR_ATTACHMENT_OPTIMAL
+  // 2. Transition image to COLOR_ATTACHMENT_OPTIMAL (2 array layers: left + right eye)
   transitionImageLayout(*cmd, swapchainImage, swapChainImageFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
-                        1, 1);
+                        1, 2);
 
   // 3. Prepare Multiview UBO Template
   for (uint32_t eye = 0; eye < 2; ++eye) {
@@ -1255,8 +1253,8 @@ void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* ca
 
   vk::RenderingInfo rinfo{
     .renderArea = vk::Rect2D({0, 0}, xrContext.getSwapchainExtent()),
-    .layerCount = 1,
-    .viewMask = 0x0u, // Single-eye rendering; both XR swapchains get the same image
+    .layerCount = 1, // ignored by the implementation when viewMask != 0
+    .viewMask = 0x3u, // true multiview: bit0=left eye, bit1=right eye, driven by SV_ViewID in the shaders
     .colorAttachmentCount = 1,
     .pColorAttachments = &colorAtt,
     .pDepthAttachment = &depthAtt

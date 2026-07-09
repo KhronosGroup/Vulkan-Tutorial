@@ -48,7 +48,9 @@ bool Renderer::createDepthResources() {
   try {
     // Find depth format
     vk::Format depthFormat = findDepthFormat();
-    uint32_t layers = 1;
+    // Multiview XR rendering writes both eyes (array layers 0/1) in one pass, so the
+    // depth attachment must match the color attachment's 2 array layers.
+    uint32_t layers = xrMode ? 2 : 1;
 
     // Use non-pooled createImage for depth as memoryPool doesn't support layers yet
     auto [image, memory] = createImage(

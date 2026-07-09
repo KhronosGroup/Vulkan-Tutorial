@@ -118,6 +118,18 @@ bool XrContext::createInstance(const std::string& appName) {
         return false;
     }
 
+    // Enabling XR_EXT_eye_gaze_interaction at the instance level does not guarantee
+    // this particular system has gaze-tracking hardware; that must be queried separately,
+    // otherwise xrCreateReferenceSpace(XR_REFERENCE_SPACE_TYPE_EYE_GAZE_EXT) is rejected as invalid.
+    if (isExtensionEnabled(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME)) {
+        XrSystemEyeGazeInteractionPropertiesEXT eyeGazeProps{XR_TYPE_SYSTEM_EYE_GAZE_INTERACTION_PROPERTIES_EXT};
+        XrSystemProperties systemProperties{XR_TYPE_SYSTEM_PROPERTIES};
+        systemProperties.next = &eyeGazeProps;
+        if (xrGetSystemProperties(this->instance, this->systemId, &systemProperties) == XR_SUCCESS) {
+            systemSupportsEyeGaze = eyeGazeProps.supportsEyeGazeInteraction;
+        }
+    }
+
     return true;
 }
 
@@ -229,7 +241,7 @@ bool XrContext::createSession(vk::PhysicalDevice physicalDevice, vk::Device devi
         this->actionSpaces[actionName] = space;
     }
 
-    if (isExtensionEnabled(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME)) {
+    if (isExtensionEnabled(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME) && systemSupportsEyeGaze) {
         XrReferenceSpaceCreateInfo gazeSpaceInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
         gazeSpaceInfo.referenceSpaceType = (XrReferenceSpaceType)1000031008; // XR_REFERENCE_SPACE_TYPE_EYE_GAZE_EXT
         gazeSpaceInfo.poseInReferenceSpace = {{0,0,0,1}, {0,0,0}};
@@ -400,8 +412,13 @@ void XrContext::createSwapchains(vk::Device device, vk::Format format, vk::Exten
     this->format = format;
     this->extent = extent;
 
+    // Single texture-array swapchain (arraySize=2): layer 0 = left eye, layer 1 = right eye.
+    // This is required to use real Vulkan multiview rendering (VK_KHR_multiview /
+    // SV_ViewID in the shaders) — multiview writes both views in one draw call into
+    // array layers 0 and 1 of the SAME image, so the two eyes cannot live in separate
+    // swapchains/images.
     XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    ci.arraySize = 1;
+    ci.arraySize = 2;
     ci.format = (int64_t)format;
     ci.width = extent.width;
     ci.height = extent.height;
@@ -410,24 +427,22 @@ void XrContext::createSwapchains(vk::Device device, vk::Format format, vk::Exten
     ci.sampleCount = 1;
     ci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 
-    for (uint32_t eye = 0; eye < 2; ++eye) {
-        XrSwapchain handle;
-        XrResult r = xrCreateSwapchain(this->session, &ci, &handle);
-        if (r != XR_SUCCESS) {
-            std::cerr << "[XR] xrCreateSwapchain eye=" << eye << " failed: " << r << std::endl;
-            continue;
-        }
-
-        uint32_t count = 0;
-        xrEnumerateSwapchainImages(handle, 0, &count, nullptr);
-        std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
-        xrEnumerateSwapchainImages(handle, count, &count, (XrSwapchainImageBaseHeader*)images.data());
-
-        SwapchainData data;
-        data.handle = handle;
-        data.images = std::move(images);
-        this->swapchains.push_back(std::move(data));
+    XrSwapchain handle;
+    XrResult r = xrCreateSwapchain(this->session, &ci, &handle);
+    if (r != XR_SUCCESS) {
+        std::cerr << "[XR] xrCreateSwapchain failed: " << r << std::endl;
+        return;
     }
+
+    uint32_t count = 0;
+    xrEnumerateSwapchainImages(handle, 0, &count, nullptr);
+    std::vector<XrSwapchainImageVulkanKHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+    xrEnumerateSwapchainImages(handle, count, &count, (XrSwapchainImageBaseHeader*)images.data());
+
+    SwapchainData data;
+    data.handle = handle;
+    data.images = std::move(images);
+    this->swapchains.push_back(std::move(data));
 }
 
 std::vector<vk::Image> XrContext::enumerateSwapchainImages(uint32_t swapchainIdx) {
@@ -550,15 +565,16 @@ void XrContext::endFrame(const std::array<std::vector<vk::ImageView>, 2>& eyeVie
     layer.space = this->appSpace;
 
     static XrCompositionLayerProjectionView projectionViews[2];
-    const bool canSubmitLayer = this->frameState.shouldRender && swapchains.size() >= 2;
+    const bool canSubmitLayer = this->frameState.shouldRender && !swapchains.empty();
     if (canSubmitLayer) {
         for (uint32_t i = 0; i < 2; ++i) {
             projectionViews[i] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
             projectionViews[i].pose = this->views[i].pose;
             projectionViews[i].fov = this->views[i].fov;
-            projectionViews[i].subImage.swapchain = this->swapchains[i].handle;
+            // Both eyes read from the same texture-array swapchain, layer i = eye i.
+            projectionViews[i].subImage.swapchain = this->swapchains[0].handle;
             projectionViews[i].subImage.imageRect = {{0, 0}, {(int32_t)extent.width, (int32_t)extent.height}};
-            projectionViews[i].subImage.imageArrayIndex = 0;
+            projectionViews[i].subImage.imageArrayIndex = i;
         }
         layer.viewCount = 2;
         layer.views = projectionViews;

@@ -473,7 +473,7 @@ void Engine::handleMouseInput(float x, float y, uint32_t buttons) {
   HandleMouseHover(x, y);
 }
 void Engine::handleKeyInput(uint32_t key, bool pressed) {
-#if !defined(PLATFORM_ANDROID)
+#if !defined(PLATFORM_ANDROID) && !defined(PLATFORM_HEADSET_ONLY)
   switch (key) {
     case GLFW_KEY_W:
     case GLFW_KEY_UP:
@@ -524,8 +524,8 @@ void Engine::Update(XrTime predictedTime) {
     xrContext.locateViews(predictedTime);
 
     // 3. Update the camera with the spatial data
+    auto views = xrContext.getLatestViews();
     if (activeCamera) {
-      auto views = xrContext.getLatestViews();
       if (views.size() >= 2) {
         activeCamera->SetStereoViews(views[0], views[1]);
       }
@@ -533,19 +533,29 @@ void Engine::Update(XrTime predictedTime) {
 
     // 4. After scene loading completes, align the XR reference space to the scene camera.
     //    This runs once: when the renderer transitions out of loading state.
-    if (!xrSpaceSynced && !renderer->IsLoading() && activeCamera) {
+    if (!xrSpaceSynced && !renderer->IsLoading() && activeCamera && !views.empty()) {
       auto* owner = activeCamera->GetOwner();
       auto* tf    = owner ? owner->GetComponent<TransformComponent>() : nullptr;
       if (tf) {
         const glm::mat4& M = tf->GetModelMatrix();
-        glm::quat q        = glm::quat_cast(glm::mat3(M));
-        glm::vec3 t        = glm::vec3(M[3]);
-        glm::quat qInv     = glm::conjugate(q);
-        glm::vec3 tInv     = -(glm::mat3_cast(qInv) * t);
-        XrPosef inversePose;
-        inversePose.orientation = {qInv.x, qInv.y, qInv.z, qInv.w};
-        inversePose.position    = {tInv.x, tInv.y, tInv.z};
-        xrContext.updateReferenceSpacePose(inversePose);
+        glm::quat qDesired    = glm::quat_cast(glm::mat3(M));
+        glm::vec3 tDesired    = glm::vec3(M[3]);
+        glm::quat qDesiredInv = glm::conjugate(qDesired);
+        glm::vec3 tDesiredInv = -(glm::mat3_cast(qDesiredInv) * tDesired);
+
+        const XrPosef& runtimePose = views[0].pose;
+        glm::quat qRuntime(runtimePose.orientation.w, runtimePose.orientation.x,
+                            runtimePose.orientation.y, runtimePose.orientation.z);
+        glm::vec3 tRuntime(runtimePose.position.x, runtimePose.position.y, runtimePose.position.z);
+
+        // poseInReferenceSpace = P_runtime * inverse(M)
+        glm::quat qResult = qRuntime * qDesiredInv;
+        glm::vec3 tResult = tRuntime + glm::mat3_cast(qRuntime) * tDesiredInv;
+
+        XrPosef newOrigin;
+        newOrigin.orientation = {qResult.x, qResult.y, qResult.z, qResult.w};
+        newOrigin.position    = {tResult.x, tResult.y, tResult.z};
+        xrContext.updateReferenceSpacePose(newOrigin);
         xrSpaceSynced = true;
       }
     }

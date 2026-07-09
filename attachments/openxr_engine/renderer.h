@@ -1933,8 +1933,10 @@ class Renderer {
     // (source-file-dir include precedence), so the shared-member layout MUST match.
     XrContext xrContext;
     bool xrMode = false;
-    std::vector<vk::Image> eyeSwapchainImages[2];
-    std::vector<vk::raii::ImageView> eyeSwapchainImageViews[2];
+    // Single texture-array swapchain shared by both eyes (layer 0 = left, layer 1 = right);
+    // rendered with real Vulkan multiview (viewMask=0x3) in one pass.
+    std::vector<vk::Image> xrSwapchainImages;
+    std::vector<vk::raii::ImageView> xrSwapchainImageViews;
     vk::raii::DeviceMemory depthImageMemory = nullptr;
 
     // Upload perf getters

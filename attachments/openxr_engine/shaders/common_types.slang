@@ -31,12 +31,14 @@ struct LightData {
 };
 
 // Uniform buffer object
+// NOTE: field order must match the C++ UniformBufferObject in renderer.h exactly;
+// the CPU memcpy's that struct into this constant buffer verbatim.
 struct UniformBufferObject {
     float4x4 model;
-    float4x4 viewProjections[4]; // Matches Chapter 8 tutorial
     float4x4 views[4];
     float4x4 projs[4];
     float4 camPoses[4];
+    float4x4 viewProjections[4];
     float exposure;
     float gamma;
     float prefilteredCubeMipLevels;

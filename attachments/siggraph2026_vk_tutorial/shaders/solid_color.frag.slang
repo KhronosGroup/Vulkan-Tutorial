@@ -31,24 +31,29 @@ struct SolidColorData {
 ConstantBuffer<SolidColorData> g_solidColor;
 
 struct FragmentInput {
-    float3 worldPosition : TEXCOORD2;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float tangentSign : TEXCOORD1;
-    float2 uv : TEXCOORD0;
+    float3 worldPosition;
+    float3 normal;
+    float3 tangent;
+    float tangentSign;
+    float2 uv;
 };
 
-[shader("fragment")]
-float4 fragmentMain(FragmentInput input) : SV_Target
+[shader("fragment")] float4 fragmentMain(FragmentInput input) : SV_Target
 {
     float4 color = g_solidColor.color;
 
-    // HACK: Disable performance warning:
-    // [VK_SHADER_STAGE_VERTEX_BIT] has an Output value declared but there is no corresponding Input declared in
-    // [VK_SHADER_STAGE_FRAGMENT_BIT]. This is not invalid, but the write to the unused Output is discarded, causing a
-    // performance validation message. Proper solution is to have a custom vertex shader, but this is intentionally
-    // avoided to keep the tutorial simple.
     if (color.a < 0.0f) {
+        // HACK: Disable the performance warning by faking the use of all inputs.
+        // If we remove this code, we get this warning when running with validation layers:
+        // [VK_SHADER_STAGE_VERTEX_BIT] has an Output value declared but there is no corresponding Input declared in
+        // [VK_SHADER_STAGE_FRAGMENT_BIT].
+        //
+        // This is not invalid; it is just a performance warning telling us that the write to the unused output is
+        // discarded. This can cause a performance loss on some GPUs, especially when using unlinked shader objects,
+        // since they might disable cross-stage shader optimizations.
+        //
+        // We should aim for a proper solution. For example, we could have a custom vertex shader that skips writing the
+        // unused inputs, but this is intentionally avoided to keep the tutorial simple.
         color.xy += input.uv * 0.001;
         color.w += input.tangentSign * 0.001;
         color.xyz += input.tangent * 0.001;

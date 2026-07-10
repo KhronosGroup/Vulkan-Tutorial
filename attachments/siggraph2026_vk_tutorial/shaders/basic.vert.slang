@@ -54,24 +54,24 @@ StructuredBuffer<ObjectData> g_objects;
 // Automatic deduction of locationId using Slang reflection might be preferred in most use cases.
 struct VertexInput {
     [[vk::location(0)]]
-    float3 position : POSITION;
+    float3 position;
     [[vk::location(1)]]
-    float3 normal : NORMAL;
+    float3 normal;
     [[vk::location(2)]]
-    float4 tangent : TANGENT;
+    float4 tangent;
     [[vk::location(3)]]
-    float2 uv : TEXCOORD0;
+    float2 uv;
 };
 
 // Send data from vertex shader to fragment shader.
 // Rasterization uses SV_Position while the remaining fields are interpolated for the fragment shader.
 struct VertexOutput {
     float4 position : SV_Position;
-    float3 worldPosition : TEXCOORD2;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float tangentSign : TEXCOORD1;
-    float2 uv : TEXCOORD0;
+    float3 worldPosition;
+    float3 normal;
+    float3 tangent;
+    float tangentSign;
+    float2 uv;
 };
 
 [shader("vertex")]

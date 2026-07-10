@@ -4,6 +4,8 @@ out/
 .cache/
 .vscode/
 __pycache__/
+external/
+data/external/
 CMakeUserPresets.json
 compile_commands.json
 imgui.ini

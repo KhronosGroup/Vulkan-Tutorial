@@ -52,11 +52,11 @@ Sampler2D g_normalTexture;
 
 // In Slang we can use HLSL annotations to communicate attributes between vertex and fragment shaders.
 struct FragmentInput {
-    float3 worldPosition : TEXCOORD2;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float tangentSign : TEXCOORD1;
-    float2 uv : TEXCOORD0;
+    float3 worldPosition;
+    float3 normal;
+    float3 tangent;
+    float tangentSign;
+    float2 uv;
 };
 
 // Transforms geometry normal using a normal texture
@@ -93,8 +93,7 @@ float3 illuminate(float3 albedo, float3 worldPosition, float3 normal, LightData 
 }
 
 [shader("fragment")]
-float4 fragmentMain(FragmentInput input) : SV_Target
-{
+float4 fragmentMain(FragmentInput input) {
     // The albedo and normal combined sampled images are selected by HEAP_WITH_PUSH_INDEX.
     float4 texel = g_albedoTexture.Sample(input.uv);
     if (texel.a < 0.5) {

@@ -105,7 +105,7 @@ The next step is about querying the supported surface formats.
 
 [,c++]
 ----
-std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR( surface );
+std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR( *surface );
 ----
 
 Finally, querying the supported presentation modes works exactly the same way
@@ -113,7 +113,7 @@ with `vk::raii::PhysicalDevice::getSurfacePresentModesKHR`:
 
 [,c++]
 ----
-std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR( surface );
+std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR( *surface );
 ----
 
 All the details are available now. Swap chain support is enough for this

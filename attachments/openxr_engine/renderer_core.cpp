@@ -166,11 +166,15 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     }
   }
 
-  // Create surface (skipped in headless XR builds — no companion window).
+  // Create surface (skipped in headless XR builds, and in XR mode generally —
+  // the companion window's VkSurfaceKHR is never used for device selection or
+  // presentation once running through the OpenXR swapchain path).
 #if !defined(PLATFORM_HEADSET_ONLY)
-  if (!createSurface()) {
-    std::cerr << "Failed to create surface" << std::endl;
-    return false;
+  if (!xrMode) {
+    if (!createSurface()) {
+      std::cerr << "Failed to create surface" << std::endl;
+      return false;
+    }
   }
 #endif
 

@@ -572,8 +572,11 @@ bool Renderer::createPBRPipeline() {
     vk::Format depthFormat = findDepthFormat();
 
     // Initialize member variable for proper lifetime management
+    // In XR mode these pipelines are drawn inside a multiview render pass instance
+    // (viewMask=0x3, see Renderer::Render(entities, camera, imguiSystem, predictedTime)),
+    // so the pipeline's own viewMask must match or binding/drawing is invalid.
     pbrPipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo{
-      .viewMask = 0x0u,
+      .viewMask = xrMode ? 0x3u : 0x0u,
       .colorAttachmentCount = 1,
       .pColorAttachmentFormats = &swapChainImageFormat,
       .depthAttachmentFormat = depthFormat,

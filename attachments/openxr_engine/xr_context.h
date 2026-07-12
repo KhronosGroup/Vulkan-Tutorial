@@ -161,6 +161,7 @@ private:
 
     // Gaze interaction member
     XrSpace gazeSpace;
+    bool systemSupportsEyeGaze = false;
 
     // Scene understanding member
     // XrSceneObserverMSFT sceneObserver;

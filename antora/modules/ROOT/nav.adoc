@@ -158,6 +158,49 @@
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Robustness2.adoc[Robustness2]
 ** Appendix
 *** xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix]
+
+* AI-Assisted Vulkan Development
+** xref:AI_Assisted_Vulkan/introduction.adoc[Introduction]
+** Environment Setup
+*** xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/02_environment_setup/02_jetbrains_clion_android_studio.adoc[JetBrains CLion & Android Studio]
+*** xref:AI_Assisted_Vulkan/02_environment_setup/03_visual_studio.adoc[Visual Studio]
+*** xref:AI_Assisted_Vulkan/02_environment_setup/04_xcode_apple.adoc[Xcode & Apple Silicon]
+*** xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Goose & local agents]
+*** xref:AI_Assisted_Vulkan/02_environment_setup/06_mcp_context_bridge.adoc[Model Context Protocol (MCP)]
+** Model Selection & Specialization
+*** xref:AI_Assisted_Vulkan/03_model_selection_specialization/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/03_model_selection_specialization/02_base_models.adoc[Selecting the base model]
+*** xref:AI_Assisted_Vulkan/03_model_selection_specialization/03_hardware_vram.adoc[Hardware & VRAM budgeting]
+*** xref:AI_Assisted_Vulkan/03_model_selection_specialization/04_rag_mcp_specialization.adoc[MCP & RAG specialization]
+*** xref:AI_Assisted_Vulkan/03_model_selection_specialization/05_fine_tuning_lora.adoc[Fine-tuning for your engine]
+** Multimodal AI
+*** xref:AI_Assisted_Vulkan/04_multimodal_ai/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/04_multimodal_ai/02_multimodal_models.adoc[Multimodal models]
+*** xref:AI_Assisted_Vulkan/04_multimodal_ai/03_visual_bug_diagnosis.adoc[Visual bug diagnosis]
+*** xref:AI_Assisted_Vulkan/04_multimodal_ai/04_expectations_limits.adoc[Expectations & limits]
+** Workflow
+*** xref:AI_Assisted_Vulkan/05_workflow/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/05_workflow/02_phase_1_planning.adoc[Phase 1: Planning]
+*** xref:AI_Assisted_Vulkan/05_workflow/03_phase_2_implementation.adoc[Phase 2: Implementation]
+*** xref:AI_Assisted_Vulkan/05_workflow/04_phase_3_refactoring.adoc[Phase 3: Refactoring]
+** Debugging
+*** xref:AI_Assisted_Vulkan/06_debugging/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/06_debugging/02_vuid_autofix.adoc[The VUID auto-fix]
+*** xref:AI_Assisted_Vulkan/06_debugging/03_renderdoc_ai_integration.adoc[AI + RenderDoc integration]
+*** xref:AI_Assisted_Vulkan/06_debugging/04_shader_debugging_logs.adoc[Shader debugging & log parsing]
+*** xref:AI_Assisted_Vulkan/06_debugging/05_gfxreconstruct_ai.adoc[AI-assisted trace analysis: GFXReconstruct]
+** Advanced MCP Tooling
+*** xref:AI_Assisted_Vulkan/07_advanced_mcp/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/07_advanced_mcp/02_vulkan_registry_mcp.adoc[Vulkan Registry & GPUInfo MCP]
+*** xref:AI_Assisted_Vulkan/07_advanced_mcp/03_agentic_automation_qa.adoc[Agentic automation & performance audits]
+** Deployment
+*** xref:AI_Assisted_Vulkan/08_deployment/01_introduction.adoc[Introduction]
+*** xref:AI_Assisted_Vulkan/08_deployment/02_android_ios_mobile.adoc[Android & iOS]
+*** xref:AI_Assisted_Vulkan/08_deployment/03_embedded_safety_critical.adoc[Embedded & safety critical]
+** xref:AI_Assisted_Vulkan/09_faq.adoc[FAQ]
+** xref:AI_Assisted_Vulkan/10_final_project.adoc[Final project: the AI-driven graphics lab]
+
 * Advanced Vulkan Compute
 ** xref:Advanced_Vulkan_Compute/introduction.adoc[Introduction]
 ** The Compute Architecture and Execution Model

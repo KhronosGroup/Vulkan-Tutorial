@@ -190,4 +190,4 @@ In addition to the basic tutorial teaching how to use Vulkan, there are dedicate
 * xref:Advanced_glTF/introduction.adoc[Advanced glTF]
 * xref:ML_Inference/introduction.adoc[Machine learning inference]
 * xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[OpenXR]
-
+* xref:AI_Assisted_Vulkan/introduction.adoc[AI-Assisted Vulkan Development]

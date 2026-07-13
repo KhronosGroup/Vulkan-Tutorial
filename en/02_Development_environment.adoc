@@ -222,7 +222,7 @@ know are vertex information, texture coordinates, and potentially diffuse
 color details.  GLTF is an advanced feature-full model format with
 easy-to-support features available in a cross-platform library.  However, for this
 tutorial, we're going to use tinyobjloader for its pure simplicity.  We
-recommend tinyobjlader library only for small not complex projects.
+recommend tinyobjloader library only for small not complex projects.
 
 == Windows
 

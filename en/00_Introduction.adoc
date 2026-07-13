@@ -177,3 +177,17 @@ https://github.com/KhronosGroup/Vulkan-Tutorial[GitHub repository].
 
 Ready to dive into the future of high performance graphics APIs?
 xref:01_Overview.adoc[Let's go!]
+
+== Advanced topics
+
+In addition to the basic tutorial teaching how to use Vulkan, there are dedicated chapters for advanced topics that you can dive into once you've learned the basics:
+
+* xref:courses/18_Ray_tracing/00_Overview.adoc[Ray Tracing]
+* xref:Building_a_Simple_Engine/introduction.adoc[Building a simple game engine]
+* xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps]
+* xref:Advanced_Vulkan_Compute/introduction.adoc[Advanced compute techniques]
+* xref:Synchronization/introduction.adoc[Using new synchronization features]
+* xref:Advanced_glTF/introduction.adoc[Advanced glTF]
+* xref:ML_Inference/introduction.adoc[Machine learning inference]
+* xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[OpenXR]
+* xref:AI_Assisted_Vulkan/introduction.adoc[AI-Assisted Vulkan Development]

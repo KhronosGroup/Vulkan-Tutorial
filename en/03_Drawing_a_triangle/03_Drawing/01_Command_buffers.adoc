@@ -145,7 +145,7 @@ We always begin recording a command buffer by calling `vk::raii::CommandBuffer::
 
 [,c++]
 ----
-commandBuffer->begin({});
+commandBuffer.begin({});
 ----
 
 The `flags` member of the `vk::CommandBufferBeginInfo` specifies how we're going to use the command buffer.
@@ -237,7 +237,7 @@ vk::RenderingAttachmentInfo attachmentInfo = {
     .clearValue  = clearColor};
 ----
 
-The `imageView` parameter specifies which image view to render to. The `imageLayout` parameter specifies the layout the image will be in during rendering. The `loadOp` parameter specifies what to do with the image before rendering, and the `storeOp` parameter specifies what to do with the image after rendering. We're using `VK_ATTACHMENT_LOAD_OP_CLEAR` to clear the image to black before rendering, and `vk::AttachmentStoreOp::eStore` to store the rendered image for later use.
+The `imageView` parameter specifies which image view to render to. The `imageLayout` parameter specifies the layout the image will be in during rendering. The `loadOp` parameter specifies what to do with the image before rendering, and the `storeOp` parameter specifies what to do with the image after rendering. We're using `vk::AttachmentLoadOp::eClear` to clear the image to black before rendering, and `vk::AttachmentStoreOp::eStore` to store the rendered image for later use.
 
 Next, we set up the rendering info:
 

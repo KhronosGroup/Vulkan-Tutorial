@@ -13,12 +13,6 @@ Shaders are written using Slang, a modern shading language hosted by the Khronos
 
 See the https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/en/courses/siggraph2026_vk_tutorial[course page] for more information.
 
-[NOTE]
-====
-ChatGPT and Codex were used to generate code for this tutorial.
-However, all code has been reviewed, edited, and analyzed.
-====
-
 == Build
 
 === Prerequisites
@@ -113,3 +107,14 @@ Assets and third-party libraries remain under their own licenses.
 * *nlohmann/json* - https://github.com/nlohmann/json[nlohmann/json]: Header-only JSON parser (https://github.com/nlohmann/json/blob/develop/LICENSE.MIT[MIT License]).
 * *stb* - https://github.com/nothings/stb[nothings/stb]: Header-only utility library; this tutorial uses +stb_image+ for texture loading (https://github.com/nothings/stb/blob/master/LICENSE[MIT or Public Domain / Unlicense]).
 * *tinygltf* - https://github.com/syoyo/tinygltf[syoyo/tinygltf]: Header-only glTF 2.0 loader (https://github.com/syoyo/tinygltf/blob/release/LICENSE[MIT License]).
+
+[NOTE]
+====
+Codex and ChatGPT 5.5 were used to assist in writing this tutorial.
+
+AI was used for:
+
+* Reviewing, with a particular focus on spelling and grammar.
+* Assisting with small refactors (for example: "Use `span` instead of `vector` as parameters")
+* Generating some basic utility functions, primarily for CMake files and for parsing glTF and JSON.
+====

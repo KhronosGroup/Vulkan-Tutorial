@@ -2,27 +2,25 @@
 
 = The Vulkan Registry & GPUInfo MCP
 
-== Introduction: The Ground Truth
+== Introduction: Working from the source data
 
-Vulkan is a data-driven API. Its structure, enums, and extensions are all defined in a central XML file: the **Vulkan Registry (`vk.xml`)**. Similarly, the capabilities of thousands of different GPUs are tracked in the **Vulkan Hardware Database (`gpuinfo.org`)**.
+Vulkan is a data-driven API. Its structs, enums, and extensions are all defined in a central XML file, the **Vulkan Registry (`vk.xml`)**. Similarly, the capabilities of thousands of GPUs are tracked in the **Vulkan Hardware Database (`gpuinfo.org`)**.
 
-In **Collaborative Engineering**, we give our AI direct access to these datasets. We move from "Probabilistic AI" (which guesses based on training data) to **"Deterministic AI"** (which queries the ground truth). This chapter explores how to use existing tools for the registry and how to **build your own** specialized MCP server to bridge your assistant to the `gpuinfo.org` database.
+Giving your AI direct access to these sources means it can look up an answer instead of guessing from training data, which matters most for anything added or changed recently. This chapter covers using an existing MCP server for the registry, and building your own small connector for `gpuinfo.org`.
 
-== The Registry Interrogation with mcp-Vulkan
+== Querying the registry with mcp-Vulkan
 
-The **mcp-Vulkan** project is a specialized MCP server designed to "interrogate" the `vk.xml` file. It provides your AI agent with tools like `search-vulkan-docs` and `get-vulkan-topic`.
+The **mcp-Vulkan** project is an MCP server built around `vk.xml`. It exposes tools like `search-vulkan-docs` and `get-vulkan-topic` to your AI agent.
 
-Consider a case where you are implementing a brand-new extension, such as `VK_KHR_maintenance7`. If your AI model was trained before this extension was released, it might hallucinate structure names or flags. By providing the AI with the `search-vulkan-docs` tool via mcp-Vulkan, you can ask it to query the latest spec. The AI calls the server, scans the registry, and returns the exact structure names—such as `VkPhysicalDeviceMaintenance7FeaturesKHR`—providing a 100% spec-accurate response.
+This matters most for extensions released after a model's training cutoff. If you're implementing something like `VK_KHR_maintenance7` and the model wasn't trained on it, it may guess at structure or flag names. With `search-vulkan-docs` wired up via mcp-Vulkan, the AI can query the current spec directly and return the actual structure name — e.g., `VkPhysicalDeviceMaintenance7FeaturesKHR` — instead of inventing something plausible-looking.
 
-== Tutorial: Building the GPUInfo MCP Server
+== Building a GPUInfo MCP server
 
-While `mcp-Vulkan` handles the official specification, connecting your AI to the **Vulkan Hardware Database (`gpuinfo.org`)**  requires a custom "Connector" MCP server. Since `gpuinfo.org` is a community-driven web resource, we can build a simple Python-based MCP server that allows our assistant to "search" the database for specific hardware limits.
+`mcp-Vulkan` covers the official spec, but connecting to the **Vulkan Hardware Database (`gpuinfo.org`)** needs a small custom server, since it's a community-run site rather than a structured API. Below is a minimal Python MCP server that gives your assistant a `query_gpu_limit` tool for checking hardware constraints during design.
 
-In this tutorial, we will create a **GPUInfo Connector** using the Python MCP SDK. This server will provide a tool called `query_gpu_limit` that our AI can use to check hardware constraints during the architectural design phase.
+=== Step 1: Setting up the environment
 
-=== Step 1: Setting up the Environment
-
-First, create a new directory for your MCP server and install the necessary dependencies. You will need the `mcp` library for the protocol and `requests` for fetching data from the web.
+Create a new directory for your MCP server and install the dependencies: `mcp` for the protocol, and `requests` for fetching data.
 
 [source,bash]
 ----
@@ -32,9 +30,9 @@ source venv/bin/activate
 pip install mcp requests
 ----
 
-=== Step 2: Defining the Server Logic
+=== Step 2: Defining the server logic
 
-Create a file named `server.py`. We will initialize an `McpServer` and define a tool that takes a GPU name and a specific limit (like `maxDescriptorSetSampledImages`) and returns the value from the database.
+Create a file named `server.py`. It initializes an `McpServer` and defines a tool that takes a GPU name and a limit name (like `maxDescriptorSetSampledImages`) and returns the corresponding value.
 
 [source,python]
 ----
@@ -62,9 +60,9 @@ if __name__ == "__main__":
     server.run()
 ----
 
-=== Step 3: Registering with Your AI Agent
+=== Step 3: Registering with your AI agent
 
-To use this tool, add the server to your agent's configuration. If you are using **Goose**, add the following entry to your `~/.config/goose/config.yaml` file:
+To use this tool, add the server to your agent's configuration. If you're using **Goose**, add this to `~/.config/goose/config.yaml`:
 
 [source,yaml]
 ----
@@ -74,14 +72,14 @@ extensions:
     args: ["/path/to/gpuinfo-mcp/server.py"]
 ----
 
-== Real-World Experience: Hardware-Aware System Design
+== Example: checking a bindless design against hardware limits
 
-Imagine you are architecting a new **Bindless Rendering** system. You ask your assistant: *"What is the `maxDescriptorSetSampledImages` limit for the Adreno 600 series, and will my 1024-texture strategy work?"*
+Say you're designing a bindless rendering setup and ask your assistant: "What's the `maxDescriptorSetSampledImages` limit on the Adreno 600 series, and does a 1024-texture bindless array fit?"
 
-With the GPUInfo MCP server connected, your assistant doesn't guess. It uses the `query_gpu_limit` tool, identifies the limit (which is 128 on many Adreno 600 devices), and immediately reports that your plan will fail. It then suggests a refactored architecture—such as a 'Tiled' descriptor strategy or a mobile-specific fallback—that is compatible with your target hardware.
+With the GPUInfo MCP server connected, the assistant can call `query_gpu_limit` and report the actual figure (128 on many Adreno 600 devices) instead of guessing — which in this case would mean your 1024-texture plan doesn't fit that hardware. From there it can suggest an alternative, like a tiled descriptor strategy or a mobile-specific fallback path, though it's worth checking any such suggestion against your actual constraints before committing to it.
 
-== Summary: Data-Driven Engineering
+== Summary
 
-By connecting your AI to the **Vulkan Registry** and building a custom **GPUInfo Connector**, you transform it into a **Hardware-Aware Assistant**. It no longer relies on static training data; it uses the same "Live Source of Truth" that professional graphics engineers use to design high-performance, cross-platform engines.
+Connecting your AI to the Vulkan Registry and a GPUInfo lookup tool means it's working from the same live data professional graphics engineers check by hand, rather than from whatever it happened to see in training. It still won't catch everything, and it's still worth verifying anything load-bearing, but it cuts out a lot of the manual copy-paste lookup work.
 
 Next: xref:AI_Assisted_Vulkan/07_advanced_mcp/03_agentic_automation_qa.adoc[Agentic Automation & Audits]

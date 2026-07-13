@@ -1,12 +1,12 @@
 :pp: {plus}{plus}
 
-= Final Project: The "AI-Driven" Graphics Lab
+= Final Project: AI-Assisted Graphics Lab
 
-== Introduction: The Collaborative Capstone
+== Introduction
 
-Congratulations! You have built your environment, specialized your models, mastered the "Design-Implementation-Review" cycle, and explored the forensic arts of debugging and deployment. Now, it is time to bring every tool in your new toolbelt together for a final, comprehensive challenge: **The AI-Driven Graphics Lab.**
+By this point you've set up your environment, worked with different models, gone through a design-implement-review cycle, and used AI to help with debugging and deployment. This final project brings those pieces together on one feature, end to end.
 
-In this capstone project, you will work within the **Simple Engine** (found in the `attachments/simple_engine/` directory from the Building a Simple Engine tutorial). You will not just "use" AI; you will **Direct** a team of digital specialists as they help you architect, implement, debug, and optimize a complex graphics feature from scratch. This is your final exam in **Collaborative Engineering**.
+You'll work within the **Simple Engine** (found in `attachments/simple_engine/` from the Building a Simple Engine tutorial), using a cloud model for design, a local model for implementation, and RenderDoc/GFXReconstruct-driven review to verify the result.
 
 == The Project: A Dual-Filtering Blur System
 
@@ -52,7 +52,7 @@ for an implementation model and save it to LLM_NOTES.md.
 ----
 
 === Step 3: Implementation and Refactoring
-Once the design is reviewed and your `LLM_NOTES.md` is ready, task your local specialist (like **Qwen 3-Coder**) to generate the `BlurRenderer` header and implementation. By providing the notes as direct context, you ensure the local model follows the established architectural contract without needing high-reasoning cloud access for the bulk implementation phase.
+Once the design is reviewed and your `LLM_NOTES.md` is ready, have a local model (like **Qwen 3-Coder**) generate the `BlurRenderer` header and implementation. Passing the notes as direct context lets the local model follow the agreed design without needing a cloud model for the bulk of the implementation work.
 
 [source,bash]
 ----
@@ -94,10 +94,10 @@ GitHub Actions workflow in '.github/workflows/main.yml' to
 include a new step that compiles and runs this test.
 ----
 
-By tasking the AI with the creation of the test and the update of the pipeline, you ensure that the "Technical Debt" of testing is handled simultaneously with implementation, maintaining a high standard of engineering without manual overhead.
+Having the AI write the test and update the CI config alongside the implementation means test coverage doesn't lag behind the feature itself.
 
 === Step 6: Multi-Frame Analysis with GFXReconstruct
-To truly verify your synchronization logic across the entire pass-chain of the blur system, you must look beyond a single frame. Use **GFXReconstruct** to capture a stream of API calls and task your autonomous agent with a "Timeline Audit." This is particularly effective for catching race conditions or incorrect image layout transitions that might only manifest intermittently or during the first few frames of initialization.
+Verifying synchronization across the whole blur pass-chain usually means looking across several frames, not just one. Use **GFXReconstruct** to capture a stream of API calls and have your agent check layout transitions across that range. This catches race conditions or incorrect image layout transitions that only show up intermittently or during the first few frames of initialization.
 
 [source,bash]
 ----
@@ -127,10 +127,10 @@ If you find a hazard, suggest the specific line in
 'BlurRenderer.cpp' that needs adjustment.
 ----
 
-By auditing the "Stream of Truth," you ensure that your engine isn't just working by "accident" on your current developer driver, but is strictly compliant with the Vulkan specification across time.
+Auditing the full call stream this way is what tells you whether the engine is actually spec-compliant, rather than just happening to work on your current driver.
 
 === Step 7: Visual Frame Inspection with RenderDoc
-While GFXReconstruct provides the multi-frame "Timeline of Truth," **RenderDoc** allows you to perform a deep-dive into the visual state of a single frame. Use the **RenderDoc command-line tool (`renderdoccmd`)** in conjunction with your autonomous agent to verify that each downsample and upsample pass in your blur system is producing the expected visual output. This is especially useful for identifying "Black Textures" or "Sampling Artifacts" that arise from incorrect sampler settings.
+Where GFXReconstruct covers the multi-frame timeline, **RenderDoc** lets you inspect the visual state of a single frame in detail. Use the **RenderDoc command-line tool (`renderdoccmd`)** together with your agent to verify that each downsample and upsample pass produces the expected output. This is especially useful for tracking down black textures or sampling artifacts caused by incorrect sampler settings.
 
 [source,bash]
 ----
@@ -159,11 +159,11 @@ If you find a mismatch, explain how to refactor the
 beyond the available mip-levels.
 ----
 
-By integrating RenderDoc with your AI agent, you move beyond "guessing" why a texture is black. The AI identifies the specific state mismatch (like a misconfigured LOD clamp) and correlates it directly to the line of code in your engine that created the faulty resource.
+Feeding RenderDoc captures to the agent turns "why is this texture black" from a guessing game into a direct trace: the AI identifies the specific state mismatch, like a misconfigured LOD clamp, and points at the line of code that produced it.
 
-== Summary: Mastering the Collaborative Engineering Workflow
+== Summary
 
-By completing this lab, you have practiced managing the complexity of a modern Vulkan feature using a **Collaborative Engineering** approach — combining high-reasoning cloud models for architecture, local specialists for implementation, and established tools like RenderDoc and GFXReconstruct for verification.
+Completing this lab means you've practiced the full loop on a real feature: a cloud model for architecture, a local model for implementation, and RenderDoc/GFXReconstruct for verification.
 
 AI assistance does not replace the need to understand Vulkan; it reduces the time spent on boilerplate and repetitive lookups so you can focus on the decisions that matter. The Vulkan specification remains your authoritative reference, and your judgment as an engineer remains the critical ingredient. What changes is how efficiently you can navigate that specification and iterate on your implementation.
 

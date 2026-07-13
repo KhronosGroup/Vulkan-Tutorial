@@ -2,34 +2,34 @@
 
 = Workflow: System Design to Implementation
 
-== Introduction: The Collaborative Engineering Loop
+== Introduction
 
-Up to this point, we have built our toolbelt, selected our models, and established our visual reasoning capabilities. Now, it is time to put these components into motion. A truly efficient AI-assisted Vulkan workflow is not a single step; it is a **Three-Phase Cycle** that mirrors the traditional graphics development process but at a significantly accelerated pace.
+So far we've set up a toolbelt, picked models, and covered multimodal debugging. Now it's time to put these pieces together into an actual workflow. A useful AI-assisted Vulkan workflow isn't a single step — it maps roughly onto three phases of traditional graphics development, just faster: design, implementation, and refactoring.
 
-In **Collaborative Engineering**, we don't just "ask for code." We follow a structured loop that moves from high-level architectural intent to line-by-line implementation and finally to automated evolution.
+Rather than treating each request to the model as a one-off, it helps to follow a loop that moves from high-level architectural intent down to line-by-line implementation, and finally to longer-running cleanup and migration work.
 
-== The Core Concept: Separation of Concerns
+== Matching the model to the phase
 
-The secret to preventing AI from "going off the rails" is to match the model's reasoning depth to the specific phase of your development.
+The main failure mode with AI-assisted development is using the wrong kind of model for the wrong kind of work — asking a fast local model to make an architectural call it doesn't have the context for, or burning a slow, expensive reasoning model on boilerplate it doesn't need. Matching the model to the phase avoids most of that.
 
-1.  **Phase 1: System Design (The Design Phase):** We use high-reasoning models (like **Claude 4.6** or **GPT-5.3**) to design the core architecture of the system. In this phase, we care about data flow, frame graphs, and memory safety, not specific bitmasks.
-2.  **Phase 2: Implementation & The Inner Loop (The Implementation Phase):** We use specialized coding models (like **Qwen 3-Coder**) to handle the "Syntactic Noise." This is where we generate the verbose `VkPipeline` structures and write the Slang/HLSL shaders.
-3.  **Phase 3: Automated Evolution (The Review Phase):** We use autonomous agents (like **Goose**) to migrate legacy code to modern patterns. The AI acts as a verification tool, ensuring that our new feature doesn't break existing synchronization or violate Vulkan 1.3/1.4 best practices.
+1.  **Phase 1: System design.** Use a high-reasoning model (such as Claude or GPT-class models) to work out the architecture: data flow, frame graph structure, memory ownership. At this stage the specific bitmasks and struct fields don't matter yet.
+2.  **Phase 2: Implementation.** Use a fast, code-specialized model (such as Qwen 3-Coder) to generate the verbose parts — `VkPipeline` structures, descriptor set boilerplate, and Slang/HLSL shader code.
+3.  **Phase 3: Refactoring and review.** Use an agent (such as Goose) for larger, multi-file migrations — moving legacy code to newer patterns, and checking that a new feature doesn't quietly break existing synchronization or violate Vulkan 1.3/1.4 best practices.
 
-== Why This Workflow for Vulkan?
+== Why this matters for Vulkan
 
-Vulkan's **Design-to-Code** ratio is uniquely challenging. A simple architectural decision—like *"Let's move to a Bindless Rendering system"*—requires changes across your entire engine: descriptor management, shader inputs, resource allocation, and synchronization barriers.
+Vulkan has an unusually high ratio of code to architectural decision. A single decision like "move to bindless rendering" touches descriptor management, shader inputs, resource allocation, and synchronization barriers across the whole engine.
 
-By following this structured workflow, you ensure that the AI remains grounded in your architectural intent (Phase 1) while it handles the massive amount of boilerplate required for implementation (Phase 2) and refactoring (Phase 3). This prevents the "Code Rot" that often occurs when using AI to generate disconnected snippets of code.
+Following a structured design → implementation → refactor loop keeps the AI's output grounded in what you actually decided in Phase 1, rather than producing disconnected snippets that drift out of sync with each other as the feature grows.
 
-== The Workflow Roadmap: A Practical Example
+== Walkthrough: a Bloom post-process pipeline
 
-Throughout this section, we will walk through a concrete, real-world task: **Implementing a modern Bloom Post-Process Pipeline.**
+The rest of this section works through one concrete example — a Bloom post-process pipeline — across all three phases:
 
-1.  **xref:AI_Assisted_Vulkan/05_workflow/02_phase_1_planning.adoc[Phase 1: System Design]:** You will learn how to prompt a model to design a technical roadmap. We'll discuss how to define the "Resource Lifecycle" and the specific layout transitions required for a downsample/upsample chain.
-2.  **xref:AI_Assisted_Vulkan/05_workflow/03_phase_2_implementation.adoc[Phase 2: The Implementation Loop]:** We will move to your local specialist. You will learn how to use your technical roadmap as context to generate the necessary pipelines and compute shaders with near-zero manual typing.
-3.  **xref:AI_Assisted_Vulkan/05_workflow/04_phase_3_refactoring.adoc[Phase 3: Automated Evolution]:** Finally, we will use an AI agent to verify our implementation—checking for synchronization hazards and ensuring our memory usage matches the hardware limits we defined in the **Context Bridge**.
+1.  **xref:AI_Assisted_Vulkan/05_workflow/02_phase_1_planning.adoc[Phase 1: System Design]:** Prompting a model to produce a technical plan, including the resource lifecycle and layout transitions for a downsample/upsample chain.
+2.  **xref:AI_Assisted_Vulkan/05_workflow/03_phase_2_implementation.adoc[Phase 2: The Implementation Loop]:** Using a local model, with the plan from Phase 1 as context, to generate the pipelines and compute shaders.
+3.  **xref:AI_Assisted_Vulkan/05_workflow/04_phase_3_refactoring.adoc[Phase 3: Refactoring]:** Using an agent to check the implementation for synchronization hazards and confirm memory usage matches the hardware limits established earlier via the Context Bridge.
 
-By the end of this journey, you will have a repeatable "Blueprint" for building complex graphics features using AI as a deeply informed extension of your own engineering expertise.
+By the end, you should have a repeatable process for building graphics features with AI involved at each stage, without losing track of the overall design.
 
 Next: xref:AI_Assisted_Vulkan/05_workflow/02_phase_1_planning.adoc[Phase 1: System Design]

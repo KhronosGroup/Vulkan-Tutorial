@@ -4,31 +4,27 @@
 
 == Introduction: The Multi-Platform Chain
 
-Vulkan's greatest strength is its portability. A well-written application can run on a high-end Windows desktop, a Samsung smartphone, and a Raspberry Pi. However, each of these platforms has its own "Laws" when it comes to memory management, asset loading, and performance optimization.
+Vulkan's greatest strength is its portability. A well-written application can run on a high-end Windows desktop, a Samsung smartphone, and a Raspberry Pi. Each of these platforms comes with its own constraints around memory management, asset loading, and performance optimization.
 
-In **Collaborative Engineering**, we use our assistant as a **Platform-Aware Specialist**. We use AI to bridge the "Context Gap" between platforms, automating the tedious JNI boilerplate for mobile, suggesting optimizations for tiled GPUs, and managing the strict resource constraints of embedded systems.
+An AI assistant is useful here mainly because it can be given those platform constraints up front and hold onto them: it can help write the tedious JNI boilerplate for mobile, suggest optimizations suited to tiled GPUs, and flag when you're about to exceed the resource limits of an embedded target.
 
-== The Core Concept: Platform Context
+== Giving the assistant platform context
 
-A "Platform-Aware" assistant is an AI that has been provided with the specific hardware constraints of your target. By using the **Context Bridge**, we inform the AI of the "Target Reality":
+The pattern in this chapter is to hand your assistant the specific hardware constraints of your target before asking it for code, using the same MCP/RAG setup covered earlier in this series:
 
-1.  **Mobile Context:** The AI understands **Tile-Based Deferred Rendering (TBDR)**. It prioritizes subpass dependencies and memory-less attachments to maximize on-chip tile memory performance.
-2.  **Desktop Context:** The AI understands the performance trade-offs of different vendor extensions. It knows when to use `VK_NV_ray_tracing` versus the cross-vendor `VK_KHR_ray_tracing_pipeline`.
-3.  **Embedded Context:** The AI understands strict VRAM and CPU budgets. It suggests quantization strategies for shaders and textures to fit within architectures that lack traditional paging.
+1.  **Mobile:** Point it at Tile-Based Deferred Rendering (TBDR). Once it has that context, it's better at prioritizing subpass dependencies and memory-less attachments to keep data in on-chip tile memory.
+2.  **Desktop:** Give it the relevant vendor extension tradeoffs so it can tell you, for example, when `VK_NV_ray_tracing` is worth using over the cross-vendor `VK_KHR_ray_tracing_pipeline`.
+3.  **Embedded:** Give it your VRAM and CPU budget so it can suggest quantization strategies for shaders and textures that actually fit your target, instead of generic advice.
 
-== Why Use AI for Deployment?
+== Why bother with AI here specifically
 
-Deployment is where "Syntactic Noise" becomes a blocker to portability.
-*   **Android/iOS:** You must write hundreds of lines of "Glue Code" (JNI or Objective-C{pp}) just to get a window surface and an asset loader running.
-*   **The AI Solution:** You describe the asset structure of your engine, and the AI generates the complete multi-language bridge, ensuring that your C{pp} Vulkan core remains clean and platform-agnostic.
+Deployment code is mostly glue: hundreds of lines of JNI or Objective-C{pp} just to get a window surface and asset loader running on a given platform. That's tedious to write by hand and easy for an AI assistant to draft correctly once you've described your engine's asset structure and target platform — you still need to review it, since it's exactly the kind of platform-specific code where a subtle mistake (wrong lifetime, wrong threading assumption) won't show up until you're on-device.
 
-== The Deployment Roadmap
+== What's next
 
-In this final section, we move from the "Lab" to the "World":
+1.  **xref:AI_Assisted_Vulkan/08_deployment/02_android_ios_mobile.adoc[Android & iOS]:** Automating JNI boilerplate and optimizing for tiled GPU architectures.
+2.  **xref:AI_Assisted_Vulkan/08_deployment/03_embedded_safety_critical.adoc[Embedded & Safety-Critical Systems]:** Working within strict hardware limits and memory-constrained environments.
 
-1.  **xref:AI_Assisted_Vulkan/08_deployment/02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]:** Automating JNI boilerplate and optimizing for Tiled GPU architectures.
-2.  **xref:AI_Assisted_Vulkan/08_deployment/03_embedded_safety_critical.adoc[Embedded & Safety Critical Systems]:** Managing strict hardware limits and memory-constrained environments.
-
-By the end of this journey, you will be able to take your Vulkan application from a single-platform prototype to a globally portable, high-performance engine that runs optimally on every device it touches.
+By the end of this section, you should be able to take a Vulkan application from a single-platform prototype to something that runs reasonably well across desktop, mobile, and embedded targets.
 
 Next: xref:AI_Assisted_Vulkan/08_deployment/02_android_ios_mobile.adoc[Android & iOS: The Mobile Frontier]

@@ -1,83 +1,75 @@
 :pp: {plus}{plus}
 
-= Ground Truth: MCP & RAG Specialization
+= MCP & RAG Specialization
 
-== Introduction: The "Hallucination" Gap
+== The training-cutoff problem
 
-Even the most powerful base model, like **Qwen 3-Coder**, is trapped by its **Training Cutoff**. If the Vulkan Working Group releases a new extension today, your AI model will not know about it. This creates a dangerous "Hallucination Gap": the AI might "invent" structure members or bitmasks that don't exist, leading to hours of wasted debugging.
+Even a strong base model like Qwen 3-Coder only knows what existed in its training data. If the Vulkan working group ships a new extension today, the model won't know about it — and it may confidently invent struct members or bitmasks that don't exist, which can cost real debugging time.
 
-To bridge this gap, we move from a "Closed-Book" AI to an **"Open-Book" Specialist**. We do this through two primary methods: **MCP** and **RAG**.
+MCP and RAG are the two main ways to give a model access to information beyond its training data.
 
-== The Core Concept: Global Truth vs. Local Truth
+== Two kinds of context
 
-To build a truly effective AI-assisted workflow, you must understand the difference between the two types of knowledge:
+It helps to separate two kinds of knowledge a model needs:
 
-1.  **Global Truth (The Vulkan Spec):** This is the official definition of the API. It is shared by every developer on the planet. We connect the AI to this "Global Truth" via **MCP**.
-2.  **Local Truth (Your Engine Architecture):** This is your engine's specific coding style, memory management, and internal abstractions. No AI model in the world knows this because it’s private. We connect the AI to this "Local Truth" via **RAG**.
+1.  **The Vulkan spec itself** — the same for every developer. This is what MCP connects the model to.
+2.  **Your engine's specific conventions** — private to your project, and something no general-purpose model was trained on. This is what RAG connects the model to.
 
-== Strategy 1: The Context Bridge (MCP)
+== MCP: connecting to the spec
 
-As we explored in the environment section, the **Model Context Protocol (MCP)** allows your AI to "reach out" and query real-time data.
+The Model Context Protocol lets your AI query real-time data instead of relying only on training data.
 
-**Real-World Experience: The `vk.xml` Lookup**
-Imagine you are implementing a complex post-processing pass and need to know the valid `VkImageUsageFlags` for a storage image on an Android device. Instead of leaving your IDE, you ask your assistant: *"Query our local Vulkan SDK's `vk.xml` for the valid usage flags of a storage image."*
+**Example.** Say you need the valid `VkImageUsageFlags` for a storage image on Android. Instead of looking it up yourself, you ask the assistant to query your local SDK's `vk.xml` for it. Rather than guessing from training data, the assistant reads the actual XML file and returns the real bitmask definitions — correct even for extensions released yesterday.
 
-The AI doesn't "guess" the flags from its training data. It uses an **MCP Tool** to read the actual XML file in your Vulkan SDK. It finds the exact bitmask definitions and provides an answer that is consistent with the specification. This is the difference between "Probabilistic Guessing" and "Ground Truth."
+== RAG: connecting to your codebase
 
-*   **The Win:** By connecting the AI to the **Vulkan Registry**, you ensure your code is always syntactically correct, even for extensions that were released yesterday.
+Where MCP handles structured spec data, RAG handles your own source, internal docs, and architectural conventions.
 
-== Strategy 2: Retrieval-Augmented Generation (RAG)
+**Example.** You're writing a new `Buffer` wrapper and want it to match your existing `Texture` class's style. With RAG set up, you ask the assistant to use `Texture` as a reference and generate a `Buffer` class following the same RAII and allocation patterns. Instead of a generic C{pp} class, the system retrieves your actual `Texture` implementation and generates something that matches your codebase's existing conventions, without retraining the underlying model.
 
-While MCP is for "Structured Data" (like XML or documentation), **RAG** is for "Contextual Data"—your engine's own source code, internal wikis, and unique architectural patterns.
+== How a RAG pipeline works
 
-**The Experience: "Contextual Awareness"**
-You are working on a new `Buffer` wrapper. You want it to match the coding style of your existing `Texture` class. You use a RAG-enabled tool. You ask: *"Using our `Texture` class as a reference, generate a new `Buffer` class that follows our custom RAII wrapping and memory allocation patterns."*
+Understanding the pipeline is useful because it's how you turn a general-purpose model into something that knows your engine specifically, using only your local files.
 
-Instead of giving you a generic C{pp} class, the system uses **RAG** to "Retrieve" the implementation of your `Texture` class from your local project. It then "Augments" its generation with your engine's specific "Voice." The resulting code looks exactly like something you would have written yourself.
+=== Phase 1: curating source documents
 
-*   **The Win:** RAG ensures that the AI's suggestions are **Architecturally Consistent** with your specific codebase without needing to retrain the underlying model.
+Identify the documents worth indexing for your engine:
 
-== The Mechanics of Specialization: The RAG Pipeline
+*   **Header files** (`.h`, `.hpp`, etc.) — your internal API surface.
+*   **Engineering guidelines** — docs covering memory management or synchronization conventions.
+*   **External docs** — local copies of third-party library manuals (Slang, VMA, Volk, SDL3) or vendor optimization guides not already covered by MCP tools.
 
-For a graphics developer, understanding the RAG pipeline is essential because it allows you to "specialize" a general-purpose model into a **Vulkan Expert** using only your local files. You are essentially providing the AI with a "Working Memory" that is far larger and more accurate than its original training data.
+NB: There's a tradeoff between index breadth and retrieval speed — a wider index can be more accurate but slower to query, and it also costs tokens, leaving less budget for the actual work in a session. Keep the index focused rather than indexing everything.
 
-To build a RAG-powered specialization for your engine, you must understand the four phases of the pipeline:
+=== Phase 2: embedding and indexing
 
-=== Phase 1: Knowledge Curation (The "Source Truth")
-You must identify the "Ground Truth" documents for your engine. For a Vulkan project, this includes:
+1.  **Chunking:** files are split into smaller overlapping pieces (a function, a class definition).
+2.  **Embeddings:** a small embedding model (`bge-small-en`, `nomic-embed-text`) converts each chunk into a vector.
+3.  **Vector database:** vectors are stored so that conceptually similar chunks (e.g. `VkBuffer` and `VkImage` creation code) end up near each other.
 
-*   **Your Header Files (`.h, .hpp, etc`):** These define your internal API.
-*   **Engineering Guidelines (`GUIDELINES.md`):** Documents that explain your memory management or synchronization philosophy.
-*   **External Technical Documentation:** Local Markdown or HTML versions of third-party library manuals (e.g., Slang, VMA, Volk, or SDL3) and specialized GPU vendor optimization guides that aren't yet integrated into your MCP tools.
+=== Phase 3: retrieval
 
-NB: There is a trade-off between the breadth of your RAG index and the speed of retrieval. A wider index can provide more accurate answers but may slow down query times. Conversely, a narrower index can speed up queries but may sacrifice accuracy.  Additionally, this can come at the cost of tokens which means your AI session would have less tokens available for the actual work session, so avoid doing too much in here.
+A query is converted to a vector and matched against the nearest stored chunks. Asking about "pipeline barriers" retrieves the files in your engine that actually handle synchronization.
 
-=== Phase 2: Embedding & Indexing (The "Mathematical Map")
-Computers cannot "read" code; they understand math.
+=== Phase 4: augmentation
 
-1.  **Chunking:** Your files are broken into small, overlapping pieces (e.g., a single function or a class definition).
-2.  **Embeddings:** A small, specialized model (an **Embedding Model** like `bge-small-en` or `nomic-embed-text`) turns these text chunks into high-dimensional mathematical vectors.
-3.  **The Vector Database:** These vectors are stored in a local database. Chunks that are "conceptually similar" (e.g., a `VkBuffer` creation and a `VkImage` creation) are stored "closer" to each other in this mathematical space.
+The retrieved chunks get added to the prompt as context before the model generates a response:
 
-=== Phase 3: Retrieval (Finding the Needle)
-When you ask a question, the system turns your prompt into a vector and searches the database for the most relevant "neighbors." If you ask about "Pipeline Barriers," the system retrieves the specific files in your engine that handle synchronization.
-
-=== Phase 4: Augmentation & Generation (The Final Assembly)
-The retrieved chunks are "stuffed" into the AI's prompt as hidden context. The final prompt sent to the LLM looks like this:
 [source,text]
 ----
 Context: [Your engine's Buffer.cpp code]
 Context: [The VMA Reference for allocation]
 User Prompt: Create a new vertex buffer for our triangle.
 ----
-The model now has all the "Facts" it needs to generate a correct, specialized answer.
 
-== Practical Implementation: Building Your Knowledge Index
+== Building a knowledge index
 
-While many IDE plugins automate RAG, you can build a more powerful and transparent "Specialization Index" using the tools you've already set up in the environment section. This allows you to treat your AI as a custom-built expert tailored to your specific hardware and engine.
+Many IDE plugins automate this, but it's worth setting up something more transparent using tools already covered in the environment section.
 
-=== Step 1: The "Knowledge Vault" Structure
-Create a dedicated directory in your project for RAG. Do not just index your entire home folder; be precise.
+=== Step 1: organize a docs directory
+
+Index a specific, curated directory rather than your whole home folder:
+
 [source,text]
 ----
 /vulkan_project
@@ -89,11 +81,11 @@ Create a dedicated directory in your project for RAG. Do not just index your ent
     (Your engine code)
 ----
 
-=== Step 2: Semantic Retrieval with Goose
-Instead of relying on a hidden plugin, you can use **Goose** to perform explicit RAG. When you need to implement a new feature, follow this multi-step retrieval workflow.
+=== Step 2: manual retrieval with Goose
 
-1.  **Context Loading:**
-    Before asking for code, tell the agent to index your documents.
+Instead of relying on a hidden plugin, you can do RAG explicitly with Goose.
+
+1.  **Load context.** Before asking for code, tell the agent what to read:
 +
 [source,text]
 ----
@@ -102,8 +94,7 @@ Goose, read 'docs/naming_conventions.md' and
 a new Index Buffer class.
 ----
 
-2.  **The Augmented Prompt:**
-    Ask for the implementation while explicitly referencing the retrieved files.
+2.  **Ask, referencing what you loaded:**
 +
 [source,text]
 ----
@@ -113,38 +104,33 @@ and 'IndexBuffer.cpp'. Ensure it uses 'vmaCreateBuffer'
 for allocation.
 ----
 
-**Why this works:** You are manually performing the "Retrieval" phase. Because you are using the **Model Context Protocol (MCP)** via Goose, the agent can "read" your files as ground truth, effectively augmenting its internal weights with your project's specific laws.
+This works because you're doing the retrieval step yourself, and MCP (via Goose) lets the agent read your actual files as ground truth rather than guessing at your conventions.
 
-=== Step 3: Local Vector Indexing (Optional but Recommended)
-If your project grows to thousands of files, manual retrieval becomes slow. At this stage, you should use a local **Vector Database** like **ChromaDB** or **Pinecone** (via MCP). This allows the AI to perform a "Semantic Search" across your entire engine in milliseconds, finding relevant code snippets even if you don't know the exact filename.
+=== Step 3: vector indexing at scale
 
-=== Step 4: Knowledge Graphs (Structural Context)
-While Vector Databases excel at finding "similar" text, a **Knowledge Graph** excels at finding "related" structures. In a Vulkan engine, this is critical for understanding the ownership hierarchy (e.g., which `VkDevice` created which `VkCommandPool`).
+If your project grows to thousands of files, manual retrieval gets slow. At that point a local vector database (ChromaDB, Pinecone, via MCP) lets the AI search the whole engine in milliseconds even without knowing the exact filename.
 
-By indexing your project as a Knowledge Graph, the AI can traverse relationships:
-*   **Query:** "Show me all systems that depend on the `GlobalDescriptorSet`."
-*   **Result:** The AI identifies not just the classes that use the set, but also the shaders, pipeline layouts, and synchronization barriers that are logically linked to it.
+=== Step 4: knowledge graphs for structure
 
-=== Step 5: The Function Registry (Tool Capability)
-A **Function Registry** acts as a "Phonebook" of capabilities that the AI can call upon. Instead of just writing code, the AI uses the registry to identify which existing engine tools or Vulkan functions are available to solve a task.
+Vector search is good at finding similar text; a knowledge graph is better at finding related structure — for instance, tracing which `VkCommandPool` was created by which `VkDevice`. Indexing your project as a graph lets you ask things like "show me all systems that depend on `GlobalDescriptorSet`" and get back not just the classes that use it, but the shaders and barriers logically linked to it.
 
-For example, if you task the AI with "Capturing a frame," the AI consults its Function Registry, identifies that your engine has a `RenderDoc::CaptureFrame()` method, and chooses to call that existing tool rather than trying to implement a capture system from scratch.
+=== Step 5: a function registry
 
-**Advanced Tip: The "Cloud-to-Local" Specialization Pipeline**
-To effectively "specialize" a 17B SLM without using a plugin, you can use a high-reasoning Cloud LLM (like **Claude 4.6**) to perform the **Phase 1: Knowledge Curation**. Ask the Cloud model to analyze your renderer and summarize the "Architectural Laws" into a single Markdown file. By providing this curated document to your local SLM via RAG, you bridge the reasoning gap, giving the smaller model the "wisdom" of the larger one without the VRAM cost.
+A function registry is a lookup of capabilities the AI can call on, rather than reimplement. If you ask it to capture a frame, it can check whether your engine already has a `RenderDoc::CaptureFrame()` method and use that instead of writing a new capture system from scratch.
 
-=== The SLM Advantage: RAG as "External Memory"
+**Tip: using a cloud model to prep the RAG source.** You can use a stronger cloud model to do the initial curation — summarizing your renderer's conventions into a single markdown file that a smaller local model can then retrieve from, getting some of the larger model's understanding without the VRAM cost.
 
-One of the most powerful aspects of Retrieval-Augmented Generation is that it allows **Small Language Models (SLMs)**—typically models in the 7B to 30B parameter range—to outperform 400B+ parameter "Giant" models in the specific domain of your game engine. By offloading the "Memorization" of your C{pp} codebase to a RAG index, the SLM no longer needs to waste its internal parameters trying to remember your custom class names; it focuses 100% of its reasoning on the logic you provide.
+=== Small models with a good RAG index can compete with far larger ones
 
-== Summary: The Informed Specialist
+A model in the 7B–30B range, given a good RAG index of your codebase, can outperform a much larger general-purpose model on tasks specific to your engine — because it isn't spending its limited attention trying to recall your class names from training; the index handles that, and the model can focus on reasoning about the logic in front of it.
 
-By combining the **Pre-trained Weights** of a base model with the **Global Truth** of MCP and the **Local Truth** of RAG, you transform your AI from a "Predictive Text Generator" into a **Graphics Engineering Assistant**.
+== Summary
 
-*   **MCP** provides the "Facts" (The Spec).
-*   **RAG** provides the "Flavor" (Your Engine).
-*   **Informed Context** ensures the model respects your local architectural laws.
+Combining a base model's pre-trained knowledge with MCP's access to the current spec and RAG's access to your own codebase gives you an assistant that's aware of both the Vulkan spec and your specific engine.
 
-In the final chapter of this section, we will explore the ultimate form of specialization: **Fine-Tuning (LoRA)** to "bake" your engine's intuitive laws directly into the model's weights and how to deploy your resulting specialist to a shared team server.
+*   MCP handles the spec.
+*   RAG handles your project's conventions.
+
+The next chapter covers fine-tuning with LoRA — a further step for baking your engine's conventions directly into a model's weights, and deploying that to a shared team server.
 
 Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/05_fine_tuning_lora.adoc[Fine-Tuning for Your Engine (LoRA)]

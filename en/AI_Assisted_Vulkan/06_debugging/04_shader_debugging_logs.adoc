@@ -1,19 +1,18 @@
 :pp: {plus}{plus}
 
-= Shader Debugging & Log Parsing: Finding the Needle
+= Shader Debugging & Log Parsing
 
-== Introduction: The Noise of Graphics
+== Introduction
 
-Vulkan is a noisy API. Between the 2,000-page specification, the 10,000 lines of API logs, and the thousands of variables in a single fragment shader, finding the "Needle" of a bug is often a matter of filtering out the "Noise."
+Vulkan generates a lot of text: a 2,000-page specification, API dumps that can run to tens of thousands of lines, and shaders with hundreds of intermediate variables. Finding the specific bug in all of that is largely a filtering problem, and it's one an AI assistant can help with — reasoning about shader logic, or scanning a large API dump for a specific pattern.
 
-In **Collaborative Engineering**, we use AI as a high-precision filter. Whether it's reasoning about shader logic or parsing massive API dumps, the AI acts as a digital sieve, catching the anomalies that are invisible to the naked eye.
+== Building a log diagnostic script
 
-== Tutorial: Building the Log Diagnostic Script
+You can automate a lot of the log search with a small script that captures an API dump and feeds it to **Goose** for review.
 
-To automate the "Needle-in-a-Stack" search, you can use a simple Bash script that captures your API dump and feeds it to **Goose** for an architectural audit.
+=== Step 1: Capture the API dump
 
-=== Step 1: Capturing the API Dump
-Enable the `VK_LAYER_LUNARG_api_dump` layer and redirect the output to a file. On Linux or Windows, you can do this via environment variables.
+Enable the `VK_LAYER_LUNARG_api_dump` layer and redirect the output to a file.
 
 [source,bash]
 ----
@@ -21,8 +20,9 @@ Enable the `VK_LAYER_LUNARG_api_dump` layer and redirect the output to a file. O
 VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump ./VulkanApp > api_dump.txt
 ----
 
-=== Step 2: The Agentic Diagnostic Script
-Create a script `diagnose_logs.sh` that provides the agent with the log context and a specific "Pattern Match" instruction.
+=== Step 2: Script the review
+
+Create `diagnose_logs.sh` to hand the agent the relevant log context and a specific instruction.
 
 [source,bash]
 ----
@@ -45,18 +45,21 @@ barrier parameters for 'VkImageMemoryBarrier2'.
 "
 ----
 
-=== Step 3: Resolving the "Ghost" Artifacts
-In its audit, the agent identifies that at line 8,452, you recorded a dispatch to your bloom shader but forgot the barrier before the final composition draw. The bug only appeared when the GPU was under heavy load, which is why it was so hard to find manually. By providing the agent with the log, it transforms the search from a "Manual Scrape" into a "Pattern-Matched Diagnosis."
+=== Step 3: Reviewing the result
 
-== Tutorial: Shader Logical Simulation
+In one real case, the agent flagged that at line 8,452, a dispatch to a bloom shader was recorded but the barrier before the final composition draw was missing. The bug only showed up under heavy GPU load, which is part of why it was hard to catch by scanning the log manually. Automating the search this way turns a slow manual scrape into a targeted pattern match — though it's worth spot-checking the flagged lines yourself before assuming the diagnosis is complete.
 
-Debugging a shader is notoriously difficult. Unlike C{pp}, you cannot set a breakpoint. However, you can use **Goose** to "Simulate" the logic of a single fragment.
+== Simulating shader logic
 
-=== Step 1: Extract Fragment Data
-Use RenderDoc to find a failing pixel and extract its input variables (e.g., `prevCoord`, `currentDepth`, `motionVector`).
+Shaders are hard to debug because you can't set a breakpoint the way you would in C{pp}. One workaround is to give an assistant the actual input values for a failing fragment and ask it to reason through the shader logic manually.
 
-=== Step 2: The Simulation Prompt
-Provide the values and your HLSL/Slang source code to the assistant.
+=== Step 1: Extract fragment data
+
+Use RenderDoc to find a failing pixel and pull its input variables (for example, `prevCoord`, `currentDepth`, `motionVector`).
+
+=== Step 2: Ask it to work through the logic
+
+Provide the values along with your HLSL or Slang source.
 
 [source,text]
 ----
@@ -71,18 +74,14 @@ why is this pixel flickering?
 Is our motion vector scaling correctly for 4K resolution?
 ----
 
-=== Step 3: The Discovery
-The AI calculates the depth difference, checks the rejection threshold in your code, and identifies that your motion vector scaling is using the wrong resolution—a tiny mathematical error that you would have spent hours manually calculating.
+=== Step 3: The result
 
-== Summary: Precision Debugging and Log Analysis
+In practice, this kind of prompt can catch a mistake like motion vector scaling using the wrong resolution constant — a small arithmetic error that's tedious to trace by hand but quick for a model to check once it has the actual values in front of it.
 
-Shader reasoning and log parsing are the "Last Mile" of pro-level debugging. By using AI to process the massive amounts of data generated by Vulkan's logging layers and debuggers, you turn **Information Overload** into **Actionable Intelligence**.
+== Summary
 
-With the completion of Section 6, you have built a complete, AI-enhanced forensic lab:
-1.  **The Syntactic Evidence (VUIDs):** Translated and auto-fixed.
-2.  **The State Evidence (RenderDoc):** Programmatically audited.
-3.  **The Logical Evidence (Shaders & Logs):** Filtered and reasoned about.
+Shader reasoning and log parsing round out the debugging toolkit from this section. Between VUID translation, RenderDoc state audits, and log/shader analysis, you now have three complementary ways to bring AI into a debugging session — matched to VUIDs, GPU state, and shader/log data respectively.
 
-In the next section, we move into **Advanced MCP Tooling**, where you will learn how to build your own custom tools to give your AI direct access to the Vulkan Registry and hardware limits.
+Next, we move into MCP tooling, covering how to build custom tools that give your assistant direct access to the Vulkan Registry and hardware limits.
 
 Next: xref:AI_Assisted_Vulkan/06_debugging/05_gfxreconstruct_ai.adoc[AI-Assisted Trace Analysis: GFXReconstruct]

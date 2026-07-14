@@ -175,15 +175,16 @@ void createInstance()
 
     // Check if the required extensions are supported by the Vulkan implementation.
     auto extensionProperties = context.enumerateInstanceExtensionProperties();
-    auto unsupportedLayerIt = std::ranges::find_if(requiredLayers,
-                                                   [&layerProperties](auto const &requiredLayer) {
-                                                       return std::ranges::none_of(layerProperties,
-                                                                                   [requiredLayer](auto const &layerProperty) { return strcmp(layerProperty.layerName, requiredLayer) == 0; });
-                             });
+    auto unsupportedPropertyIt =
+        std::ranges::find_if(requiredExtensions,
+                                [&extensionProperties](auto const &requiredExtension) {
+                                    return std::ranges::none_of(extensionProperties,
+                                                                [requiredExtension](auto const &extensionProperty) { return strcmp(extensionProperty.extensionName, requiredExtension) == 0; });
+                                });
     if (unsupportedPropertyIt != requiredExtensions.end())
     {
         throw std::runtime_error("Required extension not supported: " + std::string(*unsupportedPropertyIt));
-    }
+    }    
 
     ...
 }

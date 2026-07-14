@@ -1,112 +1,100 @@
 :pp: {plus}{plus}
 
-= Selecting the Base Model: The AI Model Strategy
+= Selecting the Base Model
 
-== Introduction: The Graphics Developer's Constraint
+== The graphics developer's constraint
 
-Selecting a base model for Vulkan development is not just about choosing the "biggest" model. In the world of graphics programming, we face a unique constraint: **GPU Resource Contention.** Every gigabyte of VRAM your AI model consumes is a gigabyte that is unavailable for your Vulkan textures, vertex buffers, and framebuffers.
+Choosing a base model for Vulkan development isn't just about picking the largest one available. Graphics work has a specific constraint: every gigabyte of VRAM your model uses is a gigabyte unavailable for textures, vertex buffers, and framebuffers.
 
-To succeed, we must move beyond the generic models and choose specialized models that balance reasoning depth with a manageable hardware footprint.
+So the goal is a model that balances reasoning ability against a hardware footprint you can actually afford to keep running alongside your application.
 
-== The Concept: How to Evaluate Your Model
+== How to evaluate a model
 
-In the rapidly evolving landscape of AI, the "best" model changes every few months. To remain effective, you shouldn't just memorize a list of currently popular models. Instead, you must learn to evaluate new models based on three critical criteria for graphics development.
+The "best" model changes every few months, so it's more useful to have criteria than to memorize a leaderboard. Three things matter most for graphics work:
 
-=== 1. The VRAM Tax: Parameter Count vs. Quantization
+=== 1. VRAM cost: parameters vs. quantization
 
-The first question you must ask is: *"Does this model fit on my hardware alongside my Vulkan application?"* Generally, a higher parameter count translates to more "intelligence" and better reasoning capabilities. However, a massive 70B model is counterproductive if it starves your Vulkan application of VRAM, forcing it to use much slower system RAM.
+The first question is whether the model fits on your hardware alongside your Vulkan application. Higher parameter counts generally mean better reasoning, but a 70B model isn't worth it if it forces your application into slower system RAM.
 
-To fit these models onto consumer hardware, we rely on **Quantization** (compression), typically using formats like **GGUF** or **EXL2**. A 4-bit (Q4) quantization is often the "Goldilocks" zone—it can reduce the model's memory footprint by 75% while only incurring a negligible drop in reasoning accuracy.
+Quantization (compression formats like GGUF or EXL2) makes larger models fit on consumer hardware. 4-bit (Q4) quantization is a common middle ground — it cuts memory footprint by roughly 75% with only a small drop in accuracy.
 
-=== 2. Reasoning Depth: The "Structural Reasoning Test"
+=== 2. Reasoning depth
 
-Can the model understand the complex state machine of Vulkan? To test a new model, ask it a non-trivial architectural question, such as: *"Explain the synchronization requirements for a compute-to-graphics dependency where the compute shader writes to a storage buffer that is then used as a vertex buffer in the next pass."*
+A reasonable test question: "Explain the synchronization requirements for a compute-to-graphics dependency where the compute shader writes to a storage buffer that is then used as a vertex buffer in the next pass."
 
-A model that fails this test will often provide a generic `vkDeviceWaitIdle` or a simple execution barrier without defining the necessary access masks. In contrast, a "passing" model will correctly identify the requirement for a transition from `VK_ACCESS_SHADER_WRITE_BIT` to `VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT` and suggest the appropriate pipeline stages to ensure the data is visible and the execution is ordered correctly.
+A weaker model will often answer with a blanket `vkDeviceWaitIdle` or a generic barrier with no access masks specified. A stronger one will identify the need for a transition from `VK_ACCESS_SHADER_WRITE_BIT` to `VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT` and name the correct pipeline stages.
 
-NB: This target will change over time as AI models are constantly improving and what is true as of the writing of this tutorial, might not be current.  Thus, please assume that over the course of development, you have the ability to adapt to new models and their capabilities through the tools and techniques taught in this tutorial.  We're teaching an ecosystem rather than an exact version.  You might have a local server able to stand in for a local to company environment and the SLM targeting information here will allow you to further refine it specifically to your needs.  It is recommended to treat the model you use along with the extra training it needs as a hyperparameter to give you more or less help as your development needs dictate.
+NB: This test, and any specific model recommendations, will age. Treat the criteria as durable and the named models as examples current at time of writing — expect to re-evaluate as new models ship. The model (and how much fine-tuning it gets) is really just another parameter you tune based on how much help a given task needs.
 
-=== 3. Context Window: The "Engine Memory"
+=== 3. Context window
 
-Vulkan engines are large. A model with a small context window (e.g., 4,000 tokens) will "forget" your memory allocator by the time it finishes reading your pipeline setup. For 2026 standards, look for models with at least a **32k to 128k context window**. This allows the assistant to keep your entire renderer's header files in its active memory while it works on a specific implementation, ensuring it remains aware of your project's unique architectural patterns.
+Vulkan engines have a lot of files. A model with a small context window (say, 4,000 tokens) will lose track of your memory allocator by the time it's read through your pipeline setup. Look for at least 32k–128k tokens of context if you want the assistant to hold a renderer's header files in view while working on a specific implementation.
 
-== The 2026 best in class (as Examples)
+== Current examples (as of writing)
 
-While you should use the evaluation criteria above for future models, here are the current leaders that exemplify these traits:
+These are current examples of models that illustrate the criteria above — expect the specific names to change.
 
-=== 1. Qwen 3-Coder (30B): High-Reasoning Model
+=== Qwen 3-Coder (30B): strong reasoning
 
-The **Qwen 3-Coder (30B)** model is currently the world's most capable local non-cloud coding model for C{pp}.
+Qwen 3-Coder (30B) is currently one of the stronger local, non-cloud coding models for C{pp}.
 
-**Real-World Experience: The Bindless Transition**
-Imagine you are refactoring your engine to use a **Bindless Texture** system. This requires a deep understanding of Descriptor Set Layout bindings, `descriptorIndexing` features, and the nuances of how GLSL access is translated into SPIR-V.
+**Example: a bindless texture refactor.** Moving an engine to bindless textures touches descriptor set layout bindings, `descriptorIndexing` features, and how GLSL access maps to SPIR-V. Given this task, Qwen 3-Coder can look at how your shaders use `sampler2D textures[]` and suggest the specific `DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` flags needed to avoid validation errors, and it tends to catch synchronization issues that smaller models miss. That makes it a reasonable choice for architectural work and Vulkan 1.3/1.4 features — at the cost of roughly 20GB of VRAM at Q4_K_M, which realistically means a 24GB GPU or a local server.
 
-When you ask Qwen 3-Coder to perform this refactor, it doesn't just give you a boilerplate `VkDescriptorSetLayoutCreateInfo`. It analyzes your shader code to see how you're using `sampler2D textures[]` and suggests the exact `DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` flags you need to prevent validation errors. Its reasoning depth allows it to catch synchronization issues that smaller models would completely overlook. This makes it the ideal choice for complex architectural planning and Vulkan 1.3/1.4 feature implementation. However, it requires significant resources—approximately 20GB of VRAM at Q4_K_M quantization—making it most suitable for developers with 24GB GPUs or those working in local server environments.
+=== Llama 4 (17B): low latency
 
-=== 2. Llama 4 (17B): High-Speed Assistant
+For fast, inline feedback while typing, Llama 4 (17B) is a solid choice. It can predict the next several lines of a `VkPipelineShaderStageCreateInfo` array as you write it, correctly infer entry point names from project context, and set `pSpecializationInfo` to `nullptr` when it sees you aren't using specialization constants.
 
-For the "inner loop" of development—where you need near-instant feedback while typing—speed is everything. **Llama 4 (17B)** is the current champion of low-latency coding.
+At around 6GB of VRAM, it runs comfortably alongside a Vulkan application on mid-range hardware (12–16GB GPUs), which makes it a good fit for autocomplete, unit tests, and quick shader iteration.
 
-**The Experience:** You are typing a new `VkPipelineShaderStageCreateInfo` array. Llama 4, running locally on your GPU, predicts the next 10 lines of code before you've even finished the first struct. It correctly identifies that you are using a vertex and fragment shader, automatically pulls in the correct entry point names from your project context, and sets the `pSpecializationInfo` to `nullptr` because it sees you aren't using specialization constants in this pass.
+=== Mistral-Nemo (12B): large context
 
-The low VRAM footprint—consuming only ~6GB—allows it to run comfortably alongside a heavy Vulkan application on mid-range hardware (12GB-16GB GPUs), making it perfect for real-time autocomplete, unit tests, and rapid shader iteration.
+Mistral-Nemo (12B), a joint NVIDIA/Mistral AI release, is tuned for efficient reasoning with a 128k context window.
 
-=== 3. Mistral-Nemo (12B): The "Context King"
+**Example: an engine-wide refactor.** A global illumination system that touches the scene graph, several passes, and post-processing needs a model that can keep more than one file in view at a time. Because Mistral-Nemo can hold up to 128,000 tokens of context, it can read across a renderer's header directory and give suggestions that stay consistent with the rest of the codebase — useful for large refactors and following class hierarchies that smaller models tend to lose track of. At roughly 8–10GB VRAM (Q4), it sits between the fast 17B models and the heavier 30B+ ones.
 
-**Mistral-Nemo (12B)**, a collaboration between NVIDIA and Mistral AI, is a powerhouse for local development, specifically tuned for high-efficiency reasoning with a massive **128k context window**.
+== Interaction style: cloud vs. local
 
-**Real-World Experience: The Engine-Wide Refactor**
-Imagine you are implementing a new **Global Illumination** system that touches dozens of files—from the scene graph to the final post-processing pass. You need an assistant that doesn't just see the current file, but maintains the context of your entire architectural hierarchy.
+Cloud and local models expect to be talked to differently, and knowing which is which saves some frustration.
 
-Mistral-Nemo (12B) excels in these "Long-Context" scenarios. Because it can hold up to 128,000 tokens in its active memory, it can "read" your entire renderer's header directory and provide suggestions that are architecturally consistent across the whole codebase. It is particularly effective for large-scale refactoring and navigating complex class hierarchies where smaller models would lose the thread. With a slim VRAM footprint of only ~8GB-10GB (Q4), it provides a perfect middle-ground between the ultra-fast 17B models and the resource-heavy 30B+ models, making it an ideal choice for developers working on complex, multi-file Vulkan systems.
+=== Cloud models: high-level intent
 
-== Interaction Styles: Intent vs. Explicit Instructions
+Cloud models like Claude 4.6 or GPT-5.3 handle abstraction well — you can talk to them roughly the way you'd talk to a colleague. If you say "I'm seeing Z-fighting on distant terrain, using a standard 24-bit depth buffer, what should I check first?", the model can infer you want the artifact fixed and suggest likely causes (depth precision, near/far plane ratio) without you spelling out your projection matrix setup.
 
-A critical difference between Cloud models and Local models lies in how you "talk" to them. Understanding this distinction is key to avoiding frustration during your development workflow.
+=== Local models: explicit instructions
 
-=== The Cloud: High-Level Intent
+Local models, even capable ones like Qwen 3-Coder (30B), generally need more specific instructions — they're better treated as a skilled implementer working from a spec than as a conversational partner. A more effective local-model prompt: "I'm seeing Z-fighting. Check whether the near plane is too close (currently 0.01) or the far plane too distant (10000.0). Suggest a logarithmic depth buffer if the ratio exceeds 1:1,000,000, and provide the GLSL for the vertex shader update." Being explicit like this keeps a local model on track.
 
-Cloud models like **Claude 4.6** or **GPT-5.3** are designed to handle high levels of abstraction. You can interact with them as you would a human engineer, as they excel at "reading between the lines" and translating conversational requests into structured tasks. For example, if you prompt: *"I'm seeing some Z-fighting in the distant terrain. I'm using a standard 24-bit depth buffer. What should I look at first?"*, the model understands your intent to fix the visual artifact. It identifies likely culprits like depth buffer precision or near/far plane ratios and provides a prioritized checklist without requiring you to specify the technical details of your projection matrix setup.
+== Cloud-to-local: using one to brief the other
 
-=== The Local Model: Explicit Instructions (Instruction-Following Model)
+One workflow worth knowing: use a high-reasoning cloud model to write the technical spec, then hand that spec to a local model for implementation.
 
-Local models, even advanced ones like **Qwen 3-Coder (30B)**, generally require more specific and verbose instructions. They are less capable of inferring intent from a casual sentence and more effective when treated as a highly skilled implementer following a detailed technical specification. A more effective prompt for a local model would be: *"I am experiencing Z-fighting. Analyze the following projection matrix calculation. Check if the near plane is too close (currently 0.01) or if the far plane is too distant (10000.0). Suggest a logarithmic depth buffer implementation if the ratio exceeds 1:1,000,000. Provide the GLSL for the vertex shader update."* By providing these explicit constraints, you ensure the local model remains focused and accurate, as it thrives on technical detail rather than conversational abstraction.
+=== Writing the handoff document
 
-== The Translation Strategy: Cloud to Local Pipeline
+When planning with a model like Claude 4.6, instead of asking for code directly, ask it to produce an instruction document for a local assistant.
 
-One of the most powerful workflows in the "Collaborative Engineering" paradigm is using a high-reasoning Cloud model to prepare the technical specification for a specialized Local model. This effectively bridges the gap between conversational intent and precise implementation.
+*   **The workflow:**
+    1.  Discuss the high-level goal with the cloud model (e.g., "I want to implement a GPU-driven culling system").
+    2.  Ask it to write a file, say `LLM_NOTES.md`, containing the exact structs, memory layout, and synchronization requirements just discussed, in explicit, unambiguous terms.
+    3.  Open `LLM_NOTES.md` in your IDE and point your local assistant (via Goose or Junie) at it. The local model now has a concrete spec to follow instead of having to infer your intent.
 
-=== Creating the "Contract" (LLM_NOTES.md)
+=== Why this is worth doing
 
-When you are in the planning phase with a model like **Claude 4.6**, don't just ask it for code. Ask it to generate a "Contract" or an instruction set specifically optimized for a local model like **Qwen 3-Coder** or **Mistral-Nemo**.
+The cloud model does the translation from loosely specified intent to a precise spec, which saves you from writing that spec by hand; the local model then does the implementation without needing your proprietary code to leave the machine. This works best as a plan-then-implement split, and it's really only worth the overhead for tasks big enough that writing the spec pays for itself — for something trivial, it may take the cloud model as long to write the spec as it would to just do the task itself.
 
-*   **The Workflow:**
-    1.  **Converse with the Cloud:** Discuss your high-level architectural goals (e.g., "I want to implement a GPU-driven culling system").
-    2.  **Generate the Spec:** Ask the Cloud model: *"Now, write a technical specification file named `LLM_NOTES.md` that I can provide to a local coding assistant. It should include the exact Vulkan structs, memory layout, and synchronization requirements we just discussed, using verbose and explicit instructions."*
-    3.  **Feed the Local Model:** Open `LLM_NOTES.md` in your IDE and point your local assistant (via Goose or Junie) to that file. The local model will now have a "Ground Truth" document that it can follow with high precision, without needing to guess your high-level intent.
+NB: `LLM_NOTES.md` is a working document for the current session, not project documentation — it shouldn't be checked into git.
 
-=== Why This Works
+This approach is most useful on longer tasks with multiple iterations, and it's also a reasonable way to unstick a local model that's gone in circles on a problem: a short cloud session can often get it back on track.
 
-This strategy leverages the best of both worlds by using the **Cloud** to handle the "Human-to-Technical" translation, saving you from writing pages of verbose instructions, while the **Local Model** handles the "Technical-to-Code" implementation. This keeps your proprietary engine logic on your machine and provides low-latency execution.
+== Picking a model per phase
 
-By treating the Cloud AI as your **Translator** and the Local AI as your **Implementer**, you minimize the risk of "Instruction Drift" and ensure that your Vulkan engine remains technically sound from conception to commit. This strategy is best used in a "planning" then "implementing" workflow. This practice needs to be balanced because if the task is too tiny then the benefits of having the local LLM handle the implementation disappear as it might take the cloud LLM as much time to do the work on its' own rather than offload the implementation step to the local LLM.
+A reasonable default is to match the model to the phase of work, while treating these as fluid rather than fixed roles:
 
-NB: The `LLM_NOTES.md` file is a transient, developer-focused "Contract" used to provide context for the current AI session. Since it contains private architectural decisions and project-specific instructions that are not intended for final source code documentation, it is **not** part of the engine's source project and should never be checked into your Git repository. It is your local "Ground Truth" for the AI, not a permanent project file.
+During **planning and system design**, use a high-reasoning cloud model or Qwen 3-Coder (30B) for things like a cross-platform frame graph or a thread-safe allocator, where reasoning depth matters more than speed. During **implementation and verification**, Mistral-Nemo (12B) or Qwen 3-Coder for turning the design into code that satisfies validation requirements. For **rapid iteration**, Llama 4 (17B) or a fast cloud model, where speed matters more than depth.
 
-This strategy is best for large tasks that take multiple iterations of implementation. You often might find the local LLM get "stuck" on a problem; a quick Cloud AI session can rescue the local LLM and set it on the right track again using this strategy.
+== Summary
 
-== Decision Framework: Finding Your Balance
+Model selection is mostly about matching reasoning depth to VRAM budget, and knowing when it's worth paying for a cloud model's reasoning versus running something local and fast. Using cloud models for planning, mid-sized local models for precise implementation work, and small fast models for the daily inner loop gives you a setup that's responsive without being under-powered for the harder problems.
 
-How do you choose between these powerhouses? We recommend a **Hybrid Strategy** based on your development phase, but remember that these roles are fluid. The "best" model is the one that fits your current task without starving your Vulkan application of resources.
-
-During the **Planning & System Design Phase**, use high-reasoning **Cloud Models** or **Qwen 3-Coder (30B)** for architectural brainstorming—like designing a cross-platform frame graph or a thread-safe memory allocator. These provide maximum reasoning depth with zero VRAM cost (in the case of cloud models). In the **Implementation & Verification Phase**, switch to **Mistral-Nemo (12B)** or **Qwen 3-Coder** to translate your architecture into code that meets strict validation requirements. Their precision significantly reduces the time spent in the fix-loop. Finally, for the **Rapid Iteration Phase**, use **Llama 4 (17B)** or a cloud-based "Flash" model like **Gemini 3.1 Flash**. Their high speed allows you to keep your Vulkan renderer running at high frame rates while the AI assists with implementation details, unit tests, or simple refactors.
-
-== Summary: Integrated Model Strategy
-
-Selecting a base model is about managing your **"Intelligence-to-VRAM" ratio** and knowing when to leverage the cloud. By utilizing Cloud models for "Deep Planning," specialized local models like Nemo or Qwen for "Precision Refactoring," and Llama for the "Daily Inner-Loop," you create a development environment that is both deeply knowledgeable and highly responsive.
-
-The most successful developers are those who treat their AI models as a dynamic resource—scaling their "intelligence" up or down and switching between local and cloud providers as the complexity of the graphics task, budget, and hardware constraints dictate.
-
-In the next chapter, we will look at the **Hardware Requirements** and show you the exact formulas for calculating your VRAM budget.
+The main skill is treating model choice as something you actively adjust — scaling up or down, switching between local and cloud — based on what the current task actually needs, rather than sticking with one model for everything.
 
 Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/03_hardware_vram.adoc[Hardware & VRAM Budgeting]

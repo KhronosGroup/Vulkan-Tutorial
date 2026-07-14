@@ -2,35 +2,29 @@
 
 = The Context Bridge: Model Context Protocol (MCP)
 
-== Introduction: The Missing Link
+== Introduction
 
-We have explored the IDEs and the high-reasoning models. But even the most sophisticated AI, like **Qwen 3-Coder**, suffers from a fundamental flaw: **The Knowledge Cutoff**.
+Even a strong model like **Qwen 3-Coder** has a hard limit: its training data has a cutoff date. It can't know about a Vulkan extension released after that date, it can't see your local filesystem, and it has no way of knowing your GPU's `maxSamplerAnisotropy` limit unless something tells it. The **Model Context Protocol (MCP)** is an open standard for letting an AI query that kind of ground truth — your local environment, or an external data source like the Vulkan registry — instead of guessing from memorized training data.
 
-A model trained in 2025 cannot know the specifics of a Vulkan extension released in 2026. It cannot "see" your local file system, and it has no idea that your specific GPU has a `maxSamplerAnisotropy` limit of 16. This is where the **Model Context Protocol (MCP)** becomes a core component of AI-assisted development. MCP is the open standard that allows an AI to securely "reach out" and query the ground truth of your local environment.
+== Why this matters in practice
 
-== The Core Concept: "Context is King"
+Ask a generic model "how do I implement a mesh shader for our `Renderer` class?" and, if its defaults assume Vulkan 1.0, it may not even recognize what a mesh shader is. With MCP, an assistant pointed at the **mcp-Vulkan** server can query the actual registry and pick up newer features — mesh shaders, ray tracing, descriptor buffers — that aren't reliably in its training data. The Vulkan MCP server also serves samples, guide entries, man pages, and other reference material, so the assistant isn't limited to whatever subset of the ecosystem it happened to see during training.
 
-In **Collaborative Engineering**, we move beyond the "Chat Window" to the **Context Bridge**.
+== The mcp-Vulkan server
 
-Consider the case where you ask an AI: *"How do I implement a mesh shader for our existing `Renderer` class?"* A generic AI might give you a "best guess" snippet based on its training data, but if that model defaults to Vulkan 1.0, it won't even know what a mesh shader is! With the **Model Context Protocol (MCP)**, the AI can query the actual Vulkan Registry. By pointing your assistant to the **mcp-Vulkan** server, it gains the ability to "set its context" to the latest version of the spec, ensuring it knows about modern features like Mesh Shaders, Ray Tracing, and Descriptor Buffers. The Vulkan MCP provides up-to-date context from samples, guide entries, man pages, and technical documentation so your AI can fully understand the ecosystem you are developing in.
+**mcp-Vulkan** is an open-source MCP server that exposes tools for searching Vulkan documentation and pulling specific topics from the current spec.
 
-== The "Truth" Pipeline: The mcp-Vulkan Implementation
+A common failure mode without it: an assistant suggests a deprecated call like `vkCreateDescriptorPool` without the `pNext` structures a modern feature needs. With mcp-Vulkan connected, you can ask it to set its context to a specific Vulkan version ("Vulkan 1.3, then list the extensions that are core in that version") and get an answer grounded in that version's actual spec rather than an average across versions.
 
-The most powerful way to bridge the Vulkan ecosystem to your AI is the open-source **mcp-Vulkan** project. This is a specialized MCP server that provides tools for searching Vulkan documentation and retrieving specific topics directly from the latest spec.
+=== Building the server
 
-**Real-World Experience: The Version Drift Win**
-Many developers get frustrated when an AI suggests deprecated functions like `vkCreateDescriptorPool` without including the necessary `pNext` structures for modern features.
-By using **mcp-Vulkan**, you can simply tell your assistant: *"Use the Vulkan MCP to set your context to Vulkan 1.3, then list the extensions that are core in that version."* The AI calls the MCP, updates its internal representation, and provides an answer that is directly based on the 1.3 specification.
+If you haven't built it yet, see xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[First Step: Building the Vulkan MCP Server]. That covers cloning the repo and running `npm install && npm run build` in `mcp-Vulkan/vulkan/`.
 
-=== Building the Server
+=== Connecting mcp-Vulkan to Goose
 
-If you have not already built the server, see xref:AI_Assisted_Vulkan/02_environment_setup/01_introduction.adoc#_first_step_building_the_vulkan_mcp_server[First Step: Building the Vulkan MCP Server] in the Environment Setup introduction. That section covers cloning the repository and running `npm install && npm run build` inside the `mcp-Vulkan/vulkan/` subdirectory.
+Register the server as a Goose extension by editing its config file — `~/.config/goose/config.yaml` on macOS/Linux, or `%APPDATA%\goose\config.yaml` (typically `C:\Users\<YourUser>\AppData\Roaming\goose\config.yaml`) on Windows.
 
-=== Connecting mcp-Vulkan to Goose (The Agentic Common Point)
-
-Once the `mcp-Vulkan` project is built, you must register it as a "Tool" for Goose. Goose stores its configuration in a YAML file, which varies by platform. On macOS or Linux, this is typically located at `~/.config/goose/config.yaml`, while on Windows it is found at `%APPDATA%\goose\config.yaml` (usually `C:\Users\<YourUser>\AppData\Roaming\goose\config.yaml`).
-
-To connect the bridge, open your `config.yaml` and add the following entry under the `extensions:` section. Make sure to replace `/path/to/` with the actual absolute path where you cloned the repository (you can find this by typing `pwd` in your terminal inside the `mcp-Vulkan` directory).
+Add this under `extensions:`, replacing `/path/to/` with the actual path (`pwd` inside the `mcp-Vulkan` directory):
 
 [source,yaml]
 ----
@@ -42,26 +36,22 @@ extensions:
       - /path/to/mcp-Vulkan/vulkan/build/index.js
 ----
 
-Once saved, restart your Goose session (`goose session`). You can verify the connection by asking: *"List the tools you have available."* You should see `search-vulkan-docs` and `get-vulkan-topic` in the list.
+Restart your Goose session (`goose session`) and confirm the connection by asking "list the tools you have available" — you should see `search-vulkan-docs` and `get-vulkan-topic`.
 
 === Connecting mcp-Vulkan to your IDE
 
-While Goose is our autonomous agent, you can also leverage the **mcp-Vulkan** bridge directly within your primary development environment. This allows your Cloud-based assistant (like Claude or GPT) to access the Vulkan spec without leaving your editor. For instance, **JetBrains CLion** and **Android Studio** users can add the server via the MCP Servers panel in their AI Assistant settings, while **Visual Studio** and **VS Code** users can use the **Continue** or native **Copilot** extensions to register the server.
+The same server can be registered directly in your IDE instead of (or in addition to) Goose. **JetBrains CLion** and **Android Studio** users add it through the AI Assistant's MCP Servers panel; **Visual Studio** and **VS Code** users can register it via the **Continue** or **Copilot** extensions. See the platform-specific chapters earlier in this section for the exact steps.
 
-For detailed, step-by-step instructions on these integrations, refer back to the platform-specific chapters in this section.
+== Tradeoffs
 
-== Drawbacks and Incremental Wins
+**Filesystem access is a real permission grant, not a formality.** The first time you enable an MCP tool with filesystem access, your IDE or agent will ask which directory to allow. Scope it to your project folder — don't grant access to your home directory or anything outside the project.
 
-=== The "Security vs. Utility" Balance
-Giving an AI the ability to read your file system is a significant decision. When you first activate an MCP tool, your IDE or agent will ask for explicit permission to access a directory. To mitigate security risks, always restrict the AI's "Scope" to your specific project folder. Never give an AI access to your entire home directory or sensitive system folders.
+**Where it helps: consistency with existing code.** Because the model can pull in your engine's own history through MCP, you can ask it to design something like a new post-processing pass "matching the style and memory management of the existing shadow pass." It will actually read the shadow pass implementation rather than generating something generic — the result still needs review, but it starts from your codebase's conventions rather than a default template.
 
-=== Incremental Win: Automated System Design
-The biggest win is the ability to perform **Automated System Design** for new features. Because the AI has access to your entire engine's history through MCP, you can ask it to: *"Design a new 'Post-Processing' pass that matches the coding style and memory management of our existing 'Shadow' pass."* The AI will read the shadow pass implementation and generate a post-processing system that feels like you wrote it yourself.
+== Summary
 
-== Summary: The Complete Toolbelt
+MCP is what turns a model from something that answers from memory into something that can check its answers against the current spec and your own codebase. That's the last piece of the environment setup covered in this section.
 
-The Model Context Protocol is the final piece of the environmental puzzle. It transforms the AI from a simple "Chatbot" into a **Graphics Engineering Assistant** that has access to the specification and your local codebase. By mastering the Context Bridge, you complete the setup of your AI-enhanced graphics lab.
-
-Next, we move to **Section 3: Model Selection & Specialization**, where we will choose the specific model to inhabit this powerful environment.
+Next: xref:AI_Assisted_Vulkan/03_model_selection_specialization/01_introduction.adoc[Model Selection & Specialization], where we look at picking a model for this setup.
 
 xref:AI_Assisted_Vulkan/02_environment_setup/05_goose_native_agent.adoc[Previous: Goose & Local Intelligence] | xref:AI_Assisted_Vulkan/03_model_selection_specialization/01_introduction.adoc[Next: Model Selection & Specialization]

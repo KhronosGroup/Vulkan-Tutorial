@@ -2,60 +2,57 @@
 
 = Understanding Multimodal Models: Vision for Graphics
 
-== Introduction: The "Vision-Language" Paradigm
+== Introduction
 
-In the previous sections, we focused on models like **Qwen 3-Coder**, which are "blind" but possess deep knowledge of C{pp} and the Vulkan spec. While they are masters of syntax, they are fundamentally limited when it comes to visual debugging. They can "read" your code, but they cannot "see" the result.
+The models covered in earlier sections, like Qwen 3-Coder, are text-only: strong on C{pp} and the Vulkan spec, but they can't look at a screenshot. To debug visually, you need a vision-language model (VLM) — a model that pairs a vision encoder with a language model so it can reason about an image, not just recognize objects in it.
 
-To bridge this gap, we use **Vision-Language Models (VLMs)**. These are not just "chatbots that can see"; they are specialized AI architectures that integrate a **Vision Encoder** with a standard Large Language Model to perform high-level **Geometric Reasoning**.
+== How it works
 
-== The Core Concept: The Vision Encoder
+A VLM has two main parts. A vision encoder (often a Vision Transformer) processes the image and extracts features — shapes, depth cues, lighting patterns. That gets passed to the language model, which maps those features onto graphics concepts like "moiré pattern" or "Z-fighting."
 
-A Multimodal model consists of two primary components working in tandem. The **Vision Encoder** is a separate neural network (often a Vision Transformer) that "scans" an image to identify high-level features such as shapes, depth cues, patterns, and lighting anomalies. This data is then passed to the **Language Model**, which acts as the reasoning engine to translate those visual features into technical graphics concepts like "Moiré patterns" or "Z-fighting."
+This is a step beyond OCR, which can read text on screen but has no model of the relationships between pixels. A VLM can look at a flickering triangle and connect it to a likely cause, such as a depth-testing mismatch or precision loss in the projection matrix — again, a hypothesis worth checking, not a verdict.
 
-**Why This Matters for Vulkan:**
-Traditional OCR (Optical Character Recognition) can read the text on your screen, but it cannot understand the **Relationships** between pixels. A Multimodal model, however, can look at a flickering triangle and understand that the issue is likely a **Depth-Testing** mismatch or a **Precision Error** in the projection matrix.
+== Evaluating a VLM for graphics work
 
-== The Concept: How to Evaluate Vision-Language Models
+A few things matter more than general image-recognition benchmarks:
 
-To evaluate a Vision-Language Model (VLM) for graphics development, you must look beyond simple image recognition. You are looking for a model capable of **Spatial and Geometric Reasoning**.
+**Resolution and detail retention.** Graphics bugs often live in fine detail — a single row of Z-fighting pixels, a subtle moiré pattern. If a model downsamples your 4K screenshot to something like 224x224 before processing, it will miss these. Look for models that support high-resolution or patch-based input.
 
-The first criterion is **Resolution and Detail Retention**. Graphics bugs often hide in the fine details—a single pixel of "Z-fighting" or a subtle moiré pattern. If a model "downsamples" your 4K screenshot to 224x224 before processing it, it will be blind to these artifacts. Look for models that support **High-Resolution Input** or "patch-based" processing.
+**Domain vocabulary.** A general-purpose VLM might describe "lines" on a model; a graphics-aware one distinguishes aliasing, shadow acne, and texture bleeding. A quick test is to show it a clear example of one of these and see whether it names it correctly.
 
-The second criterion is **Domain-Specific Vocabulary**. A general VLM might see "lines" on a 3D model, but a graphics-specialized VLM will understand the difference between **Aliasing**, **Shadow Acne**, and **Texture Bleeding**. To test this, provide the model with a clear example of a common artifact and ask it to describe the "visual symptoms" using technical terms.
+**Spatial reasoning.** Ask it something like "is the shadow correctly aligned with the light source and the occluder?" A model that can identify a break in the shadow's projection is more useful for debugging than one that just reports "a dark spot."
 
-Finally, evaluate the model's **Spatial Reasoning**. Ask it to describe the relationship between two objects in a scene: *"Is the shadow correctly aligned with the light source and the occluder?"* A model that can correctly identify the "break" in a shadow's projection is significantly more valuable for debugging than one that simply sees a "dark spot."
+== A few current vision models
 
-== Leading 2026 Vision Models (Examples)
+=== Qwen 3-VL
 
-=== 1. Qwen 3-VL: High-Resolution Visual Analysis
-Alibaba's **Qwen 3-VL** is currently one of the most capable models for technical image analysis, particularly for identifying complex graphics artifacts like shadow acne or reading text from UI overlays in tools like RenderDoc. For example, if you are debugging a subtle **Banding** artifact in your skybox and upload a 4K screenshot, Qwen 3-VL can identify the pattern and suggest that your `VkImageFormat` (such as B8G8R8A8_UNORM) lacks the precision for a smooth gradient, recommending a switch to a 10-bit or 16-bit float format instead.
+Alibaba's Qwen 3-VL handles high-resolution technical images reasonably well — identifying artifacts like shadow acne, or reading UI text from a RenderDoc capture. For example, given a 4K screenshot showing banding in a skybox, it can flag that an 8-bit format like `B8G8R8A8_UNORM` doesn't have enough precision for a smooth gradient and suggest a 10-bit or 16-bit float format instead.
 
-=== 2. Gemma 4: High-Speed Visual Feedback
-Google's **Gemma 4** offers a smaller, faster alternative that is ideal for real-time visual feedback and rapid classification of bugs—such as determining if a black screen is due to a culling error or a missing swapchain image. It is highly optimized for performance on Apple Silicon and modern NVIDIA cards, providing fast categorization of visual errors.
+=== Gemma 4
 
-== Choosing Your Vision Strategy
+Google's Gemma 4 is smaller and faster, which makes it a reasonable choice for quick, local classification — telling apart a culling error from a missing swapchain image, for instance. It runs well on Apple Silicon and recent NVIDIA GPUs.
+
+== Picking a model
 
 [cols="1,1,2", options="header"]
 |===
-| Strategy | Recommended Model | Best Use Case
+| Priority | Model | Use case
 
-| **Local Inference (Privacy)**
+| Local, private
 | Gemma 4
-| Quick bug classification and visual-focused coding.
+| Quick bug classification, visual-adjacent coding.
 
-| **High-Precision Analysis**
+| Detail-sensitive analysis
 | Qwen 3-VL
-| Deep diagnosis of subtle artifacts like aliasing or banding.
+| Diagnosing subtle artifacts like aliasing or banding.
 
-| **High-Reasoning Cloud Model**
+| Complex planning
 | Claude 4.6 / GPT-5.3
-| Planning complex visual systems from sketches or whiteboards.
+| Working from sketches or whiteboard photos.
 |===
 
-== Summary: The Visual Bridge
+== Summary
 
-By adding a Multimodal model to your toolbelt, you provide your assistant with the same visual context that you have: the pixels on the screen. This allows the AI to analyze the results of your Vulkan code and provide feedback based on what it actually sees.
-
-In the next chapter, we will put these models to work as we explore **Visual Bug Diagnosis** and the most common graphics artifacts in Vulkan.
+Adding a multimodal model to your toolset gives your assistant access to the same pixels you're looking at, so its suggestions can be grounded in what actually rendered rather than only in your description of it.
 
 Next: xref:AI_Assisted_Vulkan/04_multimodal_ai/03_visual_bug_diagnosis.adoc[Visual Bug Diagnosis]

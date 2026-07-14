@@ -1,59 +1,55 @@
 :pp: {plus}{plus}
 
-= Phase 3: Automated Evolution (The Review Phase)
+= Phase 3: Refactoring
 
-== Introduction: The Evolution of an Engine
+== Introduction: engines keep changing
 
-Vulkan code is not static. What was a "Best Practice" in Vulkan 1.0 (like using `VkRenderPass` and `VkFramebuffer` for every tiny subpass) is now considered "Legacy" in Vulkan 1.3, which prioritizes **Dynamic Rendering**.
+Vulkan best practices shift over time. What was standard in Vulkan 1.0 — a `VkRenderPass` and `VkFramebuffer` for every small subpass — is now considered legacy next to Vulkan 1.3's Dynamic Rendering.
 
-This final phase of the workflow is where we move from "Co-Coding" to **Supervision**. We use **Autonomous Agents** (like **Goose**) to perform the "Deep Refactor." Unlike an IDE assistant that focuses on single functions, an agent can "look" across your entire engine to ensure that a major architectural shift is implemented consistently from the initialization code to the final draw call.
+This phase is less about writing new code with the model and more about supervising an agent that does a broader refactor on its own. Unlike an IDE assistant working on one function at a time, an agent (such as Goose) can work across the whole engine, which matters for changes that need to land consistently from initialization through to the final draw call.
 
-== The Core Concept: The "Agentic Shift"
+== Handing off the work
 
-In **Phase 3**, the roles are reversed. You are no longer writing code with the AI's help; you are giving the AI an engineering goal and acting as the **Technical Reviewer**.
+In Phase 3, you're not co-writing code — you're giving the agent a goal and reviewing what it produces.
 
-*   **The Problem:** You want to migrate your engine from GLSL to **Slang**. This involves updating every shader, changing your descriptor binding logic, and modifying your shader compilation build scripts. For a human, this is a week of tedious, error-prone work.
-*   **The Agentic Solution:** You give an agent access to your terminal and your project. You say: *"Migrate our `post_process/` folder to Slang. Update the `CMakeLists.txt` to use the Slang compiler, refactor the C{pp} to use the new reflection data, and fix any compilation errors."*
+*   **The problem:** migrating your engine from GLSL to Slang. This touches every shader, your descriptor binding logic, and your shader compilation scripts — a tedious, error-prone week of work if done by hand.
+*   **The agentic approach:** give an agent access to your terminal and project, and describe the goal: "Migrate our `post_process/` folder to Slang. Update the `CMakeLists.txt` to use the Slang compiler, refactor the C{pp} to use the new reflection data, and fix any compilation errors."
 
-The agent doesn't just "suggest" changes. It reads the files, applies the refactor, runs the compiler, sees the errors, and **iterates** until the task is complete.
+A capable agent doesn't just propose a diff — it edits the files, runs the build, reads the resulting errors, and keeps iterating until it compiles. That doesn't mean the result is correct; it means the build passes, which is a lower bar than "correct." Review is still your job.
 
-== Why Use an Autonomous Agent?
+== Why an agent works for this kind of change
 
-Refactoring Vulkan code is often a "House of Cards" task. If you remove a `VkRenderPass`, you must also update:
+Refactoring Vulkan code tends to have cascading dependencies. Removing a `VkRenderPass` also means updating:
 
 1.  The `VkGraphicsPipelineCreateInfo` to use `VkPipelineRenderingCreateInfo`.
 2.  The `vkCmdBeginRenderPass` call to `vkCmdBeginRendering`.
 3.  The layout transitions in every affected memory barrier.
 
-An autonomous agent is uniquely suited for this because it can follow the **"Error Chain"** across multiple files, fixing the compilation errors it creates until the system reaches a new stable state.
+An agent that can run the build and read the compiler's errors is well suited to this specific kind of task — it can follow the chain of resulting errors across files and keep fixing them until the build succeeds again.
 
-== Real-World Experience: The "Dynamic Rendering" Migration
+== Example: migrating Bloom to Dynamic Rendering
 
-Let's see how an agent handles the migration of our Bloom system to Dynamic Rendering.
+=== Step 1: Set boundaries first
+Start from a clean git branch. Be explicit about scope: "Only modify the `BloomRenderer` class and its associated shaders. Do not touch the core `VulkanDevice` initialization yet."
 
-=== Step 1: Setting the Guardrails
-Before starting, ensure you are on a clean Git branch.
-**Your Role:** You define the scope. *"Only modify the `BloomRenderer` class and its associated shaders. Do not touch the core `VulkanDevice` initialization yet."*
+=== Step 2: Let it iterate
+Give the instruction: "Refactor `BloomRenderer.cpp` to use Dynamic Rendering. Replace all `VkRenderPass` members with `VkPipelineRenderingCreateInfo`. Ensure the image barriers are updated to use `VkImageMemoryBarrier2`."
 
-=== Step 2: The Agentic Loop
-You give the command: *"Refactor `BloomRenderer.cpp` to use Dynamic Rendering. Replace all `VkRenderPass` members with `VkPipelineRenderingCreateInfo`. Ensure the image barriers are updated to use `VkImageMemoryBarrier2`."*
+Watch what the agent actually does. In a typical run it will:
 
-You watch the terminal. The agent:
+*   Read the code and work out the dependency chain.
+*   Modify the pipelines.
+*   Run the build (`ninja`, or whatever your project uses).
+*   Hit a "variable not found" error because it missed a `vulkan_core.h` update for synchronization2.
+*   Fix the include and rebuild.
 
-*   Reads the code and identifies the dependency chain.
-*   Modifies the pipelines.
-*   Runs `ninja`.
-*   Sees a "variable not found" error because it forgot to include the `vulkan_core.h` update for synchronization2.
-*   Fixes the include and rebuilds.
+=== Step 3: Review before merging
+A passing build isn't the same as good code. Read the diff. It's common to find the agent used `IMAGE_LAYOUT_GENERAL` everywhere just to get things working — correct it explicitly: "Optimize the layouts in the Bloom pass to use `ATTACHMENT_OPTIMAL` for the render targets and `READ_ONLY_OPTIMAL` for the source textures."
 
-=== Step 3: Technical Review
-The build is passing, but is the code *good*?
-**Your Role:** You review the diff. You notice the agent used `IMAGE_LAYOUT_GENERAL` for everything to "make it work." You correct it: *"Optimize the layouts in the Bloom pass to use `ATTACHMENT_OPTIMAL` for the render targets and `READ_ONLY_OPTIMAL` for the source textures."*
+== Summary
 
-== Summary: The Evolving Engine
+Phase 3 uses an agent for the kind of multi-file refactor that's mechanical but error-prone by hand, while you stay responsible for reviewing what actually lands. That review step isn't optional — a passing build only tells you the code compiles, not that it's correct or idiomatic for your engine.
 
-Phase 3 is the culmination of the **Collaborative Loop**. By using autonomous agents for the "Heavy Refactor," you ensure that your engine never becomes trapped in legacy patterns. You focus on the **Innovation** of your graphics technology, while the AI manages the intricate details of the evolution.
+That closes out the three-phase loop covered in this section: design with a high-reasoning model, implementation with a fast local model, and refactoring with an agent. Next, we look at AI-assisted debugging with RenderDoc.
 
-With the completion of Section 5, you have mastered the **Feature Lifecycle**: from Cloud-based Design, through Local-based Implementation, to Autonomous Evolution. In the next section, we will explore the "Dark Arts" of **Pro-Level Debugging with AI and RenderDoc.**
-
-Next: xref:AI_Assisted_Vulkan/06_debugging/01_introduction.adoc[Pro-Level Debugging with AI & RenderDoc]
+Next: xref:AI_Assisted_Vulkan/06_debugging/01_introduction.adoc[Pro-Level Debugging]

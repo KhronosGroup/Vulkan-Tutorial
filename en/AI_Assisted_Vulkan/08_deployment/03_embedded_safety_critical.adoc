@@ -4,16 +4,17 @@
 
 == Introduction: Managing the Minimums
 
-Embedded systems—like the Raspberry Pi, NVIDIA Jetson, or custom SoC (System on a Chip) hardware—represent the most constrained environments in the Vulkan ecosystem. In these systems, you are often limited by a single gigabyte of shared memory, and your CPU is a fraction of the speed of a desktop processor. In this environment, "Close Enough" is not an option.
+Embedded systems — the Raspberry Pi, NVIDIA Jetson boards, or custom SoC hardware — are the most constrained environments in the Vulkan ecosystem. You're often working with a single gigabyte of shared memory and a CPU that's a fraction of the speed of a desktop processor. There's little room for approximate answers here.
 
-In **Collaborative Engineering**, we use our assistant as a **Safety Verification Tool**. We use AI to continuously check our resource allocation against hard hardware limits and to suggest the aggressive quantization needed to fit modern graphics into a "Small" silicon footprint.
+An AI assistant can help by continuously checking your resource allocation against hard hardware limits and by suggesting the aggressive quantization needed to fit modern graphics techniques into a small silicon footprint. Treat its output as a starting point to verify against your actual device profile, not as a guarantee of correctness.
 
 == Tutorial: Managing the Embedded Memory Map
 
-Unlike desktop development, embedded development is about **hard limits**. Use your AI assistant to audit your resource allocation against the specific constraints of your SoC.
+Embedded development is about hard limits rather than reasonable defaults. Use your assistant to audit your resource allocation against the specific constraints of your SoC.
 
 === Step 1: Loading the Hardware Profile
-Feed the AI your device's memory map and the requirements for your target resolution.
+
+Feed the assistant your device's memory map and the requirements for your target resolution.
 
 [source,text]
 ----
@@ -27,39 +28,42 @@ for the swapchain and our G-Buffer?
 ----
 
 === Step 2: Optimizing the Allocation
-When the AI reports the audit results, ask for a refactored allocation strategy that minimizes "Padding Waste."
+
+Once you have the audit results, ask for a refactored allocation strategy that reduces wasted padding.
 
 [source,cpp]
 ----
-// Example of an AI-suggested memory allocation for embedded
+// Example memory allocation for embedded targets
 VkMemoryAllocateInfo allocInfo = {};
 allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 allocInfo.allocationSize = reclaimedSize; // Optimized size
-// AI will suggest specific memory types for the Jetson's unified memory
+// The assistant can suggest specific memory types for the Jetson's unified memory
 allocInfo.memoryTypeIndex = unifiedMemoryIndex;
 ----
 
 == Tutorial: Shader Quantization for Mali/Adreno
 
-For embedded systems, the precision of your shaders has a direct impact on power consumption. Downgrading variables to `mediump` (FP16) can increase performance significantly.
+On embedded systems, shader precision has a direct effect on power consumption. Downgrading variables to `mediump` (FP16) can noticeably improve performance, though it comes with a real risk of visible artifacts if applied carelessly.
 
 === Step 1: The Precision Audit
-Provide the AI with your fragment shader and ask it to identify safe candidates for quantization.
+
+Give the assistant your fragment shader and ask it to identify candidates for quantization, then check its suggestions against your own visual testing rather than taking them on faith.
 
 [source,text]
 ----
-Goose, audit 'PBR.frag' for a Mali-G710 GPU.
+Audit 'PBR.frag' for a Mali-G710 GPU.
 Which variables can we safely downgrade to 'mediump'
 (FP16) without causing visible artifacts in our
 specular reflections or normal mapping?
 ----
 
 === Step 2: Applying the Quantization
-The AI will provide the refactored shader. By switching to `mediump` for normalization and intermediate lighting steps, you reduce register pressure, allowing more threads to run in parallel.
+
+Review the refactored shader it proposes. Switching to `mediump` for normalization and intermediate lighting steps reduces register pressure, which allows more threads to run in parallel — but verify the visual result before committing to it.
 
 [source,glsl]
 ----
-// AI-optimized fragment shader for embedded
+// Fragment shader using FP16 intermediates for embedded targets
 layout(location = 0) out vec4 outColor;
 void main() {
     mediump vec3 normal = normalize(inNormal);
@@ -70,26 +74,28 @@ void main() {
 
 == Tutorial: Vulkan SC Compliance Check
 
-In automotive and industrial environments, we use **Vulkan SC**. This requires every resource to be pre-allocated.
+In automotive and industrial environments, Vulkan SC requires every resource to be pre-allocated ahead of time. This is a case where you should treat AI output as a first pass, not a certification — actual SC compliance needs to be verified against the spec and your certification process, not just an assistant's opinion.
 
 === Step 1: The Compliance Audit
-Feed your initialization sequence to the AI and ask it to check for SC 1.0 violations.
+
+Feed your initialization sequence to the assistant and ask it to check for SC 1.0 violations.
 
 [source,text]
 ----
-Goose, audit 'VulkanContext::initializeSC'.
+Audit 'VulkanContext::initializeSC'.
 Check if our 'PipelineCache' warming logic is compliant
 with the Vulkan SC 1.0 specification for offline compilation.
 Are we using any illegal dynamic state like 'VK_DYNAMIC_STATE_LINE_WIDTH'?
 ----
 
 === Step 2: The SC Refactor
-If the AI finds a violation (like dynamic line width), ask it to generate the "Pre-Baked" pipeline array needed to maintain compliance.
 
-== Summary: The Precision Partner
+If it finds a violation, such as dynamic line width, ask it to generate the pre-baked pipeline array needed to stay compliant, then confirm the result yourself against the spec.
 
-Embedded deployment is about **Engineering for the Edge**. By using AI to audit your memory budgets and suggest quantization strategies, you can build a high-performance engine that runs on hardware that others would consider "Too Small."
+== Summary
 
-With the completion of Section 8, you have mastered the art of bringing your AI-assisted Vulkan engine to every corner of the computing world. In the final section of our tutorial, we will provide a comprehensive **FAQ** and a **Final Project** to solidify your skills as a Collaborative Engineer.
+Embedded deployment comes down to working within hard memory and CPU budgets. AI can help audit allocations and suggest quantization strategies, but this is one of the areas in this series where the assistant's output deserves the most scrutiny — the cost of an error is a device that doesn't work, not just a slower frame.
+
+That covers desktop, mobile, and embedded deployment. The next section is a FAQ and a capstone project that ties the tools from this series together.
 
 Next: xref:AI_Assisted_Vulkan/09_faq.adoc[Common Questions & Troubleshooting (FAQ)]

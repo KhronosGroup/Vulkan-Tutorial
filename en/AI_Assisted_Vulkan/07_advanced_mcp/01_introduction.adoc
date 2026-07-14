@@ -4,37 +4,31 @@
 
 == Introduction: Beyond Generic Assistance
 
-Up to this point, we have used the **Model Context Protocol (MCP)** as a passive bridge to read our documentation and source code. However, the true power of MCP lies in **Custom Tooling**—the ability to give your AI "Arms and Legs" to interact with the Vulkan ecosystem directly.
+So far, we've used the **Model Context Protocol (MCP)** mainly as a read-only bridge, letting the AI look at our documentation and source code. MCP can do more than that: you can give the AI tools that let it act directly on the Vulkan ecosystem, not just read about it.
 
-In **Collaborative Engineering**, we transform our AI from a "Chatbot" into an **Active Maintainer**. This section explores how to move beyond basic file reading to building specialized MCP servers that allow your AI to query the Vulkan Registry, audit hardware limits, and autonomously manage your engine's performance.
+This section covers building specialized MCP servers so your AI assistant can query the Vulkan Registry, check hardware limits, and help manage your engine's performance, instead of relying only on what it can read in open files.
 
-== The Core Concept: The AI "Plugin"
+== The core concept: MCP servers as plugins
 
-Think of an MCP server as a "Plugin" for your AI assistant's reasoning engine. By default, an AI doesn't know how to query a database or run a performance profiler. When you provide it with an MCP server, you are giving it a **Toolbox**.
+An MCP server works like a plugin for your AI assistant. On its own, an AI can't query a database or run a performance profiler. An MCP server gives it a defined, callable interface to do that.
 
-1.  **The Registry Tool:** Allows the AI to query the live `vk.xml` file.
-2.  **The GPUInfo Tool:** Allows the AI to query hardware limits (e.g., `maxDescriptorSetSampledImages`) from databases like `gpuinfo.org`.
-3.  **The Profiler Tool:** Allows the AI to read your engine's timing logs and identify bottlenecks.
+1.  **A registry tool:** Lets the AI query the live `vk.xml` file.
+2.  **A GPU info tool:** Lets the AI query hardware limits (e.g., `maxDescriptorSetSampledImages`) from databases like `gpuinfo.org`.
+3.  **A profiler tool:** Lets the AI read your engine's timing logs and flag likely bottlenecks.
 
-By giving an autonomous agent (like **Goose**) these tools, you enable it to perform **Agentic Automation**—tasks that previously required hours of manual cross-referencing between the spec and your code.
+Giving an autonomous agent (like **Goose**) access to these tools lets it do multi-step lookups on its own — cross-referencing the spec against your code without you manually copying data back and forth. It's still worth checking its output; these tools reduce manual lookup, they don't remove the need to verify the result.
 
-== Why Advanced MCP for Vulkan?
+== Why this is useful for Vulkan
 
-Vulkan's development cycle is dominated by **Data Lookup**.
+A lot of Vulkan development involves looking things up: the spec (XML), hardware limits (JSON databases), and performance data (timing logs). AI models can work with structured data like this reasonably well once they have direct access to it, instead of needing you to paste it in manually.
 
-*   **The Spec:** Defined by XML.
-*   **The Hardware:** Defined by JSON limits.
-*   **The Performance:** Defined by microsecond-level timing logs.
+Without MCP, you're the one copying data into the chat window. With a registry or hardware-limits tool wired up, you can ask a more specific question — "what's the max descriptor count on an Adreno 750, and does our budget fit?" — and let the agent go look it up itself.
 
-AI models are highly efficient at reasoning about this structured data when they have direct access to it. Without MCP, you are the middleman, manually copy-pasting data into a chat window. With Advanced MCP, you tell the AI the goal ("Optimize our shadow map resolution for an Adreno 750"), and the AI **goes and gets the data itself.**
+== What's in this section
 
-== The Automation Roadmap
+1.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]:** Giving your assistant real-time access to the spec and hardware limits.
+2.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/03_agentic_automation_qa.adoc[Agentic Automation & Audits]:** Using an agent to help analyze CI/CD failures and look for inefficiencies in your command buffer recording logic.
 
-In this section, we will move from "Consumer" to "Creator" of AI tools:
-
-1.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]:** How to provide your assistant with real-time access to the official spec and hardware limits.
-2.  **xref:AI_Assisted_Vulkan/07_advanced_mcp/03_agentic_automation_qa.adoc[Agentic Automation & Audits]:** Using AI to autonomously analyze CI/CD failures and perform "Performance Scans" on your command buffer recording logic.
-
-By the end of this journey, you will have built a suite of custom tools that make your AI assistant an expert not just in Vulkan, but in your specific hardware ecosystem and engineering pipeline.
+By the end, you'll have a small set of custom tools that make your AI assistant more useful for your specific hardware targets and build pipeline, not just generic Vulkan questions.
 
 Next: xref:AI_Assisted_Vulkan/07_advanced_mcp/02_vulkan_registry_mcp.adoc[The Vulkan Registry & GPUInfo MCP]

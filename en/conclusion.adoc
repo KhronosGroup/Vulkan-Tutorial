@@ -47,11 +47,11 @@ You'll learn engine architecture and design patterns, scene management with hier
 The series also covers essential math and rendering concepts needed for advanced techniques like Forward+ rendering with tiled lighting, shadow mapping techniques, HRTF spatial audio integration, GPU-accelerated physics simulation using compute shaders, and Ray Query for hybrid rendering effects.
 This series builds upon the fundamentals you've learned here to help you create more structured and reusable rendering solutions, and assumes you've completed all the chapters in this Core Vulkan series.
 
-2. link:AI_Assisted_Vulkan/introduction.adoc[*AI-Assisted Vulkan Development*] - Want to accelerate your development with AI?
-This tutorial series explores how to leverage Cloud and Local LLMs, specialized AI agents (MCP), and multimodal vision models to navigate the complexities of Vulkan.
-You'll learn to set up an AI-enhanced environment with tools like Ollama and MCP servers, select and specialize models for graphics programming, automate the generation of verbose Vulkan boilerplate, and use AI as a multimodal consultant to diagnose visual bugs from screenshots.
-The series culminates in an AI-driven graphics lab where you'll use your new toolbelt to architect, implement, and debug a custom post-process effect.
-This series focuses on "Collaborative Engineering" and is ideal for developers looking to optimize their workflow and master the tools of the modern graphics architect.
+2. link:AI_Assisted_Vulkan/introduction.adoc[*AI-Assisted Vulkan Development*] - A practical look at using AI tools in a Vulkan workflow.
+This series covers cloud and local LLMs, MCP-based agent tooling, and multimodal vision models, and where each one is and isn't a good fit for Vulkan work.
+You'll set up an AI-assisted environment with Ollama and MCP servers, pick models suited to graphics programming, cut down on boilerplate, and use vision models to help diagnose visual bugs from screenshots.
+The series ends with a capstone project where you use these tools to build, implement, and debug a custom post-process effect.
+It's aimed at developers who want a clearer, less hyped picture of what AI tooling can realistically do for a Vulkan codebase.
 
 Future, planned tutorials will guide you through implementing more sophisticated rendering techniques and architectures.
 

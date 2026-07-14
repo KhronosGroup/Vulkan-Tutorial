@@ -113,13 +113,11 @@ finally create the vk::raii::Instance:
 instance = vk::raii::Instance(context, createInfo);
 ----
 
-As you'll see, the general pattern that object creation function parameters in
-Vulkan follow is:
+As you'll see, the general pattern that object creation function parameters in Vulkan follow is:
 
-* Pointer to struct with creation info
-* Pointer to custom allocator callbacks, always ignored in this tutorial as
-  it is optional if you're using the default.
 * Pointer to the device, instance, or context on which the constructor depends
+* Pointer to struct with creation info
+* Pointer to custom allocator callbacks, always ignored in this tutorial as it is optional if you're using the default.
 * Returns the pointer to the raii constructed object.
 
 If everything went well, then the handle to the instance was returned. We can

@@ -4,8 +4,8 @@
 
 Welcome! In this series, we will explain how to write a Vulkan renderer using new Vulkan extensions and the recommended best practices from Khronos as of 2026. This tutorial uses shader objects, dynamic rendering, and descriptor heap techniques, and is based on our SIGGRAPH 2026 course "How to write a Vulkan application in 2026".
 
-Slides available: Coming soon.
-Source code available: Coming soon.
+Slides: Coming soon.
+Source code: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/siggraph2026_vk_tutorial[attachments/siggraph2026_vk_tutorial].
 
 By the end, you'll learn how to:
 
@@ -23,7 +23,7 @@ SIGGRAPH page:
 Session details (from the SIGGRAPH listing):
 
 - Course Title: How to write a Vulkan application in 2026
-- Course Date and Time: Wed Jul 22, 9am-12:15pm PDT
+- Course Date and Time: Wednesday, July 22, 2026, 9:00 AM-12:15 PM PDT
 - Course Location: Petree D
 - Interest Areas: Gaming & Interactive
 - Keywords: Education, Games, Real-Time, Rendering

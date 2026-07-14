@@ -1,0 +1,137 @@
+{
+    "asset": {
+        "generator": "Khronos glTF Blender I/O v5.0.21",
+        "version": "2.0"
+    },
+    "scene": 0,
+    "scenes": [
+        {
+            "name": "Scene",
+            "nodes": [
+                0
+            ]
+        }
+    ],
+    "nodes": [
+        {
+            "mesh": 0,
+            "name": "Vulkan.obj",
+            "rotation": [
+                0,
+                0.7078912258148193,
+                0,
+                0.7063214778900146
+            ],
+            "scale": [
+                1.2833995819091797,
+                1.2833993434906006,
+                1.2833995819091797
+            ],
+            "translation": [
+                -0.19810032844543457,
+                1.136516809463501,
+                -0.1934278905391693
+            ]
+        }
+    ],
+    "materials": [
+        {
+            "doubleSided": true,
+            "name": "Red.002",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [
+                    0.3712378442287445,
+                    0.012983033433556557,
+                    0.01599629782140255,
+                    1
+                ],
+                "metallicFactor": 0,
+                "roughnessFactor": 0.5
+            }
+        }
+    ],
+    "meshes": [
+        {
+            "name": "Vulkan.obj.001",
+            "primitives": [
+                {
+                    "attributes": {
+                        "POSITION": 0,
+                        "NORMAL": 1,
+                        "TEXCOORD_0": 2
+                    },
+                    "indices": 3,
+                    "material": 0
+                }
+            ]
+        }
+    ],
+    "accessors": [
+        {
+            "bufferView": 0,
+            "componentType": 5126,
+            "count": 9514,
+            "max": [
+                0.9999998807907104,
+                0.26684150099754333,
+                0.053660497069358826
+            ],
+            "min": [
+                -1,
+                -0.26684150099754333,
+                -0.05366050451993942
+            ],
+            "type": "VEC3"
+        },
+        {
+            "bufferView": 1,
+            "componentType": 5126,
+            "count": 9514,
+            "type": "VEC3"
+        },
+        {
+            "bufferView": 2,
+            "componentType": 5126,
+            "count": 9514,
+            "type": "VEC2"
+        },
+        {
+            "bufferView": 3,
+            "componentType": 5123,
+            "count": 23538,
+            "type": "SCALAR"
+        }
+    ],
+    "bufferViews": [
+        {
+            "buffer": 0,
+            "byteLength": 114168,
+            "byteOffset": 0,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 114168,
+            "byteOffset": 114168,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 76112,
+            "byteOffset": 228336,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 47076,
+            "byteOffset": 304448,
+            "target": 34963
+        }
+    ],
+    "buffers": [
+        {
+            "byteLength": 351524,
+            "uri": "VulkanLogo.bin"
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+BasedOnStyle: LLVM
+Language: Cpp
+ColumnLimit: 120
+IndentWidth: 4
+AccessModifierOffset: -4
+BreakBeforeBraces: Stroustrup
+PointerAlignment: Left
+SortIncludes: CaseSensitive

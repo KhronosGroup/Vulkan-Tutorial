@@ -1,0 +1,11 @@
+# clang-format has no native Slang parser in this toolchain. Format Slang with the
+# same C++ style as the tutorial sources, and use narrow clang-format off/on blocks
+# in shader files around single-bracket entry-point attributes.
+BasedOnStyle: LLVM
+Language: Cpp
+ColumnLimit: 120
+IndentWidth: 4
+AccessModifierOffset: -4
+BreakBeforeBraces: Stroustrup
+PointerAlignment: Left
+SortIncludes: CaseSensitive

@@ -1,0 +1,120 @@
+= SIGGRAPH 2026: How to write a Vulkan application
+
+This is a simple tutorial with the objective of explaining how to write a Vulkan application in 2026.
+The tutorial employs the latest recommended best practices:
+
+* Descriptor heap
+* Shader Object
+* Dynamic Rendering
+
+It is intended for people new to Vulkan, and aims to showcase the main improvements since Vulkan 1.0
+
+Shaders are written using Slang, a modern shading language hosted by the Khronos Group.
+
+See the https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/en/courses/siggraph2026_vk_tutorial[course page] for more information.
+
+== Build
+
+=== Prerequisites
+
+* C++ 2023 tool chain
+** Visual Studio 2022 (or newer)
+** Clang 21 (or newer) and Ninja
+* CMake 3.26 or newer
+* Git
+* Vulkan SDK
+* +slangc+, either on +PATH+ or supplied with +-DSLANGC_EXECUTABLE=...+
+
+[NOTE]
+====
+The tutorial builds and runs on Windows and Linux. Android is not supported.
+This tutorial requires a lot of modern Vulkan extensions, including +VK_EXT_descriptor_heap+ and +VK_EXT_shader_object+.
+Old Vulkan drivers will not be able to run this tutorial.
+====
+
+=== Setup
+
+No submodule initialization is required.
+
+CMake uses git during setup to download the necessary third-party libraries.
+This includes glTF assets for Sponza.
+
+=== Compile with Visual Studio (Windows)
+
+The repo includes a Visual Studio 2022 and Visual Studio 2026 presets:
+
+[source,bash]
+----
+cmake --preset vs2022-debug -DSLANGC_EXECUTABLE="C:/VulkanSDK/1.4.341.1/Bin/slangc.exe"
+
+cmake --preset vs2026-debug -DSLANGC_EXECUTABLE="C:/VulkanSDK/1.4.341.1/Bin/slangc.exe"
+----
+
+This writes Visual Studio project files and the executable under +build/vs2022+ and +build/vs2026+.
+
+To build you can open +build/vs2026/vulkan_siggraph.slnx+ alternatively you can run in the console:
+
+[source,bash]
+----
+cmake --build --preset vs2026-debug
+----
+
+=== Compile with Clang (Windows and Linux)
+
+The repo includes CMake presets to compile using clang:
+
+[source,bash]
+----
+cmake --preset clang-debug -DSLANGC_EXECUTABLE="C:/VulkanSDK/1.4.341.1/Bin/slangc.exe"
+cmake --build --preset clang-debug
+----
+
+[NOTE]
+====
++-DSLANGC_EXECUTABLE+ is optional. If not provided, CMake will use the version of +slangc+ in +PATH+.
+====
+
+== Run
+
+[source,bash]
+----
+.\build\vs2026\Debug\vulkan_siggraph.exe
+.\build\clang\vulkan_siggraph.exe
+----
+
+== Files
+
+* +src/main.cpp+, +src/main.h+: Main application containing the Vulkan code.
+* +src/util.cpp+, +src/util.h+: Collection of helper functions to make the tutorial easy to follow. Functions in these files parse reflection data, glTF objects, textures, and related inputs, so they are less relevant if your objective is to learn Vulkan.
+* +shaders/+: Slang shaders.
+
+== License
+
+This SIGGRAPH tutorial sample is licensed under the link:LICENSE[MIT License].
+This license applies to the sample code and documentation in this directory.
+Assets and third-party libraries remain under their own licenses.
+
+== Assets
+
+* *Sponza* - Cryengine Limited License Agreement (+LicenseRef-CRYENGINE-Agreement+). Building interior glTF scene used for lighting and rendering tests. See https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza[glTF Sample Assets].
+* *Vulkan logo* - Khronos trademark. The Vulkan logo is a trademark of The Khronos Group Inc. The MIT license does not grant trademark rights. See the https://www.khronos.org/legal/trademarks/[Khronos trademark guidelines].
+
+== Third-party Libraries
+
+* *GLFW* - https://github.com/glfw/glfw[glfw/glfw]: Window creation and Vulkan surface integration (https://github.com/glfw/glfw/blob/master/LICENSE.md[zlib License]).
+* *GLM* - https://github.com/g-truc/glm[g-truc/glm]: Header-only math library for vectors, matrices, and transforms (https://github.com/g-truc/glm/blob/master/copying.txt[MIT or Happy Bunny License]).
+* *vk-bootstrap* - https://github.com/charles-lunarg/vk-bootstrap[charles-lunarg/vk-bootstrap]: Helper library for Vulkan instance, device, queue, and swapchain setup (https://github.com/charles-lunarg/vk-bootstrap/blob/main/LICENSE.txt[MIT License]).
+* *nlohmann/json* - https://github.com/nlohmann/json[nlohmann/json]: Header-only JSON parser (https://github.com/nlohmann/json/blob/develop/LICENSE.MIT[MIT License]).
+* *stb* - https://github.com/nothings/stb[nothings/stb]: Header-only utility library; this tutorial uses +stb_image+ for texture loading (https://github.com/nothings/stb/blob/master/LICENSE[MIT or Public Domain / Unlicense]).
+* *tinygltf* - https://github.com/syoyo/tinygltf[syoyo/tinygltf]: Header-only glTF 2.0 loader (https://github.com/syoyo/tinygltf/blob/release/LICENSE[MIT License]).
+
+[NOTE]
+====
+Codex and ChatGPT 5.5 were used to assist in writing this tutorial.
+
+AI was used for:
+
+* Reviewing, with a particular focus on spelling and grammar.
+* Assisting with small refactors (for example: "Use `span` instead of `vector` as parameters")
+* Generating some basic utility functions, primarily for CMake files and for parsing glTF and JSON.
+====

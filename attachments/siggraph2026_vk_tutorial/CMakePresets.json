@@ -1,0 +1,53 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "clang-debug",
+      "displayName": "Clang Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "vs2022-debug",
+      "displayName": "Visual Studio 2022 x64 Debug",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build/vs2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      }
+    },
+    {
+      "name": "vs2026-debug",
+      "displayName": "Visual Studio 2026 x64 Debug",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/vs2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-debug",
+      "configurePreset": "clang-debug"
+    },
+    {
+      "name": "vs2022-debug",
+      "configurePreset": "vs2022-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs2026-debug",
+      "configurePreset": "vs2026-debug",
+      "configuration": "Debug"
+    }
+  ]
+}

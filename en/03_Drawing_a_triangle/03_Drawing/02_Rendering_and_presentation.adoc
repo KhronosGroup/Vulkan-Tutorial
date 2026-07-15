@@ -387,7 +387,7 @@ This will almost always be single.
 
 [,c++]
 ----
-presentInfo.pResults = nullptr; // Optional
+presentInfoKHR.pResults = nullptr; // Optional
 ----
 
 There is one last optional parameter called `pResults`.

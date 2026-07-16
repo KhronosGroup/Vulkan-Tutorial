@@ -18,11 +18,6 @@ See the link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/en/course
 * **Main page**: link:https://docs.vulkan.org/tutorial/latest/courses/siggraph2026_vk_tutorial/00_Overview.html[Tutorial]
 * **Slides**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
 
-== Resources
-
-* **Main page**: link:https://docs.vulkan.org/tutorial/latest/courses/siggraph2026_vk_tutorial/00_Overview.html[Tutorial]
-* **Slides**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
-
 == Build
 
 === Prerequisites

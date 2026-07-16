@@ -13,6 +13,11 @@ Shaders are written using Slang, a modern shading language hosted by the Khronos
 
 See the https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/en/courses/siggraph2026_vk_tutorial[course page] for more information.
 
+== Resources
+
+* **Main page**: link:https://docs.vulkan.org/tutorial/latest/courses/siggraph2026_vk_tutorial/00_Overview.html[Tutorial]
+* **Slides**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
+
 == Build
 
 === Prerequisites

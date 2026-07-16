@@ -1,4 +1,12 @@
-= SIGGRAPH 2026: How to write a Vulkan application in 2026 - Attribution
+= SIGGRAPH 2026: How to write a Vulkan application in 2026
+
+== Resources
+
+* **Main page**: link:https://docs.vulkan.org/tutorial/latest/courses/siggraph2026_vk_tutorial/00_Overview.html[Course Overview]
+* **Slides**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
+* **Source code**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/siggraph2026_vk_tutorial[attachments/siggraph2026_vk_tutorial].
+
+== Attribution
 
 This folder contains the courseware for "SIGGRAPH 2026: How to write a Vulkan application in 2026".
 

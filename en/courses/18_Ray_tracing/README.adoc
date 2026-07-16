@@ -3,7 +3,7 @@
 == Resources
 
 * **Main page**: link:https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/00_Overview.html[here]
-* **Slides available**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/Vulkan%20Ray%20Tracing%20With%20Dynamic%20Rendering.pdf[here].
+* **Slides available**: link:/attachments/Vulkan%20Ray%20Tracing%20With%20Dynamic%20Rendering.pdf[here].
 * **Source code available**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/38_ray_tracing.cpp[here].
 
 == Attribution

@@ -4,13 +4,12 @@
 
 Welcome! In this series, we will explain how to write a Vulkan renderer using new Vulkan extensions and the recommended best practices from Khronos as of 2026. This tutorial uses shader objects, dynamic rendering, and descriptor heap techniques, and is based on our SIGGRAPH 2026 course "How to write a Vulkan application in 2026".
 
-====
+'''
 
 * **Slides**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
-* **Source code**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/siggraph2026_vk_tutorial[attachments/siggraph2026_vk_tutorial].
+* **Source code**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/tree/main/attachments/siggraph2026_vk_tutorial[attachments/siggraph2026_vk_tutorial].
 
-====
-
+'''
 
 By the end, you'll learn how to:
 

@@ -18,7 +18,7 @@ The following tutorials were written by Holochip Corporation and released under 
 * xref:Synchronization/introduction.adoc[Synchronization]
 * xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps mini course]
 
-The following courses were written by Arm Limited and released under link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
+The following courses were written by Arm Limited.
 
 * xref:courses/18_Ray_tracing/00_Overview.adoc[SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering]
 * xref:courses/siggraph2026_vk_tutorial/00_Overview.adoc[SIGGRAPH 2026: How to write a Vulkan application in 2026]

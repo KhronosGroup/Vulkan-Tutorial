@@ -7,6 +7,22 @@
 
 The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.com/[Vulkan Tutorial]" by Alexander Overvoorde licensed under link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
 
+The following tutorials were written by Holochip Corporation and released under the link:https://www.apache.org/licenses/LICENSE-2.0[Apache-2.0]:
+
+* xref:ML_Inference/introduction.adoc[Machine learning inference]
+* xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[Vulkan for XR]
+* xref:AI_Assisted_Vulkan/introduction.adoc[LLM-Assistant Vulkan Development]
+* xref:Advanced_glTF/introduction.adoc[Advanced glTF]
+* xref:Advanced_Vulkan_Compute/introduction.adoc[Advanced Vulkan Compute]
+* xref:Building_a_Simple_Engine/introduction.adoc[Building a Simple Game Engine]
+* xref:Synchronization/introduction.adoc[Synchronization]
+* xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps mini course]
+
+The following courses were written by Arm Limited.
+
+* xref:courses/18_Ray_tracing/00_Overview.adoc[SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering]
+* xref:courses/siggraph2026_vk_tutorial/00_Overview.adoc[SIGGRAPH 2026: How to write a Vulkan application in 2026]
+
 == About
 
 This repository hosts the contents of the link:https://docs.vulkan.org/tutorial/latest[Khronos Vulkan Tutorial]. The tutorial is part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project].
@@ -78,3 +94,18 @@ By contributing to that directory, you agree to license your contributions to th
 == Contributing
 
 Contributions are welcome, details on how to contribute and the technical requirements that have to be met can be found in link:CONTRIBUTING.adoc[this document].
+
+[NOTE]
+====
+Claude and Gemini along with local SLMs were used to assist in writing these tutorials.
+
+AI was used for:
+
+* Reviewing, with a particular focus on spelling and grammar.
+* Assisting with small refactors
+* Generating generic language between human created content.
+
+Humans have reviewed all content of all tutorials and we welcome feedback.
+
+xref:AI_Assisted_Vulkan/introduction.adoc[LLM-Assistant Vulkan Development] tutorial used for all LLM use in these tutorials and sample code.
+====

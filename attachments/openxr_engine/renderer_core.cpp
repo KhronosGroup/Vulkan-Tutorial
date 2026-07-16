@@ -614,12 +614,6 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
       extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
-    // NEW: Add OpenXR mandatory extensions
-    if (xrMode) {
-      auto xrExtensions = xrContext.getVulkanInstanceExtensions();
-      extensions.insert(extensions.end(), xrExtensions.begin(), xrExtensions.end());
-    }
-
     // Create instance info
     vk::InstanceCreateInfo createInfo{
       .pApplicationInfo = &appInfo,
@@ -896,16 +890,6 @@ void Renderer::addSupportedOptionalExtensions() {
       }
     }
 
-    // NEW: Add OpenXR mandatory device extensions
-    if (xrMode) {
-      auto xrDevExtensions = xrContext.getVulkanDeviceExtensions(*physicalDevice);
-      for (const auto& ext : xrDevExtensions) {
-        // Ensure we don't duplicate
-        if (std::find(deviceExtensions.begin(), deviceExtensions.end(), std::string(ext)) == deviceExtensions.end()) {
-          deviceExtensions.push_back(ext);
-        }
-      }
-    }
   } catch (const std::exception& e) {
     std::cerr << "Warning: Failed to add optional extensions: " << e.what() << std::endl;
   }

@@ -105,11 +105,7 @@ bool XrContext::createInstance(const std::string& appName) {
     }
 
     // Load Vulkan extension functions
-    xrGetInstanceProcAddr(instance, "xrGetVulkanInstanceExtensionsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanInstanceExtensionsKHR);
-    xrGetInstanceProcAddr(instance, "xrGetVulkanDeviceExtensionsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanDeviceExtensionsKHR);
-    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsRequirementsKHR);
     xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsRequirements2KHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsRequirements2KHR);
-    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsDeviceKHR);
     xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsDevice2KHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsDevice2KHR);
 
     XrSystemGetInfo systemGetInfo{XR_TYPE_SYSTEM_GET_INFO};
@@ -356,8 +352,6 @@ vk::PhysicalDevice XrContext::getRequiredPhysicalDevice() {
         XrGraphicsRequirementsVulkanKHR graphicsRequirements{XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
         if (pfnGetVulkanGraphicsRequirements2KHR) {
             pfnGetVulkanGraphicsRequirements2KHR(instance, systemId, &graphicsRequirements);
-        } else if (pfnGetVulkanGraphicsRequirementsKHR) {
-            pfnGetVulkanGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements);
         }
 
         // Step 2: Ask the runtime which physical device to use. The runtime enforces this
@@ -371,8 +365,6 @@ vk::PhysicalDevice XrContext::getRequiredPhysicalDevice() {
             getInfo.systemId = systemId;
             getInfo.vulkanInstance = (VkInstance)vkInstance;
             result = pfnGetVulkanGraphicsDevice2KHR(instance, &getInfo, &vkPhysicalDevice);
-        } else if (pfnGetVulkanGraphicsDeviceKHR) {
-            result = pfnGetVulkanGraphicsDeviceKHR(instance, systemId, (VkInstance)vkInstance, &vkPhysicalDevice);
         }
 
         if (result == XR_SUCCESS && vkPhysicalDevice != VK_NULL_HANDLE) {

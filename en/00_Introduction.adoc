@@ -7,6 +7,22 @@
 The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.com/[Vulkan Tutorial]" by Alexander Overvoorde licensed under
 link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
 
+The following tutorials were written by Holochip Corporation and released under the link:https://www.apache.org/licenses/LICENSE-2.0[Apache-2.0]:
+
+* xref:ML_Inference/introduction.adoc[Machine learning inference]
+* xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[Vulkan for XR]
+* xref:AI_Assisted_Vulkan/introduction.adoc[LLM-Assistant Vulkan Development]
+* xref:Advanced_glTF/introduction.adoc[Advanced glTF]
+* xref:Advanced_Vulkan_Compute/introduction.adoc[Advanced Vulkan Compute]
+* xref:Building_a_Simple_Engine/introduction.adoc[Building a Simple Game Engine]
+* xref:Synchronization/introduction.adoc[Synchronization]
+* xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps mini course]
+
+The following courses were written by Arm Limited and released under link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
+
+* xref:courses/18_Ray_tracing/00_Overview.adoc[SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering]
+* xref:courses/siggraph2026_vk_tutorial/00_Overview.adoc[SIGGRAPH 2026: How to write a Vulkan application in 2026]
+
 == Differences
 
 Compared to the original tutorial, this version of the tutorial is teaching up-to-date concepts:
@@ -151,7 +167,7 @@ Every chapter will also conclude with a link to the full code listing up to
 that point. You can refer to it if you have any doubts about the structure of
  the code, or if you're dealing with a bug and want to compare.
 All the code files have been tested on graphics cards from multiple vendors
-to verify correctness. 
+to verify correctness.
 
 If you have any type of question or feedback on the tutorial and site itself, then
 please don't hesitate to submit an issue or pull request to the

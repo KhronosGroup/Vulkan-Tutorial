@@ -219,6 +219,27 @@ static bool LoadKTX2Image(tinygltf::Image* image,
   }
   return false;
 }
+
+// Resolves the image index for a texture, falling back to the KHR_texture_basisu
+// extension's source when the core "source" property is absent (required for
+// KTX2-only textures, since core glTF only allows PNG/JPEG as the image mimeType).
+static int ResolveGltfImageIndex(const tinygltf::Model& gltfModel, const tinygltf::Texture& texture) {
+  if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
+    return texture.source;
+  }
+  auto extIt = texture.extensions.find("KHR_texture_basisu");
+  if (extIt != texture.extensions.end()) {
+    const tinygltf::Value& ext = extIt->second;
+    if (ext.Has("source") && ext.Get("source").IsInt()) {
+      int src = ext.Get("source").Get<int>();
+      if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
+        return src;
+      }
+    }
+  }
+  return -1;
+}
+
 void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
                                    const std::string& baseTexturePath,
                                    std::set<std::string>& loadedTextures) {
@@ -353,20 +374,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
           int texIndex = diffObj.Get("index").Get<int>();
           if (texIndex >= 0 && texIndex < static_cast<int>(gltfModel.textures.size())) {
             const auto& texture = gltfModel.textures[texIndex];
-            int imageIndex = -1;
-            if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
-              imageIndex = texture.source;
-            } else {
-              auto extBasis = texture.extensions.find("KHR_texture_basisu");
-              if (extBasis != texture.extensions.end()) {
-                const tinygltf::Value& e = extBasis->second;
-                if (e.Has("source") && e.Get("source").IsInt()) {
-                  int src = e.Get("source").Get<int>();
-                  if (src >= 0 && src < static_cast<int>(gltfModel.images.size()))
-                    imageIndex = src;
-                }
-              }
-            }
+            int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
             if (imageIndex >= 0) {
               const auto& image = gltfModel.images[imageIndex];
               std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
@@ -389,9 +397,10 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
           int texIndex = sgObj.Get("index").Get<int>();
           if (texIndex >= 0 && texIndex < static_cast<int>(gltfModel.textures.size())) {
             const auto& texture = gltfModel.textures[texIndex];
-            if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
+            int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+            if (imageIndex >= 0) {
               std::string textureId = "gltf_specGloss_" + std::to_string(texIndex);
-              const auto& image = gltfModel.images[texture.source];
+              const auto& image = gltfModel.images[imageIndex];
               if (!image.image.empty()) {
                 // Embedded image data (already decoded by tinygltf image loader)
                 renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component, false, material->alphaMode == "MASK");
@@ -416,21 +425,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
       int texIndex = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
       if (texIndex < gltfModel.textures.size()) {
         const auto& texture = gltfModel.textures[texIndex];
-        int imageIndex = -1;
-        if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
-          imageIndex = texture.source;
-        } else {
-          auto extIt = texture.extensions.find("KHR_texture_basisu");
-          if (extIt != texture.extensions.end()) {
-            const tinygltf::Value& ext = extIt->second;
-            if (ext.Has("source") && ext.Get("source").IsInt()) {
-              int src = ext.Get("source").Get<int>();
-              if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
-                imageIndex = src;
-              }
-            }
-          }
-        }
+        int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
         if (imageIndex >= 0) {
           std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
           material->albedoTexturePath = textureId;
@@ -458,12 +453,13 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
       int texIndex = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
       if (texIndex < gltfModel.textures.size()) {
         const auto& texture = gltfModel.textures[texIndex];
-        if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+        int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+        if (imageIndex >= 0) {
           std::string textureId = "gltf_texture_" + std::to_string(texIndex);
           material->metallicRoughnessTexturePath = textureId;
 
           // Load texture data (embedded or external)
-          const auto& image = gltfModel.images[texture.source];
+          const auto& image = gltfModel.images[imageIndex];
           if (!image.image.empty()) {
             // Load embedded texture data asynchronously
             renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
@@ -484,21 +480,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
       int texIndex = gltfMaterial.normalTexture.index;
       if (texIndex < gltfModel.textures.size()) {
         const auto& texture = gltfModel.textures[texIndex];
-        int imageIndex = -1;
-        if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
-          imageIndex = texture.source;
-        } else {
-          auto extIt = texture.extensions.find("KHR_texture_basisu");
-          if (extIt != texture.extensions.end()) {
-            const tinygltf::Value& ext = extIt->second;
-            if (ext.Has("source") && ext.Get("source").IsInt()) {
-              int src = ext.Get("source").Get<int>();
-              if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
-                imageIndex = src;
-              }
-            }
-          }
-        }
+        int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
         if (imageIndex >= 0) {
           std::string textureId = "gltf_texture_" + std::to_string(texIndex);
           material->normalTexturePath = textureId;
@@ -525,12 +507,13 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
       int texIndex = gltfMaterial.occlusionTexture.index;
       if (texIndex < gltfModel.textures.size()) {
         const auto& texture = gltfModel.textures[texIndex];
-        if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+        int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+        if (imageIndex >= 0) {
           std::string textureId = "gltf_texture_" + std::to_string(texIndex);
           material->occlusionTexturePath = textureId;
 
           // Load texture data (embedded or external)
-          const auto& image = gltfModel.images[texture.source];
+          const auto& image = gltfModel.images[imageIndex];
           if (!image.image.empty()) {
             // Schedule embedded texture upload
             renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
@@ -551,12 +534,13 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
       int texIndex = gltfMaterial.emissiveTexture.index;
       if (texIndex < gltfModel.textures.size()) {
         const auto& texture = gltfModel.textures[texIndex];
-        if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+        int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+        if (imageIndex >= 0) {
           std::string textureId = "gltf_texture_" + std::to_string(texIndex);
           material->emissiveTexturePath = textureId;
 
           // Load texture data (embedded or external)
-          const auto& image = gltfModel.images[texture.source];
+          const auto& image = gltfModel.images[imageIndex];
           if (!image.image.empty()) {
             // Schedule embedded texture upload
             renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
@@ -600,20 +584,7 @@ void ModelLoader::ProcessMaterials(const tinygltf::Model& gltfModel,
           int texIndex = diffObj.Get("index").Get<int>();
           if (texIndex >= 0 && texIndex < static_cast<int>(gltfModel.textures.size())) {
             const auto& texture = gltfModel.textures[texIndex];
-            int imageIndex = -1;
-            if (texture.source >= 0 && texture.source < static_cast<int>(gltfModel.images.size())) {
-              imageIndex = texture.source;
-            } else {
-              auto extBasis = texture.extensions.find("KHR_texture_basisu");
-              if (extBasis != texture.extensions.end()) {
-                const tinygltf::Value& e = extBasis->second;
-                if (e.Has("source") && e.Get("source").IsInt()) {
-                  int src = e.Get("source").Get<int>();
-                  if (src >= 0 && src < static_cast<int>(gltfModel.images.size()))
-                    imageIndex = src;
-                }
-              }
-            }
+            int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
             if (imageIndex >= 0) {
               const auto& image = gltfModel.images[imageIndex];
               std::string texIdOrPath;
@@ -1392,21 +1363,7 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         int texIndex = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
         if (texIndex < gltfModel.textures.size()) {
           const auto& texture = gltfModel.textures[texIndex];
-          int imageIndex = -1;
-          if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
-            imageIndex = texture.source;
-          } else {
-            auto extIt = texture.extensions.find("KHR_texture_basisu");
-            if (extIt != texture.extensions.end()) {
-              const tinygltf::Value& ext = extIt->second;
-              if (ext.Has("source") && ext.Get("source").IsInt()) {
-                int src = ext.Get("source").Get<int>();
-                if (src >= 0 && src < static_cast<int>(gltfModel.images.size())) {
-                  imageIndex = src;
-                }
-              }
-            }
-          }
+          int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
           if (imageIndex >= 0) {
             std::string textureId = "gltf_baseColor_" + std::to_string(texIndex);
             materialMesh.baseColorTexturePath = textureId;
@@ -1468,12 +1425,13 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         int texIndex = gltfMaterial.normalTexture.index;
         if (texIndex < gltfModel.textures.size()) {
           const auto& texture = gltfModel.textures[texIndex];
-          if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+          int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+          if (imageIndex >= 0) {
             std::string textureId = "gltf_texture_" + std::to_string(texIndex);
             materialMesh.normalTexturePath = textureId;
 
             // Load texture data (embedded or external)
-            const auto& image = gltfModel.images[texture.source];
+            const auto& image = gltfModel.images[imageIndex];
             if (!image.image.empty()) {
               // Load embedded texture data
               renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
@@ -1515,12 +1473,13 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         int texIndex = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
         if (texIndex < gltfModel.textures.size()) {
           const auto& texture = gltfModel.textures[texIndex];
-          if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+          int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+          if (imageIndex >= 0) {
             std::string textureId = "gltf_texture_" + std::to_string(texIndex);
             materialMesh.metallicRoughnessTexturePath = textureId;
 
             // Load texture data (embedded or external)
-            const auto& image = gltfModel.images[texture.source];
+            const auto& image = gltfModel.images[imageIndex];
             if (!image.image.empty()) {
               renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);
               materialMesh.metallicRoughnessTexturePath = textureId;
@@ -1554,12 +1513,13 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         int texIndex = gltfMaterial.occlusionTexture.index;
         if (texIndex < gltfModel.textures.size()) {
           const auto& texture = gltfModel.textures[texIndex];
-          if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+          int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+          if (imageIndex >= 0) {
             std::string textureId = "gltf_texture_" + std::to_string(texIndex);
             materialMesh.occlusionTexturePath = textureId;
 
             // Load texture data (embedded or external)
-            const auto& image = gltfModel.images[texture.source];
+            const auto& image = gltfModel.images[imageIndex];
             if (!image.image.empty()) {
               if (renderer->LoadTextureFromMemory(textureId,
                                                   image.image.data(),
@@ -1605,12 +1565,13 @@ bool ModelLoader::ParseGLTF(const std::string& filename, Model* model) {
         int texIndex = gltfMaterial.emissiveTexture.index;
         if (texIndex < gltfModel.textures.size()) {
           const auto& texture = gltfModel.textures[texIndex];
-          if (texture.source >= 0 && texture.source < gltfModel.images.size()) {
+          int imageIndex = ResolveGltfImageIndex(gltfModel, texture);
+          if (imageIndex >= 0) {
             std::string textureId = "gltf_texture_" + std::to_string(texIndex);
             materialMesh.emissiveTexturePath = textureId;
 
             // Load texture data (embedded or external)
-            const auto& image = gltfModel.images[texture.source];
+            const auto& image = gltfModel.images[imageIndex];
             if (!image.image.empty()) {
               // Load embedded texture data
               renderer->LoadTextureFromMemoryAsync(textureId, image.image.data(), image.width, image.height, image.component);

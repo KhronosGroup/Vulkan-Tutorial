@@ -97,7 +97,7 @@ Contributions are welcome, details on how to contribute and the technical requir
 
 [NOTE]
 ====
-Claude and Gemini along with local SLMs were used to assist in writing these tutorials.
+LLMs like Claude, ChatGPT and Gemini along with local SLMs were used to assist in writing these tutorials.
 
 AI was used for:
 

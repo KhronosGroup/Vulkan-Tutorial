@@ -154,8 +154,9 @@ bool Renderer::Initialize(const std::string& appName, bool enableValidationLayer
     return false;
   }
 
-  // In XR mode pick the device BEFORE creating the surface.  The OpenXR runtime
-  // identifies the correct GPU via LUID/UUID, so no surface is needed for selection.
+  // In XR mode pick the device BEFORE creating the surface. The OpenXR runtime hands us
+  // the exact VkPhysicalDevice it requires (it enforces this — it's tied to whatever GPU
+  // the headset's display is wired to), so no surface is needed for selection.
   // Creating the GLFW surface first causes the XR runtime's Vulkan layer to intercept
   // vkCreateXxxSurfaceKHR before the validation layer sees it, producing an untracked
   // surface handle that crashes vkGetPhysicalDeviceSurfaceSupportKHR.
@@ -753,14 +754,17 @@ bool Renderer::pickPhysicalDevice() {
           << " (Type: " << vk::to_string(deviceProperties.deviceType) << ")" << std::endl;
 
       if (xrMode) {
-        // Match the LUID provided by OpenXR
-        auto props2 = _device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
-        const auto& idProps = props2.get<vk::PhysicalDeviceIDProperties>();
-
-        const uint8_t* requiredLuid = xrContext.getRequiredLUID();
-        if (requiredLuid && std::memcmp(idProps.deviceLUID, requiredLuid, VK_LUID_SIZE) != 0) {
-          std::cout << "  - LUID mismatch for OpenXR" << std::endl;
-          continue; // Not the right GPU for XR!
+        // The OpenXR runtime enforces which GPU we must use — it already handed us the
+        // exact VkPhysicalDevice via xrGetVulkanGraphicsDevice2KHR. Skip anything else;
+        // there is no matching or scoring left to do, the runtime made the choice for us.
+        vk::PhysicalDevice required = xrContext.getRequiredPhysicalDevice();
+        if (static_cast<VkPhysicalDevice>(required) == VK_NULL_HANDLE) {
+          std::cerr << "  - Could not obtain required physical device from OpenXR runtime" << std::endl;
+          continue;
+        }
+        if (*_device != required) {
+          std::cout << "  - Not the GPU OpenXR requires" << std::endl;
+          continue;
         }
       }
 

@@ -30,7 +30,7 @@ void Renderer::applySpatialPlatformPresets() {
 
         // Enable high-bandwidth features like Ray Query
         vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{};
-        // ... request features from the LUID-matched physical device ...
+        // ... request features from the runtime-required physical device ...
     }
 }
 ----

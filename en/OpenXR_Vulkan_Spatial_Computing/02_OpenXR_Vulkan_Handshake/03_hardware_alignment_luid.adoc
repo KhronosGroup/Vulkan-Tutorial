@@ -1,5 +1,5 @@
 :pp: {plus}{plus}
-= Hardware Alignment (LUID)
+= Hardware Alignment
 
 In many modern computing environments, especially high-end gaming desktops, it is common to have multiple GPUs—such as an integrated GPU on the processor and a dedicated high-performance card. For spatial computing, it is absolutely critical that both our application and the OpenXR runtime are using the exact same physical hardware.
 
@@ -7,67 +7,72 @@ In many modern computing environments, especially high-end gaming desktops, it i
 
 This chapter falls under the category: **Using Vulkan with an OpenXR Runtime**.
 
-Aligning your Vulkan physical device with the XR runtime's preferred hardware is a mandatory step to ensure high-performance resource sharing. Using the LUID (Locally Unique Identifier) ensures that both systems are talking to the same physical silicon.
+Aligning your Vulkan physical device with the XR runtime's preferred hardware is a mandatory step to ensure high-performance resource sharing. Critically, this is not a negotiation: the OpenXR runtime *enforces* which GPU you must use, and it hands you that exact device directly. There is no matching or searching to do.
 
 == The "PCIe Tax": Why Alignment is Mandatory
 
-To understand why we care about the LUID, we must consider the cost of data movement. The PCIe bus is the highway between your CPU, system RAM, and your GPUs. While it is very fast, it is still orders of magnitude slower than the internal memory bus of a modern GPU (VRAM).
+To understand why we care about hardware alignment, we must consider the cost of data movement. The PCIe bus is the highway between your CPU, system RAM, and your GPUs. While it is very fast, it is still orders of magnitude slower than the internal memory bus of a modern GPU (VRAM).
 
 *   **Display Discovery**: The runtime has negotiated with the operating system (e.g., via DXGI on Windows) to identify which physical GPU is electrically connected to the headset's display.
 *   **Avoiding Cross-GPU Copies**: If our engine renders a frame on GPU A, but the headset is connected to GPU B, the OS would be forced to copy that image across the **PCIe** bus. This adds several milliseconds of latency—potentially half of your frame budget for a 90Hz headset.
 *   **Internal VRAM Efficiency**: Moving an image within the same GPU is almost instantaneous. By pinning the application to the same GPU, the runtime ensures your frames stay within high-speed VRAM at all times.
 
-== What is an LUID?
-
-An **LUID** (Locally Unique Identifier) is a 64-bit value guaranteed to be unique on the local machine until the next reboot. Unlike a **UUID**, which is persistent across machines, the LUID is a transient hardware handle provided by the operating system.
-
-In the context of the OpenXR-Vulkan handshake, the LUID serves as the hardware "fingerprint" of the GPU. OpenXR tells us: "I am currently talking to the GPU with this specific LUID," and we must search through our available `VkPhysicalDevice` handles until we find the one that matches.
+Because getting this wrong silently costs performance (or breaks resource sharing outright), OpenXR does not leave device selection up to the application at all—it tells you exactly which `VkPhysicalDevice` to use.
 
 == Querying the XR Device
 
-Once we have initialized our `xr::Instance`, we can query the specific hardware identity that the runtime expects us to use. We do this by calling `xrGetVulkanGraphicsDevice2KHR`.
+Once we have initialized our `xr::Instance`, we can query the specific `VkPhysicalDevice` that the runtime requires us to use. We do this by calling `xrGetVulkanGraphicsDevice2KHR` (or the older `xrGetVulkanGraphicsDeviceKHR`).
 
 [source,cpp]
 ----
 VkPhysicalDevice xrRequiredDevice;
-xrGetVulkanGraphicsDevice2KHR(xrInstance, systemId, *instance, &xrRequiredDevice);
+
+XrVulkanGraphicsDeviceGetInfoKHR getInfo{XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR};
+getInfo.systemId = systemId;
+getInfo.vulkanInstance = instance;
+
+xrGetVulkanGraphicsDevice2KHR(xrInstance, &getInfo, &xrRequiredDevice);
 ----
 
-While we can get the raw handle directly from the runtime, matching via LUID is often more robust, especially when our engine's architecture abstracts physical device selection or when multiple Vulkan instances are present.
+This handle is the answer. The runtime has already resolved display topology, driver adapter enumeration, and cross-process sharing requirements on your behalf—that is precisely what this call is for. Your job is simply to use `xrRequiredDevice` as your `VkPhysicalDevice`, not to re-derive it by some other means.
 
-== Matching the LUID in Vulkan
 
-To find the LUID of a Vulkan physical device, we query the `VkPhysicalDeviceIDProperties` structure. In the `vulkan-hpp` RAII world, we can retrieve this by chaining structures in a `getProperties2` call.
+== Using the Handle Directly
+
+In the `vulkan-hpp` RAII world, you don't need to enumerate physical devices at all in XR mode—you already have the handle the runtime requires. Wrap it directly:
 
 [source,cpp]
 ----
-// Iterating through physical devices to find a match using vulkan-hpp RAII
-for (const auto& physicalDevice : instance.enumeratePhysicalDevices()) {
-    auto props2 = physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
-    const auto& idProps = props2.get<vk::PhysicalDeviceIDProperties>();
+// The runtime enforces this choice; we don't search for it, we're told it.
+vk::PhysicalDevice requiredDevice(xrRequiredDevice);
+----
 
-    if (idProps.deviceLUIDValid) {
-        // Compare the 8-byte LUID against the target from OpenXR
-        if (std::memcmp(idProps.deviceLUID, targetLUID, VK_LUID_SIZE) == 0) {
-            return physicalDevice;
-        }
+If you still want a `vk::raii::PhysicalDevice` (for example, to reuse suitability-checking code that expects one), find the matching entry by comparing the raw handle—not any derived identifier:
+
+[source,cpp]
+----
+for (auto& physicalDevice : instance.enumeratePhysicalDevices()) {
+    if (*physicalDevice == requiredDevice) {
+        return physicalDevice;
     }
 }
 ----
 
+This is a simple handle comparison, not a hardware "fingerprint" match—the runtime already told us which device this is.
+
 == Cross-Process Memory Visibility
 
-The LUID isn't just for selection; it is the foundation of **Cross-Process Memory Visibility**. Because the XR runtime usually lives in a separate process from our engine, the images we render must be shared across process boundaries.
+Using the runtime-provided device is the foundation of **Cross-Process Memory Visibility**. Because the XR runtime usually lives in a separate process from our engine, the images we render must be shared across process boundaries.
 
-By aligning our hardware selection via the LUID, we guarantee that the "Wait-Acquire-Release" cycle can happen entirely on-device, without expensive CPU-side synchronization or system memory copies.
+By using the exact `VkPhysicalDevice` the runtime requires, we guarantee that the "Wait-Acquire-Release" cycle can happen entirely on-device, without expensive CPU-side synchronization or system memory copies.
 
 == Advanced: Multi-GPU Load Balancing and Device Groups
 
 While an OpenXR session is typically tied to the single GPU connected to the display, Vulkan allows us to go further:
 
 *   **Vulkan Device Groups**: You can use `VK_KHR_device_group` to treat multiple GPUs as a single logical device. This allows you to use a secondary GPU for heavy compute tasks (like physics or scene decomposition) and aggregate the results on the primary GPU before handing the final frame to the XR compositor.
-*   **Handling Hardware Changes**: If the hardware configuration changes (e.g., an external GPU is disconnected), you can use Vulkan's hardware abstraction to detect these changes and prompt the user for a clean engine restart, ensuring that the hardware LUID handshake remains valid.
+*   **Handling Hardware Changes**: If the hardware configuration changes (e.g., an external GPU is disconnected), you can use Vulkan's hardware abstraction to detect these changes and prompt the user for a clean engine restart. On restart, simply re-query `xrGetVulkanGraphicsDevice2KHR`—the runtime will hand you whatever device is now correct.
 
-TIP: For more information on hardware alignment, check out the official link:https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkPhysicalDeviceIDProperties[Vulkan Specification on Device IDs], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
+TIP: For more information on hardware alignment, check out the official link:https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html#xrGetVulkanGraphicsDevice2KHR[OpenXR Specification on xrGetVulkanGraphicsDevice2KHR], the link:https://docs.vulkan.org/guide/latest/index.html[Vulkan Guide], and our link:00_introduction.adoc[main tutorial series].
 
 xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/02_system_integration.adoc[Previous] | xref:OpenXR_Vulkan_Spatial_Computing/02_OpenXR_Vulkan_Handshake/04_vulkan_1_3_feature_requirements.adoc[Next]

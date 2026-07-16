@@ -50,7 +50,9 @@ public:
     // Core Handshake (Chapter 2)
     std::vector<const char*> getVulkanInstanceExtensions();
     std::vector<const char*> getVulkanDeviceExtensions(vk::PhysicalDevice physicalDevice);
-    const uint8_t* getRequiredLUID();
+    // The runtime hands back the exact VkPhysicalDevice it wants us to use — no LUID
+    // matching required. Returns VK_NULL_HANDLE if the query fails.
+    vk::PhysicalDevice getRequiredPhysicalDevice();
 
     // Swapchain Management (Chapter 3 & 8)
     vk::Extent2D getRecommendedExtent() const;
@@ -133,8 +135,8 @@ private:
     bool sessionBegun = false;
     XrReferenceSpaceType referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
 
-    uint8_t requiredLuid[VK_LUID_SIZE] = {0};
-    bool luidValid = false;
+    VkPhysicalDevice requiredPhysicalDevice = VK_NULL_HANDLE;
+    bool requiredPhysicalDeviceQueried = false;
 
 #if defined(PLATFORM_ANDROID)
     struct android_app* androidApp = nullptr;

@@ -348,8 +348,10 @@ std::vector<const char*> XrContext::getVulkanDeviceExtensions(vk::PhysicalDevice
     return devExtPtrs;
 }
 
-const uint8_t* XrContext::getRequiredLUID() {
-    if (!luidValid && vkInstance && instance != XR_NULL_HANDLE && systemId != XR_NULL_SYSTEM_ID) {
+vk::PhysicalDevice XrContext::getRequiredPhysicalDevice() {
+    if (!requiredPhysicalDeviceQueried && vkInstance && instance != XR_NULL_HANDLE && systemId != XR_NULL_SYSTEM_ID) {
+        requiredPhysicalDeviceQueried = true;
+
         // Step 1: Call graphics requirements as mandated by spec before getting graphics device
         XrGraphicsRequirementsVulkanKHR graphicsRequirements{XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
         if (pfnGetVulkanGraphicsRequirements2KHR) {
@@ -358,7 +360,9 @@ const uint8_t* XrContext::getRequiredLUID() {
             pfnGetVulkanGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements);
         }
 
-        // Step 2: Get the physical device from OpenXR
+        // Step 2: Ask the runtime which physical device to use. The runtime enforces this
+        // choice (it is tied to the display the headset is connected to), so the returned
+        // handle IS the device to use — there is nothing left to match or search for.
         VkPhysicalDevice vkPhysicalDevice = VK_NULL_HANDLE;
         XrResult result = XR_ERROR_FUNCTION_UNSUPPORTED;
 
@@ -372,30 +376,13 @@ const uint8_t* XrContext::getRequiredLUID() {
         }
 
         if (result == XR_SUCCESS && vkPhysicalDevice != VK_NULL_HANDLE) {
-            // Step 3: Extract LUID from the physical device
-            VkPhysicalDeviceIDProperties idProps{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
-            idProps.pNext = nullptr;
-            VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-            props2.pNext = &idProps;
-
-            auto pfnGetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)vkGetInstanceProcAddr((VkInstance)vkInstance, "vkGetPhysicalDeviceProperties2");
-            if (pfnGetPhysicalDeviceProperties2) {
-                pfnGetPhysicalDeviceProperties2(vkPhysicalDevice, &props2);
-                if (idProps.deviceLUIDValid) {
-                    std::memcpy(requiredLuid, idProps.deviceLUID, VK_LUID_SIZE);
-                    luidValid = true;
-                    std::cout << "XrContext: Required LUID found and stored." << std::endl;
-                } else {
-                    std::cout << "XrContext: Physical device LUID is not valid." << std::endl;
-                }
-            } else {
-                std::cerr << "XrContext: Failed to load vkGetPhysicalDeviceProperties2" << std::endl;
-            }
+            requiredPhysicalDevice = vkPhysicalDevice;
+            std::cout << "XrContext: Required Vulkan physical device obtained from OpenXR runtime." << std::endl;
         } else {
             std::cerr << "XrContext: Failed to get Vulkan graphics device from OpenXR (XrResult=" << result << ")" << std::endl;
         }
     }
-    return luidValid ? requiredLuid : nullptr;
+    return vk::PhysicalDevice(requiredPhysicalDevice);
 }
 
 vk::Extent2D XrContext::getRecommendedExtent() const {

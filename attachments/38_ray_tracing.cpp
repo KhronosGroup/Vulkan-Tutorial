@@ -736,11 +736,6 @@ class VulkanRaytracingApplication
 		    vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 	}
 
-	static bool hasStencilComponent(vk::Format format)
-	{
-		return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
-	}
-
 	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createTextureImage(const std::string &path)
 	{
 		int            texWidth, texHeight, texChannels;

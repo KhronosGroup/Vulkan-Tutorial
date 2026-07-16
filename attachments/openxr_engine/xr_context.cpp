@@ -105,11 +105,7 @@ bool XrContext::createInstance(const std::string& appName) {
     }
 
     // Load Vulkan extension functions
-    xrGetInstanceProcAddr(instance, "xrGetVulkanInstanceExtensionsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanInstanceExtensionsKHR);
-    xrGetInstanceProcAddr(instance, "xrGetVulkanDeviceExtensionsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanDeviceExtensionsKHR);
-    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsRequirementsKHR);
     xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsRequirements2KHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsRequirements2KHR);
-    xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsDeviceKHR);
     xrGetInstanceProcAddr(instance, "xrGetVulkanGraphicsDevice2KHR", (PFN_xrVoidFunction*)&pfnGetVulkanGraphicsDevice2KHR);
 
     XrSystemGetInfo systemGetInfo{XR_TYPE_SYSTEM_GET_INFO};
@@ -306,56 +302,12 @@ void XrContext::cleanup() {
     }
 }
 
-std::vector<const char*> XrContext::getVulkanInstanceExtensions() {
-    if (instance == XR_NULL_HANDLE) return { "XR_KHR_vulkan_enable2" };
-    uint32_t size = 0;
-    if (!pfnGetVulkanInstanceExtensionsKHR) return {};
-    pfnGetVulkanInstanceExtensionsKHR(instance, systemId, 0, &size, nullptr);
-    std::vector<char> buffer(size);
-    pfnGetVulkanInstanceExtensionsKHR(instance, systemId, size, &size, buffer.data());
-    
-    static std::vector<std::string> extStrings;
-    extStrings.clear();
-    std::string extensions(buffer.data());
-    std::istringstream iss(extensions);
-    std::string ext;
-    while (iss >> ext) extStrings.push_back(ext);
-
-    static std::vector<const char*> extPtrs;
-    extPtrs.clear();
-    for (const auto& s : extStrings) extPtrs.push_back(s.c_str());
-    return extPtrs;
-}
-
-std::vector<const char*> XrContext::getVulkanDeviceExtensions(vk::PhysicalDevice physicalDevice) {
-    if (instance == XR_NULL_HANDLE) return { "VK_KHR_external_memory", "VK_KHR_external_semaphore" };
-    uint32_t size = 0;
-    if (!pfnGetVulkanDeviceExtensionsKHR) return {};
-    pfnGetVulkanDeviceExtensionsKHR(instance, systemId, 0, &size, nullptr);
-    std::vector<char> buffer(size);
-    pfnGetVulkanDeviceExtensionsKHR(instance, systemId, size, &size, buffer.data());
-
-    static std::vector<std::string> devExtStrings;
-    devExtStrings.clear();
-    std::string extensions(buffer.data());
-    std::istringstream iss(extensions);
-    std::string ext;
-    while (iss >> ext) devExtStrings.push_back(ext);
-
-    static std::vector<const char*> devExtPtrs;
-    devExtPtrs.clear();
-    for (const auto& s : devExtStrings) devExtPtrs.push_back(s.c_str());
-    return devExtPtrs;
-}
-
 const uint8_t* XrContext::getRequiredLUID() {
     if (!luidValid && vkInstance && instance != XR_NULL_HANDLE && systemId != XR_NULL_SYSTEM_ID) {
         // Step 1: Call graphics requirements as mandated by spec before getting graphics device
         XrGraphicsRequirementsVulkanKHR graphicsRequirements{XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
         if (pfnGetVulkanGraphicsRequirements2KHR) {
             pfnGetVulkanGraphicsRequirements2KHR(instance, systemId, &graphicsRequirements);
-        } else if (pfnGetVulkanGraphicsRequirementsKHR) {
-            pfnGetVulkanGraphicsRequirementsKHR(instance, systemId, &graphicsRequirements);
         }
 
         // Step 2: Get the physical device from OpenXR
@@ -367,8 +319,6 @@ const uint8_t* XrContext::getRequiredLUID() {
             getInfo.systemId = systemId;
             getInfo.vulkanInstance = (VkInstance)vkInstance;
             result = pfnGetVulkanGraphicsDevice2KHR(instance, &getInfo, &vkPhysicalDevice);
-        } else if (pfnGetVulkanGraphicsDeviceKHR) {
-            result = pfnGetVulkanGraphicsDeviceKHR(instance, systemId, (VkInstance)vkInstance, &vkPhysicalDevice);
         }
 
         if (result == XR_SUCCESS && vkPhysicalDevice != VK_NULL_HANDLE) {

@@ -62,7 +62,7 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 path = "attachments/CMake/FindVulkan.cmake"
 precedence = "closest"
-SPDX-FileCopyrightText = "Holochip Inc."
+SPDX-FileCopyrightText = "Holochip Corporation"
 SPDX-License-Identifier = "BSD-3-Clause"
 
 [[annotations]]

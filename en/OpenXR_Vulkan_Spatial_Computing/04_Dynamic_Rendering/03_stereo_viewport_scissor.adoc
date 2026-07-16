@@ -42,12 +42,12 @@ commandBuffer.setScissor(0, eyeScissor);
 
 == Single-Texture vs. Array-Texture Swapchains
 
-Depending on the XR runtime, we might receive one large "atlas" texture containing both eyes, or an **Array Texture** where each eye has its own layer.
+The swapchain's layout isn't handed to us by the runtime as a surprise — *we* choose it up front via `arraySize` in `XrSwapchainCreateInfo` (see xref:OpenXR_Vulkan_Spatial_Computing/03_Runtime_Owned_Swapchains/02_external_image_negotiation.adoc[Runtime-Owned Swapchains]). In practice that leaves two real options:
 
-*   **Atlasing**: We use the `x` and `y` offsets of the `vk::Viewport` and `vk::Rect2D` to draw the eyes side-by-side.
-*   **Array Textures**: We keep the viewport at `(0,0)` but we change the `imageView` layer in our `vk::RenderingAttachmentInfo`.
+*   **Array Textures** (`arraySize = viewCount`): Both eyes live in one `XrSwapchain` as separate array layers. We keep the viewport at `(0,0)` and select the eye by changing the `imageView` (or `baseArrayLayer`) in our `vk::RenderingAttachmentInfo`. This is what virtually every modern OpenXR runtime expects, and it's the layout required for **Native Multiview** (`VK_KHR_multiview`), covered in xref:OpenXR_Vulkan_Spatial_Computing/08_Slang_Spatial_Shaders/02_native_multiview.adoc[Native Multiview] — where both eyes render in a single draw call instead of a per-eye loop.
+*   **Single-Texture Atlasing**: An older technique, predating OpenXR, where an application manually composites both eyes side-by-side into one double-wide texture using viewport `x`/`y` offsets. It isn't something a runtime provides for you, and it's incompatible with multiview rendering, so it's a legacy fallback rather than something to design around today.
 
-Dynamic rendering makes it easy to handle both cases by simply adjusting the attachment and viewport parameters. This flexibility allows our engine to support different headset architectures (like wide-FOV headsets vs. mobile VR) without rewriting the render loop.
+Because dynamic rendering lets us adjust the attachment and viewport per-draw without touching the pipeline object, moving from a naive per-eye loop to array-texture (and eventually multiview) rendering is a matter of changing which layer we bind, not restructuring the render loop.
 
 == Advanced: Variable Rate Shading and Stencil Masking
 

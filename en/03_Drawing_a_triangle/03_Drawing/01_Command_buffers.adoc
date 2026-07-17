@@ -60,6 +60,8 @@ There are two possible flags for command pools:
 We will be recording a command buffer every frame, so we want to be able to reset and rerecord over it.
 Thus, we need to set the `vk::CommandPoolCreateFlagBits::eResetCommandBuffer` flag bit for our command pool.
 
+NOTE: In earlier chapters, the qraphics queue family index (`queueIndex`) was a local variable. Starting with this chapter we'll need this index in multiple places so it has been made a member of the application class.
+
 Command buffers are executed by submitting them on one of the device queues, like the graphics and presentation queues we retrieved.
 Each command pool can only allocate command buffers that are submitted on a single type of queue.
 We're going to record commands for drawing, which is why we've chosen the graphics queue family.

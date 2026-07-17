@@ -160,8 +160,8 @@ the GLFW dependency for windowing.
 
 We'll check if all the required extensions are available. We first get a list of all
 supported instance extensions by using the
-`vk::raii::Context::enumerateInstanceLayerProperties` function and check that all
-required layers are listed in that list. This check is also performed directly in the
+`vk::raii::Context::enumerateInstanceExtensionProperties` function and check that all
+required extensions are listed in that list. This check is also performed directly in the
 `createInstance` function:
 
 [,c++]

@@ -773,11 +773,6 @@ class VulkanApplication
 		    vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 	}
 
-	static bool hasStencilComponent(vk::Format format)
-	{
-		return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
-	}
-
 	void createTextureImage()
 	{
 		// Load KTX2 texture instead of using stb_image

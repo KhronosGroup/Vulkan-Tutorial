@@ -80,11 +80,6 @@ vk::Format Renderer::findDepthFormat() {
   }
 }
 
-// Check if format has stencil component
-bool Renderer::hasStencilComponent(vk::Format format) {
-  return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
-}
-
 // Read file
 std::vector<char> Renderer::readFile(const std::string& filename) {
   try {

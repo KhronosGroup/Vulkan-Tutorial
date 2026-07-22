@@ -6,7 +6,7 @@ Welcome! In this series, we will explain how to write a Vulkan renderer using ne
 
 '''
 
-* **Slides**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
+* **Slides**: link:/attachments/How_to_write_a_Vulkan_application_in_2026.pdf[How to write a Vulkan application in 2026].
 * **Source code**: link:https://github.com/KhronosGroup/Vulkan-Tutorial/tree/main/attachments/siggraph2026_vk_tutorial[attachments/siggraph2026_vk_tutorial].
 
 '''

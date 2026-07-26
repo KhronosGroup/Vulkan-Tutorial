@@ -118,7 +118,6 @@ The automatically typed return values are a vk::raii::Buffer and a vk::raii::Dev
 ----
 auto [stagingBuffer, stagingBufferMemory] =
     createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
 ----
 
 We can then directly copy the pixel values that we got from the image loading library to the buffer:

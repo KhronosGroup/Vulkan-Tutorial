@@ -11,6 +11,7 @@
 #include <optional>
 #include <stdexcept>
 #include <vector>
+#include <vulkan/vulkan_format_traits.hpp>
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #	include <vulkan/vulkan_raii.hpp>
@@ -813,7 +814,7 @@ class HelloTriangleApplication
 	{
 		vk::Format depthFormat = findDepthFormat();
 		depthImageAspect       = vk::ImageAspectFlagBits::eDepth;
-		if (hasStencilComponent(depthFormat))
+		if (vk::hasStencilComponent(depthFormat))
 		{
 			depthImageAspect |= vk::ImageAspectFlagBits::eStencil;
 		}
@@ -847,11 +848,6 @@ class HelloTriangleApplication
 		    {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
 		    vk::ImageTiling::eOptimal,
 		    vk::FormatFeatureFlagBits::eDepthStencilAttachment);
-	}
-
-	static bool hasStencilComponent(vk::Format format)
-	{
-		return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
 	}
 
 	void createTextureImage()

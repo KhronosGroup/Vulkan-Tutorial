@@ -137,6 +137,7 @@ class HelloTriangleApplication
 	vk::raii::Image        depthImage       = nullptr;
 	vk::raii::DeviceMemory depthImageMemory = nullptr;
 	vk::raii::ImageView    depthImageView   = nullptr;
+	vk::ImageAspectFlags   depthImageAspect = vk::ImageAspectFlagBits::eDepth;
 
 	uint32_t               mipLevels          = 0;
 	vk::raii::Image        textureImage       = nullptr;
@@ -811,9 +812,14 @@ class HelloTriangleApplication
 	void createDepthResources()
 	{
 		vk::Format depthFormat = findDepthFormat();
+		depthImageAspect       = vk::ImageAspectFlagBits::eDepth;
+		if (hasStencilComponent(depthFormat))
+		{
+			depthImageAspect |= vk::ImageAspectFlagBits::eStencil;
+		}
 
 		createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, depthImage, depthImageMemory);
-		depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
+		depthImageView = createImageView(depthImage, depthFormat, depthImageAspect, 1);
 	}
 
 	vk::Format findSupportedFormat(const std::vector<vk::Format> &candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features) const
@@ -1376,7 +1382,7 @@ class HelloTriangleApplication
 				    .oldLayout        = vk::ImageLayout::eUndefined,
 				    .newLayout        = vk::ImageLayout::eDepthStencilAttachmentOptimal,
 				    .image            = *depthImage,
-				    .subresourceRange = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+				    .subresourceRange = {depthImageAspect, 0, 1, 0, 1}};
 
 				vk::ImageMemoryBarrier2 swapchainBarrier{
 				    .srcStageMask     = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
@@ -1416,7 +1422,7 @@ class HelloTriangleApplication
 				    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 				    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 				    .image               = *depthImage,
-				    .subresourceRange    = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+				    .subresourceRange    = {depthImageAspect, 0, 1, 0, 1}};
 
 				vk::ImageMemoryBarrier swapchainBarrier{
 				    .srcAccessMask       = vk::AccessFlagBits::eNone,

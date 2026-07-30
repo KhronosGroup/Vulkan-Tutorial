@@ -193,7 +193,7 @@ First, add a class member to store a handle to the graphics queue:
 
 [,c++]
 ----
-vk::raii::Queue graphicsQueue = nullptr;;
+vk::raii::Queue graphicsQueue = nullptr;
 ----
 
 Device queues are implicitly cleaned up when the device is destroyed, so we

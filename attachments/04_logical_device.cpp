@@ -178,6 +178,7 @@ class HelloTriangleApplication
 		                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
 		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
 		                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
 		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria

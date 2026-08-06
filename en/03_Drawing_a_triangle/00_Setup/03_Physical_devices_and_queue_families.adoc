@@ -238,6 +238,7 @@ auto features                 = physicalDevice.template getFeatures2<vk::Physica
                                                                      vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
 bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
                                 features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+                                features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
                                 features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 ----
 

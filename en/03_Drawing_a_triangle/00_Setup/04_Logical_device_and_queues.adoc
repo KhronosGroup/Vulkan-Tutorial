@@ -99,10 +99,10 @@ vk::StructureChain<vk::PhysicalDeviceFeatures2,
                    vk::PhysicalDeviceVulkan13Features,
                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
     featureChain = {
-        {},                                                    // vk::PhysicalDeviceFeatures2 (empty for now)
-        {.shaderDrawParameters = true},                        // Enable shader draw parameters from Vulkan 1.1
-        {.synchronization2 = true, .dynamicRendering = true},  // Enable synchronization2 and dynamic rendering from Vulkan 1.3
-        {.extendedDynamicState = true}                         // Enable extended dynamic state from the extension
+        {},                                                          // vk::PhysicalDeviceFeatures2
+        {.shaderDrawParameters = true},                              // vk::PhysicalDeviceVulkan11Features
+        {.synchronization2 = true, .dynamicRendering = true},        // vk::PhysicalDeviceVulkan13Features
+        {.extendedDynamicState = true}                               // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
     };
 ----
 

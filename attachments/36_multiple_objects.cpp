@@ -318,6 +318,18 @@ class VulkanApplication
 		return 0;
 	}
 #else
+	// Declared first, so it is destroyed last - after every vk::raii member below.
+	// The swapchain and surface still reference the window system connection when
+	// their destructors run, so glfwTerminate() has to outlive them. It also
+	// destroys any windows that are still open.
+	struct GlfwGuard
+	{
+		~GlfwGuard()
+		{
+			glfwTerminate();
+		}
+	} glfwGuard;
+
 	GLFWwindow *window = nullptr;
 #endif
 
@@ -465,10 +477,6 @@ class VulkanApplication
 			gameObject.uniformBuffersMapped.clear();
 			gameObject.descriptorSets.clear();
 		}
-
-		// Clean up GLFW resources
-		glfwDestroyWindow(window);
-		glfwTerminate();
 	}
 #endif
 

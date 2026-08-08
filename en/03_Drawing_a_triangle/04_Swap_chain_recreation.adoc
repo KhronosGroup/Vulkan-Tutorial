@@ -66,11 +66,11 @@ void cleanupSwapChain()
 void cleanup()
 {
     cleanupSwapChain();
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
 }
 ----
+
+GLFW is still torn down by `glfwGuard`, which is destroyed after every Vulkan
+member, so `cleanup` must not terminate it here.
 
 Note that in `chooseSwapExtent` we already query the new window resolution to make sure that the swap chain images have the (new) right size, so there's no need to modify `chooseSwapExtent` (remember that we already had to use `glfwGetFramebufferSize` to get the resolution of the surface in pixels when creating the swap chain).
 

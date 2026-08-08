@@ -293,20 +293,47 @@ This code should be fairly self-explanatory. It loops and checks for events like
 pressing the X button until the user has closed the window. This is also
 the loop where we'll later call a function to render a single frame.
 
-Once the window is closed, we need to clean up resources by destroying it and
-terminating GLFW itself. This will be our first `cleanup` code:
+Once the window is closed we have to release it and shut GLFW down again. It is
+tempting to do that in `cleanup`, but that would be a mistake. From the next
+chapter on this class holds Vulkan objects, and those objects still talk to the
+window system while they are being destroyed. Member variables are destroyed
+*after* `run` returns, so anything `cleanup` tears down is released too early -
+the swap chain would end up being destroyed after the connection it still points
+at is gone, which crashes on exit.
+
+Instead we let a small guard own the GLFW lifetime. Members are destroyed in
+reverse declaration order, so declaring it *first* means it is destroyed *last*,
+after every Vulkan object we add in later chapters:
+
+[,c++]
+----
+class HelloTriangleApplication {
+    // ...
+
+private:
+    // Declared first, so it is destroyed last.
+    struct GlfwGuard {
+        ~GlfwGuard() { glfwTerminate(); }
+    } glfwGuard;
+
+    GLFWwindow* window = nullptr;
+
+    // ...
+};
+----
+
+`glfwTerminate` also destroys any windows that are still open, so we don't need
+a separate `glfwDestroyWindow` call. That leaves `cleanup` empty for now:
 
 [,c++]
 ----
 void cleanup() {
-    glfwDestroyWindow(window);
-
-    glfwTerminate();
 }
 ----
 
-Note that in this tutorial, this is the last time we'll have to do anything
-in the cleanup() function. This code will never need to change again.
+Note that in this tutorial, this is the last time we'll have to think about
+tearing GLFW down. Because the guard is declared first, it keeps working no
+matter how many Vulkan objects the later chapters add.
 
 When you run the program now, you should see a window titled `Vulkan` show up
 until the application is terminated by closing the window. Now that we have the

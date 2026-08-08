@@ -25,6 +25,18 @@ class HelloTriangleApplication
 	}
 
   private:
+	// Declared first, so it is destroyed last - after every member below. Later
+	// chapters add Vulkan objects here that still reference the window system
+	// connection while they are destroyed, so glfwTerminate() has to outlive
+	// them. It also destroys any windows that are still open.
+	struct GlfwGuard
+	{
+		~GlfwGuard()
+		{
+			glfwTerminate();
+		}
+	} glfwGuard;
+
 	GLFWwindow *window = nullptr;
 
 	void initWindow()
@@ -51,9 +63,9 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		glfwDestroyWindow(window);
-
-		glfwTerminate();
+		// GLFW is torn down by glfwGuard, which is destroyed after every other
+		// member. Terminating GLFW here would free the window system connection
+		// while later chapters' Vulkan objects are still alive.
 	}
 };
 

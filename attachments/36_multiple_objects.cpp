@@ -318,12 +318,21 @@ class VulkanApplication
 		return 0;
 	}
 #else
-	// Declared first, so it is destroyed last - after every vk::raii member below.
-	// The swapchain and surface still reference the window system connection when
-	// their destructors run, so glfwTerminate() has to outlive them. It also
-	// destroys any windows that are still open.
+	// Owns the GLFW lifetime: initialises it here and terminates it in the
+	// destructor. Declared first, so it is destroyed last - after every vk::raii
+	// member below. The swapchain and surface still reference the window system
+	// connection when their destructors run, so glfwTerminate() has to outlive
+	// them. It also destroys any windows that are still open.
 	struct GlfwGuard
 	{
+		GlfwGuard()
+		{
+			if (!glfwInit())
+			{
+				throw std::runtime_error("failed to initialize GLFW!");
+			}
+		}
+
 		~GlfwGuard()
 		{
 			glfwTerminate();
@@ -391,8 +400,6 @@ class VulkanApplication
 #if PLATFORM_DESKTOP
 	void initWindow()
 	{
-		glfwInit();
-
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 

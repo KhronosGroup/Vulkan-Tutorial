@@ -51,9 +51,11 @@ clang-format -i -- 15_hello_triangle.*
 
 === Contributor License Agreement (CLA)
 
-When you propose a pull request on this repository you must execute a
-Contributor License Agreement, to confirm you own your work and are granting
-Khronos the necessary permissions to redistribute it under our licenses.
+When you propose a pull request on this repository you must execute the Khronos
+[Open Source Contributor License Agreement
+(CLA)](https://www.khronos.org/cla/KhronosGroup/Vulkan-Tutorial), to confirm you
+own your work and are granting Khronos the necessary permissions to redistribute
+it under our licenses.
 
 === AI-Assisted Contributions
 

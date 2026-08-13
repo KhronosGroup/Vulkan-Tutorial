@@ -34,6 +34,7 @@ else()
       /usr/local/include
       $ENV{KTX_DIR}/include
       $ENV{VULKAN_SDK}/include
+      $ENV{ProgramFiles}/KTX-Software/include
       ${CMAKE_SOURCE_DIR}/external/ktx/include
   )
 
@@ -48,6 +49,7 @@ else()
       /usr/local/lib64
       $ENV{KTX_DIR}/lib
       $ENV{VULKAN_SDK}/lib
+      $ENV{ProgramFiles}/KTX-Software/lib
       ${CMAKE_SOURCE_DIR}/external/ktx/lib
   )
 

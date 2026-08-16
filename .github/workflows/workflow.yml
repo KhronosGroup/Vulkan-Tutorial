@@ -470,21 +470,21 @@ jobs:
           restore-keys: |
             android-libs-
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ${{github.workspace}}/attachments/android/.gradle
-            ${{github.workspace}}/attachments/android/app/.cxx
-            ${{github.workspace}}/attachments/android/app/build/intermediates
-            ${{github.workspace}}/attachments/android/app/build/outputs
-            ${{github.workspace}}/attachments/android/app/build/generated
-          key: ${{ runner.os }}-gradle-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt', 'attachments/34_android.cpp', 'attachments/35_gltf_ktx.cpp', 'attachments/android/app/build.gradle') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt') }}
-            ${{ runner.os }}-gradle-
+      # - name: Cache Gradle packages
+      #   uses: actions/cache@v3
+      #   with:
+      #     path: |
+      #       ~/.gradle/caches
+      #       ~/.gradle/wrapper
+      #       ${{github.workspace}}/attachments/android/.gradle
+      #       ${{github.workspace}}/attachments/android/app/.cxx
+      #       ${{github.workspace}}/attachments/android/app/build/intermediates
+      #       ${{github.workspace}}/attachments/android/app/build/outputs
+      #       ${{github.workspace}}/attachments/android/app/build/generated
+      #     key: ${{ runner.os }}-gradle-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt', 'attachments/34_android.cpp', 'attachments/35_gltf_ktx.cpp', 'attachments/android/app/build.gradle') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-gradle-${{ hashFiles('attachments/android/app/src/main/cpp/CMakeLists.txt') }}
+      #       ${{ runner.os }}-gradle-
 
       - name: Install and configure ccache
         run: |

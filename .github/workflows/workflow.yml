@@ -579,6 +579,7 @@ jobs:
           readarray -t CHAPTERS <<< "$SUPPORTED_CHAPTERS"
           echo "Detected supported Android chapters: ${CHAPTERS[@]}"
 
+          # Configure gradle.properties with compatible versions
           echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" > gradle.properties
           echo "org.gradle.parallel=true" >> gradle.properties
           echo "org.gradle.caching=true" >> gradle.properties
@@ -586,14 +587,13 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=false" >> gradle.properties
           echo "kotlin.incremental=true" >> gradle.properties
-          echo "org.gradle.warning.mode=all" >> gradle.properties
           mkdir -p build-outputs
 
           for ((i=0; i<${#CHAPTERS[@]}; i++)); do
             chapter="${CHAPTERS[$i]}"
             if [ -n "$chapter" ]; then
               echo "Building $chapter chapter..."
-              ./gradlew --stop
+              # Add --stop to stop the daemon before building to clear any cached state
               ./gradlew assembleDebug --parallel --max-workers=4 --build-cache -Pchapter=$chapter -PabiFilters=x86_64
 
               if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then

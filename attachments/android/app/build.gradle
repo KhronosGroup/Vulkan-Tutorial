@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace "com.vulkan.tutorial"
-    compileSdk 36
+    compileSdk 35
     defaultConfig {
         applicationId "com.vulkan.tutorial"
         minSdk 24

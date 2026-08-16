@@ -569,8 +569,7 @@ jobs:
       - name: Build Android Chapters
         working-directory: ${{github.workspace}}/attachments/android
         run: |
-          echo "Generating Gradle wrapper..."
-          gradle wrapper --gradle-version 8.6
+          /gradlew wrapper --gradle-version 8.6
 
           SUPPORTED_CHAPTERS=$(grep -A 20 "set(SUPPORTED_CHAPTERS" app/src/main/cpp/CMakeLists.txt | sed -n '/set(SUPPORTED_CHAPTERS/,/)/p' | grep -o '"[^"]*"' | sed 's/"//g')
 

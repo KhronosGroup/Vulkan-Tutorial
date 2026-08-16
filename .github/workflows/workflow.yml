@@ -571,7 +571,7 @@ jobs:
         run: |
           if [ ! -f "gradlew" ]; then
             echo "Generating Gradle wrapper..."
-            gradle wrapper
+            gradle wrapper --gradle-version 8.6
           fi
 
           SUPPORTED_CHAPTERS=$(grep -A 20 "set(SUPPORTED_CHAPTERS" app/src/main/cpp/CMakeLists.txt | sed -n '/set(SUPPORTED_CHAPTERS/,/)/p' | grep -o '"[^"]*"' | sed 's/"//g')

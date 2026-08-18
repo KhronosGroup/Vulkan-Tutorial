@@ -74,12 +74,6 @@ if(NOT tinygltf_INCLUDE_DIR)
                    TINYGLTF_CMAKE_CONTENT "${TINYGLTF_CMAKE_CONTENT}")
     file(WRITE "${tinygltf_SOURCE_DIR}/CMakeLists.txt" "${TINYGLTF_CMAKE_CONTENT}")
 
-    # Create a symbolic link to make nlohmann/json.hpp available
-    if(EXISTS "${tinygltf_SOURCE_DIR}/json.hpp")
-      file(MAKE_DIRECTORY "${tinygltf_SOURCE_DIR}/nlohmann")
-      file(CREATE_LINK "${tinygltf_SOURCE_DIR}/json.hpp" "${tinygltf_SOURCE_DIR}/nlohmann/json.hpp" SYMBOLIC)
-    endif()
-
     # Set tinygltf to header-only mode
     set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "Use header only version" FORCE)
     set(TINYGLTF_INSTALL OFF CACHE BOOL "Do not install tinygltf" FORCE)

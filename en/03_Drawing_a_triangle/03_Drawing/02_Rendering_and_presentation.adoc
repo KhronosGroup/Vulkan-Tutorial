@@ -233,7 +233,7 @@ This function also has a timeout parameter that we set to the maximum value of a
 
 We need to make sure that the fence is reset if the previous frame has already happened, so we know to wait on it later.
 
-Next, let's grab an image from the framebuffer after the previous frame has
+Next, let's acquire an image from the swap chain after the previous frame has
 finished:
 
 [,c++]
@@ -255,7 +255,7 @@ We're going to use our `presentCompleteSemaphore` for that purpose here.
 
 That function returns a pair of values: the usual `vk::Result`, and the index of the swap chain image that has become available.
 The index refers to the `vk::Image` in our `swapChainImages` array.
-We're going to use that index to pick the `vk::raii::FrameBuffer`. Then we'll record into that framebuffer.
+We're going to use that index to pick the corresponding swap chain image view. Then we'll record commands that render into it.
 
 == Recording the command buffer
 
@@ -305,64 +305,6 @@ We can now submit the command buffer to the graphics queue using `vk::raii::Queu
 The function takes an array of `vk::SubmitInfo` structures as argument for efficiency when the workload is much larger.
 The last parameter references an optional fence that will be signaled when the command buffers finish execution.
 This allows us to know when it is safe for the command buffer to be reused, thus we want to give it `*drawFence`, which is waited on in the next frame.
-
-== Subpass dependencies
-
-This section is optional and far more explicit than is necessary.
-
-Remember that the subpasses in a render pass automatically take care of image layout transitions.
-These transitions are controlled by _subpass dependencies_, which specify memory and execution dependencies between subpasses.
-We have only a single subpass right now, but the operations right before and right after this subpass also count as implicit "subpasses".
-
-There are two built-in dependencies that take care of the transition at the start of the render pass and at the end of the render pass, but the former does not occur at the right time.
-It assumes that the transition occurs at the start of the pipeline, but we haven't acquired the image yet at that point!
-There are two ways to deal with this problem.
-We could change the `waitStages` for the `presentCompleteSemaphore` to `vk::PipelineStageFlagBits::eTopOfPipe` to ensure that the render passes don't begin until the image is available, or we can make the render pass wait for the `vk::PipelineStageFlagBits::eColorAttachmentOutput` stage.
-I've decided to go with the second option here, because it's a good excuse to have a look at subpass dependencies and how they work.
-
-Subpass dependencies are specified in `vk::SubpassDependency` structs.
-Go to the `createRenderPass` function and add one:
-
-[,c++]
-----
-vk::SubpassDependency dependency{
-    .srcSubpass    = vk::SubpassExternal,
-    .dstSubpass    = 0}
-----
-
-The first two fields specify the indices of the dependency and the dependent subpass.
-The special value `vk::SubpassExternal` refers to the implicit subpass before or after the render pass depending on whether it is specified in `srcSubpass` or `dstSubpass`.
-The index `0` refers to our subpass, which is the first and only one.
-The `dstSubpass` must always be higher than `srcSubpass` to prevent cycles in the dependency graph (unless one of the subpasses is `vk::SubpassExternal`).
-
-[,c++]
-----
-vk::SubpassDependency dependency{
-    .srcSubpass    = vk::SubpassExternal,
-    .dstSubpass    = 0,
-    .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-    .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-    .srcAccessMask = vk::AccessFlagBits::eNone,
-    .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite};
-----
-
-The next two fields specify the operations to wait on and the operations that should wait on this are in the color attachment stage.
-The last two fields specify the stages in which these operations occur and involves the writing of the color attachment.
-We need to wait for the swap chain to finish reading from the image before we can access it.
-This can be accomplished by waiting on the color attachment output stage itself.
-
-These settings will prevent the transition from happening until it's actually necessary (and allowed): when we want to start writing colors to it.
-
-[,c++]
-----
-renderPassInfo.dependencyCount = 1;
-renderPassInfo.pDependencies = &dependency;
-----
-
-The `vk::RenderPassCreateInfo` struct has two fields to specify an array of dependencies.
-
-The above is completely optional and not reproduced in the
-link:/attachments/15_hello_triangle.cpp[demo code.]
 
 == Presentation
 

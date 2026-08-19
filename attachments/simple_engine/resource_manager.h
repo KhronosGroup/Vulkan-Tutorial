@@ -26,7 +26,7 @@
 /**
  * @brief Base class for all resources.
  */
-class Resource final
+class Resource
 {
   protected:
 	std::string resourceId;
@@ -157,10 +157,19 @@ class ResourceHandle
  * This class implements the resource management system as described in the Engine_Architecture chapter:
  * @see en/Building_a_Simple_Engine/Engine_Architecture/04_resource_management.adoc
  */
-class ResourceManager final
+class ResourceManager
 {
   private:
-	std::unordered_map<std::type_index, std::unordered_map<std::string, std::unique_ptr<Resource>>> resources;
+	/**
+	 * @brief A stored resource together with how many outstanding ResourceHandles reference it.
+	 */
+	struct ResourceData
+	{
+		std::unique_ptr<Resource> resource;
+		int                       refCount = 0;
+	};
+
+	std::unordered_map<std::type_index, std::unordered_map<std::string, ResourceData>> resources;
 
   public:
 	/**
@@ -191,6 +200,8 @@ class ResourceManager final
 		auto  it            = typeResources.find(id);
 		if (it != typeResources.end())
 		{
+			// Resource already loaded: another handle now references it too.
+			++it->second.refCount;
 			return ResourceHandle<T>(id, this);
 		}
 
@@ -201,8 +212,8 @@ class ResourceManager final
 			throw std::runtime_error("Failed to load resource: " + id);
 		}
 
-		// Store the resource
-		typeResources[id] = std::move(resource);
+		// Store the resource with an initial reference count of 1
+		typeResources[id] = ResourceData{std::move(resource), 1};
 		return ResourceHandle<T>(id, this);
 	}
 
@@ -230,7 +241,34 @@ class ResourceManager final
 			return nullptr;
 		}
 
-		return static_cast<T *>(resourceIt->second.get());
+		return static_cast<T *>(resourceIt->second.resource.get());
+	}
+
+	/**
+	 * @brief Get the current reference count of a resource.
+	 * @tparam T The type of resource.
+	 * @param id The resource ID.
+	 * @return The number of outstanding references, or 0 if the resource doesn't exist.
+	 */
+	template <typename T>
+	int GetRefCount(const std::string &id) const
+	{
+		static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
+
+		auto typeIt = resources.find(std::type_index(typeid(T)));
+		if (typeIt == resources.end())
+		{
+			return 0;
+		}
+
+		auto &typeResources = typeIt->second;
+		auto  resourceIt    = typeResources.find(id);
+		if (resourceIt == typeResources.end())
+		{
+			return 0;
+		}
+
+		return resourceIt->second.refCount;
 	}
 
 	/**
@@ -255,10 +293,12 @@ class ResourceManager final
 	}
 
 	/**
-	 * @brief Unload a resource.
+	 * @brief Release a reference to a resource. Only actually unloads it once its
+	 * reference count drops to zero, i.e. once every ResourceHandle that was
+	 * loaded against this id has released its reference.
 	 * @tparam T The type of resource.
 	 * @param id The resource ID.
-	 * @return True if the resource was unloaded, false otherwise.
+	 * @return True if the resource existed and a reference was released, false otherwise.
 	 */
 	template <typename T>
 	bool UnloadResource(const std::string &id)
@@ -278,8 +318,11 @@ class ResourceManager final
 			return false;
 		}
 
-		resourceIt->second->Unload();
-		typeResources.erase(resourceIt);
+		if (--resourceIt->second.refCount <= 0)
+		{
+			resourceIt->second.resource->Unload();
+			typeResources.erase(resourceIt);
+		}
 		return true;
 	}
 

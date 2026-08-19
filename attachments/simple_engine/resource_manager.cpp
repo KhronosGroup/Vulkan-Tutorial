@@ -43,7 +43,7 @@ void ResourceManager::UnloadAllResources()
 		for (auto &innerKv : val)
 		{
 			auto &loadedResource = innerKv.second;
-			loadedResource->Unload();
+			loadedResource.resource->Unload();
 		}
 		val.clear();
 	}

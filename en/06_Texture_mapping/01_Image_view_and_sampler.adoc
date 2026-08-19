@@ -10,7 +10,7 @@ The first resource is one that we've already seen before while working with the 
 We've seen before, with the swap chain images and the framebuffer, that images are accessed through image views rather than directly.
 We will also need to create such an image view for the texture image.
 
-Add a class member to hold a `vk::raii::ImageView` for the texture image and create a new function `createTextureImageView` where we'll create it:
+Add a class member to hold a `VkImageView` for the texture image and create a new function `createTextureImageView` where we'll create it:
 
 [,c++]
 ----

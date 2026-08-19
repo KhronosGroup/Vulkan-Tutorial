@@ -2,7 +2,7 @@
 
 *Objective*: Ensure the base project uses *dynamic rendering* and understand how to verify it using RenderDoc.
 
-In dynamic rendering, we no longer create a `vk::RenderPass` or `vk::Framebuffer`; instead we begin rendering with `commandBuffer.beginRendering()`, specifying attachments on-the-fly. This makes our code more flexible (no need to predeclare subpasses) and is now the "modern" way to render in Vulkan.
+In dynamic rendering, we no longer create a VkRenderPass or VkFrameBuffer; instead we begin rendering with `vkCmdBeginRenderingKHR`, specifying attachments on-the-fly. This makes our code more flexible (no need to predeclare subpasses) and is now the "modern" way to render in Vulkan.
 
 == Task 1: Check the setup for dynamic rendering
 

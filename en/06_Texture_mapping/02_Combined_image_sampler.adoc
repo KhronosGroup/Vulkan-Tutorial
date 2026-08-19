@@ -15,7 +15,7 @@ After that, we're going to add texture coordinates to `Vertex`, replacing the co
 
 == Updating the descriptors
 
-Browse to the `createDescriptorSetLayout` function and add a `VkDescriptorSetLayoutBinding` for a combined image sampler descriptor.
+Browse to the `createDescriptorSetLayout` function and add a `vk::DescriptorSetLayoutBinding` for a combined image sampler descriptor.
 We'll simply put it in the binding after the uniform buffer:
 
 [,c++]

@@ -164,7 +164,7 @@ a single image as a color target and instruct Vulkan to clear it to a solid colo
 
 === Step 6 - Graphics pipeline
 
-The graphics pipeline in Vulkan is set up by creating a `VkPipeline` object.
+The graphics pipeline in Vulkan is set up by creating a `vk::Pipeline` object.
 It describes the configurable state of the graphics card, like the viewport
 size and depth buffer operation and the programmable state using `vk::ShaderModule` objects.
 The `vk::ShaderModule` objects are created from shader byte code.
@@ -257,7 +257,7 @@ So in short, to draw the first triangle, we need to:
 * Select a supported graphics card (`PhysicalDevice`)
 * Create a `Device` and `Queue` for drawing and presentation
 * Create a window, window surface and swap chain
-* Wrap the swap chain images into `VkImageView`
+* Wrap the swap chain images into `vk::ImageView`
 * Set up dynamic rendering
 * Set up the graphics pipeline
 * Allocate and record a command buffer with the draw commands for every
@@ -300,7 +300,7 @@ Many structures in Vulkan require you to explicitly specify the type of
 structure in the `sType` member.
 The `pNext` member can point to an extension structure and will always be
 `nullptr` in this tutorial.
-Functions that create or destroy an object will have a `VkAllocationCallbacks`
+Functions that create or destroy an object will have a `vk::AllocationCallbacks`
 parameter that allows you to use a custom allocator for driver memory,
 which will also be left `nullptr` in this tutorial.
 

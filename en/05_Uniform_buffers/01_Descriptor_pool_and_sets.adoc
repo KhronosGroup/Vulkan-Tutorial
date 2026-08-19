@@ -48,7 +48,7 @@ vk::DescriptorPoolCreateInfo poolInfo{ .flags = vk::DescriptorPoolCreateFlagBits
 Aside from the maximum number of individual descriptors that are available, we also need to specify the maximum number of descriptor sets that may be allocated.
 
 The structure has an optional flag similar to command pools that determines if individual descriptor sets can be freed or not.
-As the `vk::raii::DescriptorSets` destroy the underlying `VkDescriptorSet` on destruction we need to set it to `vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet` to allow that.
+As the `vk::raii::DescriptorSets` destroy the underlying `vk::DescriptorSet` on destruction we need to set it to `vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet` to allow that.
 
 [,c++]
 ----

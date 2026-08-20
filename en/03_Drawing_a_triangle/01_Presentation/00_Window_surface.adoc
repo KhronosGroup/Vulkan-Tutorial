@@ -244,8 +244,10 @@ create the queue and retrieve the `vk::raii::Queue` handle. We need to modify th
 filtering logic to find the best queue families to use as we detect them.  Here's
 how we do it in one function at the device creation functions:
 
-[,c++]
+[source,multilang,c++,c]
+.The complete createLogicalDevice function
 ----
+// START c++
 void createLogicalDevice() {
     // find the index of the first queue family that supports graphics
     std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
@@ -291,6 +293,74 @@ void createLogicalDevice() {
     device = vk::raii::Device( physicalDevice, deviceCreateInfo );
     queue  = vk::raii::Queue(device, queueIndex, 0);
 }
+// END c++
+
+// START c
+void createLogicalDevice() {
+    // find the index of the first queue family that supports graphics and present
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProperties.data());
+
+    uint32_t queueIndex = ~0;
+    for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyCount; qfpIndex++)
+    {
+      VkBool32 presentSupport = VK_FALSE;
+      vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, qfpIndex, surface, &presentSupport);
+      if ((queueFamilyProperties[qfpIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport)
+      {
+        // found a queue family that supports both graphics and present
+        queueIndex = qfpIndex;
+        break;
+      }
+    }
+    if (queueIndex == ~0)
+    {
+      throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+    }
+
+    // query for Vulkan 1.3 features, chaining pNext by hand
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures{};
+    extendedDynamicStateFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
+    extendedDynamicStateFeatures.extendedDynamicState = VK_TRUE;
+
+    VkPhysicalDeviceVulkan13Features vulkan13Features{};
+    vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    vulkan13Features.pNext = &extendedDynamicStateFeatures;
+    vulkan13Features.dynamicRendering = VK_TRUE;
+
+    VkPhysicalDeviceVulkan11Features vulkan11Features{};
+    vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+    vulkan11Features.pNext = &vulkan13Features;
+    vulkan11Features.shaderDrawParameters = VK_TRUE;
+
+    VkPhysicalDeviceFeatures2 featureChain{};
+    featureChain.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    featureChain.pNext = &vulkan11Features;
+
+    // create a Device
+    float queuePriority = 0.5f;
+    VkDeviceQueueCreateInfo deviceQueueCreateInfo{};
+    deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    deviceQueueCreateInfo.queueFamilyIndex = queueIndex;
+    deviceQueueCreateInfo.queueCount = 1;
+    deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkDeviceCreateInfo deviceCreateInfo{};
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.pNext = &featureChain;
+    deviceCreateInfo.queueCreateInfoCount = 1;
+    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
+    deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size());
+    deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
+
+    if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create logical device!");
+    }
+    vkGetDeviceQueue(device, queueIndex, 0, &queue);
+}
+// END c
 ----
 
 In the xref:./01_Swap_chain.adoc[next chapter], we're going to look at swap chains and

@@ -87,8 +87,10 @@ There are two types of structures needed to convey this information.
 
 The first structure is `vk::VertexInputBindingDescription` and we'll add a member function to the `Vertex` struct to populate it with the right data.
 
-[,c++]
+[source,multilang,c++,c]
+.getBindingDescription
 ----
+// START c++
 struct Vertex {
     glm::vec2 pos;
     glm::vec3 color;
@@ -98,6 +100,23 @@ struct Vertex {
       return {.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
     }
 };
+// END c++
+
+// START c
+struct Vertex {
+    float pos[2];
+    float color[3];
+};
+
+VkVertexInputBindingDescription getBindingDescription()
+{
+    VkVertexInputBindingDescription bindingDescription{};
+    bindingDescription.binding = 0;
+    bindingDescription.stride = sizeof(struct Vertex);
+    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    return bindingDescription;
+}
+// END c
 ----
 
 A vertex binding describes at which rate to load data from memory throughout the vertices.
@@ -117,8 +136,10 @@ We're not going to use instanced rendering, so we'll stick to per-vertex data.
 The second structure that describes how to handle vertex input is `vk::VertexInputAttributeDescription`.
 We're going to add another helper function to `Vertex` to fill in these structs.
 
-[,c++]
+[source,multilang,c++,c]
+.getAttributeDescriptions
 ----
+// START c++
 #include <array>
 
 ...
@@ -129,6 +150,22 @@ We're going to add another helper function to `Vertex` to fill in these structs.
                {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)}}};
     }
 }
+// END c++
+
+// START c
+void getAttributeDescriptions(VkVertexInputAttributeDescription attributeDescriptions[2])
+{
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(struct Vertex, pos);
+
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].binding = 0;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].offset = offsetof(struct Vertex, color);
+}
+// END c
 ----
 
 As the function prototype indicates, there are going to be two of these structures.
@@ -169,14 +206,30 @@ The color attribute is described in much the same way.
 We now need to set up the graphics pipeline to accept vertex data in this format by referencing the structures in `createGraphicsPipeline`.
 Find the `vertexInputInfo` struct and modify it to reference the two descriptions:
 
-[,c++]
+[source,multilang,c++,c]
+.Filling in PipelineVertexInputStateCreateInfo
 ----
+// START c++
 auto                                     bindingDescription    = Vertex::getBindingDescription();
 auto                                     attributeDescriptions = Vertex::getAttributeDescriptions();
 vk::PipelineVertexInputStateCreateInfo   vertexInputInfo{.vertexBindingDescriptionCount   = 1,
                                                          .pVertexBindingDescriptions      = &bindingDescription,
                                                          .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
                                                          .pVertexAttributeDescriptions    = attributeDescriptions.data()};
+// END c++
+
+// START c
+VkVertexInputBindingDescription bindingDescription = getBindingDescription();
+VkVertexInputAttributeDescription attributeDescriptions[2];
+getAttributeDescriptions(attributeDescriptions);
+
+VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+vertexInputInfo.vertexBindingDescriptionCount = 1;
+vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+vertexInputInfo.vertexAttributeDescriptionCount = 2;
+vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
+// END c
 ----
 
 The pipeline is now ready to accept vertex data in the format of the `vertices` container and pass it on to our vertex shader.

@@ -14,9 +14,16 @@ targets later on.
 
 First, add a class member to store the image views in:
 
-[,c++]
+[source,multilang,c++,c]
+.Image view storage
 ----
+// START c++
 std::vector<vk::raii::ImageView> swapChainImageViews;
+// END c++
+
+// START c
+std::vector<VkImageView> swapChainImageViews;
+// END c
 ----
 
 Create the `createImageViews` function and call it right after swap chain
@@ -58,8 +65,10 @@ a bit though.
 
 The last member is the SubResource range, which is necessary, and we'll talk about shortly.
 
-[,c++]
+[source,multilang,c++,c]
+.ImageViewCreateInfo
 ----
+// START c++
 void createImageViews()
 {
     assert(swapChainImageViews.empty());
@@ -68,6 +77,24 @@ void createImageViews()
                                                  .format           = swapChainSurfaceFormat.format,
                                                  .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
 }
+// END c++
+
+// START c
+void createImageViews()
+{
+    assert(swapChainImageViews.empty());
+
+    VkImageViewCreateInfo imageViewCreateInfo{};
+    imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = swapChainSurfaceFormat.format;
+    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    imageViewCreateInfo.subresourceRange.levelCount = 1;
+    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewCreateInfo.subresourceRange.layerCount = 1;
+}
+// END c
 ----
 
 The `components` field allows you to swizzle the color channels around. For
@@ -76,10 +103,20 @@ texture. You can also map constant values of `0` and `1` to a channel. In our
 case, we'll stick to the default mapping by accepting the constructed
 defaults, but here's how to explicitly do it:
 
-[,c++]
+[source,multilang,c++,c]
+.Explicit component mapping
 ----
+// START c++
 imageViewCreateInfo.components = {
     vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity};
+// END c++
+
+// START c
+imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+// END c
 ----
 
 The `subresourceRange` field describes what the image's purpose is and which
@@ -89,9 +126,18 @@ Note: you can either list all elements of the `subresourceRange`, as it's done
 in the code snippet above, or use designated initializers to just initialize
 those members that differ from the default values, like this:
 
-[,c++]
+[source,multilang,c++,c]
+.Designated-initializer shortcut
 ----
+// START c++
 imageViewCreateInfo.subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1};
+// END c++
+
+// START c
+imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+imageViewCreateInfo.subresourceRange.levelCount = 1;
+imageViewCreateInfo.subresourceRange.layerCount = 1;
+// END c
 ----
 
 If you were working on a stereographic 3D application, then you would create a
@@ -122,13 +168,29 @@ for (auto &image : swapChainImages)
 Creating the image view is now a matter of using the constructor of `vk::raii::CreateImageView`,
 here via `std::vector::emplace_back`:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating an image view for every swap chain image
 ----
+// START c++
 for (auto &image : swapChainImages)
 {
     imageViewCreateInfo.image = image;
     swapChainImageViews.emplace_back( device, imageViewCreateInfo );
 }
+// END c++
+
+// START c
+for (auto &image : swapChainImages)
+{
+    imageViewCreateInfo.image = image;
+
+    VkImageView imageView;
+    if (vkCreateImageView(device, &imageViewCreateInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image views!");
+    }
+    swapChainImageViews.push_back(imageView);
+}
+// END c
 ----
 
 An image view is sufficient to start using an image as a texture, but it's not quite ready to be used as a render target just yet.

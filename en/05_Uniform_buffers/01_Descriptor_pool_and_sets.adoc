@@ -32,17 +32,38 @@ void createDescriptorPool()
 
 We first need to describe which descriptor types our descriptor sets are going to contain and how many of them, using `vk::DescriptorPoolSize` structures.
 
-[,c++]
+[source,multilang,c++,c]
+.DescriptorPoolSize
 ----
+// START c++
 vk::DescriptorPoolSize poolSize{ .type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT };
+// END c++
+
+// START c
+VkDescriptorPoolSize poolSize{};
+poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+poolSize.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+// END c
 ----
 
 We will allocate one of these descriptors for every frame.
 This pool size structure is referenced by the main `vk::DescriptorPoolCreateInfo`:
 
-[,c++]
+[source,multilang,c++,c]
+.DescriptorPoolCreateInfo
 ----
+// START c++
 vk::DescriptorPoolCreateInfo poolInfo{ .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, .maxSets = MAX_FRAMES_IN_FLIGHT, .poolSizeCount = 1, .pPoolSizes = &poolSize };
+// END c++
+
+// START c
+VkDescriptorPoolCreateInfo poolInfo{};
+poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
+poolInfo.poolSizeCount = 1;
+poolInfo.pPoolSizes = &poolSize;
+// END c
 ----
 
 Aside from the maximum number of individual descriptors that are available, we also need to specify the maximum number of descriptor sets that may be allocated.
@@ -50,13 +71,26 @@ Aside from the maximum number of individual descriptors that are available, we a
 The structure has an optional flag similar to command pools that determines if individual descriptor sets can be freed or not.
 As the `vk::raii::DescriptorSets` destroy the underlying `VkDescriptorSet` on destruction we need to set it to `vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet` to allow that.
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the descriptor pool
 ----
+// START c++
 vk::raii::DescriptorPool descriptorPool = nullptr;
 
 ...
 
 descriptorPool = vk::raii::DescriptorPool(device, poolInfo);
+// END c++
+
+// START c
+VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+
+...
+
+if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create descriptor pool!");
+}
+// END c
 ----
 
 Add a new class member to store the handle of the descriptor pool and call the `vk::raii::DescriptorPool` constructor to create it.
@@ -86,12 +120,24 @@ void createDescriptorSets()
 A descriptor set allocation is described with a `vk::DescriptorSetAllocateInfo` struct.
 You need to specify the descriptor pool to allocate from, the number of descriptor sets to allocate, and the descriptor set layout to base them on:
 
-[,c++]
+[source,multilang,c++,c]
+.DescriptorSetAllocateInfo
 ----
+// START c++
 std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
 vk::DescriptorSetAllocateInfo        allocInfo{.descriptorPool     = descriptorPool,
                                                .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
                                                .pSetLayouts        = layouts.data()};
+// END c++
+
+// START c
+std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+VkDescriptorSetAllocateInfo allocInfo{};
+allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+allocInfo.descriptorPool = descriptorPool;
+allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+allocInfo.pSetLayouts = layouts.data();
+// END c
 ----
 
 In our case, we will create one descriptor set for each frame in flight, all with the same layout.
@@ -99,14 +145,29 @@ Unfortunately, we do need all the copies of the layout because the next function
 
 Add a class member to hold the descriptor set handles and allocate them with `vk::raii::Device::allocateDescriptorSets`:
 
-[,c++]
+[source,multilang,c++,c]
+.Allocating the descriptor sets
 ----
+// START c++
 vk::raii::DescriptorPool             descriptorPool = nullptr;
 std::vector<vk::raii::DescriptorSet> descriptorSets;
 
 ...
 
 descriptorSets = device.allocateDescriptorSets(allocInfo);
+// END c++
+
+// START c
+VkDescriptorPool             descriptorPool = VK_NULL_HANDLE;
+std::vector<VkDescriptorSet> descriptorSets;
+
+...
+
+descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+    throw std::runtime_error("failed to allocate descriptor sets!");
+}
+// END c
 ----
 
 The descriptor sets have been allocated now, but the descriptors within still need to be configured.
@@ -133,8 +194,10 @@ for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 If you're overwriting the whole buffer, like we are in this case, then it is also possible to use the `vk::WholeSize` value for the range.
 The configuration of descriptors is updated using the `vk::raii::Device::updateDescriptorSets` function, which takes an array of `vk::WriteDescriptorSet` structs as parameter.
 
-[,c++]
+[source,multilang,c++,c]
+.DescriptorBufferInfo and WriteDescriptorSet
 ----
+// START c++
 vk::DescriptorBufferInfo bufferInfo{.buffer = uniformBuffers[i], .offset = 0, .range = sizeof(UniformBufferObject)};
 vk::WriteDescriptorSet   descriptorWrite{.dstSet          = descriptorSets[i],
                                          .dstBinding      = 0,
@@ -142,6 +205,23 @@ vk::WriteDescriptorSet   descriptorWrite{.dstSet          = descriptorSets[i],
                                          .descriptorCount = 1,
                                          .descriptorType  = vk::DescriptorType::eUniformBuffer,
                                          .pBufferInfo     = &bufferInfo};
+// END c++
+
+// START c
+VkDescriptorBufferInfo bufferInfo{};
+bufferInfo.buffer = uniformBuffers[i];
+bufferInfo.offset = 0;
+bufferInfo.range = sizeof(UniformBufferObject);
+
+VkWriteDescriptorSet descriptorWrite{};
+descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+descriptorWrite.dstSet = descriptorSets[i];
+descriptorWrite.dstBinding = 0;
+descriptorWrite.dstArrayElement = 0;
+descriptorWrite.descriptorCount = 1;
+descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+descriptorWrite.pBufferInfo = &bufferInfo;
+// END c
 ----
 
 The first two fields specify the descriptor set to update and the binding.
@@ -159,9 +239,16 @@ The `pBufferInfo` field is used for descriptors that refer to buffer data. There
 used in this sample: `pImageInfo` is used for descriptors that refer to image data, and `pTexelBufferView` is used for descriptors that refer to buffer views.
 Our descriptor is based on buffers, so we're just using `pBufferInfo`.
 
-[,c++]
+[source,multilang,c++,c]
+.Applying the descriptor write
 ----
+// START c++
 device.updateDescriptorSets(descriptorWrite, {});
+// END c++
+
+// START c
+vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+// END c
 ----
 
 The updates are applied using `vk::raii::Device::updateDescriptorSets`.
@@ -173,10 +260,18 @@ The latter can be used to copy descriptors to each other, as its name implies.
 We now need to update the `recordCommandBuffer` function to actually bind the right descriptor set for each frame to the descriptors in the shader with `vk::raii::CommandBuffer::bindDescriptorSets`.
 This needs to be done before the `vk::raii::CommandBuffer::drawIndexed` call:
 
-[,c++]
+[source,multilang,c++,c]
+.Binding the descriptor set before drawing
 ----
+// START c++
 commandBuffers[frameIndex].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[frameIndex], nullptr);
 commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+// END c++
+
+// START c
+vkCmdBindDescriptorSets(commandBuffers[frameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[frameIndex], 0, nullptr);
+vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+// END c
 ----
 
 Unlike vertex and index buffers, descriptor sets are not unique to graphics pipelines.
@@ -192,8 +287,10 @@ The problem is that because of the Y-flip we did in the projection matrix, the v
 This causes backface culling to kick in and prevents any geometry from being drawn.
 Go to the `createGraphicsPipeline` function and modify the `frontFace` in `vk::PipelineRasterizationStateCreateInfo` to correct this:
 
-[,c++]
+[source,multilang,c++,c]
+.Correcting frontFace for the Y-flip
 ----
+// START c++
 vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable        = vk::False,
                                                     .rasterizerDiscardEnable = vk::False,
                                                     .polygonMode             = vk::PolygonMode::eFill,
@@ -201,6 +298,19 @@ vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable        = v
                                                     .frontFace               = vk::FrontFace::eCounterClockwise,
                                                     .depthBiasEnable         = vk::False,
                                                     .lineWidth               = 1.0f};
+// END c++
+
+// START c
+VkPipelineRasterizationStateCreateInfo rasterizer{};
+rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+rasterizer.depthClampEnable = VK_FALSE;
+rasterizer.rasterizerDiscardEnable = VK_FALSE;
+rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+rasterizer.depthBiasEnable = VK_FALSE;
+rasterizer.lineWidth = 1.0f;
+// END c
 ----
 
 Run your program again, and you should now see the following:

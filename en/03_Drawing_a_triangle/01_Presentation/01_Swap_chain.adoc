@@ -33,10 +33,18 @@ will catch misspellings.
 First declare a list of required device extensions, similar to the list of
 validation layers to enable.
 
-[,c++]
+[source,multilang,c++,c]
+.Required device extensions
 ----
+// START c++
 std::vector<const char*> requiredDeviceExtension = {
     vk::KHRSwapchainExtensionName};
+// END c++
+
+// START c
+std::vector<const char*> requiredDeviceExtension = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+// END c
 ----
 
 It should be noted that the availability of a presentation queue,
@@ -57,8 +65,10 @@ deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
 
 Alternatively, we can do this at the construction and keep this very succinct:
 
-[,c++]
+[source,multilang,c++,c]
+.Enabling the extension at device creation
 ----
+// START c++
 std::vector requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
 
 float                     queuePriority = 0.5f;
@@ -68,6 +78,26 @@ vk::DeviceCreateInfo      deviceCreateInfo{.pNext                   = &featureCh
                                            .pQueueCreateInfos       = &deviceQueueCreateInfo,
                                            .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtension.size()),
                                            .ppEnabledExtensionNames = requiredDeviceExtension.data()};
+// END c++
+
+// START c
+std::vector<const char*> requiredDeviceExtension = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+
+float queuePriority = 0.5f;
+VkDeviceQueueCreateInfo deviceQueueCreateInfo{};
+deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+deviceQueueCreateInfo.queueFamilyIndex = queueIndex;
+deviceQueueCreateInfo.queueCount = 1;
+deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
+
+VkDeviceCreateInfo deviceCreateInfo{};
+deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+deviceCreateInfo.pNext = &featureChain;
+deviceCreateInfo.queueCreateInfoCount = 1;
+deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
+deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size());
+deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
+// END c
 ----
 
 == Querying details of swap chain support
@@ -92,9 +122,17 @@ Let's start with the basic surface capabilities. These properties are
 straightforward to query and are returned into a single
 `vk::SurfaceCapabilitiesKHR` struct.
 
-[,c++]
+[source,multilang,c++,c]
+.Querying surface capabilities
 ----
+// START c++
 auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( *surface );
+// END c++
+
+// START c
+VkSurfaceCapabilitiesKHR surfaceCapabilities;
+vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+// END c
 ----
 
 This function takes the specified `vk::SurfaceKHR` window surface into account
@@ -103,17 +141,37 @@ have that as the first parameter because it is the core component of the swap ch
 
 The next step is about querying the supported surface formats.
 
-[,c++]
+[source,multilang,c++,c]
+.Querying supported surface formats
 ----
+// START c++
 std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR( *surface );
+// END c++
+
+// START c
+uint32_t formatCount = 0;
+vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+std::vector<VkSurfaceFormatKHR> availableFormats(formatCount);
+vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, availableFormats.data());
+// END c
 ----
 
 Finally, querying the supported presentation modes works exactly the same way
 with `vk::raii::PhysicalDevice::getSurfacePresentModesKHR`:
 
-[,c++]
+[source,multilang,c++,c]
+.Querying supported presentation modes
 ----
+// START c++
 std::vector<vk::PresentModeKHR> availablePresentModes = physicalDevice.getSurfacePresentModesKHR( *surface );
+// END c++
+
+// START c
+uint32_t presentModeCount = 0;
+vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
+std::vector<VkPresentModeKHR> availablePresentModes(presentModeCount);
+vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, availablePresentModes.data());
+// END c
 ----
 
 All the details are available now. Swap chain support is enough for this
@@ -174,14 +232,28 @@ If that fails, then we could start ranking the available formats based on
 how "good" they are, but in most cases it's okay to just settle with the first
 format that is specified.
 
-[,c++]
+[source,multilang,c++,c]
+.chooseSwapSurfaceFormat
 ----
+// START c++
 vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
     const auto formatIt = std::ranges::find_if(
         availableFormats,
         [](const auto &format) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; });
     return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
 }
+// END c++
+
+// START c
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+    for (const auto& format : availableFormats) {
+        if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return format;
+        }
+    }
+    return availableFormats[0];
+}
+// END c
 ----
 
 === Presentation mode
@@ -229,8 +301,10 @@ where energy usage is more important, you will probably want to use
 `vk::PresentModeKHR::eFifo` instead. Now, let's look through the list to see
 if `vk::PresentModeKHR::eMailbox` is available:
 
-[,c++]
+[source,multilang,c++,c]
+.chooseSwapPresentMode
 ----
+// START c++
 vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes)
 {
     assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
@@ -239,6 +313,19 @@ vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &
                vk::PresentModeKHR::eMailbox :
                vk::PresentModeKHR::eFifo;
 }
+// END c++
+
+// START c
+VkPresentModeKHR chooseSwapPresentMode(std::vector<VkPresentModeKHR> const &availablePresentModes)
+{
+    for (const auto& presentMode : availablePresentModes) {
+        if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return presentMode;
+        }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+// END c
 ----
 
 === Swap extent
@@ -275,8 +362,10 @@ for us, we can't just use the original `{WIDTH, HEIGHT}`. Instead, we must use
 `glfwGetFramebufferSize` to query the resolution of the window in pixel before
 matching it against the minimum and maximum image extent.
 
-[,c++]
+[source,multilang,c++,c]
+.chooseSwapExtent
 ----
+// START c++
 #include <cstdint> // Necessary for uint32_t
 #include <limits> // Necessary for std::numeric_limits
 #include <algorithm> // Necessary for std::clamp
@@ -297,6 +386,34 @@ vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
         std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
     };
 }
+// END c++
+
+// START c
+#include <stdint.h> // Necessary for uint32_t
+
+...
+
+static uint32_t clampU32(uint32_t value, uint32_t lo, uint32_t hi) {
+    if (value < lo) return lo;
+    if (value > hi) return hi;
+    return value;
+}
+
+VkExtent2D chooseSwapExtent(VkSurfaceCapabilitiesKHR const &capabilities)
+{
+    if (capabilities.currentExtent.width != UINT32_MAX)
+    {
+        return capabilities.currentExtent;
+    }
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    VkExtent2D actualExtent;
+    actualExtent.width = clampU32((uint32_t)width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    actualExtent.height = clampU32((uint32_t)height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    return actualExtent;
+}
+// END c
 ----
 
 The `clamp` function is used here to bound the values of `width` and
@@ -312,8 +429,10 @@ create a working swap chain.
 Create a `createSwapChain` function that starts out with the results of these
 calls and make sure to call it from `initVulkan` after logical device creation.
 
-[,c++]
+[source,multilang,c++,c]
+.Beginning of createSwapChain
 ----
+// START c++
 void initVulkan() {
     createInstance();
     setupDebugMessenger();
@@ -327,10 +446,35 @@ void createSwapChain() {
     vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( *surface );
     swapChainExtent                                = chooseSwapExtent(surfaceCapabilities);
     uint32_t minImageCount                         = chooseSwapMinImageCount(surfaceCapabilities);
-    
+
     std::vector<vk::SurfaceFormatKHR> availableFormats = physicalDevice.getSurfaceFormatsKHR(*surface);
     swapChainSurfaceFormat                             = chooseSwapSurfaceFormat(availableFormats);
 }
+// END c++
+
+// START c
+void initVulkan() {
+    createInstance();
+    setupDebugMessenger();
+    createSurface();
+    pickPhysicalDevice();
+    createLogicalDevice();
+    createSwapChain();
+}
+
+void createSwapChain() {
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+    swapChainExtent         = chooseSwapExtent(surfaceCapabilities);
+    uint32_t minImageCount  = chooseSwapMinImageCount(surfaceCapabilities);
+
+    uint32_t formatCount = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+    std::vector<VkSurfaceFormatKHR> availableFormats(formatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, availableFormats.data());
+    swapChainSurfaceFormat = chooseSwapSurfaceFormat(availableFormats);
+}
+// END c
 ----
 
 Aside from these properties, we also have to decide how many images we
@@ -356,8 +500,10 @@ We should also make sure to not exceed the maximum number of images while
 doing this, where `0` is a special value that means that there is no maximum,
 resulting in this helper function
 
-[,c++]
+[source,multilang,c++,c]
+.chooseSwapMinImageCount
 ----
+// START c++
 uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &surfaceCapabilities)
 {
     auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
@@ -367,14 +513,29 @@ uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &surfaceCapabi
     }
     return minImageCount;
 }
+// END c++
+
+// START c
+uint32_t chooseSwapMinImageCount(VkSurfaceCapabilitiesKHR const &surfaceCapabilities)
+{
+    uint32_t minImageCount = surfaceCapabilities.minImageCount > 3 ? surfaceCapabilities.minImageCount : 3;
+    if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount))
+    {
+        minImageCount = surfaceCapabilities.maxImageCount;
+    }
+    return minImageCount;
+}
+// END c
 ----
 
 As is tradition with Vulkan objects, creating the swap chain object requires
 filling in a large structure, to be fair, the swapchain is a fairly complex
 object so it is among the larger createInfo structures in Vulkan:
 
-[,c++]
+[source,multilang,c++,c]
+.SwapchainCreateInfoKHR
 ----
+// START c++
 vk::SwapchainCreateInfoKHR swapChainCreateInfo{.surface          = *surface,
                                                .minImageCount    = minImageCount,
                                                .imageFormat      = swapChainSurfaceFormat.format,
@@ -387,7 +548,24 @@ vk::SwapchainCreateInfoKHR swapChainCreateInfo{.surface          = *surface,
                                                .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
                                                .presentMode      = chooseSwapPresentMode(availablePresentModes),
                                                .clipped          = true};
-};
+// END c++
+
+// START c
+VkSwapchainCreateInfoKHR swapChainCreateInfo{};
+swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+swapChainCreateInfo.surface = surface;
+swapChainCreateInfo.minImageCount = minImageCount;
+swapChainCreateInfo.imageFormat = swapChainSurfaceFormat.format;
+swapChainCreateInfo.imageColorSpace = swapChainSurfaceFormat.colorSpace;
+swapChainCreateInfo.imageExtent = swapChainExtent;
+swapChainCreateInfo.imageArrayLayers = 1;
+swapChainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+swapChainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
+swapChainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+swapChainCreateInfo.presentMode = chooseSwapPresentMode(availablePresentModes);
+swapChainCreateInfo.clipped = VK_TRUE;
+// END c
 ----
 
 [,c++]
@@ -481,18 +659,40 @@ member to its default `nullptr`.
 
 Now add class members to store the `vk::SwapchainKHR` object and its images:
 
-[,c++]
+[source,multilang,c++,c]
+.Swap chain class members
 ----
+// START c++
 vk::raii::SwapchainKHR swapChain;
 std::vector<vk::Image> swapChainImages;
+// END c++
+
+// START c
+VkSwapchainKHR swapChain;
+std::vector<VkImage> swapChainImages;
+// END c
 ----
 
 Creating the swap chain is now as simple as calling the constructor of `vk::raii::SwapchainKHR`:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the swap chain
 ----
+// START c++
 swapChain       = vk::raii::SwapchainKHR( device, swapChainCreateInfo );
 swapChainImages = swapChain.getImages();
+// END c++
+
+// START c
+if (vkCreateSwapchainKHR(device, &swapChainCreateInfo, nullptr, &swapChain) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create swap chain!");
+}
+
+uint32_t imageCount = 0;
+vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+swapChainImages.resize(imageCount);
+vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+// END c
 ----
 
 The parameters are the logical device and a swap chain creation info.
@@ -514,20 +714,40 @@ The swap chain has been created now, so all that remains is retrieving the
 handles of the `vk::Image` objects it contains. We'll reference these during rendering
 operations in later chapters.
 
-[,c++]
+[source,multilang,c++,c]
+.Retrieving the swap chain image handles
 ----
+// START c++
 std::vector<vk::Image> swapChainImages = swapChain->getImages();
+// END c++
+
+// START c
+uint32_t imageCount = 0;
+vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+std::vector<VkImage> swapChainImages(imageCount);
+vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+// END c
 ----
 
 One last thing, store the format and extent we've chosen for the swap chain
 images in member variables. We'll need them in future chapters.
 
-[,c++]
+[source,multilang,c++,c]
+.Final swap chain class members
 ----
+// START c++
 vk::raii::SwapchainKHR swapChain = nullptr;
 std::vector<vk::Image> swapChainImages;
 vk::SurfaceFormatKHR   swapChainSurfaceFormat;
 vk::Extent2D           swapChainExtent;
+// END c++
+
+// START c
+VkSwapchainKHR         swapChain = VK_NULL_HANDLE;
+std::vector<VkImage>   swapChainImages;
+VkSurfaceFormatKHR     swapChainSurfaceFormat;
+VkExtent2D             swapChainExtent;
+// END c
 ----
 
 We now have a set of images that can be drawn onto and can be presented to the

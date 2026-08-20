@@ -26,12 +26,22 @@ Up until now, we have always set this value to one.
 We need to calculate the number of mip levels from the dimensions of the image.
 First, add a class member to store this number:
 
-[,c++]
+[source,multilang,c++,c]
+.mipLevels class member
 ----
+// START c++
 ...
 uint32_t               mipLevels          = 0;
 vk::raii::Image        textureImage       = nullptr;
 ...
+// END c++
+
+// START c
+...
+uint32_t mipLevels    = 0;
+VkImage  textureImage = VK_NULL_HANDLE;
+...
+// END c
 ----
 
 The value for `mipLevels` can be found once we've loaded the texture in `createTextureImage`:
@@ -184,8 +194,10 @@ Each level will be transitioned to `vk::ImageLayout::eShaderReadOnlyOptimal` aft
 
 We're now going to write the function that generates the mipmaps:
 
-[,c++]
+[source,multilang,c++,c]
+.generateMipmaps signature and the reusable barrier
 ----
+// START c++
 void generateMipmaps(vk::raii::CommandBuffer &commandBuffer,
                      vk::raii::Image         &image,
                      int32_t                  texWidth,
@@ -201,6 +213,29 @@ void generateMipmaps(vk::raii::CommandBuffer &commandBuffer,
 		                                  .image               = image,
 										  .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
 }
+// END c++
+
+// START c
+void generateMipmaps(VkCommandBuffer commandBuffer,
+                     VkImage         image,
+                     int32_t         texWidth,
+                     int32_t         texHeight,
+                     uint32_t        mipLevels)
+{
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.layerCount = 1;
+}
+// END c
 ----
 
 We're going to make several transitions, so we'll reuse this `vk::ImageMemoryBarrier`.
@@ -220,8 +255,10 @@ for (uint32_t i = 1; i < mipLevels; i++)
 This loop will record each of the `vk::raii::CommandBuffer::blitImage` commands.
 Note that the loop variable starts at 1, not 0.
 
-[,c++]
+[source,multilang,c++,c]
+.Transitioning level i-1 to transfer-src
 ----
+// START c++
 barrier.subresourceRange.baseMipLevel = i - 1;
 barrier.oldLayout                     = vk::ImageLayout::eTransferDstOptimal;
 barrier.newLayout                     = vk::ImageLayout::eTransferSrcOptimal;
@@ -229,18 +266,54 @@ barrier.srcAccessMask                 = vk::AccessFlagBits::eTransferWrite;
 barrier.dstAccessMask                 = vk::AccessFlagBits::eTransferRead;
 
 commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier);
+// END c++
+
+// START c
+barrier.subresourceRange.baseMipLevel = i - 1;
+barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+// END c
 ----
 
 First, we transition level `i - 1` to `vk::ImageLayout::eTransferSrcOptimal`.
 This transition will wait for level `i - 1` to be filled, either from the previous blit command, or from `vk::raii::CommandBuffer::copyBufferToImage`.
 The current blit command will wait on this transition.
 
-[,c++]
+[source,multilang,c++,c]
+.ImageBlit region
 ----
+// START c++
 vk::ImageBlit blit = {.srcSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = i - 1, .layerCount = 1},
                       .srcOffsets     = std::array<vk::Offset3D, 2>({{}, {mipWidth, mipHeight, 1}}),
                       .dstSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = i, .layerCount = 1},
                       .dstOffsets     = std::array<vk::Offset3D, 2>({{}, {1 < mipWidth ? mipWidth / 2 : 1, 1 < mipHeight ? mipHeight / 2 : 1, 1}})};
+// END c++
+
+// START c
+VkImageBlit blit{};
+blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+blit.srcSubresource.mipLevel = i - 1;
+blit.srcSubresource.layerCount = 1;
+blit.srcOffsets[0].x = 0;
+blit.srcOffsets[0].y = 0;
+blit.srcOffsets[0].z = 0;
+blit.srcOffsets[1].x = mipWidth;
+blit.srcOffsets[1].y = mipHeight;
+blit.srcOffsets[1].z = 1;
+blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+blit.dstSubresource.mipLevel = i;
+blit.dstSubresource.layerCount = 1;
+blit.dstOffsets[0].x = 0;
+blit.dstOffsets[0].y = 0;
+blit.dstOffsets[0].z = 0;
+blit.dstOffsets[1].x = 1 < mipWidth ? mipWidth / 2 : 1;
+blit.dstOffsets[1].y = 1 < mipHeight ? mipHeight / 2 : 1;
+blit.dstOffsets[1].z = 1;
+// END c
 ----
 
 Next, we specify the regions that will be used in the blit operation.
@@ -250,9 +323,19 @@ The two elements of the `srcOffsets` array determine the 3D region that data wil
 The X and Y dimensions of the `dstOffsets[1]` are divided by two since each mip level is half the size of the previous level.
 The Z dimension of `srcOffsets[1]` and `dstOffsets[1]` must be 1, since a 2D image has a depth of 1.
 
-[,c++]
+[source,multilang,c++,c]
+.Recording the blit command
 ----
+// START c++
 commandBuffer.blitImage(image, vk::ImageLayout::eTransferSrcOptimal, image, vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
+// END c++
+
+// START c
+vkCmdBlitImage(commandBuffer,
+               image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+               image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+               1, &blit, VK_FILTER_LINEAR);
+// END c
 ----
 
 Now, we record the blit command.
@@ -266,14 +349,26 @@ The last parameter allows us to specify a `vk::Filter` to use in the blit.
 We have the same filtering options here that we had when making the `vk::raii::Sampler`.
 We use the `vk::Filter::eLinear` to enable interpolation.
 
-[,c++]
+[source,multilang,c++,c]
+.Transitioning level i-1 to shader-read-only
 ----
+// START c++
 barrier.oldLayout     = vk::ImageLayout::eTransferSrcOptimal;
 barrier.newLayout     = vk::ImageLayout::eShaderReadOnlyOptimal;
 barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
 barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
 commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+// END c++
+
+// START c
+barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+// END c
 ----
 
 This barrier transitions mip level `i - 1` to `vk::ImageLayout::eShaderReadOnlyOptimal`.
@@ -299,8 +394,10 @@ We check each dimension before the division to ensure that dimension never becom
 This handles cases where the image is not square, since one of the mip dimensions would reach 1 before the other dimension.
 When this happens, that dimension should remain 1 for all remaining levels.
 
-[,c++]
+[source,multilang,c++,c]
+.Transitioning the last mip level
 ----
+// START c++
 		barrier.subresourceRange.baseMipLevel = mipLevels - 1;
 		barrier.oldLayout                     = vk::ImageLayout::eTransferDstOptimal;
 		barrier.newLayout                     = vk::ImageLayout::eShaderReadOnlyOptimal;
@@ -309,6 +406,18 @@ When this happens, that dimension should remain 1 for all remaining levels.
 
 		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
 }
+// END c++
+
+// START c
+    barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
+// END c
 ----
 
 Finally, we insert one more pipeline barrier.
@@ -356,8 +465,10 @@ void generateMipmaps(vk::raii::CommandBuffer &commandBuffer,
 
 In the `generateMipmaps` function, use `vk::raii::PhysicalDevice::getFormatProperties` to request the properties of the texture image format:
 
-[,c++]
+[source,multilang,c++,c]
+.Querying format properties for linear blit support
 ----
+// START c++
 void generateMipmaps(vk::raii::CommandBuffer &commandBuffer,
                      vk::raii::Image         &image,
                      vk::Format               imageFormat,
@@ -368,18 +479,43 @@ void generateMipmaps(vk::raii::CommandBuffer &commandBuffer,
     // Check if image format supports linear blit-ing
     vk::FormatProperties formatProperties = physicalDevice->getFormatProperties(imageFormat);
     ...
+// END c++
+
+// START c
+void generateMipmaps(VkCommandBuffer commandBuffer,
+                     VkImage         image,
+                     VkFormat        imageFormat,
+                     int32_t         texWidth,
+                     int32_t         texHeight,
+                     uint32_t        mipLevels)
+{
+    // Check if image format supports linear blit-ing
+    VkFormatProperties formatProperties;
+    vkGetPhysicalDeviceFormatProperties(physicalDevice, imageFormat, &formatProperties);
+    ...
+// END c
 ----
 
 The `vk::FormatProperties` struct has three fields named `linearTilingFeatures`, `optimalTilingFeatures` and `bufferFeatures` that each describe how the format can be used depending on the way it is used.
 We create a texture image with the optimal tiling format, so we need to check `optimalTilingFeatures`.
 Support for the linear filtering feature can be checked with the `vk::FormatFeatureFlagBits::eSampledImageFilterLinear`:
 
-[,c++]
+[source,multilang,c++,c]
+.Checking for linear filtering support
 ----
+// START c++
 if (!(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
 {
   throw std::runtime_error("texture image format does not support linear blitting!");
 }
+// END c++
+
+// START c
+if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+{
+    throw std::runtime_error("texture image format does not support linear blitting!");
+}
+// END c
 ----
 
 There are two alternatives in this case.
@@ -440,8 +576,10 @@ To see the results of this chapter, we need to choose values for our `textureSam
 We've already set the `minFilter` and `magFilter` to use `vk::Filter::eLinear`.
 We just need to choose values for `minLod`, `maxLod`, `mipLodBias`, and `mipmapMode`.
 
-[,c++]
+[source,multilang,c++,c]
+.The complete sampler for mipmapped sampling
 ----
+// START c++
 void createTextureSampler()
 {
     vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
@@ -461,6 +599,32 @@ void createTextureSampler()
 		    .maxLod           = vk::LodClampNone};
     ...
 }
+// END c++
+
+// START c
+void createTextureSampler()
+{
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.anisotropyEnable = VK_TRUE;
+    samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+    ...
+}
+// END c
 ----
 
 In the code above, we've set up the sampler with linear filtering for both minification and magnification, and linear interpolation between mip levels. We've also set the mip level bias to 0.0f.
@@ -483,9 +647,16 @@ Without mipmaps, the writing has harsh edges and gaps from Moiré artifacts.
 You can play around with the sampler settings to see how they affect mipmapping.
 For example, by changing `minLod`, you can force the sampler to not use the lowest mip levels:
 
-[,c++]
+[source,multilang,c++,c]
+.Forcing the sampler to skip the lowest mip levels
 ----
+// START c++
 samplerInfo.minLod = static_cast<float>(mipLevels / 2);
+// END c++
+
+// START c
+samplerInfo.minLod = (float)(mipLevels / 2);
+// END c
 ----
 
 These settings will produce this image:

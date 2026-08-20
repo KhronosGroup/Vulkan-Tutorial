@@ -55,22 +55,41 @@ stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texCha
 We're going to load the vertices and indices from the model file now, so you should remove the global `vertices` and `indices` arrays now.
 Replace them with non-const containers as class members:
 
-[,c++]
+[source,multilang,c++,c]
+.Vertex and index storage as class members
 ----
+// START c++
 std::vector<Vertex>    vertices;
 std::vector<uint32_t>  indices;
 vk::raii::Buffer       vertexBuffer       = nullptr;
 vk::raii::DeviceMemory vertexBufferMemory = nullptr;
 vk::raii::Buffer       indexBuffer        = nullptr;
 vk::raii::DeviceMemory indexBufferMemory  = nullptr;
+// END c++
+
+// START c
+std::vector<struct Vertex> vertices;
+std::vector<uint32_t>      indices;
+VkBuffer       vertexBuffer       = VK_NULL_HANDLE;
+VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+VkBuffer       indexBuffer        = VK_NULL_HANDLE;
+VkDeviceMemory indexBufferMemory  = VK_NULL_HANDLE;
+// END c
 ----
 
 You should change the type of the indices from `uint16_t` to `uint32_t`, because there are going to be a lot more vertices than 65535.
 The somewhat complex construction `vk::IndexTypeValue<decltype(indices)::value_type>::value` automatically gets you the indices' type.
 
-[,c++]
+[source,multilang,c++,c]
+.Binding the 32-bit index buffer
 ----
+// START c++
 commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexTypeValue<decltype(indices)::value_type>::value);
+// END c++
+
+// START c
+vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+// END c
 ----
 
 The tinyobjloader library is included in the same way as STB libraries.

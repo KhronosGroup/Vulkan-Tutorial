@@ -8,7 +8,7 @@ sequence of operations that take the vertices and textures of your meshes all
 the way to the pixels in the render targets. A simplified overview is displayed
 below:
 
-image::/images/vulkan_simplified_pipeline.svg[]
+image::/images/vulkan_simplified_pipeline.svg[role=no-invert]
 
 The *input assembler* collects the raw vertex data from the buffers you specify
 and may also use an index buffer to repeat certain elements without having to

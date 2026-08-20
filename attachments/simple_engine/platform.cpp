@@ -16,6 +16,8 @@
  */
 #include "platform.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <csignal>
 #include <stdexcept>
@@ -602,7 +604,10 @@ bool DirectDisplayPlatform::CreateVulkanSurface(VkInstance instance, VkSurfaceKH
     return false;
   }
   std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
-  vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
+  if (vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data()) != VK_SUCCESS) {
+    LOGE("Direct-to-display: failed to enumerate Vulkan physical devices");
+    return false;
+  }
 
   for (VkPhysicalDevice physicalDevice : physicalDevices) {
     uint32_t displayCount = 0;
@@ -611,7 +616,10 @@ bool DirectDisplayPlatform::CreateVulkanSurface(VkInstance instance, VkSurfaceKH
       continue;
     }
     std::vector<VkDisplayPropertiesKHR> displayProperties(displayCount);
-    vkGetPhysicalDeviceDisplayPropertiesKHR(physicalDevice, &displayCount, displayProperties.data());
+    if (vkGetPhysicalDeviceDisplayPropertiesKHR(physicalDevice, &displayCount, displayProperties.data()) != VK_SUCCESS) {
+      LOGE("Direct-to-display: failed to get display properties");
+      continue;
+    }
 
     const VkDisplayPropertiesKHR& chosenDisplay = displayProperties[0];
     LOGI("Direct-to-display: candidate display '%s' (%ux%u physical)",
@@ -624,15 +632,19 @@ bool DirectDisplayPlatform::CreateVulkanSurface(VkInstance instance, VkSurfaceKH
       continue;
     }
     std::vector<VkDisplayModePropertiesKHR> modeProperties(modeCount);
-    vkGetDisplayModePropertiesKHR(physicalDevice, chosenDisplay.display, &modeCount, modeProperties.data());
+    if (vkGetDisplayModePropertiesKHR(physicalDevice, chosenDisplay.display, &modeCount, modeProperties.data()) != VK_SUCCESS) {
+      LOGE("Direct-to-display: failed to get display mode properties");
+      continue;
+    }
 
     // Prefer the mode with the highest pixel count (typically the display's native resolution).
     VkDisplayModePropertiesKHR bestMode = modeProperties[0];
+    uint64_t bestPixels = static_cast<uint64_t>(bestMode.parameters.visibleRegion.width) * bestMode.parameters.visibleRegion.height;
     for (const VkDisplayModePropertiesKHR& mode : modeProperties) {
-      const uint64_t bestPixels = static_cast<uint64_t>(bestMode.parameters.visibleRegion.width) * bestMode.parameters.visibleRegion.height;
       const uint64_t pixels = static_cast<uint64_t>(mode.parameters.visibleRegion.width) * mode.parameters.visibleRegion.height;
       if (pixels > bestPixels) {
         bestMode = mode;
+        bestPixels = pixels;
       }
     }
 
@@ -640,8 +652,14 @@ bool DirectDisplayPlatform::CreateVulkanSurface(VkInstance instance, VkSurfaceKH
     // compatible surface, then create the surface on it.
     uint32_t planeCount = 0;
     vkGetPhysicalDeviceDisplayPlanePropertiesKHR(physicalDevice, &planeCount, nullptr);
+    if (planeCount == 0) {
+      continue;
+    }
     std::vector<VkDisplayPlanePropertiesKHR> planeProperties(planeCount);
-    vkGetPhysicalDeviceDisplayPlanePropertiesKHR(physicalDevice, &planeCount, planeProperties.data());
+    if (vkGetPhysicalDeviceDisplayPlanePropertiesKHR(physicalDevice, &planeCount, planeProperties.data()) != VK_SUCCESS) {
+      LOGE("Direct-to-display: failed to get display plane properties");
+      continue;
+    }
 
     for (uint32_t planeIndex = 0; planeIndex < planeCount; ++planeIndex) {
       uint32_t supportedDisplayCount = 0;
@@ -650,30 +668,33 @@ bool DirectDisplayPlatform::CreateVulkanSurface(VkInstance instance, VkSurfaceKH
         continue;
       }
       std::vector<VkDisplayKHR> supportedDisplays(supportedDisplayCount);
-      vkGetDisplayPlaneSupportedDisplaysKHR(physicalDevice, planeIndex, &supportedDisplayCount, supportedDisplays.data());
-
-      bool planeSupportsDisplay = false;
-      for (VkDisplayKHR supportedDisplay : supportedDisplays) {
-        if (supportedDisplay == chosenDisplay.display) {
-          planeSupportsDisplay = true;
-          break;
-        }
+      if (vkGetDisplayPlaneSupportedDisplaysKHR(physicalDevice, planeIndex, &supportedDisplayCount, supportedDisplays.data()) != VK_SUCCESS) {
+        LOGE("Direct-to-display: failed to get displays supported by plane %u", planeIndex);
+        continue;
       }
+
+      const bool planeSupportsDisplay = std::ranges::find(supportedDisplays, chosenDisplay.display) != supportedDisplays.end();
       if (!planeSupportsDisplay) {
         continue;
       }
 
       VkDisplayPlaneCapabilitiesKHR planeCapabilities{};
-      vkGetDisplayPlaneCapabilitiesKHR(physicalDevice, bestMode.displayMode, planeIndex, &planeCapabilities);
-
-      VkDisplayPlaneAlphaFlagBitsKHR alphaMode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
-      if (!(planeCapabilities.supportedAlpha & VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR)) {
-        if (planeCapabilities.supportedAlpha & VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR) {
-          alphaMode = VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR;
-        } else if (planeCapabilities.supportedAlpha & VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR) {
-          alphaMode = VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR;
-        }
+      if (vkGetDisplayPlaneCapabilitiesKHR(physicalDevice, bestMode.displayMode, planeIndex, &planeCapabilities) != VK_SUCCESS) {
+        LOGE("Direct-to-display: failed to get display plane capabilities for plane %u", planeIndex);
+        continue;
       }
+
+      const std::array<VkDisplayPlaneAlphaFlagBitsKHR, 3> alphaModes{
+          VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR, VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR,
+          VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR};
+      const auto alphaModeIt = std::ranges::find_if(alphaModes, [supportedAlpha = planeCapabilities.supportedAlpha](VkDisplayPlaneAlphaFlagBitsKHR mode) {
+        return supportedAlpha & mode;
+      });
+      if (alphaModeIt == alphaModes.end()) {
+        LOGE("Direct-to-display: plane %u supports no known alpha mode", planeIndex);
+        continue;
+      }
+      const VkDisplayPlaneAlphaFlagBitsKHR alphaMode = *alphaModeIt;
 
       VkDisplaySurfaceCreateInfoKHR createInfo{};
       createInfo.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;

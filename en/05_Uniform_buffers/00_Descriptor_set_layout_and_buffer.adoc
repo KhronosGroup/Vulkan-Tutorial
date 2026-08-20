@@ -130,12 +130,25 @@ void createDescriptorSetLayout()
 
 Every binding needs to be described through a `vk::DescriptorSetLayoutBinding` struct.
 
-[,c++]
+[source,multilang,c++,c]
+.DescriptorSetLayoutBinding
 ----
+// START c++
 void createDescriptorSetLayout() {
 		vk::DescriptorSetLayoutBinding uboLayoutBinding{
 		    .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex};
 }
+// END c++
+
+// START c
+void createDescriptorSetLayout() {
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+}
+// END c
 ----
 
 The first two fields specify the `binding` used in the shader and the type of descriptor, which is a uniform buffer object.
@@ -153,30 +166,69 @@ You can leave this to its default value.
 All the descriptor bindings are combined into a single `vk::raii::DescriptorSetLayout` object.
 Define a new class member above `pipelineLayout`:
 
-[,c++]
+[source,multilang,c++,c]
+.Descriptor set layout class member
 ----
+// START c++
 vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
 vk::raii::PipelineLayout      pipelineLayout      = nullptr;
+// END c++
+
+// START c
+VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+VkPipelineLayout       pipelineLayout      = VK_NULL_HANDLE;
+// END c
 ----
 
 We can then create it using `vk::raii::DescriptorSetLayout` constructor.
 This function accepts a simple `vk::DescriptorSetLayoutCreateInfo` with the array of bindings:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the descriptor set layout
 ----
+// START c++
 vk::DescriptorSetLayoutBinding uboLayoutBinding{
     .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex};
 vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1, .pBindings = &uboLayoutBinding};
 descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
+// END c++
+
+// START c
+VkDescriptorSetLayoutBinding uboLayoutBinding{};
+uboLayoutBinding.binding = 0;
+uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+uboLayoutBinding.descriptorCount = 1;
+uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+VkDescriptorSetLayoutCreateInfo layoutInfo{};
+layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+layoutInfo.bindingCount = 1;
+layoutInfo.pBindings = &uboLayoutBinding;
+
+if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create descriptor set layout!");
+}
+// END c
 ----
 
 We need to specify the descriptor set layout during pipeline creation to tell Vulkan which descriptors the shaders will be using.
 Descriptor set layouts are specified in the pipeline layout object.
 Modify the `vk::PipelineLayoutCreateInfo` to reference the layout object:
 
-[,c++]
+[source,multilang,c++,c]
+.Referencing the descriptor set layout in the pipeline layout
 ----
+// START c++
 vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0 };
+// END c++
+
+// START c
+VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+pipelineLayoutInfo.setLayoutCount = 1;
+pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+pipelineLayoutInfo.pushConstantRangeCount = 0;
+// END c
 ----
 
 You may be wondering why it's possible to specify multiple descriptor set layouts here, because a single one already includes all of the bindings.
@@ -193,20 +245,34 @@ Thus, we need to have as many uniform buffers as we have frames in flight, and w
 
 To that end, add new class members for `uniformBuffers`, and `uniformBuffersMemory`:
 
-[,c++]
+[source,multilang,c++,c]
+.Uniform buffer class members
 ----
+// START c++
 vk::raii::Buffer       indexBuffer        = nullptr;
 vk::raii::DeviceMemory indexBufferMemory  = nullptr;
 
 std::vector<vk::raii::Buffer>       uniformBuffers;
 std::vector<vk::raii::DeviceMemory> uniformBuffersMemory;
 std::vector<void *>                 uniformBuffersMapped;
+// END c++
+
+// START c
+VkBuffer       indexBuffer        = VK_NULL_HANDLE;
+VkDeviceMemory indexBufferMemory  = VK_NULL_HANDLE;
+
+std::vector<VkBuffer>       uniformBuffers;
+std::vector<VkDeviceMemory> uniformBuffersMemory;
+std::vector<void *>         uniformBuffersMapped;
+// END c
 ----
 
 Similarly, create a new function `createUniformBuffers` that is called after `createIndexBuffer` and allocates the buffers:
 
-[,c++]
+[source,multilang,c++,c]
+.createUniformBuffers
 ----
+// START c++
 void initVulkan()
 {
     ...
@@ -230,6 +296,37 @@ void createUniformBuffers()
         uniformBuffersMapped.emplace_back( uniformBuffersMemory.back().mapMemory(0, bufferSize));
     }
 }
+// END c++
+
+// START c
+void initVulkan()
+{
+    ...
+    createVertexBuffer();
+    createIndexBuffer();
+    createUniformBuffers();
+    ...
+}
+
+...
+
+void createUniformBuffers()
+{
+    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &uniformBuffers[i], &uniformBuffersMemory[i]);
+
+        vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+    }
+}
+// END c
 ----
 
 We map the buffer right after creation using `vk::raii::DeviceMemory::mapMemory` to get a pointer to which we can write the data later on.

@@ -93,14 +93,28 @@ But that's not the case.
 In Vulkan, you can specify multiple usages for buffers and images.
 So for the particle vertex buffer to be used as a vertex buffer (in the graphics pass) and as a storage buffer (in the compute pass), you simply create the buffer with those two usage flags:
 
-[,c++]
+[source,multilang,c++,c]
+.A buffer used as both vertex buffer and storage buffer
 ----
+// START c++
 vk::BufferCreateInfo bufferInfo{};
 ...
 bufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
 ...
 
 shaderStorageBuffers[i] = vk::raii::Buffer(*device, bufferInfo);
+// END c++
+
+// START c
+VkBufferCreateInfo bufferInfo{};
+...
+bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+...
+
+if (vkCreateBuffer(device, &bufferInfo, nullptr, &shaderStorageBuffers[i]) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create shader storage buffer!");
+}
+// END c
 ----
 
 The two flags `vk::BufferUsageFlagBits::eVertexBuffer` and `vk::BufferUsageFlagBits::eStorageBuffer` set with `bufferInfo.usage` tell the implementation that we want to use this buffer for two different scenarios: as a vertex buffer in the vertex shader and as a store buffer.
@@ -160,14 +174,28 @@ Typical use cases are applying image effects to textures, doing post-processing 
 
 This is similar for images:
 
-[,c++]
+[source,multilang,c++,c]
+.An image used as both sampled and storage image
 ----
+// START c++
 vk::ImageCreateInfo imageInfo {};
 ...
 imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage;
 ...
 
 textureImage = std::make_unique<vk::raii::SwapchainKHR>( *device, swapChainCreateInfo );
+// END c++
+
+// START c
+VkImageCreateInfo imageInfo{};
+...
+imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+...
+
+if (vkCreateImage(device, &imageInfo, nullptr, &textureImage) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create image!");
+}
+// END c
 ----
 
 The two flags `vk::ImageUsageFlagBits::eSampled` and `vk::ImageUsageFlagBits::eStorage` set with `imageInfo.usage` tell the implementation that we want to use this image for two different scenarios: as an image sampled in the fragment shader and as a storage image in the computer shader;
@@ -211,8 +239,10 @@ This will also save us from dealing with several advanced synchronization mechan
 
 For our compute sample, we need to change the device creation code a bit:
 
-[,c++]
+[source,multilang,c++,c]
+.Finding a queue family that supports both graphics and compute
 ----
+// START c++
 std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice->getQueueFamilyProperties();
 
 // get the first index into queueFamilyProperties which supports graphics and compute
@@ -221,15 +251,40 @@ auto graphicsAndComputeQueueFamilyProperty =
                 queueFamilyProperties.end(),
                 []( vk::QueueFamilyProperties const & qfp ) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics && qfp.queueFlags & vk::QueueFlagBits::eCompute); } );
 graphicsAndComputeIndex = static_cast<uint32_t>( std::distance( queueFamilyProperties.begin(), graphicsAndComputeQueueFamilyProperty ) );
+// END c++
+
+// START c
+uint32_t queueFamilyCount = 0;
+vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProperties.data());
+
+graphicsAndComputeIndex = 0;
+for (; graphicsAndComputeIndex < queueFamilyCount; ++graphicsAndComputeIndex)
+{
+    if ((queueFamilyProperties[graphicsAndComputeIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
+        (queueFamilyProperties[graphicsAndComputeIndex].queueFlags & VK_QUEUE_COMPUTE_BIT))
+    {
+        break;
+    }
+}
+// END c
 ----
 
 The changed queue family index selection code will now try to find a queue family that supports both graphics and compute.
 
 We can then get a compute queue from this queue family in `createLogicalDevice`:
 
-[,c++]
+[source,multilang,c++,c]
+.Retrieving the compute queue handle
 ----
+// START c++
 computeQueue = std::make_unique<vk::raii::Queue>( *device, graphicsAndComputeIndex, 0 );
+// END c++
+
+// START c
+vkGetDeviceQueue(device, graphicsAndComputeIndex, 0, &computeQueue);
+// END c
 ----
 
 == The compute shader stage
@@ -245,12 +300,26 @@ Compute also introduces a new binding point type for descriptors and pipelines n
 Loading compute shaders in our application is the same as loading any other shader.
 The only real difference is that we'll need to use the `vk::ShaderStageFlagBits::eCompute` mentioned above.
 
-[,c++]
+[source,multilang,c++,c]
+.Compute shader stage info
 ----
+// START c++
 auto computeShaderCode = readFile("shaders/slang.spv");
 
 vk::PipelineShaderStageCreateInfo computeShaderStageInfo({}, vk::ShaderStageFlagBits::eCompute, shaderModule, "compMain");
 ...
+// END c++
+
+// START c
+auto computeShaderCode = readFile("shaders/slang.spv");
+
+VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
+computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+computeShaderStageInfo.module = shaderModule;
+computeShaderStageInfo.pName = "compMain";
+...
+// END c
 ----
 
 == Preparing the shader storage buffers
@@ -354,8 +423,10 @@ layoutBindings[0].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStag
 Here is the descriptor setup for our sample.
 The layout looks like this:
 
-[,c++]
+[source,multilang,c++,c]
+.Compute descriptor set layout
 ----
+// START c++
 std::array layoutBindings{
     vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
     vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
@@ -364,6 +435,34 @@ std::array layoutBindings{
 
 vk::DescriptorSetLayoutCreateInfo layoutInfo({}, layoutBindings.size(), layoutBindings.data());
 computeDescriptorSetLayout = std::make_unique<vk::raii::DescriptorSetLayout>( *device, layoutInfo );
+// END c++
+
+// START c
+VkDescriptorSetLayoutBinding layoutBindings[3]{};
+layoutBindings[0].binding = 0;
+layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+layoutBindings[0].descriptorCount = 1;
+layoutBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+layoutBindings[1].binding = 1;
+layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+layoutBindings[1].descriptorCount = 1;
+layoutBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+layoutBindings[2].binding = 2;
+layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+layoutBindings[2].descriptorCount = 1;
+layoutBindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+VkDescriptorSetLayoutCreateInfo layoutInfo{};
+layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+layoutInfo.bindingCount = 3;
+layoutInfo.pBindings = layoutBindings;
+
+if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &computeDescriptorSetLayout) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create compute descriptor set layout!");
+}
+// END c
 ----
 
 Looking at this setup, you might wonder why we have two layout bindings for shader storage buffer objects, even though we'll only render a single particle system.
@@ -376,8 +475,10 @@ For that, the compute shader needs to have access to the last and current frame'
 This is done by passing both to the compute shader in our descriptor setup.
 See the `storageBufferInfoLastFrame` and `storageBufferInfoCurrentFrame`:
 
-[,c++]
+[source,multilang,c++,c]
+.Writing the uniform buffer and both SSBO descriptors
 ----
+// START c++
 for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vk::DescriptorBufferInfo bufferInfo(uniformBuffers[i], 0, sizeof(UniformBufferObject));
 
@@ -390,16 +491,72 @@ for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     };
     device->updateDescriptorSets(descriptorWrites, {});
 }
+// END c++
+
+// START c
+for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = uniformBuffers[i];
+    bufferInfo.offset = 0;
+    bufferInfo.range = sizeof(UniformBufferObject);
+
+    VkDescriptorBufferInfo storageBufferInfoLastFrame{};
+    storageBufferInfoLastFrame.buffer = shaderStorageBuffers[(i - 1) % MAX_FRAMES_IN_FLIGHT];
+    storageBufferInfoLastFrame.offset = 0;
+    storageBufferInfoLastFrame.range = sizeof(Particle) * PARTICLE_COUNT;
+
+    VkDescriptorBufferInfo storageBufferInfoCurrentFrame{};
+    storageBufferInfoCurrentFrame.buffer = shaderStorageBuffers[i];
+    storageBufferInfoCurrentFrame.offset = 0;
+    storageBufferInfoCurrentFrame.range = sizeof(Particle) * PARTICLE_COUNT;
+
+    VkWriteDescriptorSet descriptorWrites[3]{};
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = computeDescriptorSets[i];
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrites[0].pBufferInfo = &bufferInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = computeDescriptorSets[i];
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].pBufferInfo = &storageBufferInfoLastFrame;
+
+    descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[2].dstSet = computeDescriptorSets[i];
+    descriptorWrites[2].dstBinding = 2;
+    descriptorWrites[2].descriptorCount = 1;
+    descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[2].pBufferInfo = &storageBufferInfoCurrentFrame;
+
+    vkUpdateDescriptorSets(device, 3, descriptorWrites, 0, nullptr);
+}
+// END c
 ----
 
 Remember that we also have to request the descriptor types for the SSBOs from our descriptor pool:
 
-[,c++]
+[source,multilang,c++,c]
+.Descriptor pool sizes for the compute descriptors
 ----
+// START c++
 std::array poolSize {
     vk::DescriptorPoolSize( vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT),
     vk::DescriptorPoolSize(  vk::DescriptorType::eStorageBuffer, MAX_FRAMES_IN_FLIGHT * 2)
 };
+// END c++
+
+// START c
+VkDescriptorPoolSize poolSize[2]{};
+poolSize[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+poolSize[0].descriptorCount = MAX_FRAMES_IN_FLIGHT;
+poolSize[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+poolSize[1].descriptorCount = MAX_FRAMES_IN_FLIGHT * 2;
+// END c
 ----
 
 We need to double the number of `vk::DescriptorType::eStorageBuffer` types requested from the pool by two because our sets reference the SSBOs of the last and current frame.
@@ -410,20 +567,48 @@ As compute is not a part of the graphics pipeline, we can't use `device->createG
 Instead, we need to create a dedicated compute pipeline with `device->createComputePipeline` for running our compute commands.
 Since a compute pipeline does not touch any of the rasterization state, it has a lot less state than a graphics pipeline:
 
-[,c++]
+[source,multilang,c++,c]
+.Compute pipeline layout
 ----
+// START c++
 vk::PipelineLayoutCreateInfo pipelineLayoutInfo({}, 1, &**computeDescriptorSetLayout);
 
 computePipelineLayout = std::make_unique<vk::raii::PipelineLayout>( *device, pipelineLayoutInfo );
+// END c++
+
+// START c
+VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+pipelineLayoutInfo.setLayoutCount = 1;
+pipelineLayoutInfo.pSetLayouts = &computeDescriptorSetLayout;
+
+if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &computePipelineLayout) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create compute pipeline layout!");
+}
+// END c
 ----
 
 The setup is a lot simpler, as we only require one shader stage and a pipeline layout.
 The pipeline layout works the same as with the graphics pipeline:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the compute pipeline
 ----
+// START c++
 vk::ComputePipelineCreateInfo pipelineInfo({}, computeShaderStageInfo, *computePipelineLayout);
 computePipeline = std::make_unique<vk::raii::Pipeline>(device->createComputePipeline( nullptr, pipelineInfo));
+// END c++
+
+// START c
+VkComputePipelineCreateInfo pipelineInfo{};
+pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+pipelineInfo.stage = computeShaderStageInfo;
+pipelineInfo.layout = computePipelineLayout;
+
+if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create compute pipeline!");
+}
+// END c
 ----
 
 == Compute space
@@ -539,8 +724,10 @@ While not perfectly true, a dispatch is for compute as a draw call like `command
 This dispatches a given number of compute work items in at max.
 three dimensions.
 
-[,c++]
+[source,multilang,c++,c]
+.Recording the compute dispatch
 ----
+// START c++
 computeCommandBuffers[frameIndex]->begin({});
 ...
 
@@ -552,6 +739,23 @@ computeCommandBuffers[frameIndex]->dispatch( PARTICLE_COUNT / 256, 1, 1 );
 ...
 
 computeCommandBuffers[frameIndex]->end();
+// END c++
+
+// START c
+VkCommandBufferBeginInfo beginInfo{};
+beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+vkBeginCommandBuffer(computeCommandBuffers[frameIndex], &beginInfo);
+...
+
+vkCmdBindPipeline(computeCommandBuffers[frameIndex], VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+vkCmdBindDescriptorSets(computeCommandBuffers[frameIndex], VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSets[frameIndex], 0, nullptr);
+
+vkCmdDispatch(computeCommandBuffers[frameIndex], PARTICLE_COUNT / 256, 1, 1);
+
+...
+
+vkEndCommandBuffer(computeCommandBuffers[frameIndex]);
+// END c
 ----
 
 The `computeCommandBuffers[frameIndex]->dispatch` will dispatch `PARTICLE_COUNT / 256` local work groups in the x dimension.
@@ -602,8 +806,10 @@ signaled state because otherwise, the first draw would time out while waiting
  for the fences to be signaled as detailed
  xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[here]:
 
-[,c++]
+[source,multilang,c++,c]
+.Compute synchronization objects
 ----
+// START c++
 std::vector<std::unique_ptr<vk::raii::Fence>> computeInFlightFences;
 std::vector<std::unique_ptr<vk::raii::Semaphore>> computeFinishedSemaphores;
 ...
@@ -615,12 +821,38 @@ for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     computeFinishedSemaphores[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
     computeInFlightFences[i] = std::make_unique<vk::raii::Fence>(*device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
 }
+// END c++
+
+// START c
+std::vector<VkFence>     computeInFlightFences;
+std::vector<VkSemaphore> computeFinishedSemaphores;
+...
+computeInFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+computeFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+
+VkSemaphoreCreateInfo semaphoreInfo{};
+semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+VkFenceCreateInfo fenceInfo{};
+fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    ...
+    if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &computeFinishedSemaphores[i]) != VK_SUCCESS ||
+        vkCreateFence(device, &fenceInfo, nullptr, &computeInFlightFences[i]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create compute synchronization objects!");
+    }
+}
+// END c
 ----
 
 We then use these to synchronize the compute buffer submission with the graphics submission:
 
-[,c++]
+[source,multilang,c++,c]
+.Compute submission followed by the synchronized graphics submission
 ----
+// START c++
 {
     // Compute submission
     while ( vk::Result::eTimeout == device->waitForFences(**computeInFlightFences[frameIndex], vk::True, UINT64_MAX) )
@@ -647,6 +879,53 @@ We then use these to synchronize the compute buffer submission with the graphics
     vk::PipelineStageFlags waitDestinationStageMask[] = { vk::PipelineStageFlagBits::eVertexInput, vk::PipelineStageFlagBits::eColorAttachmentOutput };
     const vk::SubmitInfo submitInfo( waitSemaphores, waitDestinationStageMask, {**commandBuffers[frameIndex]}, {**renderFinishedSemaphore[frameIndex]} );
     graphicsQueue->submit(submitInfo, **inFlightFences[frameIndex]);
+// END c++
+
+// START c
+{
+    // Compute submission
+    while (vkWaitForFences(device, 1, &computeInFlightFences[frameIndex], VK_TRUE, UINT64_MAX) == VK_TIMEOUT)
+        ;
+
+    updateUniformBuffer(frameIndex);
+    vkResetFences(device, 1, &computeInFlightFences[frameIndex]);
+    vkResetCommandBuffer(computeCommandBuffers[frameIndex], 0);
+    recordComputeCommandBuffer();
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &computeCommandBuffers[frameIndex];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &computeFinishedSemaphores[frameIndex];
+
+    vkQueueSubmit(computeQueue, 1, &submitInfo, computeInFlightFences[frameIndex]);
+}
+{
+    // Graphics submission
+    while (vkWaitForFences(device, 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX) == VK_TIMEOUT)
+        ;
+...
+
+    vkResetFences(device, 1, &inFlightFences[frameIndex]);
+    vkResetCommandBuffer(commandBuffers[frameIndex], 0);
+    recordCommandBuffer(imageIndex);
+
+    VkSemaphore waitSemaphores[] = {presentCompleteSemaphore[frameIndex], computeFinishedSemaphores[frameIndex]};
+    VkPipelineStageFlags waitDestinationStageMask[] = {VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 2;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitDestinationStageMask;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[frameIndex];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphore[frameIndex];
+
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[frameIndex]);
+// END c
 ----
 
 Similar to the sample in the
@@ -800,8 +1079,10 @@ This means that we can use the shader storage buffer for drawing just as we used
 
 We first set up the vertex input state to match our particle structure:
 
-[,c++]
+[source,multilang,c++,c]
+.Particle vertex input attribute descriptions
 ----
+// START c++
 struct Particle {
     ...
 
@@ -812,17 +1093,48 @@ struct Particle {
         };
     }
 };
+// END c++
+
+// START c
+struct Particle {
+    ...
+};
+
+void getAttributeDescriptions(VkVertexInputAttributeDescription attributeDescriptions[2])
+{
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(struct Particle, position);
+
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].binding = 0;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[1].offset = offsetof(struct Particle, color);
+}
+// END c
 ----
 
 Note that we don't add `velocity` to the vertex input attributes, as this is only used by the compute shader.
 
 We then bind and draw it like we would with any vertex buffer:
 
-[,c++]
+[source,multilang,c++,c]
+.Binding and drawing the particle buffer
 ----
+// START c++
 commandBuffers[frameIndex]->bindVertexBuffers(0, { *shaderStorageBuffers[frameIndex] }, {0});
 
 commandBuffers[frameIndex]->draw( PARTICLE_COUNT, 1, 0, 0 );
+// END c++
+
+// START c
+VkBuffer vertexBuffers[] = {shaderStorageBuffers[frameIndex]};
+VkDeviceSize offsets[] = {0};
+vkCmdBindVertexBuffers(commandBuffers[frameIndex], 0, 1, vertexBuffers, offsets);
+
+vkCmdDraw(commandBuffers[frameIndex], PARTICLE_COUNT, 1, 0, 0);
+// END c
 ----
 
 == Conclusion

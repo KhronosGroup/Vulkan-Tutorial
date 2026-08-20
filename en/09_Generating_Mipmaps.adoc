@@ -199,6 +199,7 @@ void generateMipmaps(vk::raii::CommandBuffer &commandBuffer,
 		                                  .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
 		                                  .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
 		                                  .image               = image,
+										  .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
 }
 ----
 

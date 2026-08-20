@@ -17,6 +17,24 @@ We will use the https://github.com/syoyo/tinyobjloader[tinyobjloader] library to
 It's fast and it's easy to integrate because it's a single file library like stb_image.
 This was mentioned in the xref:02_Development_environment.adoc[Development Environment] chapter and should be part of the dependencies for this portion of the tutorial.
 
+== Updating the fragment shader
+
+Back in the xref:06_Texture_mapping/02_Combined_image_sampler.adoc[combined image sampler chapter], we multiplied the sampled texture color by the interpolated per-vertex color to demonstrate that both were being combined:
+
+[,slang]
+----
+return float4(vertIn.fragColor * texture.Sample(vertIn.fragTexCoord).rgb, 1.0);
+----
+
+The model we're about to load has its lighting baked directly into its texture and doesn't set any meaningful per-vertex color, so that multiplication would just tint the model an unwanted color. Change the fragment shader's `fragMain` back to sampling the texture directly, with no per-vertex color involved:
+
+[,slang]
+----
+return texture.Sample(vertIn.fragTexCoord);
+----
+
+If you skip this step, the model will render with visibly wrong colors once you get to the end of this chapter.
+
 == Sample mesh
 
 In this chapter, we won't be enabling lighting yet, so it helps to use a sample model that has lighting baked into the texture.

@@ -450,6 +450,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Cache ccache files
         uses: actions/cache@v3
         with:
@@ -569,10 +575,8 @@ jobs:
       - name: Build Android Chapters
         working-directory: ${{github.workspace}}/attachments/android
         run: |
-          if [ ! -f "gradlew" ]; then
-            echo "Generating Gradle wrapper..."
-            gradle wrapper
-          fi
+          chmod +x ./gradlew
+          ./gradlew --version
 
           SUPPORTED_CHAPTERS=$(grep -A 20 "set(SUPPORTED_CHAPTERS" app/src/main/cpp/CMakeLists.txt | sed -n '/set(SUPPORTED_CHAPTERS/,/)/p' | grep -o '"[^"]*"' | sed 's/"//g')
 

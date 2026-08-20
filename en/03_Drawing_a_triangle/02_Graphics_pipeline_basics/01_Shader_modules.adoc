@@ -160,12 +160,10 @@ float4 fragMain() : SV_Target
 
 The `fragMain` entry point function is called for every fragment just like the
 vertex shader `vertMain` function is called for every vertex. Colors in Slang
-are 4-component vectors with the R, G, B and alpha channels within the [0, 1] ranges. Unlike
-`SV_Position` in the vertex shader, there is no built-in variable to output a
-color for the current fragment. You have to specify your own output variable for
-each framebuffer where the `SV_TARGET` annotation specifies the index
-of the framebuffer. The color red is written to this `outColor` variable that is
-linked to the first (and only) framebuffer at index `0`.
+are 4-component vectors with the R, G, B and alpha channels within the [0, 1] range.
+The `SV_Target` annotation on the return value marks it as the color written to a
+framebuffer; since we only have a single framebuffer here, it implicitly targets
+index `0`. The color red is returned directly as `float4(1.0, 0.0, 0.0, 1.0)`.
 
 == Per-vertex colors
 
@@ -302,13 +300,12 @@ Vulkan SDK. Make the script executable with `chmod +x compile.sh` and run it.
 These two commands tell the compiler to read the Slang source file and output a
 SPIR-V 1.4 bytecode file directly using the `-o` (output) flag.
 
-Note: At the time of writing SlangC will natively support SPIR-V 1.3 and above
-without needing to go through emitting GLSL to get to SPIR-V.  While
-everything in this tutorial could work in SPIR-V 1.0, it would require us to
-break the Slang shaders up into multiple files which begs the question,
-what's the point? Plus, SPIR-V 1.4 starting from 1.4 means you'll be
-familiar with the latest the standard has to offer rather than starting from
- an older version.
+Note: SlangC natively supports SPIR-V 1.3 and above without needing to go
+through emitting GLSL to get to SPIR-V. While everything in this tutorial
+could work with SPIR-V 1.0, it would require us to break the Slang shaders
+up into multiple files, which begs the question: what's the point? Targeting
+SPIR-V 1.4 means you'll be working with a more capable version of the
+standard rather than an older, more limited one.
 
 If your shader contains a syntax error, then the compiler will tell you the line
 number and problem, as you would expect. Try leaving out a semicolon, for example,

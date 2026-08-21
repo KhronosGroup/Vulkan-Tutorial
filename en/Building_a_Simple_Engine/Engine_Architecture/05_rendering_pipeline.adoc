@@ -109,6 +109,12 @@ In this tutorial, we use Vulkan's dynamic rendering feature with vk::raii instea
 
 === Rendergraphs and Synchronization
 
+NOTE: The rendergraph described in this section is an architectural pattern, not something
+wired into the Simple Engine code in the attached examples. Treat the sections below as a
+guide to a design you could add to the engine yourself, not a description of what
+`attachments/simple_engine` currently does at runtime - the engine issues its render passes
+directly, without going through a rendergraph abstraction.
+
 A rendergraph is a higher-level abstraction that represents the entire rendering process as a directed acyclic graph (DAG), where nodes are render passes and edges represent dependencies between them. This approach offers several advantages over traditional render pass management:
 
 ==== What is a Rendergraph?

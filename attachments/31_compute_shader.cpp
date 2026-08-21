@@ -203,10 +203,14 @@ class ComputeShaderApplication
 	{
 		int width = 0, height = 0;
 		glfwGetFramebufferSize(window, &width, &height);
-		while (width == 0 || height == 0)
+		while ((width == 0 || height == 0) && !glfwWindowShouldClose(window))
 		{
 			glfwGetFramebufferSize(window, &width, &height);
 			glfwWaitEvents();
+		}
+		if (glfwWindowShouldClose(window))
+		{
+			return;
 		}
 
 		device.waitIdle();

@@ -112,20 +112,6 @@ Therefore, we should immediately recreate the swap chain and try again in the ne
 You could also decide to do that if the swap chain is suboptimal, but I've chosen to proceed anyway in that case because we've already acquired an image.
 Both `vk::Result::eSuccess` and `vk::Result::eSuboptimalKHR` are considered "success" return codes.
 
-[,c++]
-----
-result = queue.presentKHR(presentInfoKHR);
-if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR))
-{
-  recreateSwapChain();
-}
-else
-{
-  // There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
-  assert(result == vk::Result::eSuccess);
-}
-----
-
 The `vk::raii::Queue::presentKHR` function returns the same values with the same meaning.
 In this case, we will also recreate the swap chain if it is suboptimal, because we want the best possible result.
 
@@ -150,11 +136,23 @@ else
 
 == Fixing a deadlock
 
-If we try to run the code now, it is possible to encounter a deadlock.
-Debugging the code, we find that the application reaches `vk::raii::Device::waitForFences` but never continues past it.
-This is because when `vk::raii::SwapchainKHR::acquireNextImage` returns `vk::Result::eErrorOutOfDateKHR`, we recreate the swapchain and then return from `drawFrame`.
-But before that happens, the current frame's fence was waited upon and reset.
-Since we return immediately, no work is submitted for execution and the fence will never be signaled, causing `vk::raii::Device::waitForFences` to halt forever.
+Recall from the xref:03_Drawing/03_Frames_in_flight.adoc[previous chapter] that the beginning of `drawFrame` waits for and then immediately resets the current frame's fence:
+
+[,c++]
+----
+auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
+if (fenceResult != vk::Result::eSuccess)
+{
+  throw std::runtime_error("failed to wait for fence!");
+}
+
+device.resetFences(*inFlightFences[frameIndex]);
+----
+
+If we keep that structure and try to run the code now that `drawFrame` can return early from the acquire-image step above, it is possible to encounter a deadlock.
+Debugging the code, we find that the application reaches `vk::raii::Device::waitForFences` on some later frame but never continues past it.
+This is because when `vk::raii::SwapchainKHR::acquireNextImage` returns `vk::Result::eErrorOutOfDateKHR`, we recreate the swapchain and then return from `drawFrame` - but the current frame's fence was already reset just above, before we knew whether we'd actually submit any work.
+Since we return immediately, no work is submitted for execution and the fence will never be signaled, causing `vk::raii::Device::waitForFences` to halt forever the next time we wait on that same fence object.
 
 There is a simple fix thankfully.
 Delay resetting the fence until after we know for sure, we will be submitting work with it.
@@ -270,9 +268,12 @@ In this tutorial we will handle that by pausing until the window is in the foreg
 void recreateSwapChain() {
     int width = 0, height = 0;
     glfwGetFramebufferSize(window, &width, &height);
-    while (width == 0 || height == 0) {
+    while ((width == 0 || height == 0) && !glfwWindowShouldClose(window)) {
         glfwGetFramebufferSize(window, &width, &height);
         glfwWaitEvents();
+    }
+    if (glfwWindowShouldClose(window)) {
+        return;
     }
 
     device.waitIdle();
@@ -282,6 +283,7 @@ void recreateSwapChain() {
 ----
 
 The initial call to `glfwGetFramebufferSize` handles the case where the size is already correct and `glfwWaitEvents` would have nothing to wait on.
+The `glfwWindowShouldClose` check handles the case where the window is closed while still minimized - without it, the loop would spin forever waiting for a frame buffer size that will never become nonzero again.
 
 Congratulations, you've now finished your very first well-behaved Vulkan program!
 In the xref:04_Vertex_buffers/00_Vertex_input_description.adoc[next chapter] we're going to get rid of the hardcoded vertices in the vertex shader and actually use a vertex buffer.

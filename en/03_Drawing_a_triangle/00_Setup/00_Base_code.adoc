@@ -309,7 +309,15 @@ Note that in this tutorial, this is the last time we'll have to do anything
 in the cleanup() function. This code will never need to change again.
 
 When you run the program now, you should see a window titled `Vulkan` show up
-until the application is terminated by closing the window. Now that we have the
-skeleton for the Vulkan application, let's xref:./01_Instance.adoc[create the first Vulkan object]!
+until the application is terminated by closing the window.
+
+NOTE: On Wayland, the compositor won't actually map (show) a window until its
+first buffer has been presented. Since we haven't created a swapchain or drawn
+anything yet, don't be surprised if no window appears at this point when
+running under Wayland - that's expected, and it will show up once we get to
+presenting images later in the tutorial. This is a Wayland-specific behavior;
+X11 shows the window immediately, as described above.
+
+Now that we have the skeleton for the Vulkan application, let's xref:./01_Instance.adoc[create the first Vulkan object]!
 
 link:/attachments/00_base_code.cpp[C{pp} code]

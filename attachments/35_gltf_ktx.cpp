@@ -679,7 +679,7 @@ class VulkanApplication
 		    .rasterizerDiscardEnable = vk::False,
 		    .polygonMode             = vk::PolygonMode::eFill,
 		    .cullMode                = vk::CullModeFlagBits::eBack,        // Re-enabled culling for better performance
-		    .frontFace               = vk::FrontFace::eClockwise,          // Keeping Clockwise for glTF
+		    .frontFace               = vk::FrontFace::eCounterClockwise,   // glTF uses counter-clockwise winding, like the rest of this tutorial
 		    .depthBiasEnable         = vk::False,
 		    .lineWidth               = 1.0f};
 		vk::PipelineMultisampleStateCreateInfo multisampling{
@@ -1010,10 +1010,13 @@ class VulkanApplication
 					Vertex vertex{};
 
 					const float *pos = reinterpret_cast<const float *>(&posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset + i * 12]);
-					// glTF uses a right-handed coordinate system with Y-up
-					// Vulkan uses a right-handed coordinate system with Y-down
-					// We need to flip the Y coordinate
-					vertex.pos = {pos[0], -pos[1], pos[2]};
+					// glTF uses a right-handed, Y-up coordinate system, while this scene is set up
+					// Z-up (see the view/rotation setup in updateUniformBuffer). Negating the Y
+					// coordinate here would mirror the model instead of reorienting it - Vulkan's
+					// clip-space Y convention is already handled separately via proj[1][1] *= -1
+					// below, so we keep the position as-is and let initialRotation do the Y-up to
+					// Z-up conversion.
+					vertex.pos = {pos[0], pos[1], pos[2]};
 
 					if (hasTexCoords)
 					{
@@ -1376,7 +1379,7 @@ class VulkanApplication
 		float time        = std::chrono::duration<float>(currentTime - startTime).count();
 
 		UniformBufferObject ubo{};
-		glm::mat4           initialRotation    = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		glm::mat4           initialRotation    = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		glm::mat4           continuousRotation = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.model                              = continuousRotation * initialRotation;
 		ubo.view                               = lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));

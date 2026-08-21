@@ -296,6 +296,37 @@ void recordCommandBuffer(uint32_t imageIndex) {
 }
 ----
 
+=== Update Cleanup
+
+Since each `GameObject` now owns its own uniform buffers, `cleanup` needs to unmap and
+release them individually instead of relying on the single set of uniform buffer members
+from earlier chapters:
+
+[,c{pp}]
+----
+void cleanup() {
+    for (auto& gameObject : gameObjects) {
+        for (size_t i = 0; i < gameObject.uniformBuffersMemory.size(); i++) {
+            if (gameObject.uniformBuffersMapped[i] != nullptr) {
+                gameObject.uniformBuffersMemory[i].unmapMemory();
+            }
+        }
+
+        gameObject.uniformBuffers.clear();
+        gameObject.uniformBuffersMemory.clear();
+        gameObject.uniformBuffersMapped.clear();
+        gameObject.descriptorSets.clear();
+    }
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+}
+----
+
+`mainLoop` already calls `device.waitIdle()` after the render loop exits and before
+`cleanup` runs, so it's safe to unmap and release these resources here - the GPU is
+guaranteed to be done using them.
+
 == Performance Considerations
 
 When rendering multiple objects, keep these performance considerations in mind:

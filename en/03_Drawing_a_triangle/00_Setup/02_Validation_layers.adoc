@@ -285,8 +285,28 @@ some level of severity, for example:
 
 [,c++]
 ----
-if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+if (severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
     // Message is important enough to show
+}
+----
+
+Applying that to our `debugCallback`, we can filter out anything less severe
+than a warning so that verbose and informational messages don't clutter the
+output:
+
+[,c++]
+----
+static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
+                                                      vk::DebugUtilsMessageTypeFlagsEXT              type,
+                                                      const vk::DebugUtilsMessengerCallbackDataEXT * pCallbackData,
+                                                      void *                                         pUserData)
+{
+  if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning ||
+      severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+    std::cerr << "validation layer: type " << to_string(type) << " msg: " << pCallbackData->pMessage << std::endl;
+  }
+
+  return vk::False;
 }
 ----
 

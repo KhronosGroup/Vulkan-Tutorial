@@ -583,6 +583,12 @@ The first submit to the compute queue updates the particle positions using the c
 
 === Synchronizing graphics and compute
 
+NOTE: The binary-semaphore-and-fence approach below is presented first because it builds directly on
+the synchronization primitives introduced in earlier chapters. The attached example program, however,
+uses only the timeline-semaphore approach from the "Timeline semaphores" section below - it never creates
+the `computeInFlightFences`/`computeFinishedSemaphores` shown here. Read this section for the concepts,
+then see the next section for what's actually implemented.
+
 Synchronization is an important part of Vulkan, even more so when doing compute in conjunction with graphics.
 Wrong or lacking synchronization may result in the vertex stage starting to draw (=read) particles while the compute shader hasn't finished updating (=write) them (read-after-write hazard), or the compute shader could start updating particles that are still in use by the vertex part of the pipeline (write-after-read hazard).
 
@@ -644,7 +650,7 @@ We then use these to synchronize the compute buffer submission with the graphics
     recordCommandBuffer(imageIndex);
 
     vk::Semaphore waitSemaphores[] = {**presentCompleteSemaphore[frameIndex], **computeFinishedSemaphores[frameIndex]};
-    vk::PipelineStageFlags waitDestinationStageMask[] = { vk::PipelineStageFlagBits::eVertexInput, vk::PipelineStageFlagBits::eColorAttachmentOutput };
+    vk::PipelineStageFlags waitDestinationStageMask[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eVertexInput };
     const vk::SubmitInfo submitInfo( waitSemaphores, waitDestinationStageMask, {**commandBuffers[frameIndex]}, {**renderFinishedSemaphore[frameIndex]} );
     graphicsQueue->submit(submitInfo, **inFlightFences[frameIndex]);
 ----

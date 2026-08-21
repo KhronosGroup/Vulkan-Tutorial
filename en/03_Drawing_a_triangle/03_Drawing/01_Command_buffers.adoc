@@ -208,6 +208,12 @@ void transition_image_layout(
 
 This function will be used to transition the image layout before and after rendering.
 
+NOTE: `vk::raii::CommandBuffer::pipelineBarrier2`, along with the `vk::ImageMemoryBarrier2` and
+`vk::DependencyInfo` structures used above, are part of the `synchronization2` functionality
+promoted to core in Vulkan 1.3. This requires enabling the `synchronization2` feature via
+`vk::PhysicalDeviceVulkan13Features` when creating the logical device, the same way we enabled
+`dynamicRendering`. Without it, `pipelineBarrier2` will fail validation.
+
 == Starting dynamic rendering
 
 With dynamic rendering, we don't need to create a render pass or framebuffers. Instead, we specify the attachments directly when we begin rendering:

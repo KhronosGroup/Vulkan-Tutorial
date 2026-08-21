@@ -28,7 +28,9 @@ Generally, extra latency isn't desired.
 But giving the application control over the number of frames in flight is another example of Vulkan being explicit.
 
 Each frame should have its own command buffer, set of semaphores, and fence.
-Rename and then change them to be ``std::vector``s of the objects:
+Rename and then change them to be ``std::vector``s of the objects. The single
+fence, previously called `drawFence`, becomes `inFlightFences` here rather
+than just gaining an `s`, since we now have one fence per frame in flight:
 
 [,c++]
 ----
@@ -81,6 +83,19 @@ We will use a frame index for that purpose:
 [,c++]
 ----
 uint32_t frameIndex = 0;
+----
+
+`commandBuffer` is now a vector too, so `recordCommandBuffer` can no longer
+use it directly - add a local reference to the buffer for the current frame
+at the top of the function:
+
+[,c++]
+----
+void recordCommandBuffer(uint32_t imageIndex)
+{
+    auto &commandBuffer = commandBuffers[frameIndex];
+    ...
+}
 ----
 
 The `drawFrame` function can now be modified to use the right objects:

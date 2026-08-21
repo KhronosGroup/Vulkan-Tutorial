@@ -41,34 +41,11 @@ std::vector<const char*> requiredDeviceExtension = {
 
 It should be noted that the availability of a presentation queue,
 as we checked in the previous chapter, implies that the swap chain extension
-must be supported. However, the extension does have to be explicitly enabled.
-
-== Enabling device extensions
-
-Using a swapchain requires enabling the `VK_KHR_swapchain` extension first.
-Enabling the extension just requires a small change to the logical device
-creation structure:
-
-[,c++]
-----
-deviceCreateInfo.enabledExtensionCount = requiredDeviceExtension.size();
-deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
-----
-
-Alternatively, we can do this at the construction and keep this very succinct:
-
-[,c++]
-----
-std::vector requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
-
-float                     queuePriority = 0.5f;
-vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
-vk::DeviceCreateInfo      deviceCreateInfo{.pNext                   = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
-                                           .queueCreateInfoCount    = 1,
-                                           .pQueueCreateInfos       = &deviceQueueCreateInfo,
-                                           .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtension.size()),
-                                           .ppEnabledExtensionNames = requiredDeviceExtension.data()};
-----
+must be supported. We already passed `requiredDeviceExtension` to
+`vk::DeviceCreateInfo` when
+xref:../00_Setup/04_Logical_device_and_queues.adoc[creating the logical device],
+so the extension is enabled and there's no further device-creation code
+needed here.
 
 == Querying details of swap chain support
 

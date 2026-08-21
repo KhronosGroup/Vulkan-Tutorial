@@ -1399,7 +1399,8 @@ class VulkanApplication
 		    .pDepthAttachment     = &depthAttachmentInfo};
 		commandBuffer.beginRendering(renderingInfo);
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		// Negative height flips Y for Vulkan; see Uniform buffers.
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, static_cast<float>(swapChainExtent.height), static_cast<float>(swapChainExtent.width), -static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 
 		// Bind vertex and index buffers (shared by all objects)
@@ -1496,7 +1497,6 @@ class VulkanApplication
 		// Camera and projection matrices (shared by all objects)
 		glm::mat4 view = glm::lookAt(glm::vec3(2.0f, 2.0f, 6.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::mat4 proj = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 20.0f);
-		proj[1][1] *= -1;
 
 		// Update uniform buffers for each object
 		for (auto &gameObject : gameObjects)

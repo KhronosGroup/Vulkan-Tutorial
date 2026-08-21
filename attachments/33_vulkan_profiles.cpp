@@ -1443,11 +1443,12 @@ class HelloTriangleApplication
 
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
 
+		// Negative height flips Y for Vulkan; see Uniform buffers.
 		vk::Viewport viewport{
 		    .x        = 0.0f,
-		    .y        = 0.0f,
+		    .y        = static_cast<float>(swapChainExtent.height),
 		    .width    = static_cast<float>(swapChainExtent.width),
-		    .height   = static_cast<float>(swapChainExtent.height),
+		    .height   = -static_cast<float>(swapChainExtent.height),
 		    .minDepth = 0.0f,
 		    .maxDepth = 1.0f};
 		commandBuffer.setViewport(0, viewport);
@@ -1554,7 +1555,6 @@ class HelloTriangleApplication
 		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.view  = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj  = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
 
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 	}

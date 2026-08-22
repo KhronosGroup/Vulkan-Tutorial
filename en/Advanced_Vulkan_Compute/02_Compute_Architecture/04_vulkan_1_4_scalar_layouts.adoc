@@ -30,7 +30,27 @@ struct MyData {
 
 To solve this, a new extension called **GL_EXT_scalar_block_layout** was introduced. This extension allows you to use a **scalar layout**, which essentially removes all padding between members of a structure or elements of an array.
 
-In Vulkan 1.4, this functionality is now a core requirement. By using the `scalar` layout, you can ensure that your data structures on the GPU match your C{pp} structures perfectly, byte-for-byte.
+In Vulkan 1.4, this functionality is now a core requirement. By using the `scalar` layout, your data structures on the GPU match your C{pp} structures byte-for-byte for flat structures made only of scalars, vectors, and arrays.
+
+There is one important corner case, though: scalar layout is not identical to C/C{pp} layout once structures are __nested__. GLSL's and Slang's scalar layout will pack a trailing member of an outer struct into the tail padding left inside an inner struct member -- something C/C{pp} never does. For example:
+
+[source,slang]
+----
+struct Inner {
+    uint a;
+    uint16_t b;
+};
+
+struct Outer {
+    Inner ab;
+    uint16_t c;
+};
+// Scalar layout (GLSL/Slang): sizeof(Outer) == 8 -- `c` gets packed into
+// the trailing padding left after `Inner::b`.
+// C/C++ layout:               sizeof(Outer) == 12 -- that padding is never reused.
+----
+
+Slang has a distinct layout mode for this: `-fvk-use-c-layout` on the command line (`OptionKind::ForceCLayout` via the API, or the `CDataLayout` tag in-language) lays buffers out to match native C/C{pp} layout exactly, including for nested structures -- the only known caveat being empty structs, which are 0 bytes in Slang but 1 byte in C/C{pp}. GLSL has no equivalent option, so if you mix nested structures with scalar layout in GLSL, double-check their sizes on both sides of the CPU/GPU boundary rather than assuming they match.
 
 === Why does this matter?
 
@@ -38,9 +58,11 @@ It's not just about saving a few bytes of VRAM. It's about **Cache Efficiency**.
 
 When the GPU fetches data from VRAM, it fetches it in large "cache lines" (often 64 or 128 bytes). If your data is full of padding, each cache line will contain less "real" data. This means you have to perform more memory fetches to get the same amount of information, which directly leads to lower performance.
 
-=== Slang: Automatic Packing
+=== Slang: Opting Into Scalar Layout
 
-If you are using Slang, you don't even need to worry about manual layout qualifiers for most cases. Slang's layout engine handles the `scalar` rules for you when targeting Vulkan 1.4:
+It's worth being precise here, because it's a common misconception: Slang does not default to scalar layout, and this doesn't change based on which Vulkan version you're targeting -- Slang targets a SPIR-V version, not a Vulkan version, and none of the SPIR-V versions switch the default buffer layout to scalar. By default, a `StructuredBuffer<T>` or `RWStructuredBuffer<T>` in Slang is laid out with the same natural/std430-style alignment rules as HLSL, so an unadorned `float3` member is still padded exactly the way it would be under GLSL's `std430`.
+
+To get scalar layout in Slang, you have to ask for it, either per-buffer or for the whole compilation. Per-buffer, tag the resource type with `ScalarDataLayout`:
 
 [source,slang]
 ----
@@ -50,14 +72,14 @@ struct MyData {
 };
 
 [[vk::binding(0, 0)]]
-RWStructuredBuffer<MyData> MyBuffer;
+RWStructuredBuffer<MyData, ScalarDataLayout> MyBuffer;
 ----
 
-The `RWStructuredBuffer` in Slang maps to a `Storage Buffer` in Vulkan, and because Slang defaults to natural alignment, it produces the same result as the `scalar` layout in GLSL without the boilerplate.
+Globally, the equivalent is the `-fvk-use-scalar-layout` flag for `slangc`, or `OptionKind::GLSLForceScalarLayout` when compiling through the Slang API. Either way, the `RWStructuredBuffer` maps to a Vulkan `Storage Buffer`, and once scalar layout is requested it packs identically to the `scalar`-qualified GLSL buffer below.
 
-=== GLSL: The Manual Struggle
+=== GLSL: Requesting Scalar Layout
 
-To truly appreciate the "win" in Vulkan 1.4, let's look at how this same structure would be handled in GLSL under the older `std430` rules vs. the modern `scalar` layout.
+Scalar layout has to be requested explicitly in GLSL too -- it's exactly as manual as it is in Slang, just spelled differently. Let's look at how this same structure would be handled in GLSL under the older `std430` rules vs. the `scalar` layout enabled by Vulkan 1.4.
 
 [source,glsl]
 ----
@@ -107,13 +129,13 @@ struct MyData {
 // Total size: 16 bytes. No padding!
 ----
 
-If you are using modern languages like Slang, this becomes even easier. Slang defaults to a more natural, C{pp}-like layout, and its Vulkan backend handles the scalar layout details for you automatically when targeting Vulkan 1.4.
+Keep the nested-struct caveat from earlier in mind here too: this byte-for-byte match holds for a flat structure like `MyData` above, but it stops holding automatically once you nest structures inside each other, in either GLSL or Slang's scalar layout. If you need C/C{pp}-exact layout even with nesting, reach for Slang's dedicated C layout mode instead of scalar layout.
 
 == Conclusion
 
 We've covered a lot of ground in this chapter. We've seen how workgroups map to silicon, how occupancy helps us hide the massive latency of memory fetches, and how scalar layouts ensure we aren't wasting the bandwidth we've worked so hard to use.
 
-By understanding these low-level architectural details, you've moved beyond "writing shaders" and started "programming the hardware."
+Knowing exactly when scalar layout does and doesn't match your C{pp} structures -- and which layout qualifier or compiler flag you need to get there -- is what turns "it worked on my machine" into buffer layouts you can reason about and debug with confidence.
 
 In the next chapter, we'll take these concepts even further by looking at the **Vulkan Memory Model** and how to safely synchronize data between thousands of threads.
 

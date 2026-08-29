@@ -267,8 +267,8 @@ std::vector<vk::raii::Buffer> shaderStorageBuffers;
 std::vector<vk::raii::DeviceMemory> shaderStorageBuffersMemory;
 ----
 
-In the `createShaderStorageBuffers` we then clear those vectors to clean up
-any objects already created in their as is our RAII practice.
+In the `createShaderStorageBuffers` function, we then clear those vectors to clean up
+any objects already created in there, as is our RAII practice.
 
 [,c++]
 ----

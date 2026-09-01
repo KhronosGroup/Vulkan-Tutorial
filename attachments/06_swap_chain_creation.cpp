@@ -175,16 +175,15 @@ class HelloTriangleApplication
 		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
 		// Check if any of the queue families support both graphics and presentation to our surface
-		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
-		bool supportsGraphicsAndPresent = false;
-		for (uint32_t qfpIndex = 0; qfpIndex < queueFamilies.size(); qfpIndex++)
-		{
-			if ((queueFamilies[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) && physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface))
-			{
-				supportsGraphicsAndPresent = true;
-				break;
-			}
-		}
+		auto     queueFamilies = physicalDevice.getQueueFamilyProperties();
+		uint32_t qfpIndex      = 0;
+		bool     supportsGraphicsAndPresent =
+		    std::ranges::any_of(queueFamilies,
+		                        [&physicalDevice, &surface = this->surface, &qfpIndex](auto const &qfp) {
+			                        bool const suitable = (qfp.queueFlags & vk::QueueFlagBits::eGraphics) && physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface);
+			                        qfpIndex++;
+			                        return suitable;
+		                        });
 
 		// Check if all required physicalDevice extensions are available
 		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();

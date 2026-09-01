@@ -226,8 +226,11 @@ private:
     float farPlane = 1000.0f;
 
     glm::mat4 viewMatrix = glm::mat4(1.0f);
-    glm::mat4 projectionMatrix = glm::mat4(1.0f);
-    bool projectionDirty = true;
+    // mutable: GetProjectionMatrix() is logically const (it just returns a
+    // matrix) even though it lazily recomputes and caches that matrix on
+    // first access after the projection parameters change.
+    mutable glm::mat4 projectionMatrix = glm::mat4(1.0f);
+    mutable bool projectionDirty = true;
 
 public:
     void SetPerspective(float fov, float aspect, float near, float far) {

@@ -335,7 +335,7 @@ If you don't compensate for that somewhere, the image will be rendered upside do
 One common way to compensate is to flip the sign of the Y scaling factor in the projection matrix (`ubo.proj[1][1] *= -1;`).
 That works, but it also flips the handedness of the projection matrix, which then requires flipping `frontFace` wherever back-face culling is enabled, and can trip up anything downstream that assumes a standard right-handed projection.
 Instead, we'll apply the same correction at the viewport stage, where it doesn't affect the projection matrix at all.
-Go back to the `vk::Viewport` you set up in xref:03_Drawing/01_Command_buffers.adoc[Command buffers] and give it a negative height:
+Go back to the `vk::Viewport` you set up in xref:03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers] and give it a negative height:
 
 [,c++]
 ----

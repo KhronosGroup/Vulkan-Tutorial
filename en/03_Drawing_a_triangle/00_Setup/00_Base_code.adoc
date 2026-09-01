@@ -41,13 +41,16 @@ class HelloTriangleApplication {
 ----
 
 The `#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)` block picks
-between two ways of pulling in the Vulkan-Hpp API. When `USE_CPP20_MODULES` is
-defined, we `import vulkan_hpp;` as a C++20 module. Visual Studio and VS Code's
-IntelliSense engine doesn't yet understand `import` for modules and will flag
-it as an error even though the code compiles fine, so we fall back to
-including the traditional `<vulkan/vulkan_raii.hpp>` header whenever
-`__INTELLISENSE__` is defined (which IntelliSense itself defines while
-analyzing the code) or when modules are turned off entirely.
+between two ways of pulling in the Vulkan-Hpp API, both of which provide the
+same functions, structures, and enumerations. By default we include the
+traditional `<vulkan/vulkan_raii.hpp>` header. If you enable C{pp}20 modules
+(`-DENABLE_CPP20_MODULE=ON`), the `USE_CPP20_MODULES` define set by CMake
+makes the code `import vulkan_hpp;` instead. Either way, Visual Studio and VS
+Code's IntelliSense engine doesn't yet understand `import` for modules and
+will flag it as an error even though the code compiles fine, so we fall back
+to the header whenever `__INTELLISENSE__` is defined (which IntelliSense
+itself defines while analyzing the code) or when modules are turned off
+entirely.
 
 [,c++]
 ----
@@ -89,12 +92,9 @@ int main()
 }
 ----
 
-We first include the Vulkan-Hpp RAII header by default, which provides the
-functions, structures and enumerations. If you enable C{pp}20 modules
-(`-DENABLE_CPP20_MODULE=ON`), the code will `import vulkan_hpp;` instead via the
-`USE_CPP20_MODULES` define set by CMake. The `stdexcept` and `iostream` headers
-are included for reporting and propagating errors. The `cstdlib` header
-provides the `EXIT_SUCCESS` and `EXIT_FAILURE` macros.
+The `stdexcept` and `iostream` headers are included for reporting and
+propagating errors. The `cstdlib` header provides the `EXIT_SUCCESS` and
+`EXIT_FAILURE` macros.
 
 The program itself is wrapped into a class where we'll store the Vulkan objects
 as private class members and add functions to initiate each of them, which will

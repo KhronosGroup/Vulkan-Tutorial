@@ -95,7 +95,8 @@ surface = instance.createWin32SurfaceKHR(createInfo);
 
 The process is similar for other platforms like Linux, where
 `vk::raii::Instance::createXcbSurfaceKHR` takes an XCB connection and window as creation details
-with X11.
+with X11, or `vk::raii::Instance::createWaylandSurfaceKHR`, which takes a `wl_display` and a
+`wl_surface` instead, if you're running under Wayland.
 
 The `glfwCreateWindowSurface` function performs exactly this operation with a
 different implementation for each platform. We'll now integrate it into our

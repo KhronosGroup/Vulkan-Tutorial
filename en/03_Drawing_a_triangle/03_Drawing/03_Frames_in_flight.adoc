@@ -75,6 +75,17 @@ void createSyncObjects()
 }
 ----
 
+Notice that `renderFinishedSemaphores` is sized by `swapChainImages.size()`, not `MAX_FRAMES_IN_FLIGHT` like `presentCompleteSemaphores` and `inFlightFences` are.
+This looks inconsistent with the "duplicate everything per frame in flight" principle used everywhere else in this chapter, but it's intentional.
+
+Every one of our synchronization objects has *two* sides: something that signals it, and something that waits on it.
+For `presentCompleteSemaphores` and `inFlightFences`, both sides are driven by our own `frameIndex`, so sizing them by `MAX_FRAMES_IN_FLIGHT` and indexing with `frameIndex` is correct and sufficient.
+
+`renderFinishedSemaphores` is different: it's signaled when the graphics queue finishes rendering into a particular swap chain image, and waited on by the presentation engine before it presents that same image.
+The presentation engine doesn't know about our `frameIndex` - it only knows the `imageIndex` that `vk::raii::SwapchainKHR::acquireNextImage` handed us, and that's the index we have to use to look up which `renderFinishedSemaphores` entry to signal and which one presentation will wait on.
+Because a swap chain can (and, depending on the present mode, often does) have more images than `MAX_FRAMES_IN_FLIGHT`, and because there's no guarantee that consecutive `acquireNextImage` calls return image indices in the same repeating pattern as `frameIndex`, a semaphore sized and indexed by `frameIndex` could end up being signaled again by a new frame while the presentation engine is still waiting on it from a previous one.
+Sizing `renderFinishedSemaphores` by the actual number of swap chain images sidesteps that entirely: there's always one semaphore per image, so the image index alone is enough to keep signaling and waiting correctly paired, no matter how the driver happens to hand out images.
+
 To use the right objects every frame, we need to keep track of the current frame.
 We will use a frame index for that purpose:
 

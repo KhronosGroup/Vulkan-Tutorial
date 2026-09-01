@@ -50,7 +50,7 @@ struct Outer {
 // C/C++ layout:               sizeof(Outer) == 12 -- that padding is never reused.
 ----
 
-Slang has a distinct layout mode for this: `-fvk-use-c-layout` on the command line (`OptionKind::ForceCLayout` via the API, or the `CDataLayout` tag in-language) lays buffers out to match native C/C{pp} layout exactly, including for nested structures -- the only known caveat being empty structs, which are 0 bytes in Slang but 1 byte in C/C{pp}. GLSL has no equivalent option, so if you mix nested structures with scalar layout in GLSL, double-check their sizes on both sides of the CPU/GPU boundary rather than assuming they match.
+Slang has a distinct layout mode for this: `-fvk-use-c-layout` on the command line (`CompilerOptionName::ForceCLayout` via the API, or the `CDataLayout` tag in-language) lays buffers out to match native C/C{pp} layout exactly, including for nested structures -- the only known caveat being empty structs, which are 0 bytes in Slang but 1 byte in C/C{pp}. GLSL has no equivalent option, so if you mix nested structures with scalar layout in GLSL, double-check their sizes on both sides of the CPU/GPU boundary rather than assuming they match.
 
 === Why does this matter?
 
@@ -60,7 +60,7 @@ When the GPU fetches data from VRAM, it fetches it in large "cache lines" (often
 
 === Slang: Opting Into Scalar Layout
 
-It's worth being precise here, because it's a common misconception: Slang does not default to scalar layout, and this doesn't change based on which Vulkan version you're targeting -- Slang targets a SPIR-V version, not a Vulkan version, and none of the SPIR-V versions switch the default buffer layout to scalar. By default, a `StructuredBuffer<T>` or `RWStructuredBuffer<T>` in Slang is laid out with the same natural/std430-style alignment rules as HLSL, so an unadorned `float3` member is still padded exactly the way it would be under GLSL's `std430`.
+It's worth being precise here, because it's a common misconception: Slang does not default to scalar layout, and this doesn't change based on which Vulkan version you're targeting -- Slang targets a SPIR-V version, not a Vulkan version, and none of the SPIR-V versions switch the default buffer layout to scalar. By default, a `StructuredBuffer<T>` or `RWStructuredBuffer<T>` in Slang is laid out with the same std430-style alignment rules as HLSL, so an unadorned `float3` member is still padded exactly the way it would be under GLSL's `std430`.
 
 To get scalar layout in Slang, you have to ask for it, either per-buffer or for the whole compilation. Per-buffer, tag the resource type with `ScalarDataLayout`:
 
@@ -75,11 +75,11 @@ struct MyData {
 RWStructuredBuffer<MyData, ScalarDataLayout> MyBuffer;
 ----
 
-Globally, the equivalent is the `-fvk-use-scalar-layout` flag for `slangc`, or `OptionKind::GLSLForceScalarLayout` when compiling through the Slang API. Either way, the `RWStructuredBuffer` maps to a Vulkan `Storage Buffer`, and once scalar layout is requested it packs identically to the `scalar`-qualified GLSL buffer below.
+Globally, the equivalent is the `-fvk-use-scalar-layout` flag for `slangc`, or `CompilerOptionName::GLSLForceScalarLayout` when compiling through the Slang API. Either way, the `RWStructuredBuffer` maps to a Vulkan `Storage Buffer`, and once scalar layout is requested it packs identically to the `scalar`-qualified GLSL buffer below.
 
 === GLSL: Requesting Scalar Layout
 
-Scalar layout has to be requested explicitly in GLSL too -- it's exactly as manual as it is in Slang, just spelled differently. Let's look at how this same structure would be handled in GLSL under the older `std430` rules vs. the `scalar` layout enabled by Vulkan 1.4.
+Scalar layout has to be requested explicitly in GLSL too -- it's just spelled differently. Let's look at how this same structure would be handled in GLSL under the older `std430` rules vs. the `scalar` layout enabled by Vulkan 1.4.
 
 [source,glsl]
 ----

@@ -128,11 +128,27 @@ allows you to specify callbacks for a custom memory allocator. We will ignore
 this parameter in the tutorial and always pass `nullptr` as argument.
 
 Using the Vulkan_hpp RAII module, we can rely upon the library to take care
-of `vkCreateXXX` `vkAllocateXXX` `vkDestroyXXX` and `vkFreeXXX` so a block
-of code that looks like this:
+of `vkCreateXXX` `vkAllocateXXX` `vkDestroyXXX` and `vkFreeXXX`, replacing manual
+creation and destruction of the instance with RAII-managed construction:
 
-[,c++]
+[source,multilang,c++,c]
+.Manual instance creation versus RAII
 ----
+// START c++
+constexpr vk::ApplicationInfo appInfo{.pApplicationName   = "Hello Triangle",
+                                      .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
+                                      .pEngineName        = "No Engine",
+                                      .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
+                                      .apiVersion         = vk::ApiVersion14};
+
+vk::InstanceCreateInfo createInfo{
+    .pApplicationInfo = &appInfo
+};
+
+instance = vk::raii::Instance(context, createInfo);
+// END c++
+
+// START c
 VkInstance instance;
 VkApplicationInfo appInfo{};
 appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -155,24 +171,12 @@ if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
 }
 
 vkDestroyInstance(instance, nullptr);
+// END c
 ----
 
-can be directly replaced by this:
-
-[,c++]
-----
-constexpr vk::ApplicationInfo appInfo{.pApplicationName   = "Hello Triangle",
-                                      .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
-                                      .pEngineName        = "No Engine",
-                                      .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
-                                      .apiVersion         = vk::ApiVersion14};
-
-vk::InstanceCreateInfo createInfo{
-    .pApplicationInfo = &appInfo
-};
-
-instance = vk::raii::Instance(context, createInfo);
-----
+Notice that in the C version we have to remember to call `vkDestroyInstance`
+ourselves once the instance is no longer needed, while the C++ version relies
+on `vk::raii::Instance`'s destructor to do that for us automatically.
 
 == Integrating GLFW
 

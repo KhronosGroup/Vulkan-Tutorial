@@ -30,8 +30,10 @@ But giving the application control over the number of frames in flight is anothe
 Each frame should have its own command buffer, set of semaphores, and fence.
 Rename and then change them to be ``std::vector``s of the objects:
 
-[,c++]
+[source,multilang,c++,c]
+.Per-frame synchronization object vectors
 ----
+// START c++
 std::vector<vk::raii::CommandBuffer> commandBuffers;
 
 ...
@@ -39,25 +41,57 @@ std::vector<vk::raii::CommandBuffer> commandBuffers;
 std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
 std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
 std::vector<vk::raii::Fence> inFlightFences;
+// END c++
+
+// START c
+std::vector<VkCommandBuffer> commandBuffers;
+
+...
+
+std::vector<VkSemaphore> presentCompleteSemaphores;
+std::vector<VkSemaphore> renderFinishedSemaphores;
+std::vector<VkFence> inFlightFences;
+// END c
 ----
 
 Then we need to create multiple command buffers.
 Rename `createCommandBuffer` to `createCommandBuffers`.
 Next we need to resize the command buffers vector to the size of `MAX_FRAMES_IN_FLIGHT`, alter the `vk::CommandBufferAllocateInfo` to contain that many command buffers, and then change the destination to our vector of command buffers:
 
-[,c++]
+[source,multilang,c++,c]
+.createCommandBuffers
 ----
+// START c++
 void createCommandBuffers()
 {
 		vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = MAX_FRAMES_IN_FLIGHT};
     commandBuffers = vk::raii::CommandBuffers( device, allocInfo );
 }
+// END c++
+
+// START c
+void createCommandBuffers()
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
+
+    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate command buffers!");
+    }
+}
+// END c
 ----
 
 The `createSyncObjects` function should be changed to create all the objects:
 
-[,c++]
+[source,multilang,c++,c]
+.createSyncObjects (per frame)
 ----
+// START c++
 void createSyncObjects()
 {
 		assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
@@ -73,6 +107,39 @@ void createSyncObjects()
 			inFlightFences.emplace_back(device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
 		}
 }
+// END c++
+
+// START c
+void createSyncObjects()
+{
+    assert(presentCompleteSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    renderFinishedSemaphores.resize(swapChainImages.size());
+    for (size_t i = 0; i < swapChainImages.size(); i++)
+    {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create synchronization objects for a frame!");
+        }
+    }
+
+    presentCompleteSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &presentCompleteSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create synchronization objects for a frame!");
+        }
+    }
+}
+// END c
 ----
 
 To use the right objects every frame, we need to keep track of the current frame.
@@ -85,14 +152,16 @@ uint32_t frameIndex = 0;
 
 The `drawFrame` function can now be modified to use the right objects:
 
-[,c++]
+[source,multilang,c++,c]
+.drawFrame using per-frame indices
 ----
+// START c++
 void drawFrame() {
 		auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
 		if (fenceResult != vk::Result::eSuccess)
 		{
 			throw std::runtime_error("failed to wait for fence!");
-		}	
+		}
 		device.resetFences(*inFlightFences[frameIndex]);
 
 		auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
@@ -110,6 +179,38 @@ void drawFrame() {
 		                                  .pSignalSemaphores    = &*renderFinishedSemaphores[imageIndex]};
 		queue.submit(submitInfo, *inFlightFences[frameIndex]);
 }
+// END c++
+
+// START c
+void drawFrame() {
+    if (vkWaitForFences(device, 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to wait for fence!");
+    }
+    vkResetFences(device, 1, &inFlightFences[frameIndex]);
+
+    uint32_t imageIndex;
+    VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, presentCompleteSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
+
+    vkResetCommandBuffer(commandBuffers[frameIndex], 0);
+    recordCommandBuffer(imageIndex);
+
+    VkPipelineStageFlags waitDestinationStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &presentCompleteSemaphores[frameIndex];
+    submitInfo.pWaitDstStageMask = &waitDestinationStageMask;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[frameIndex];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphores[imageIndex];
+
+    if (vkQueueSubmit(queue, 1, &submitInfo, inFlightFences[frameIndex]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to submit draw command buffer!");
+    }
+}
+// END c
 ----
 
 Of course, we shouldn't forget to advance to the next frame every time:

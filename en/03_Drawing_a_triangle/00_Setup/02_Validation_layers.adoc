@@ -105,8 +105,10 @@ through the requested layers and validate that all the required layers are
 supported by the Vulkan implementation. This check is performed directly in the
 `createInstance` function:
 
-[,c++]
+[source,multilang,c++,c]
+.Checking for validation layer support
 ----
+// START c++
 void createInstance()
 {
     ...
@@ -132,6 +134,46 @@ void createInstance()
 
     ...
 }
+// END c++
+
+// START c
+void createInstance()
+{
+    ...
+
+    // Get the required layers
+    std::vector<char const*> requiredLayers;
+    if (enableValidationLayers)
+    {
+        requiredLayers.assign(validationLayers.begin(), validationLayers.end());
+    }
+
+    // Check if the required layers are supported by the Vulkan implementation.
+    uint32_t layerCount = 0;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+    std::vector<VkLayerProperties> layerProperties(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, layerProperties.data());
+
+    for (const char* requiredLayer : requiredLayers)
+    {
+        bool layerFound = false;
+        for (const auto& layerProperty : layerProperties)
+        {
+            if (strcmp(layerProperty.layerName, requiredLayer) == 0)
+            {
+                layerFound = true;
+                break;
+            }
+        }
+        if (!layerFound)
+        {
+            throw std::runtime_error("Required layer not supported: " + std::string(requiredLayer));
+        }
+    }
+
+    ...
+}
+// END c
 ----
 
 == Using extensions
@@ -164,8 +206,10 @@ supported instance extensions by using the
 required extensions are listed in that list. This check is also performed directly in the
 `createInstance` function:
 
-[,c++]
+[source,multilang,c++,c]
+.Checking for required instance extension support
 ----
+// START c++
 void createInstance()
 {
     ...
@@ -184,10 +228,46 @@ void createInstance()
     if (unsupportedPropertyIt != requiredExtensions.end())
     {
         throw std::runtime_error("Required extension not supported: " + std::string(*unsupportedPropertyIt));
-    }    
+    }
 
     ...
 }
+// END c++
+
+// START c
+void createInstance()
+{
+    ...
+
+    // Get the required extensions.
+    auto requiredExtensions = getRequiredInstanceExtensions();
+
+    // Check if the required extensions are supported by the Vulkan implementation.
+    uint32_t extensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensionProperties(extensionCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionProperties.data());
+
+    for (const char* requiredExtension : requiredExtensions)
+    {
+        bool extensionFound = false;
+        for (const auto& extensionProperty : extensionProperties)
+        {
+            if (strcmp(extensionProperty.extensionName, requiredExtension) == 0)
+            {
+                extensionFound = true;
+                break;
+            }
+        }
+        if (!extensionFound)
+        {
+            throw std::runtime_error("Required extension not supported: " + std::string(requiredExtension));
+        }
+    }
+
+    ...
+}
+// END c
 ----
 
 Now run the program in debug mode and ensure that the error does not occur. If
@@ -196,8 +276,10 @@ it does, then have a look at the FAQ.
 Finally, modify the `vk::InstanceCreateInfo` struct instantiation to include the
 validation layer names and the extension names:
 
-[,c++]
+[source,multilang,c++,c]
+.Enabling the layers and extensions in InstanceCreateInfo
 ----
+// START c++
 void createInstance()
 {
     ...
@@ -209,6 +291,26 @@ void createInstance()
                                       .ppEnabledExtensionNames = requiredExtensions.data()};
     instance = vk::raii::Instance(context, createInfo);
 }
+// END c++
+
+// START c
+void createInstance()
+{
+    ...
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+    createInfo.enabledLayerCount = static_cast<uint32_t>(requiredLayers.size());
+    createInfo.ppEnabledLayerNames = requiredLayers.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
+    createInfo.ppEnabledExtensionNames = requiredExtensions.data();
+
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create instance!");
+    }
+}
+// END c
 ----
 
 If the check was successful then the `vk::raii::Instance` constructor should not
@@ -232,8 +334,10 @@ We'll first extent the `getRequiredInstanceExtensions` function based on whether
 validation layers are enabled or
 not:
 
-[,c++]
+[source,multilang,c++,c]
+.Conditionally requesting the debug utils extension
 ----
+// START c++
 std::vector<const char*> getRequiredInstanceExtensions()
 {
     uint32_t glfwExtensionCount = 0;
@@ -247,6 +351,23 @@ std::vector<const char*> getRequiredInstanceExtensions()
 
     return extensions;
 }
+// END c++
+
+// START c
+std::vector<const char*> getRequiredInstanceExtensions()
+{
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    if (enableValidationLayers)
+    {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    return extensions;
+}
+// END c
 ----
 
 The debug messenger extension is conditionally added. Note that we've used the
@@ -258,8 +379,10 @@ function called `debugCallback` with the `PFN_vkDebugUtilsMessengerCallbackEXT`
 prototype. The `VKAPI_ATTR` and `VKAPI_CALL` ensure that the function has the
 right signature for Vulkan to call it.
 
-[,c++]
+[source,multilang,c++,c]
+.The debug callback function
 ----
+// START c++
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
                                                       vk::DebugUtilsMessageTypeFlagsEXT              type,
                                                       const vk::DebugUtilsMessengerCallbackDataEXT * pCallbackData,
@@ -269,6 +392,19 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
 
   return vk::False;
 }
+// END c++
+
+// START c
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT       severity,
+                                                     VkDebugUtilsMessageTypeFlagsEXT              type,
+                                                     const VkDebugUtilsMessengerCallbackDataEXT * pCallbackData,
+                                                     void *                                       pUserData)
+{
+  std::cerr << "validation layer: type " << type << " msg: " << pCallbackData->pMessage << std::endl;
+
+  return VK_FALSE;
+}
+// END c
 ----
 
 The first parameter specifies the severity of the message, which is one of
@@ -283,11 +419,20 @@ The values of this enumeration are set up in such a way that you can use a
 comparison operation to check if a message is equal or worse compared to
 some level of severity, for example:
 
-[,c++]
+[source,multilang,c++,c]
+.Comparing severity levels
 ----
+// START c++
 if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
     // Message is important enough to show
 }
+// END c++
+
+// START c
+if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    // Message is important enough to show
+}
+// END c
 ----
 
 The `messageType` parameter can have the following values:
@@ -315,9 +460,16 @@ All that remains now is telling Vulkan about the callback function. Such a
 callback is part of a *debug messenger*, and you can have as many of them as
 you want. Add a class member for this handle right under `instance`:
 
-[,c++]
+[source,multilang,c++,c]
+.Debug messenger class member
 ----
+// START c++
 vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
+// END c++
+
+// START c
+VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+// END c
 ----
 
 Now add a function `setupDebugMessenger` to be called from `initVulkan` right
@@ -340,8 +492,10 @@ void setupDebugMessenger()
 
 We'll need to fill in a structure with details about the messenger and its callback:
 
-[,c++]
+[source,multilang,c++,c]
+.Filling in the debug messenger creation info
 ----
+// START c++
 void setupDebugMessenger()
 {
     ...
@@ -354,6 +508,34 @@ void setupDebugMessenger()
                                                                           .pfnUserCallback = &debugCallback};
     debugMessenger = instance.createDebugUtilsMessengerEXT( debugUtilsMessengerCreateInfoEXT );
 }
+// END c++
+
+// START c
+void setupDebugMessenger()
+{
+    ...
+    VkDebugUtilsMessageSeverityFlagsEXT severityFlags = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    VkDebugUtilsMessageTypeFlagsEXT messageTypeFlags = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                                        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+                                                        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = severityFlags;
+    createInfo.messageType = messageTypeFlags;
+    createInfo.pfnUserCallback = &debugCallback;
+
+    // vkCreateDebugUtilsMessengerEXT is an extension function, so it isn't
+    // part of the core loader and has to be looked up manually.
+    auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+    if (func == nullptr || func(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
+}
+// END c
 ----
 
 The `messageSeverity` field allows you to specify all the types of
@@ -376,8 +558,10 @@ for more info about the possibilities.
 
 The complete `createInstance` function now looks like:
 
-[,c++]
+[source,multilang,c++,c]
+.The complete createInstance function
 ----
+// START c++
 void createInstance()
 {
     constexpr vk::ApplicationInfo appInfo{ .pApplicationName   = "Hello Triangle",
@@ -429,6 +613,88 @@ void createInstance()
         .ppEnabledExtensionNames = requiredExtensions.data() };
     instance = vk::raii::Instance(context, createInfo);
 }
+// END c++
+
+// START c
+void createInstance()
+{
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "No Engine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_4;
+
+    // Get the required layers
+    std::vector<char const*> requiredLayers;
+    if (enableValidationLayers)
+    {
+        requiredLayers.assign(validationLayers.begin(), validationLayers.end());
+    }
+
+    // Check if the required layers are supported by the Vulkan implementation.
+    uint32_t layerCount = 0;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+    std::vector<VkLayerProperties> layerProperties(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, layerProperties.data());
+
+    for (const char* requiredLayer : requiredLayers)
+    {
+        bool layerFound = false;
+        for (const auto& layerProperty : layerProperties)
+        {
+            if (strcmp(layerProperty.layerName, requiredLayer) == 0)
+            {
+                layerFound = true;
+                break;
+            }
+        }
+        if (!layerFound)
+        {
+            throw std::runtime_error("Required layer not supported: " + std::string(requiredLayer));
+        }
+    }
+
+    // Get the required extensions.
+    auto requiredExtensions = getRequiredInstanceExtensions();
+
+    // Check if the required extensions are supported by the Vulkan implementation.
+    uint32_t extensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensionProperties(extensionCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionProperties.data());
+
+    for (const char* requiredExtension : requiredExtensions)
+    {
+        bool extensionFound = false;
+        for (const auto& extensionProperty : extensionProperties)
+        {
+            if (strcmp(extensionProperty.extensionName, requiredExtension) == 0)
+            {
+                extensionFound = true;
+                break;
+            }
+        }
+        if (!extensionFound)
+        {
+            throw std::runtime_error("Required extension not supported: " + std::string(requiredExtension));
+        }
+    }
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+    createInfo.enabledLayerCount = static_cast<uint32_t>(requiredLayers.size());
+    createInfo.ppEnabledLayerNames = requiredLayers.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
+    createInfo.ppEnabledExtensionNames = requiredExtensions.data();
+
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create instance!");
+    }
+}
+// END c
 ----
 
 == Configuration

@@ -160,11 +160,20 @@ frame is rendered at a time.
 
 Create three class members to store these semaphore objects and fence object:
 
-[,c++]
+[source,multilang,c++,c]
+.Synchronization object class members
 ----
+// START c++
 vk::raii::Semaphore presentCompleteSemaphore = nullptr;
 vk::raii::Semaphore renderFinishedSemaphore  = nullptr;
 vk::raii::Fence     drawFence                = nullptr;
+// END c++
+
+// START c
+VkSemaphore presentCompleteSemaphore = VK_NULL_HANDLE;
+VkSemaphore renderFinishedSemaphore  = VK_NULL_HANDLE;
+VkFence     drawFence                = VK_NULL_HANDLE;
+// END c
 ----
 
 To create the semaphores, we'll add the last `create` function for this part of the tutorial: `createSyncObjects`:
@@ -195,14 +204,35 @@ void createSyncObjects()
 
 Creating semaphores requires filling in the `vk::SemaphoreCreateInfo`, but in the current version of the API it doesn't actually have any fields relevant to the tutorial:
 
-[,c++]
+[source,multilang,c++,c]
+.createSyncObjects
 ----
+// START c++
 void createSyncObjects()
 {
   presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
   renderFinishedSemaphore  = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
   drawFence                = vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
 }
+// END c++
+
+// START c
+void createSyncObjects()
+{
+  VkSemaphoreCreateInfo semaphoreInfo{};
+  semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+  VkFenceCreateInfo fenceInfo{};
+  fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+  if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &presentCompleteSemaphore) != VK_SUCCESS ||
+      vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
+      vkCreateFence(device, &fenceInfo, nullptr, &drawFence) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create synchronization objects for a frame!");
+  }
+}
+// END c
 ----
 
 Future versions of the Vulkan API or extensions may add functionality for the `flags` and `pNext` members of `vk::SemaphoreCreateInfo` like it does for the other structures.
@@ -214,8 +244,10 @@ Onto the main drawing function!
 At the start of the frame, we want to wait until the previous frame has finished, so that the command buffer and semaphores are available to use.
 To do that, we call `vk::raii::Device::waitForFences`:
 
-[,c++]
+[source,multilang,c++,c]
+.Waiting for the previous frame
 ----
+// START c++
 void drawFrame()
 {
     auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
@@ -225,6 +257,18 @@ void drawFrame()
 		}
 		device.resetFences(*drawFence);
 }
+// END c++
+
+// START c
+void drawFrame()
+{
+    if (vkWaitForFences(device, 1, &drawFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to wait for fence!");
+    }
+    vkResetFences(device, 1, &drawFence);
+}
+// END c
 ----
 
 The `vk::raii::Device::waitForFences` function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning.
@@ -236,13 +280,25 @@ We need to make sure that the fence is reset if the previous frame has already h
 Next, let's acquire an image from the swap chain after the previous frame has
 finished:
 
-[,c++]
+[source,multilang,c++,c]
+.Acquiring a swap chain image
 ----
+// START c++
 void drawFrame()
 {
     ...
     auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
 }
+// END c++
+
+// START c
+void drawFrame()
+{
+    ...
+    uint32_t imageIndex;
+    VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, presentCompleteSemaphore, VK_NULL_HANDLE, &imageIndex);
+}
+// END c
 ----
 
 The first parameter specifies a timeout in nanoseconds for an image to become available.
@@ -273,8 +329,10 @@ With a fully recorded command buffer, we can now submit it.
 
 Queue submission and synchronization is configured through parameters in the `vk::SubmitInfo` structure.
 
-[,c++]
+[source,multilang,c++,c]
+.SubmitInfo
 ----
+// START c++
 vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
 const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
                                   .pWaitSemaphores      = &*presentCompleteSemaphore,
@@ -283,6 +341,21 @@ const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,
                                   .pCommandBuffers      = &*commandBuffer,
                                   .signalSemaphoreCount = 1,
                                   .pSignalSemaphores    = &*renderFinishedSemaphore};
+// END c++
+
+// START c
+VkPipelineStageFlags waitDestinationStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+VkSubmitInfo submitInfo{};
+submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+submitInfo.waitSemaphoreCount = 1;
+submitInfo.pWaitSemaphores = &presentCompleteSemaphore;
+submitInfo.pWaitDstStageMask = &waitDestinationStageMask;
+submitInfo.commandBufferCount = 1;
+submitInfo.pCommandBuffers = &commandBuffer;
+submitInfo.signalSemaphoreCount = 1;
+submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+// END c
 ----
 
 The first three parameters specify which semaphores to wait on before execution begins and in which stage(s) of the pipeline to wait.
@@ -296,9 +369,18 @@ execution. We simply submit the single command buffer we have.
 The `pSignalSemaphores` parameter specifies which semaphores to signal once the command buffer(s) have finished execution.
 In our case we're using the `renderFinishedSemaphore` for that purpose.
 
-[,c++]
+[source,multilang,c++,c]
+.Submitting the command buffer
 ----
+// START c++
 queue.submit(submitInfo, *drawFence);
+// END c++
+
+// START c
+if (vkQueueSubmit(queue, 1, &submitInfo, drawFence) != VK_SUCCESS) {
+    throw std::runtime_error("failed to submit draw command buffer!");
+}
+// END c
 ----
 
 We can now submit the command buffer to the graphics queue using `vk::raii::Queue::submit`.
@@ -311,14 +393,27 @@ This allows us to know when it is safe for the command buffer to be reused, thus
 The last step of drawing a frame is submitting the result back to the swap chain to have it eventually show up on the screen.
 Presentation is configured through a `vk::PresentInfoKHR` structure at the end of the `drawFrame` function.
 
-[,c++]
+[source,multilang,c++,c]
+.PresentInfoKHR
 ----
+// START c++
 const vk::PresentInfoKHR presentInfoKHR{
     .waitSemaphoreCount = 1,
     .pWaitSemaphores    = &*renderFinishedSemaphore,
     .swapchainCount     = 1,
     .pSwapchains        = &*swapChain,
     .pImageIndices      = &imageIndex};
+// END c++
+
+// START c
+VkPresentInfoKHR presentInfoKHR{};
+presentInfoKHR.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+presentInfoKHR.waitSemaphoreCount = 1;
+presentInfoKHR.pWaitSemaphores = &renderFinishedSemaphore;
+presentInfoKHR.swapchainCount = 1;
+presentInfoKHR.pSwapchains = &swapChain;
+presentInfoKHR.pImageIndices = &imageIndex;
+// END c
 ----
 
 The first two parameters specify which semaphores to wait on before presentation can happen, just like `vk::SubmitInfo`.
@@ -336,9 +431,16 @@ There is one last optional parameter called `pResults`.
 It allows you to specify an array of `vk::Result` values to check for every swap chain if presentation was successful.
 It's not necessary if you're only using a single swap chain, because you can use the return value of the present function.
 
-[,c++]
+[source,multilang,c++,c]
+.Presenting the image
 ----
+// START c++
 result = queue.presentKHR(presentInfoKHR);
+// END c++
+
+// START c
+result = vkQueuePresentKHR(queue, &presentInfoKHR);
+// END c
 ----
 
 The `vk::raii::Queue::presentKHR` function submits the request to present an image to the swap chain.
@@ -365,8 +467,10 @@ Cleaning up resources while that is happening is a bad idea.
 
 To fix that problem, we should wait for the logical device to finish operations before exiting `mainLoop` and destroying the window:
 
-[,c++]
+[source,multilang,c++,c]
+.Waiting for the device to become idle before exiting
 ----
+// START c++
 void mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -375,6 +479,18 @@ void mainLoop() {
 
     device.waitIdle();
 }
+// END c++
+
+// START c
+void mainLoop() {
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        drawFrame();
+    }
+
+    vkDeviceWaitIdle(device);
+}
+// END c
 ----
 
 You can also wait for operations in a specific command queue to be finished with `vk::raii::Queue::waitIdle`.

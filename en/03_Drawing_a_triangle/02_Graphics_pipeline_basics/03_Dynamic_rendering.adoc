@@ -12,15 +12,27 @@ Dynamic rendering simplifies the rendering process by eliminating the need for r
 
 To use dynamic rendering, we need to specify the formats of the attachments that will be used during rendering. This is done through the `vk::PipelineRenderingCreateInfo` structure when creating the graphics pipeline:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineRenderingCreateInfo
 ----
+// START c++
 vk::PipelineRenderingCreateInfo pipelineRenderingCreateInfo{ .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format };
+// END c++
+
+// START c
+VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
+pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+pipelineRenderingCreateInfo.colorAttachmentCount = 1;
+pipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChainSurfaceFormat.format;
+// END c
 ----
 
 This structure specifies that we'll be using one color attachment with the format of our swap chain images. We then include this structure in the `vk::StructureChain`, starting with the `vk::GraphicsPipelineCreateInfo` structure:
 
-[,c++]
+[source,multilang,c++,c]
+.Chaining PipelineRenderingCreateInfo onto GraphicsPipelineCreateInfo
 ----
+// START c++
 vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain = {
     {.stageCount          = 2,
      .pStages             = shaderStages,
@@ -34,6 +46,30 @@ vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateIn
      .layout              = pipelineLayout,
      .renderPass          = nullptr},
     {.colorAttachmentCount = 1, .pColorAttachmentFormats = &swapChainSurfaceFormat.format}};
+// END c++
+
+// START c
+// In C, pNext has to be linked to the next structure in the chain by hand.
+VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
+pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+pipelineRenderingCreateInfo.colorAttachmentCount = 1;
+pipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChainSurfaceFormat.format;
+
+VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
+pipelineCreateInfo.stageCount = 2;
+pipelineCreateInfo.pStages = shaderStages;
+pipelineCreateInfo.pVertexInputState = &vertexInputInfo;
+pipelineCreateInfo.pInputAssemblyState = &inputAssembly;
+pipelineCreateInfo.pViewportState = &viewportState;
+pipelineCreateInfo.pRasterizationState = &rasterizer;
+pipelineCreateInfo.pMultisampleState = &multisampling;
+pipelineCreateInfo.pColorBlendState = &colorBlending;
+pipelineCreateInfo.pDynamicState = &dynamicState;
+pipelineCreateInfo.layout = pipelineLayout;
+pipelineCreateInfo.renderPass = VK_NULL_HANDLE;
+// END c
 ----
 
 Note that the `renderPass` parameter is set to `nullptr` because we're using dynamic rendering instead of a traditional render pass.

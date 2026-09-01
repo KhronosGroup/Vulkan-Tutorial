@@ -55,8 +55,10 @@ This may require the application to recreate the renderpass to make sure the cha
 
 We'll move the cleanup code of all objects that are recreated as part of a swap chain refresh from `cleanup` to `cleanupSwapChain`:
 
-[,c++]
+[source,multilang,c++,c]
+.cleanupSwapChain
 ----
+// START c++
 void cleanupSwapChain()
 {
     swapChainImageViews.clear();
@@ -70,6 +72,26 @@ void cleanup()
     glfwDestroyWindow(window);
     glfwTerminate();
 }
+// END c++
+
+// START c
+void cleanupSwapChain()
+{
+    for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    swapChainImageViews.clear();
+    vkDestroySwapchainKHR(device, swapChain, nullptr);
+}
+
+void cleanup()
+{
+    cleanupSwapChain();
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+}
+// END c
 ----
 
 Note that in `chooseSwapExtent` we already query the new window resolution to make sure that the swap chain images have the (new) right size, so there's no need to modify `chooseSwapExtent` (remember that we already had to use `glfwGetFramebufferSize` to get the resolution of the surface in pixels when creating the swap chain).
@@ -129,8 +151,10 @@ else
 The `vk::raii::Queue::presentKHR` function returns the same values with the same meaning.
 In this case, we will also recreate the swap chain if it is suboptimal, because we want the best possible result.
 
-[,c++]
+[source,multilang,c++,c]
+.Recreating the swap chain after presentation
 ----
+// START c++
 const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
                                         .pWaitSemaphores    = &*renderFinishedSemaphores[imageIndex],
                                         .swapchainCount     = 1,
@@ -146,6 +170,26 @@ else
   // There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
   assert(result == vk::Result::eSuccess);
 }
+// END c++
+
+// START c
+VkPresentInfoKHR presentInfoKHR{};
+presentInfoKHR.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+presentInfoKHR.waitSemaphoreCount = 1;
+presentInfoKHR.pWaitSemaphores = &renderFinishedSemaphores[imageIndex];
+presentInfoKHR.swapchainCount = 1;
+presentInfoKHR.pSwapchains = &swapChain;
+presentInfoKHR.pImageIndices = &imageIndex;
+result = vkQueuePresentKHR(queue, &presentInfoKHR);
+if ((result == VK_SUBOPTIMAL_KHR) || (result == VK_ERROR_OUT_OF_DATE_KHR))
+{
+  recreateSwapChain();
+}
+else if (result != VK_SUCCESS)
+{
+  throw std::runtime_error("failed to present swap chain image!");
+}
+// END c
 ----
 
 == Fixing a deadlock
@@ -162,8 +206,10 @@ Thus, if we return early, the fence is still signaled and `vk::raii::Device::wai
 
 The beginning of `drawFrame` should now look like this:
 
-[,c++]
+[source,multilang,c++,c]
+.Deferring the fence reset until work is actually submitted
 ----
+// START c++
 auto fenceResult = device.waitForFences(*inFlightFences[frameIndex], vk::True, UINT64_MAX);
 if (fenceResult != vk::Result::eSuccess)
 {
@@ -185,6 +231,30 @@ if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
 
 // Only reset the fence if we are submitting work
 device.resetFences(*inFlightFences[frameIndex]);
+// END c++
+
+// START c
+if (vkWaitForFences(device, 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+{
+  throw std::runtime_error("failed to wait for fence!");
+}
+
+uint32_t imageIndex;
+VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, presentCompleteSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
+
+if (result == VK_ERROR_OUT_OF_DATE_KHR)
+{
+    recreateSwapChain();
+    return;
+}
+if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+{
+    throw std::runtime_error("failed to acquire swap chain image!");
+}
+
+// Only reset the fence if we are submitting work
+vkResetFences(device, 1, &inFlightFences[frameIndex]);
+// END c
 ----
 
 == Handling resizes explicitly
@@ -200,8 +270,10 @@ bool framebufferResized = false;
 
 The `drawFrame` function should then be modified to also check for this flag:
 
-[,c++]
+[source,multilang,c++,c]
+.Also checking the resize flag
 ----
+// START c++
 if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebufferResized)
 {
     framebufferResized = false;
@@ -211,6 +283,19 @@ else
 {
     ...
 }
+// END c++
+
+// START c
+if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
+{
+    framebufferResized = false;
+    recreateSwapChain();
+}
+else
+{
+    ...
+}
+// END c
 ----
 
 It is important to do this after `vk::raii::Queue::presentKHR` to ensure that the semaphores are in a consistent state, otherwise a signaled semaphore may never be properly waited upon.
@@ -265,8 +350,10 @@ There is another case where a swap chain may become out of date and that is a sp
 This case is special because it will result in a frame buffer size of `0`.
 In this tutorial we will handle that by pausing until the window is in the foreground again by extending the `recreateSwapChain` function:
 
-[,c++]
+[source,multilang,c++,c]
+.recreateSwapChain, handling minimization
 ----
+// START c++
 void recreateSwapChain() {
     int width = 0, height = 0;
     glfwGetFramebufferSize(window, &width, &height);
@@ -279,6 +366,22 @@ void recreateSwapChain() {
 
     ...
 }
+// END c++
+
+// START c
+void recreateSwapChain() {
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(device);
+
+    ...
+}
+// END c
 ----
 
 The initial call to `glfwGetFramebufferSize` handles the case where the size is already correct and `glfwWaitEvents` would have nothing to wait on.

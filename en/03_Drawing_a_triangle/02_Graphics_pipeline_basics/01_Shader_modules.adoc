@@ -426,11 +426,20 @@ Before we can pass the code to the pipeline, we have to wrap it in a
 `vk::raii::ShaderModule` object. Let's create a helper function `createShaderModule` to
 do that.
 
-[,c++]
+[source,multilang,c++,c]
+.createShaderModule signature
 ----
+// START c++
 [[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const
 {
 }
+// END c++
+
+// START c
+VkShaderModule createShaderModule(const std::vector<char>& code)
+{
+}
+// END c
 ----
 
 The function will take a buffer with the bytecode as parameter and create a
@@ -446,16 +455,36 @@ need to ensure that the data satisfies the alignment requirements of `uint32_t`.
 Lucky for us, the data is stored in an `std::vector` where the default allocator
 already ensures that the data satisfies the worst case alignment requirements.
 
-[,c++]
+[source,multilang,c++,c]
+.ShaderModuleCreateInfo
 ----
+// START c++
 vk::ShaderModuleCreateInfo createInfo{ .codeSize = code.size() * sizeof(char), .pCode = reinterpret_cast<const uint32_t*>(code.data()) };
+// END c++
+
+// START c
+VkShaderModuleCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+createInfo.codeSize = code.size() * sizeof(char);
+createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+// END c
 ----
 
 The `vk::raii::ShaderModule` can then be created by its constructor:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the shader module
 ----
+// START c++
 vk::raii::ShaderModule shaderModule{ device, createInfo };
+// END c++
+
+// START c
+VkShaderModule shaderModule;
+if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create shader module!");
+}
+// END c
 ----
 
 The parameters are the same as those in previous object creation functions: the
@@ -487,9 +516,20 @@ of the actual pipeline creation process.
 We'll start by filling in the structure for the vertex shader, again in the
 `createGraphicsPipeline` function.
 
-[,c++]
+[source,multilang,c++,c]
+.Vertex shader stage info
 ----
+// START c++
 vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule,  .pName = "vertMain" };
+// END c++
+
+// START c
+VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+vertShaderStageInfo.module = shaderModule;
+vertShaderStageInfo.pName = "vertMain";
+// END c
 ----
 
 The first parameter is the stage that we're operating in. The next two parameters
@@ -512,16 +552,34 @@ If you don't have any constants like that, then you can set the member to
 
 Modifying the structure to suit the fragment shader is easy:
 
-[,c++]
+[source,multilang,c++,c]
+.Fragment shader stage info
 ----
+// START c++
 vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain" };
+// END c++
+
+// START c
+VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+fragShaderStageInfo.module = shaderModule;
+fragShaderStageInfo.pName = "fragMain";
+// END c
 ----
 
 Finish by defining an array that contains these two structs, which we'll later use to reference them in the actual pipeline creation step.
 
-[,c++]
+[source,multilang,c++,c]
+.Shader stage array
 ----
+// START c++
 vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+// END c++
+
+// START c
+VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+// END c
 ----
 
 That's all there is describing the programmable stages of the pipeline.

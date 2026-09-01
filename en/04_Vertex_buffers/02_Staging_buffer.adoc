@@ -32,8 +32,10 @@ It's a bit of work, but it'll teach you a lot about how resources are shared bet
 Because we're going to create multiple buffers in this chapter, it's a good idea to move buffer creation to a helper function.
 Create a new function `createBuffer` and move the code in `createVertexBuffer` (except mapping) to it.
 
-[,c++]
+[source,multilang,c++,c]
+.createBuffer helper
 ----
+// START c++
 std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
 {
   vk::BufferCreateInfo   bufferInfo{.size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive};
@@ -44,6 +46,36 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize 
   buffer.bindMemory(*bufferMemory, 0);
   return {std::move(buffer), std::move(bufferMemory)};
 }
+// END c++
+
+// START c
+void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory)
+{
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, buffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create buffer!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, *buffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, bufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate buffer memory!");
+    }
+
+    vkBindBufferMemory(device, *buffer, *bufferMemory, 0);
+}
+// END c
 ----
 
 Make sure to add parameters for the buffer size, memory properties and usage so that we can use this function to create many different types of buffers.
@@ -72,8 +104,10 @@ Run your program to make sure that the vertex buffer still works properly.
 
 We're now going to change `createVertexBuffer` to only use a host visible buffer as temporary buffer and use a device local one as actual vertex buffer.
 
-[,c++]
+[source,multilang,c++,c]
+.createVertexBuffer using a staging buffer
 ----
+// START c++
 void createVertexBuffer()
 {
   vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -90,6 +124,34 @@ void createVertexBuffer()
 
   copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 }
+// END c++
+
+// START c
+void createVertexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 &stagingBuffer, &stagingBufferMemory);
+
+    void* dataStaging;
+    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &dataStaging);
+    memcpy(dataStaging, vertices.data(), bufferSize);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                 &vertexBuffer, &vertexBufferMemory);
+
+    copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+// END c
 ----
 
 We're now using a new `stagingBuffer` with `stagingBufferMemory` for mapping and copying the vertex data.
@@ -116,28 +178,66 @@ Therefore we must first allocate a temporary command buffer.
 You may wish to create a separate command pool for these kinds of short-lived buffers, because the implementation may be able to apply memory allocation optimizations.
 You should use the `vk::CommandPoolCreateFlagBits::eTransient` flag during command pool generation in that case.
 
-[,c++]
+[source,multilang,c++,c]
+.Allocating a temporary command buffer for the copy
 ----
+// START c++
 void copyBuffer(vk::raii::Buffer & srcBuffer, vk::raii::Buffer & dstBuffer, vk::DeviceSize size)
 {
   vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1 };
   vk::raii::CommandBuffer commandCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
 }
+// END c++
+
+// START c
+void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandCopyBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandCopyBuffer);
+}
+// END c
 ----
 
 And immediately start recording the command buffer:
 
-[,c++]
+[source,multilang,c++,c]
+.Beginning the one-time-submit command buffer
 ----
+// START c++
 commandCopyBuffer.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+// END c++
+
+// START c
+VkCommandBufferBeginInfo beginInfo{};
+beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+vkBeginCommandBuffer(commandCopyBuffer, &beginInfo);
+// END c
 ----
 
 We're only going to use the command buffer once and wait with returning from the function until the copy operation has finished executing.
 It's good practice to tell the driver about our intent using `vk::CommandBufferUsageFlagBits::eOneTimeSubmit`.
 
-[,c++]
+[source,multilang,c++,c]
+.Recording the copy command
 ----
+// START c++
 commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
+// END c++
+
+// START c
+VkBufferCopy copyRegion{};
+copyRegion.srcOffset = 0;
+copyRegion.dstOffset = 0;
+copyRegion.size = size;
+vkCmdCopyBuffer(commandCopyBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+// END c
 ----
 
 Contents of buffers are transferred using the `vk:raii::CommandBuffer::copyBuffer` command.
@@ -145,18 +245,38 @@ It takes the source and destination buffers as arguments, and an array of region
 The regions are defined in `vk::BufferCopy` structs and consist of a source buffer offset, destination buffer offset and size.
 It is not possible to specify `vk::WholeSize` here, unlike the `vk::raii::DeviceMemory::mapMemory` command.
 
-[,c++]
+[source,multilang,c++,c]
+.Ending the copy command buffer
 ----
+// START c++
 commandCopyBuffer.end();
+// END c++
+
+// START c
+vkEndCommandBuffer(commandCopyBuffer);
+// END c
 ----
 
 This command buffer only contains the copy command, so we can stop recording right after that.
 Now execute the command buffer to complete the transfer:
 
-[,c++]
+[source,multilang,c++,c]
+.Submitting and waiting for the transfer to finish
 ----
+// START c++
 queue.submit(vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr);
 queue.waitIdle();
+// END c++
+
+// START c
+VkSubmitInfo submitInfo{};
+submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+submitInfo.commandBufferCount = 1;
+submitInfo.pCommandBuffers = &commandCopyBuffer;
+
+vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+vkQueueWaitIdle(queue);
+// END c
 ----
 
 Unlike the draw commands, there are no events we need to wait on this time.

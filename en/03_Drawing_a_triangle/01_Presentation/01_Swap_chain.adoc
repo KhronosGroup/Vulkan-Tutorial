@@ -339,22 +339,16 @@ minimum number that it requires to function:
 
 [,c++]
 ----
-uint32_t imageCount = surfaceCapabilities.minImageCount;
+uint32_t minImageCount = surfaceCapabilities.minImageCount;
 ----
 
 However, simply sticking to this minimum means that we may sometimes have
 to wait on the driver to complete internal operations before we can acquire
-another image to render to. Therefore, it is recommended to request at least
-one more image than the minimum:
-
-[,c++]
-----
-uint32_t imageCount = surfaceCapabilities.minImageCount + 1;
-----
-
-We should also make sure to not exceed the maximum number of images while
-doing this, where `0` is a special value that means that there is no maximum,
-resulting in this helper function
+another image to render to. In practice, it's common to request a few more
+images than the strict minimum to give yourself some headroom - the helper
+function below requests at least three images, while also making sure to not
+exceed the maximum number of images the implementation supports, where `0` is
+a special value that means there is no maximum:
 
 [,c++]
 ----

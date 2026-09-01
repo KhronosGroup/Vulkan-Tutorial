@@ -608,7 +608,11 @@ class HelloTriangleApplication
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
 		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexTypeValue<decltype(indices)::value_type>::value);
-		commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+		// The draw call is intentionally commented out: the pipeline's shader statically
+		// uses the descriptor set 0 layout we just declared, but no actual vk::raii::DescriptorSet
+		// has been created or bound yet - that's introduced in the next chapter. Issuing the draw
+		// here would fail validation and crash the driver, for educational pacing purposes, we are leaving it commented out for now.
+		// commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		commandBuffer.endRendering();
 
 		// After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR

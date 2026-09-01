@@ -47,10 +47,19 @@ find_library(KTX_LIBRARY
 )
 
 include(FindPackageHandleStandardArgs)
+# Run the standard args check as non-REQUIRED/QUIET so a missing KTX does not
+# abort configuration here - we still want to fall back to FetchContent below.
+set(_ktx_saved_find_required ${KTX_FIND_REQUIRED})
+set(_ktx_saved_find_quietly ${KTX_FIND_QUIETLY})
+set(KTX_FIND_REQUIRED FALSE)
+set(KTX_FIND_QUIETLY TRUE)
 find_package_handle_standard_args(KTX
   REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
-  FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
 )
+set(KTX_FIND_REQUIRED ${_ktx_saved_find_required})
+set(KTX_FIND_QUIETLY ${_ktx_saved_find_quietly})
+unset(_ktx_saved_find_required)
+unset(_ktx_saved_find_quietly)
 
 if(NOT KTX_FOUND)
   message(STATUS "KTX include directory search paths: ${PC_KTX_INCLUDEDIR}, /usr/include, /usr/local/include, $ENV{KTX_DIR}/include, $ENV{VULKAN_SDK}/include, ${CMAKE_SOURCE_DIR}/external/ktx/include")

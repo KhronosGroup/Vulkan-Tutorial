@@ -43,7 +43,7 @@ It should be noted that the availability of a presentation queue,
 as we checked in the previous chapter, implies that the swap chain extension
 must be supported. We already passed `requiredDeviceExtension` to
 `vk::DeviceCreateInfo` when
-xref:../00_Setup/04_Logical_device_and_queues.adoc[creating the logical device],
+xref:03_Drawing_a_triangle/00_Setup/04_Logical_device_and_queues.adoc[creating the logical device],
 so the extension is enabled and there's no further device-creation code
 needed here.
 

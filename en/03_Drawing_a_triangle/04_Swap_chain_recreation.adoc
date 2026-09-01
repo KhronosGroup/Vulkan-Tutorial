@@ -136,7 +136,7 @@ else
 
 == Fixing a deadlock
 
-Recall from the xref:03_Drawing/03_Frames_in_flight.adoc[previous chapter] that the beginning of `drawFrame` waits for and then immediately resets the current frame's fence:
+Recall from the xref:03_Drawing_a_triangle/03_Drawing/03_Frames_in_flight.adoc[previous chapter] that the beginning of `drawFrame` waits for and then immediately resets the current frame's fence:
 
 [,c++]
 ----
@@ -212,7 +212,7 @@ else
 ----
 
 It is important to do this after `vk::raii::Queue::presentKHR` to ensure that the semaphores are in a consistent state, otherwise a signaled semaphore may never be properly waited upon.
-In earlier chapters we disabled window resizing, to enable that we set the `GLFW_RESIZABLE` hint to true. 
+In earlier chapters we disabled window resizing, to enable that we set the `GLFW_RESIZABLE` hint to true.
 Now, to actually detect resizes, we can use the `glfwSetFramebufferSizeCallback` function in the GLFW framework to set up a callback:
 
 [,c++]

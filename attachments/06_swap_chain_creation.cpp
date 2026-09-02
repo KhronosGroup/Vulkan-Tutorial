@@ -194,6 +194,7 @@ class HelloTriangleApplication
 		                                                                     vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
 		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
 		                                features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+		                                features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
 		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria
@@ -238,10 +239,10 @@ class HelloTriangleApplication
 		                   vk::PhysicalDeviceVulkan13Features,
 		                   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 		    featureChain = {
-		        {},                                    // vk::PhysicalDeviceFeatures2
-		        {.shaderDrawParameters = true},        // vk::PhysicalDeviceVulkan11Features
-		        {.dynamicRendering = true},            // vk::PhysicalDeviceVulkan13Features
-		        {.extendedDynamicState = true}         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+		        {},                                                          // vk::PhysicalDeviceFeatures2
+		        {.shaderDrawParameters = true},                              // vk::PhysicalDeviceVulkan11Features
+		        {.synchronization2 = true, .dynamicRendering = true},        // vk::PhysicalDeviceVulkan13Features
+		        {.extendedDynamicState = true}                               // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
 		    };
 
 		// create a Device

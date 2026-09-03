@@ -531,6 +531,71 @@ class DesktopPlatform final : public Platform {
       return window;
     }
 };
+
+/**
+ * @brief Direct-to-display implementation of the Platform interface.
+ *
+ * Bypasses the window manager entirely and presents straight to a physical
+ * display output via VK_KHR_display / VK_KHR_display_swapchain, for kiosk,
+ * embedded, or headless-compositor scenarios. There is no window, so input
+ * and resize callbacks are accepted but never invoked, and the surface is
+ * created against whichever physical device exposes a usable display - see
+ * CreateVulkanSurface() for how that device and display/plane/mode are chosen.
+ *
+ * @see en/Building_a_Simple_Engine/Engine_Architecture chapter for background
+ * on how this fits into the wider Platform abstraction.
+ */
+class DirectDisplayPlatform final : public Platform {
+  private:
+    int width = 0;
+    int height = 0;
+    bool shouldClose = false;
+    std::function<void(int, int)> resizeCallback;
+    std::function<void(float, float, uint32_t)> mouseCallback;
+    std::function<void(uint32_t, bool)> keyboardCallback;
+    std::function<void(uint32_t)> charCallback;
+
+    static DirectDisplayPlatform* activeInstance;
+    static void SignalHandler(int signal);
+
+  public:
+    DirectDisplayPlatform() = default;
+
+    /**
+	 * @brief Whether the SIMPLE_ENGINE_DIRECT_DISPLAY environment variable
+	 * requests direct-to-display mode instead of a windowed surface.
+	 */
+    static bool IsRequested();
+
+    bool Initialize(const std::string& appName, int width, int height) override;
+    void Cleanup() override;
+    bool ProcessEvents() override;
+    bool HasWindowResized() override {
+      return false;
+    }
+    int GetWindowWidth() const override {
+      return width;
+    }
+    int GetWindowHeight() const override {
+      return height;
+    }
+    bool CreateVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) override;
+    void SetResizeCallback(std::function<void(int, int)> callback) override {
+      resizeCallback = std::move(callback);
+    }
+    void SetMouseCallback(std::function<void(float, float, uint32_t)> callback) override {
+      mouseCallback = std::move(callback);
+    }
+    void SetKeyboardCallback(std::function<void(uint32_t, bool)> callback) override {
+      keyboardCallback = std::move(callback);
+    }
+    void SetCharCallback(std::function<void(uint32_t)> callback) override {
+      charCallback = std::move(callback);
+    }
+    void SetWindowTitle(const std::string&) override {
+      // No window to title.
+    }
+};
 #endif
 
 /**
@@ -543,6 +608,9 @@ std::unique_ptr<Platform> CreatePlatform(Args&&... args) {
 #if defined(PLATFORM_ANDROID)
   return std::make_unique<AndroidPlatform>(std::forward<Args>(args)...);
 #else
+  if (DirectDisplayPlatform::IsRequested()) {
+    return std::make_unique<DirectDisplayPlatform>();
+  }
   return std::make_unique<DesktopPlatform>();
 #endif
 }

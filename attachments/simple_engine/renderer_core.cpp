@@ -650,9 +650,17 @@ bool Renderer::createInstance(const std::string& appName, bool enableValidationL
 
     // Add required extensions for GLFW
 #if defined(PLATFORM_DESKTOP)
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-    extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
+    if (DirectDisplayPlatform::IsRequested()) {
+      // No windowing system involved: just the base surface extension plus
+      // VK_KHR_display, which is what actually lets us enumerate and present
+      // to a physical display output directly.
+      extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+      extensions.push_back(VK_KHR_DISPLAY_EXTENSION_NAME);
+    } else {
+      uint32_t glfwExtensionCount = 0;
+      const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+      extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
+    }
 #elif defined(PLATFORM_ANDROID)
     extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);

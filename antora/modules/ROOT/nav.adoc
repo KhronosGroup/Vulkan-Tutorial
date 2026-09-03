@@ -156,6 +156,7 @@
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Ray_Query_Reflections_and_Transparency.adoc[Ray query: reflections & transparency]
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Dynamic_Rendering_Local_Read.adoc[Dynamic rendering local read]
 *** xref:Building_a_Simple_Engine/Advanced_Topics/Robustness2.adoc[Robustness2]
+*** xref:Building_a_Simple_Engine/Advanced_Topics/Direct_To_Display.adoc[Direct-to-Display Rendering (VK_KHR_display)]
 ** Appendix
 *** xref:Building_a_Simple_Engine/Appendix/appendix.adoc[Appendix]
 

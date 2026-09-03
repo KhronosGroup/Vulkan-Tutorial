@@ -111,8 +111,10 @@ bool isDeviceSuitable(vk::raii::PhysicalDevice const & physicalDevice)
 Instead of just checking if a device is suitable or not and going with the first
 one, you could also give each device a score and pick the highest one. That way
 you could favor a dedicated graphics card by giving it a higher score, but fall
-back to an integrated GPU if that's the only available one. You could implement
-something like that as follows:
+back to an integrated GPU if that's the only available one. This needs a
+`std::multimap` to keep the candidates sorted by score as we go, so that means a
+new header at the top of the file. You could implement something like that as
+follows:
 
 [,c++]
 ----

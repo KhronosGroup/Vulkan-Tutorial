@@ -262,6 +262,9 @@ matching it against the minimum and maximum image extent.
 
 vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities)
 {
+    // currentExtent is only set to the special "undefined" value described above
+    // when the window manager lets us choose the extent ourselves; any other value
+    // means the surface already dictates a fixed extent that we must use as-is.
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
         return capabilities.currentExtent;

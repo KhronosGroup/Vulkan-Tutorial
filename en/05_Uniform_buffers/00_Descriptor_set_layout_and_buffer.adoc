@@ -329,14 +329,21 @@ I've chosen to use a perspective projection with a 45 degree vertical field-of-v
 The other parameters are the aspect ratio, near and far view planes.
 It is important to use the current swap chain extent to calculate the aspect ratio to take into account the new width and height of the window after a resize.
 
+GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted compared to Vulkan.
+If you don't compensate for that somewhere, the image will be rendered upside down.
+
+One common way to compensate is to flip the sign of the Y scaling factor in the projection matrix (`ubo.proj[1][1] *= -1;`).
+That works, but it also flips the handedness of the projection matrix, which then requires flipping `frontFace` wherever back-face culling is enabled, and can trip up anything downstream that assumes a standard right-handed projection.
+Instead, we'll apply the same correction at the viewport stage, where it doesn't affect the projection matrix at all.
+Go back to the `vk::Viewport` you set up in xref:03_Drawing_a_triangle/03_Drawing/01_Command_buffers.adoc[Command buffers] and give it a negative height:
+
 [,c++]
 ----
-ubo.proj[1][1] *= -1;
+commandBuffer.setViewport(0, vk::Viewport(0.0f, static_cast<float>(swapChainExtent.height), static_cast<float>(swapChainExtent.width), -static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 ----
 
-GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted.
-The easiest way to compensate for that is to flip the sign on the scaling factor of the Y axis in the projection matrix.
-If you don't do this, then the image will be rendered upside down.
+Setting `y` to the full height and `height` to its negative flips the Y axis during the viewport transform, which is applied after clipping - the net effect on the final image is identical to flipping the projection matrix, but the projection matrix itself, and therefore its handedness, is left alone.
+This is core Vulkan functionality (promoted from `VK_KHR_maintenance1`), so no extra feature or extension needs to be enabled.
 
 All of the transformations are defined now, so we can copy the data in the uniform buffer object to the current uniform buffer.
 This happens in exactly the same way as we did for vertex buffers, except without a staging buffer.

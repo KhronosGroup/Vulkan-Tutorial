@@ -238,7 +238,6 @@ void updateUniformBuffers() {
     glm::mat4 proj = glm::perspective(glm::radians(45.0f),
                                      static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height),
                                      0.1f, 20.0f);
-    proj[1][1] *= -1; // Flip Y for Vulkan
 
     // Update uniform buffers for each object
     for (auto& gameObject : gameObjects) {

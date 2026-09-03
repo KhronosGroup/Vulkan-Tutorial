@@ -46,6 +46,15 @@ At the top of the C++ file, note the following variable:
 
 At certain intervals, you will be instructed to update this variable and re-build to verify the effect of key changes, no need to write new code.
 
+NOTE: `LAB_TASK_LEVEL` only gates setup on the *C++ side* (acceleration structure
+building/binding, TLAS animation, and similar host-side scaffolding). It does not select or
+switch shaders. Shadows, transparency, and reflections only appear once you've filled in the
+corresponding `// TASKxx` sections in `38_ray_tracing.slang` yourself, following each chapter's
+instructions - raising `LAB_TASK_LEVEL` alone won't change what you see on screen. If you'd
+rather see the finished result first, `38_ray_tracing_complete.slang` is the reference solution;
+copy it over `38_ray_tracing.slang` (the build always compiles the latter) to build the
+fully-featured shader without writing any of the tasks.
+
 == Chapters in this series
 
 - xref:./00_Overview.adoc[Overview]

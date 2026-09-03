@@ -211,9 +211,10 @@ void createInstance()
 }
 ----
 
-If the check was successful then the `vk::raii::Instance` constructor should not
-ever throw a `vk::Result::eErrorLayerNotPresent` error, but you should run the
-program to make sure.
+If the check was successful, the `vk::raii::Instance` constructor should not
+throw a `vk::Result::eErrorLayerNotPresent` error. However, the set of layers
+available on the system can change between the check and the call - or between
+separate runs of the program - so you should still run the program to make sure.
 
 == Message callback
 

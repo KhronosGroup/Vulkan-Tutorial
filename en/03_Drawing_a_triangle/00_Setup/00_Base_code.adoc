@@ -221,10 +221,34 @@ private:
     }
 ----
 
-The very first call in `initWindow` should be `glfwInit()`, which initializes
-the GLFW library. Because GLFW was originally designed to create an OpenGL
-context, we need to tell it to not create an OpenGL context with a later
-call:
+Before we can open a window, the GLFW library has to be initialized with
+`glfwInit()`, and it has to be shut down again with `glfwTerminate()` once we
+are done with it. Instead of calling those by hand, we'll let a small guard
+object own that lifetime, so GLFW is always shut down no matter how the program
+exits. Add it as the *first* private member of the class:
+
+[,c++]
+----
+private:
+    struct GlfwGuard {
+        GlfwGuard() {
+            if (!glfwInit()) {
+                throw std::runtime_error("failed to initialize GLFW!");
+            }
+        }
+
+        ~GlfwGuard() { glfwTerminate(); }
+    } glfwGuard;
+----
+
+Because it is a member, its constructor runs before `run` is ever called, so
+GLFW is ready by the time `initWindow` executes. It also gives us somewhere to
+check the result: `glfwInit` returns false if the library could not be
+initialized. Why it has to be declared *first* is something we'll come back to
+when we get to `cleanup`.
+
+Because GLFW was originally designed to create an OpenGL context, we need to
+tell it to not create an OpenGL context with a window hint:
 
 [,c++]
 ----
@@ -281,8 +305,6 @@ You should now have a `initWindow` function that looks like this:
 [,c++]
 ----
 void initWindow() {
-    glfwInit();
-
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
@@ -306,20 +328,32 @@ This code should be fairly self-explanatory. It loops and checks for events like
 pressing the X button until the user has closed the window. This is also
 the loop where we'll later call a function to render a single frame.
 
-Once the window is closed, we need to clean up resources by destroying it and
-terminating GLFW itself. This will be our first `cleanup` code:
+Once the window is closed we have to release it and shut GLFW down again. That
+already happens on its own: `glfwGuard` is a member, so its destructor runs when
+the application object is destroyed, and `glfwTerminate` also destroys any
+windows that are still open. This is why we don't need a separate
+`glfwDestroyWindow` call.
+
+What matters is *when* that happens, and this is where the declaration order
+comes in. From the next chapter on, this class holds Vulkan objects, and those
+objects still talk to the window system while they are being destroyed. Members
+are destroyed in reverse declaration order, so declaring the guard *first* means
+it is destroyed *last* - after every Vulkan object we add later.
+
+Terminating GLFW in `cleanup` instead would break exactly that. `run` calls
+`cleanup` before any member is destroyed, so the connection to the window system
+would be gone while the swap chain still pointed at it, and the program would
+crash on exit. So `cleanup` stays empty for now:
 
 [,c++]
 ----
 void cleanup() {
-    glfwDestroyWindow(window);
-
-    glfwTerminate();
 }
 ----
 
-Note that in this tutorial, this is the last time we'll have to do anything
-in the cleanup() function. This code will never need to change again.
+Note that in this tutorial, this is the last time we'll have to think about
+tearing GLFW down. Because the guard is declared first, it keeps working no
+matter how many Vulkan objects the later chapters add.
 
 When you run the program now, you should see a window titled `Vulkan` show up
 until the application is terminated by closing the window.

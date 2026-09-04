@@ -164,6 +164,27 @@ class MultithreadedApplication
 	}
 
   private:
+	// Owns the GLFW lifetime: initialises it here and terminates it in the
+	// destructor. Declared first, so it is destroyed last - after every vk::raii
+	// member below. The swapchain and surface still reference the window system
+	// connection when their destructors run, so glfwTerminate() has to outlive
+	// them. It also destroys any windows that are still open.
+	struct GlfwGuard
+	{
+		GlfwGuard()
+		{
+			if (!glfwInit())
+			{
+				throw std::runtime_error("failed to initialize GLFW!");
+			}
+		}
+
+		~GlfwGuard()
+		{
+			glfwTerminate();
+		}
+	} glfwGuard;
+
 	GLFWwindow                      *window = nullptr;
 	vk::raii::Context                context;
 	vk::raii::Instance               instance       = nullptr;
@@ -306,8 +327,6 @@ class MultithreadedApplication
 
 	void initWindow()
 	{
-		glfwInit();
-
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
@@ -559,9 +578,6 @@ class MultithreadedApplication
 	void cleanup()
 	{
 		stopThreads();
-
-		glfwDestroyWindow(window);
-		glfwTerminate();
 	}
 
 	void createInstance()

@@ -134,6 +134,10 @@ private:
     struct ResourceData {
         std::shared_ptr<Resource> resource;  // The actual resource
         int refCount;                        // Reference count for this resource
+
+        // Utility functions 
+        void IncreaseRefCount() { refCount++; } 
+        void DecreaseRefCount() { refCount--; }
     };
     std::unordered_map<std::type_index,
                        std::unordered_map<std::string, ResourceData>> refCounts;
@@ -158,11 +162,13 @@ public:
 
         // Step 3a: Check existing resource cache to avoid redundant loading
         auto& typeResources = resources[std::type_index(typeid(T))];
+        auto& typeRefCount = refCounts[std::type_index(typeid(T))];
+
         auto it = typeResources.find(resourceId);
 
         if (it != typeResources.end()) {
             // Resource exists in cache - increment reference count and return handle
-            refCounts[resourceId]++;
+            typeRefCount[resourceId].IncreaseRefCount();
             return ResourceHandle<T>(resourceId, this);
         }
 
@@ -175,7 +181,7 @@ public:
 
         // Step 3c: Cache successful resource and initialize reference tracking
         typeResources[resourceId] = resource;
-        refCounts[resourceId] = 1;
+        typeRefCount[resourceId] = {resource, 1};
 
         return ResourceHandle<T>(resourceId, this);
     }

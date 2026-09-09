@@ -7,6 +7,7 @@ ifndef::site-gen-antora[]
 [NOTE]
 ====
 The tutorial uses the Antora site generator, documentation links might not work when viewed through this git repository. Please use this link:https://docs.vulkan.org/tutorial/latest/00_Introduction.html[this link] to view the tutorial instead.
+====
 endif::[]
 
 == Attribution

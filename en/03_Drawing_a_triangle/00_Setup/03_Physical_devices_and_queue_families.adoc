@@ -60,7 +60,7 @@ add to that function.
 
 [,c++]
 ----
-for (physicalDevice : physicalDevices)
+for (auto physicalDevice : physicalDevices)
 {
     break;
 }

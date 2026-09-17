@@ -297,7 +297,8 @@ jobs:
             libglfw3-dev libglm-dev libopenal-dev \
             nlohmann-json3-dev libx11-dev libxrandr-dev \
             libxinerama-dev libxcursor-dev libxi-dev \
-            zlib1g-dev libpng-dev libzstd-dev
+            zlib1g-dev libpng-dev libzstd-dev \
+            libxkbcommon-dev
 
           WORK_ROOT="/home/runner/.cache/siggraph2026_vk_tutorial"
           LOCAL_INSTALL="/home/runner/.local"
@@ -342,8 +343,7 @@ jobs:
             $extraArgs += "-DVulkan_LIBRARY=$env:Vulkan_LIBRARY"
           }
 
-          cmake -S . `
-            --preset vs2026-debug `
+          cmake --preset vs2026-debug `
             -DSLANGC_EXECUTABLE="C:/VulkanSDK/Bin/slangc.exe" `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache `

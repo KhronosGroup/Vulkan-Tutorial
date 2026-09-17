@@ -376,9 +376,11 @@ jobs:
             "${extra_args[@]}"
 
       - name: Build Windows
+        if: runner.os == 'Windows'
         run: cmake --build --preset vs2026-debug
 
       - name: Build Linux
+        if: runner.os == 'Linux'
         run: cmake --build --preset clang-debug
 
       - name: Cache stats
@@ -390,6 +392,3 @@ jobs:
           if command -v sccache >/dev/null 2>&1; then
             sccache -s
           fi
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure

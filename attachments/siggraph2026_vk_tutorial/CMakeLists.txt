@@ -250,12 +250,14 @@ target_sources(vulkan_siggraph PRIVATE ${SIGGRAPH_SHADER_SOURCES})
 source_group("Shaders" FILES ${SIGGRAPH_SHADER_SOURCES})
 
 # Make shader compilation part of the normal application build.
-add_dependencies(
-  vulkan_siggraph
-  basic_vertex_shader
-  basic_fragment_shader
-  albedo_fragment_shader
-  solid_color_fragment_shader)
+if(NOT DEFINED ENV{GITHUB_ACTIONS})
+  add_dependencies(
+    vulkan_siggraph
+    basic_vertex_shader
+    basic_fragment_shader
+    albedo_fragment_shader
+    solid_color_fragment_shader)
+endif()  
 
 target_compile_definitions(
   vulkan_siggraph

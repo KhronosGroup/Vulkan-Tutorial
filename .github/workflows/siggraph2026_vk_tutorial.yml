@@ -342,7 +342,7 @@ jobs:
             $extraArgs += "-DVulkan_LIBRARY=$env:Vulkan_LIBRARY"
           }
 
-          cmake -S . -B build `
+          cmake -S . `
             --preset vs2026-debug `
             -DSLANGC_EXECUTABLE="C:/VulkanSDK/Bin/slangc.exe" `
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `

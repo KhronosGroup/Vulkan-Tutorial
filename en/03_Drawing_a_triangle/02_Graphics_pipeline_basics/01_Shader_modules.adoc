@@ -161,9 +161,12 @@ float4 fragMain() : SV_Target
 The `fragMain` entry point function is called for every fragment just like the
 vertex shader `vertMain` function is called for every vertex. Colors in Slang
 are 4-component vectors with the R, G, B and alpha channels within the [0, 1] range.
-The `SV_Target` annotation on the return value marks it as the color written to a
-framebuffer; since we only have a single framebuffer here, it implicitly targets
-index `0`. The color red is returned directly as `float4(1.0, 0.0, 0.0, 1.0)`.
+The `SV_Target` annotation on the return value marks it as a color written to a
+framebuffer. It's actually optional here: Slang infers the render target from the
+return value on its own, even when a shader writes to more than one framebuffer, so
+`SV_Target` is only needed if you want to pin a particular output to a specific
+framebuffer index explicitly. We keep it in these examples for clarity about what's
+being written where. The color red is returned directly as `float4(1.0, 0.0, 0.0, 1.0)`.
 
 == Per-vertex colors
 

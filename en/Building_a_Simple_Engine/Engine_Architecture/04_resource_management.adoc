@@ -162,7 +162,7 @@ public:
 
         if (it != typeResources.end()) {
             // Resource exists in cache - increment reference count and return handle
-            refCounts[resourceId]++;
+            refCounts[std::type_index(typeid(T))][resourceId].refCount++;
             return ResourceHandle<T>(resourceId, this);
         }
 
@@ -175,7 +175,7 @@ public:
 
         // Step 3c: Cache successful resource and initialize reference tracking
         typeResources[resourceId] = resource;
-        refCounts[resourceId] = 1;
+        refCounts[std::type_index(typeid(T))][resourceId] = {resource, 1};
 
         return ResourceHandle<T>(resourceId, this);
     }
@@ -226,26 +226,32 @@ Finally, we implement intelligent resource lifecycle management through referenc
 
 [source,cpp]
 ----
+    template<typename T>
     void Release(const std::string& resourceId) {
-        // Locate reference count entry for this resource
-        auto it = refCounts.find(resourceId);
-        if (it != refCounts.end()) {
-            it->second--;
+        // Locate the reference count entry for this resource, in its type's bucket
+        auto typeIt = refCounts.find(std::type_index(typeid(T)));
+        if (typeIt == refCounts.end()) {
+            return;
+        }
+
+        auto it = typeIt->second.find(resourceId);
+        if (it != typeIt->second.end()) {
+            it->second.refCount--;
 
             // Check if resource has no remaining references
-            if (it->second <= 0) {
-                // Step 5a: Locate and unload the unreferenced resource across all type containers
-                for (auto& [type, typeResources] : resources) {
-                    auto resourceIt = typeResources.find(resourceId);
-                    if (resourceIt != typeResources.end()) {
-                        resourceIt->second->Unload();      // Allow resource to clean up its data
-                        typeResources.erase(resourceIt);   // Remove from cache
-                        break;
+            if (it->second.refCount <= 0) {
+                // Step 5a: Locate and unload the unreferenced resource in its type container
+                auto resourceTypeIt = resources.find(std::type_index(typeid(T)));
+                if (resourceTypeIt != resources.end()) {
+                    auto resourceIt = resourceTypeIt->second.find(resourceId);
+                    if (resourceIt != resourceTypeIt->second.end()) {
+                        resourceIt->second->Unload();          // Allow resource to clean up its data
+                        resourceTypeIt->second.erase(resourceIt); // Remove from cache
                     }
                 }
 
                 // Step 5b: Clean up reference counting entry
-                refCounts.erase(it);
+                typeIt->second.erase(it);
             }
         }
     }
@@ -709,7 +715,7 @@ if (texture && mesh && vertexShader && fragmentShader) {
 
 // Resources will be automatically released when handles go out of scope
 // or you can explicitly release them
-resourceManager.Release(texture.GetId());
+resourceManager.Release<Texture>(texture.GetId());
 ----
 
 === Advanced Resource Management Techniques

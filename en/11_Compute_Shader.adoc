@@ -569,212 +569,122 @@ There's no need to start a render pass or set a viewport.
 
 === Submitting work
 
-As our sample does both compute and graphics operations, we'll be doing two submits to both the graphics and compute queue per frame (see the `drawFrame` function):
+As our sample does both compute and graphics operations, we submit twice per frame to the same queue (see the `drawFrame` function): first the compute dispatch, then the graphics draw.
 
 [,c++]
 ----
+queue.submit(computeSubmitInfo, nullptr);
 ...
-computeQueue->submit(submitInfo, **computeInFlightFences[frameIndex]);
-...
-graphicsQueue->submit(submitInfo, **inFlightFences[frameIndex]);
+queue.submit(graphicsSubmitInfo, nullptr);
 ----
 
-The first submit to the compute queue updates the particle positions using the compute shader, and the second submit will then use that updated data to draw the particle system.
+The first submit updates the particle positions using the compute shader, and the second submit then uses that updated data to draw the particle system.
 
 === Synchronizing graphics and compute
-
-NOTE: The binary-semaphore-and-fence approach below is presented first because it builds directly on
-the synchronization primitives introduced in earlier chapters. The attached example program, however,
-uses only the timeline-semaphore approach from the "Timeline semaphores" section below - it never creates
-the `computeInFlightFences`/`computeFinishedSemaphores` shown here. Read this section for the concepts,
-then see the next section for what's actually implemented.
 
 Synchronization is an important part of Vulkan, even more so when doing compute in conjunction with graphics.
 Wrong or lacking synchronization may result in the vertex stage starting to draw (=read) particles while the compute shader hasn't finished updating (=write) them (read-after-write hazard), or the compute shader could start updating particles that are still in use by the vertex part of the pipeline (write-after-read hazard).
 
 So we must make sure that those cases don't happen by properly synchronizing the graphics and the compute load.
-There are different ways of doing so, depending on how you submit your
-compute workload, but in our case with two separate submits, we'll be using
-xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphores] and
-xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[fences] to ensure that the vertex shader won't start fetching
- vertices until the compute shader has finished updating them.
+This is necessary because even though the two submits above are issued one after another, Vulkan doesn't guarantee they execute on the GPU in that order, even on the same queue.
 
-This is necessary as even though the two submits are ordered one-after-another, there is no guarantee that they execute on the GPU in this order.
-Adding in wait and signal semaphores ensures this execution order.
+There are different ways to enforce that order depending on how you submit your compute workload. In our case, with two separate submits on the same queue, we use a single Vulkan
+xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphore] -- but not a binary one.
+Unlike the binary semaphores used elsewhere in this tutorial, which only have a simple signaled/unsignaled state, a *timeline semaphore* carries a monotonically increasing 64-bit counter that both host and device can wait on and signal to specific values.
+That's a natural fit here: one semaphore object can express "compute has reached value N" and "graphics has reached value N+1" without needing a distinct semaphore object per synchronization point, and it lets us wait on that same counter directly from the host before presenting, without a separate fence for that purpose.
 
-So we first add a new set of synchronization primitives for the compute work in `createSyncObjects`.
-The compute fences, just like the graphics fences, are created in the
-signaled state because otherwise, the first draw would time out while waiting
- for the fences to be signaled as detailed
- xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[here]:
+Timeline semaphores were introduced as an extension and later promoted to core in Vulkan 1.2, so we opt in when creating the logical device:
 
 [,c++]
 ----
-std::vector<std::unique_ptr<vk::raii::Fence>> computeInFlightFences;
-std::vector<std::unique_ptr<vk::raii::Semaphore>> computeFinishedSemaphores;
-...
-computeInFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-computeFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-
-for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    ...
-    computeFinishedSemaphores[i] = std::make_unique<vk::raii::Semaphore>(*device, vk::SemaphoreCreateInfo());
-    computeInFlightFences[i] = std::make_unique<vk::raii::Fence>(*device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
-}
-----
-
-We then use these to synchronize the compute buffer submission with the graphics submission:
-
-[,c++]
-----
-{
-    // Compute submission
-    while ( vk::Result::eTimeout == device->waitForFences(**computeInFlightFences[frameIndex], vk::True, UINT64_MAX) )
-        ;
-
-    updateUniformBuffer(frameIndex);
-    device->resetFences( **computeInFlightFences[frameIndex] );
-    computeCommandBuffers[frameIndex]->reset();
-    recordComputeCommandBuffer();
-
-    const vk::SubmitInfo submitInfo({}, {}, {**computeCommandBuffers[frameIndex]}, { **computeFinishedSemaphores[frameIndex]});
-    computeQueue->submit(submitInfo, **computeInFlightFences[frameIndex]);
-}
-{
-    // Graphics submission
-    while ( vk::Result::eTimeout == device->waitForFences(**inFlightFences[frameIndex], vk::True, UINT64_MAX))
-...
-
-    device->resetFences(  **inFlightFences[frameIndex] );
-    commandBuffers[frameIndex]->reset();
-    recordCommandBuffer(imageIndex);
-
-    vk::Semaphore waitSemaphores[] = {**presentCompleteSemaphore[frameIndex], **computeFinishedSemaphores[frameIndex]};
-    vk::PipelineStageFlags waitDestinationStageMask[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eVertexInput };
-    const vk::SubmitInfo submitInfo( waitSemaphores, waitDestinationStageMask, {**commandBuffers[frameIndex]}, {**renderFinishedSemaphore[frameIndex]} );
-    graphicsQueue->submit(submitInfo, **inFlightFences[frameIndex]);
-----
-
-Similar to the sample in the
-xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[semaphore chapter], this setup will immediately run the
- compute shader as we haven't specified any wait semaphores.
-Note that we're using scoping braces above to ensure that the RAII temporary
- variables we use get a chance to clean themselves up between the compute and
-  the graphics stage.
-This is fine, as we are waiting for the compute command buffer of the current frame to finish execution before the compute submission with the `device->waitForFences` command.
-
-The graphics submission, on the other hand, needs to wait for the compute work to finish so it doesn't start fetching vertices while the compute buffer is still updating them.
-So we wait on the `computeFinishedSemaphores` for the current frame and have the graphics submission wait on the `vk::PipelineStageFlagBits::eVertexInput` stage, where vertices are consumed.
-
-But it also needs to wait for presentation, so the fragment shader won't output to the color attachments until the image has been presented.
-So we also wait on the `imageAvailableSemaphores` on the current frame at the `vk::PipelineStageFlagBits::eColorAttachmentOutput` stage.
-
-=== Timeline semaphores: An improved synchronization mechanism
-
-The synchronization approach described above uses binary semaphores, which have a simple signaled/unsignaled state. While this works well for many scenarios, Vulkan also offers a more powerful synchronization primitive: timeline semaphores.
-
-Timeline semaphores were introduced as an extension and later promoted to core in Vulkan 1.2. Unlike binary semaphores, timeline semaphores have a 64-bit unsigned integer counter value that can be waited on and signaled to specific values. This provides several advantages over binary semaphores:
-
-1. *Reusability*: A single timeline semaphore can be used for multiple synchronization points, reducing the number of semaphores needed.
-2. *Host synchronization*: Timeline semaphores can be signaled and waited on from the host (CPU) without submitting commands to a queue.
-3. *Out-of-order signaling*: You can signal a timeline semaphore to a value higher than what's currently being waited on, allowing for more flexible synchronization patterns.
-4. *Multiple pending signals*: Unlike binary semaphores, which can only be pending-signaled once, timeline semaphores can have multiple pending signals.
-
-Let's see how we can modify our particle system example to use timeline semaphores instead of binary semaphores:
-
-First, we need to enable the timeline semaphore feature when creating the logical device:
-
-[,c++]
-----
-vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures;
-timelineSemaphoreFeatures.timelineSemaphore = vk::True;
+vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaphoreFeatures{.timelineSemaphore = vk::True};
 // Chain this to your device creation info
 ----
 
-Instead of creating multiple binary semaphores, we create a single timeline semaphore:
+We create the semaphore, with its type set to `eTimeline`, in `createSyncObjects`. We still keep one
+xref:03_Drawing_a_triangle/03_Drawing/02_Rendering_and_presentation.adoc[fence] per frame in flight here too, but it plays its usual role of bounding how far ahead of the GPU the CPU can get -- it has nothing to do with ordering compute against graphics, which is entirely the timeline semaphore's job:
 
 [,c++]
 ----
-vk::SemaphoreTypeCreateInfo semaphoreType{ .semaphoreType = vk::SemaphoreType::eTimeline, .initialValue = 0 };
-semaphore = vk::raii::Semaphore(device, {.pNext = &semaphoreType});
+vk::SemaphoreTypeCreateInfo semaphoreType{.semaphoreType = vk::SemaphoreType::eTimeline, .initialValue = 0};
+semaphore     = vk::raii::Semaphore(device, {.pNext = &semaphoreType});
 timelineValue = 0;
+
+for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+{
+    vk::FenceCreateInfo fenceInfo{};
+    inFlightFences.emplace_back(device, fenceInfo);
+}
 ----
 
-In our draw frame function, we use incrementing timeline values to coordinate work between compute and graphics:
+At the start of each frame, we derive four counter values from the single running `timelineValue`: the value the compute submission waits on, the value it signals on completion, the value the graphics submission waits on (the same value compute just signaled), and the value graphics signals when it's done:
 
 [,c++]
 ----
-// Update timeline value for this frame
-uint64_t computeWaitValue = timelineValue;
-uint64_t computeSignalValue = ++timelineValue;
-uint64_t graphicsWaitValue = computeSignalValue;
+uint64_t computeWaitValue    = timelineValue;
+uint64_t computeSignalValue  = ++timelineValue;
+uint64_t graphicsWaitValue   = computeSignalValue;
 uint64_t graphicsSignalValue = ++timelineValue;
 ----
 
-For the compute submission, we use a timeline semaphore submit info structure:
+The compute submission waits for its turn at `computeWaitValue` and signals `computeSignalValue` once its dispatch has finished, using a `vk::TimelineSemaphoreSubmitInfo` chained onto the regular `vk::SubmitInfo`:
 
 [,c++]
 ----
 vk::TimelineSemaphoreSubmitInfo computeTimelineInfo{
-    .waitSemaphoreValueCount = 1,
-    .pWaitSemaphoreValues = &computeWaitValue,
+    .waitSemaphoreValueCount   = 1,
+    .pWaitSemaphoreValues      = &computeWaitValue,
     .signalSemaphoreValueCount = 1,
-    .pSignalSemaphoreValues = &computeSignalValue
-};
+    .pSignalSemaphoreValues    = &computeSignalValue};
 
 vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eComputeShader};
 
 vk::SubmitInfo computeSubmitInfo{
-    .pNext = &computeTimelineInfo,
-    .waitSemaphoreCount = 1,
-    .pWaitSemaphores = &*semaphore,
-    .pWaitDstStageMask = waitStages,
-    .commandBufferCount = 1,
-    .pCommandBuffers = &*computeCommandBuffers[frameIndex],
+    .pNext                = &computeTimelineInfo,
+    .waitSemaphoreCount   = 1,
+    .pWaitSemaphores      = &*semaphore,
+    .pWaitDstStageMask    = waitStages,
+    .commandBufferCount   = 1,
+    .pCommandBuffers      = &*computeCommandBuffers[frameIndex],
     .signalSemaphoreCount = 1,
-    .pSignalSemaphores = &*semaphore
-};
+    .pSignalSemaphores    = &*semaphore};
 
-computeQueue.submit(computeSubmitInfo, nullptr);
+queue.submit(computeSubmitInfo, nullptr);
 ----
 
-Similarly, for the graphics submission:
+The graphics submission mirrors this, waiting on `graphicsWaitValue` -- the value compute just signaled -- at the `vk::PipelineStageFlagBits::eVertexInput` stage, since that's where the particle vertex data gets consumed, and signaling `graphicsSignalValue` once the draw is done:
 
 [,c++]
 ----
-vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eVertexInput;
+vk::PipelineStageFlags          waitStage = vk::PipelineStageFlagBits::eVertexInput;
 vk::TimelineSemaphoreSubmitInfo graphicsTimelineInfo{
-    .waitSemaphoreValueCount = 1,
-    .pWaitSemaphoreValues = &graphicsWaitValue,
+    .waitSemaphoreValueCount   = 1,
+    .pWaitSemaphoreValues      = &graphicsWaitValue,
     .signalSemaphoreValueCount = 1,
-    .pSignalSemaphoreValues = &graphicsSignalValue
-};
+    .pSignalSemaphoreValues    = &graphicsSignalValue};
 
 vk::SubmitInfo graphicsSubmitInfo{
-    .pNext = &graphicsTimelineInfo,
-    .waitSemaphoreCount = 1,
-    .pWaitSemaphores = &*semaphore,
-    .pWaitDstStageMask = &waitStage,
-    .commandBufferCount = 1,
-    .pCommandBuffers = &*commandBuffers[frameIndex],
+    .pNext                = &graphicsTimelineInfo,
+    .waitSemaphoreCount   = 1,
+    .pWaitSemaphores      = &*semaphore,
+    .pWaitDstStageMask    = &waitStage,
+    .commandBufferCount   = 1,
+    .pCommandBuffers      = &*commandBuffers[frameIndex],
     .signalSemaphoreCount = 1,
-    .pSignalSemaphores = &*semaphore
-};
+    .pSignalSemaphores    = &*semaphore};
 
-graphicsQueue.submit(graphicsSubmitInfo, nullptr);
+queue.submit(graphicsSubmitInfo, nullptr);
 ----
 
-Before presenting, we wait for the graphics work to complete:
+Because both submissions go through the same timeline semaphore, we can wait for the graphics work to finish directly from the host before presenting, instead of relying on a binary semaphore or fence for that handoff:
 
 [,c++]
 ----
 vk::SemaphoreWaitInfo waitInfo{
     .semaphoreCount = 1,
-    .pSemaphores = &*semaphore,
-    .pValues = &graphicsSignalValue
-};
+    .pSemaphores    = &*semaphore,
+    .pValues        = &graphicsSignalValue};
 
-// Wait for graphics to complete before presenting
 auto result = device.waitSemaphores(waitInfo, UINT64_MAX);
 if (result != vk::Result::eSuccess)
 {
@@ -782,22 +692,14 @@ if (result != vk::Result::eSuccess)
 }
 
 vk::PresentInfoKHR presentInfo{
-    .waitSemaphoreCount = 0, // No binary semaphores needed
-    .pWaitSemaphores = nullptr,
-    .swapchainCount = 1,
-    .pSwapchains = &*swapChain,
-    .pImageIndices = &imageIndex
-};
+    .waitSemaphoreCount = 0,        // no binary semaphores needed -- we already waited above
+    .pWaitSemaphores    = nullptr,
+    .swapchainCount     = 1,
+    .pSwapchains        = &*swapChain,
+    .pImageIndices      = &imageIndex};
 ----
 
-This timeline semaphore approach offers several benefits over the binary semaphore implementation:
-
-1. *Simplified resource management*: We only need a single semaphore instead of multiple semaphores per frame in flight.
-2. *More explicit synchronization*: The timeline values make it clear which operations depend on each other.
-3. *Reduced overhead*: With fewer synchronization objects, there's less overhead in managing them.
-4. *More flexible synchronization patterns*: Timeline semaphores enable more complex synchronization scenarios that would be difficult with binary semaphores.
-
-Timeline semaphores are particularly useful in scenarios with multiple dependent operations, like our compute-then-graphics workflow, or when you need to synchronize between the host and device. They provide a more powerful and flexible synchronization mechanism that can simplify your code while enabling more complex synchronization patterns.
+A single timeline semaphore standing in for what would otherwise be several binary semaphores and fences keeps this two-stage submission compact, but the same approach scales further: because the counter can be signaled and waited on from the host as well as the device, and a later submission can wait on a value higher than what's currently pending, timeline semaphores are a good fit whenever you need to coordinate more than two dependent submissions, or synchronize GPU work against CPU-side work.
 
 == Drawing the particle system
 

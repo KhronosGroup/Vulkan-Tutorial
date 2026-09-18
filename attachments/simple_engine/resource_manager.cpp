@@ -37,15 +37,5 @@ void Resource::Unload()
 
 void ResourceManager::UnloadAllResources()
 {
-	for (auto &kv : resources)
-	{
-		auto &val = kv.second;
-		for (auto &innerKv : val)
-		{
-			auto &loadedResource = innerKv.second;
-			loadedResource.resource->Unload();
-		}
-		val.clear();
-	}
 	resources.clear();
 }

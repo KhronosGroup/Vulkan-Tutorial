@@ -22,11 +22,18 @@ void initVulkan() {
 Additionally, add a data member to hold the handle to the instance and the
 raii context:
 
-[,c++]
+[source,multilang,c++,c]
+.Instance-related class members
 ----
+// START c++
 private:
 vk::raii::Context  context;
 vk::raii::Instance instance = nullptr;
+// END c++
+
+// START c
+VkInstance instance;
+// END c
 ----
 
 Now, to create an instance, we'll first have to fill in a struct with some
@@ -35,8 +42,10 @@ provide some useful information to the driver to optimize our specific
  application, (e.g., because it uses a well-known graphics engine with
 certain special behavior). This struct is called `vk::ApplicationInfo`:
 
-[,c++]
+[source,multilang,c++,c]
+.ApplicationInfo
 ----
+// START c++
 void createInstance()
 {
     constexpr vk::ApplicationInfo appInfo{.pApplicationName   = "Hello Triangle",
@@ -45,6 +54,20 @@ void createInstance()
                                           .engineVersion      = VK_MAKE_VERSION( 1, 0, 0 ),
                                           .apiVersion         = vk::ApiVersion14};
 }
+// END c++
+
+// START c
+void createInstance()
+{
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "No Engine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_4;
+}
+// END c
 ----
 
 While vk::ApiVersion10 or Vulkan 1.0 does exist, some functionality
@@ -61,11 +84,20 @@ the Vulkan driver which global extensions and validation layers we want to use.
 Global here means that they apply to the entire program and not a specific
 device, which will become clear in the next few chapters.
 
-[,c++]
+[source,multilang,c++,c]
+.InstanceCreateInfo
 ----
+// START c++
 vk::InstanceCreateInfo createInfo{
     .pApplicationInfo = &appInfo
 };
+// END c++
+
+// START c
+VkInstanceCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+createInfo.pApplicationInfo = &appInfo;
+// END c
 ----
 
 This structure has a member named flags, which we will handle later in this chapter.
@@ -76,8 +108,10 @@ is a platform-agnostic API, which means that you need an extension to interface
 with the window system. GLFW has a handy built-in function that returns the
 extension(s) it needs to do that which we can pass to the struct:
 
-[,c++]
+[source,multilang,c++,c]
+.Checking for GLFW extension support
 ----
+// START c++
 // Get the required instance extensions from GLFW.
 uint32_t glfwExtensionCount = 0;
 auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -98,6 +132,42 @@ vk::InstanceCreateInfo createInfo{
     .pApplicationInfo = &appInfo,
     .enabledExtensionCount = glfwExtensionCount,
     .ppEnabledExtensionNames = glfwExtensions};
+// END c++
+
+// START c
+// Get the required instance extensions from GLFW.
+uint32_t glfwExtensionCount = 0;
+const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+// Check if the required GLFW extensions are supported by the Vulkan implementation.
+uint32_t extensionCount = 0;
+vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+std::vector<VkExtensionProperties> extensionProperties(extensionCount);
+vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionProperties.data());
+
+for (uint32_t i = 0; i < glfwExtensionCount; ++i)
+{
+    bool supported = false;
+    for (const auto& extensionProperty : extensionProperties)
+    {
+        if (strcmp(extensionProperty.extensionName, glfwExtensions[i]) == 0)
+        {
+            supported = true;
+            break;
+        }
+    }
+    if (!supported)
+    {
+        throw std::runtime_error("Required GLFW extension not supported: " + std::string(glfwExtensions[i]));
+    }
+}
+
+VkInstanceCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+createInfo.pApplicationInfo = &appInfo;
+createInfo.enabledExtensionCount = glfwExtensionCount;
+createInfo.ppEnabledExtensionNames = glfwExtensions;
+// END c
 ----
 
 The other missing piece is the Layers to enable. Here is where we'll talk
@@ -108,9 +178,18 @@ in-depth in the next chapter, so leave this empty for now.
 We've now specified everything Vulkan needs to create an instance, and we can
 finally create the vk::raii::Instance:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the instance
 ----
+// START c++
 instance = vk::raii::Instance(context, createInfo);
+// END c++
+
+// START c
+if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create instance!");
+}
+// END c
 ----
 
 As you'll see, the general pattern that object creation function parameters in Vulkan follow is:
@@ -189,8 +268,10 @@ to instance enabled extension list.
 
 Typically, the code could be like this:
 
-[,c++]
+[source,multilang,c++,c]
+.Enabling the portability extension
 ----
+// START c++
 constexpr vk::ApplicationInfo appInfo{.pApplicationName   = "Hello Triangle",
                                       .applicationVersion = VK_MAKE_VERSION( 1, 0, 0 ),
                                       .pEngineName        = "No Engine",
@@ -202,6 +283,30 @@ vk::InstanceCreateInfo createInfo{
     .ppEnabledExtensionNames = { vk::KHRPortabilityEnumerationExtensionName }
 };
 instance = vk::raii::Instance(m_context, createInfo);
+// END c++
+
+// START c
+VkApplicationInfo appInfo{};
+appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+appInfo.pApplicationName = "Hello Triangle";
+appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.pEngineName = "No Engine";
+appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.apiVersion = VK_API_VERSION_1_4;
+
+const char* portabilityExtension = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+
+VkInstanceCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+createInfo.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+createInfo.pApplicationInfo = &appInfo;
+createInfo.enabledExtensionCount = 1;
+createInfo.ppEnabledExtensionNames = &portabilityExtension;
+
+if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create instance!");
+}
+// END c
 ----
 
 == Checking for extension support
@@ -217,9 +322,19 @@ the `vk::raii::Context::enumerateInstanceExtensionProperties` function. It retur
 a vector of the available extensions, which allows us to filter extensions by a
 specific validation layer, which we'll ignore for now.
 
-[,c++]
+[source,multilang,c++,c]
+.Enumerating supported extensions
 ----
+// START c++
 auto extensions = context.enumerateInstanceExtensionProperties();
+// END c++
+
+// START c
+uint32_t extensionCount = 0;
+vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+std::vector<VkExtensionProperties> extensions(extensionCount);
+vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
+// END c
 ----
 
 Each `vk::ExtensionProperties` struct contains the name and version of an

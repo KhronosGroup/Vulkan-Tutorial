@@ -205,39 +205,41 @@ set(BASIC_FRAG_SPV "${SHADER_OUTPUT_DIR}/basic.frag.spv")
 set(ALBEDO_FRAG_SPV "${SHADER_OUTPUT_DIR}/albedo.frag.spv")
 set(SOLID_COLOR_FRAG_SPV "${SHADER_OUTPUT_DIR}/solid_color.frag.spv")
 
-# Compile the vertex shader. It transforms scene vertices and reads per object
-# transforms through descriptor heap mappings.
-add_slang_shader(
-  basic_vertex_shader "${CMAKE_CURRENT_SOURCE_DIR}/shaders/basic.vert.slang"
-  vertexMain
-  vertex
-  "${BASIC_VERT_SPV}")
+if(NOT DEFINED ENV{GITHUB_ACTIONS})
+  # Compile the vertex shader. It transforms scene vertices and reads per object
+  # transforms through descriptor heap mappings.
+  add_slang_shader(
+    basic_vertex_shader "${CMAKE_CURRENT_SOURCE_DIR}/shaders/basic.vert.slang"
+    vertexMain
+    vertex
+    "${BASIC_VERT_SPV}")
 
-# Compile the fragment shader. It samples textures selected through a push -
-# index heap mapping.
-add_slang_shader(
-  basic_fragment_shader
-  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/basic.frag.slang"
-  fragmentMain
-  fragment
-  "${BASIC_FRAG_SPV}")
+  # Compile the fragment shader. It samples textures selected through a push -
+  # index heap mapping.
+  add_slang_shader(
+    basic_fragment_shader
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/basic.frag.slang"
+    fragmentMain
+    fragment
+    "${BASIC_FRAG_SPV}")
 
-# Compile the albedo - only fragment shader.It samples albedo but not the normal texture.
-add_slang_shader(
-  albedo_fragment_shader
-  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/albedo.frag.slang"
-  fragmentMain
-  fragment
-  "${ALBEDO_FRAG_SPV}")
+  # Compile the albedo - only fragment shader.It samples albedo but not the normal texture.
+  add_slang_shader(
+    albedo_fragment_shader
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/albedo.frag.slang"
+    fragmentMain
+    fragment
+    "${ALBEDO_FRAG_SPV}")
 
-# Compile the solid - color fragment shader.It reads a constant - offset uniform
-# buffer descriptor.
-add_slang_shader(
-  solid_color_fragment_shader
-  "${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid_color.frag.slang"
-  fragmentMain
-  fragment
-  "${SOLID_COLOR_FRAG_SPV}")
+  # Compile the solid - color fragment shader.It reads a constant - offset uniform
+  # buffer descriptor.
+  add_slang_shader(
+    solid_color_fragment_shader
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid_color.frag.slang"
+    fragmentMain
+    fragment
+    "${SOLID_COLOR_FRAG_SPV}")
+endif()
 
 # Main tutorial executable sources.
 add_executable(vulkan_siggraph src/main.cpp src/main.h src/util.cpp src/util.h)
@@ -248,12 +250,14 @@ target_sources(vulkan_siggraph PRIVATE ${SIGGRAPH_SHADER_SOURCES})
 source_group("Shaders" FILES ${SIGGRAPH_SHADER_SOURCES})
 
 # Make shader compilation part of the normal application build.
-add_dependencies(
-  vulkan_siggraph
-  basic_vertex_shader
-  basic_fragment_shader
-  albedo_fragment_shader
-  solid_color_fragment_shader)
+if(NOT DEFINED ENV{GITHUB_ACTIONS})
+  add_dependencies(
+    vulkan_siggraph
+    basic_vertex_shader
+    basic_fragment_shader
+    albedo_fragment_shader
+    solid_color_fragment_shader)
+endif()  
 
 target_compile_definitions(
   vulkan_siggraph

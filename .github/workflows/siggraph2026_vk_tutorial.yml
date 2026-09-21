@@ -105,7 +105,7 @@ jobs:
               Write-Host "Installing Vulkan SDK (silent, default feature set)..."
               # NOTE: Do not pass --components here. LunarG has changed component IDs over time,
               # and specifying them can cause 'Component(s) not found' failures.
-              Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+              Start-Process -FilePath $installer -ArgumentList "--cache-path $env:RUNNER_TEMP --accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
             }
           } else {
             Write-Host "Vulkan SDK cache hit. Setting up environment..."

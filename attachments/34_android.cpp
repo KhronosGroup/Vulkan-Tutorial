@@ -268,7 +268,6 @@ class HelloTriangleApplication
 	// Initialize window (Desktop only)
 	void initWindow()
 	{
-		glfwInit();
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
@@ -323,6 +322,27 @@ class HelloTriangleApplication
 	AssetManagerType *assetManager = nullptr;
 #else
 	// Desktop-specific members
+	// glfwGuard owns the GLFW lifetime: it initialises GLFW here and terminates it
+	// in the destructor. Declared before the vk::raii members below, so it is
+	// destroyed after them - the swapchain and surface still reference the window
+	// system connection when their destructors run. It also destroys any windows
+	// that are still open.
+	struct GlfwGuard
+	{
+		GlfwGuard()
+		{
+			if (!glfwInit())
+			{
+				throw std::runtime_error("failed to initialize GLFW!");
+			}
+		}
+
+		~GlfwGuard()
+		{
+			glfwTerminate();
+		}
+	} glfwGuard;
+
 	GLFWwindow *window = nullptr;
 #endif
 	bool initialized        = false;

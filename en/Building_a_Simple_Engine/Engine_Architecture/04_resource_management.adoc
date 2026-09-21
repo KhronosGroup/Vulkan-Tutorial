@@ -70,6 +70,8 @@ Using handles instead of direct pointers provides several benefits:
 2. *Validation* - Handles can be checked for validity before use.
 3. *Automatic Resource Management* - The resource manager can track which resources are in use.
 
+Note, that if you are implementing `ResourceHandle` in a separate header file, make sure that the function definitions reside in the same file as the `ResourceManager` definitions. This prevents circular dependencies, since `ResourceManager` depends on `ResourceHandle` and vice versa. 
+
 === Basic Resource Manager
 
 Let's implement a basic resource manager that can handle different types of resources. This implementation involves several key steps that work together to provide efficient resource management for a rendering engine.
@@ -107,7 +109,7 @@ public:
 
     protected:
         virtual bool doLoad() = 0;
-        virtual bool doUnload() = 0;
+        virtual void doUnload() = 0;
 };
 ----
 
@@ -134,9 +136,13 @@ private:
     struct ResourceData {
         std::shared_ptr<Resource> resource;  // The actual resource
         int refCount;                        // Reference count for this resource
+
+        // Utility functions 
+        void IncreaseRefCount() { refCount++; } 
+        void DecreaseRefCount() { refCount--; }
     };
-    std::unordered_map<std::type_index,
-                       std::unordered_map<std::string, ResourceData>> refCounts;
+    
+    std::unordered_map<std::string, ResourceData> refCounts;
 ----
 
 The storage architecture uses a sophisticated two-level mapping system that solves several critical problems in resource management. The outer map keyed by `std::type_index` ensures complete type separation, preventing name collisions between different resource types. For example, you could have both a texture named "stone" and a sound effect named "stone" without conflicts, as they're stored in separate type-specific containers.
@@ -162,7 +168,7 @@ public:
 
         if (it != typeResources.end()) {
             // Resource exists in cache - increment reference count and return handle
-            refCounts[resourceId]++;
+            refCounts[resourceId].IncreaseRefCount();
             return ResourceHandle<T>(resourceId, this);
         }
 
@@ -175,7 +181,7 @@ public:
 
         // Step 3c: Cache successful resource and initialize reference tracking
         typeResources[resourceId] = resource;
-        refCounts[resourceId] = 1;
+        refCounts[resourceId] = {resource, 1};
 
         return ResourceHandle<T>(resourceId, this);
     }
@@ -189,10 +195,12 @@ Error handling follows the principle of graceful degradation, where loading fail
 
 === Resource Manager: Resource Access and Validation Interface
 
-After that, we provide the interface for safely accessing cached resources with proper validation and type checking throughout the resource lifecycle.
+After that, we provide the interface for safely accessing cached resources with proper validation and type checking throughout the resource lifecycle. Users of the `ResourceManager` should not use these methods directly, instead they should use `Load` which returns safe `ResrourceHandle` object instead of the raw pointer. 
 
 [source,cpp]
 ----
+private:
+    
     template<typename T>
     T* GetResource(const std::string& resourceId) {
         // Access type-specific resource container using compile-time type information
@@ -212,7 +220,7 @@ After that, we provide the interface for safely accessing cached resources with 
     bool HasResource(const std::string& resourceId) {
         // Efficient existence check without resource access overhead
         auto resourceIt = resources.find(std::type_index(typeid(T)));
-        return resourceIt != resources.end();
+        return resourceIt->second.find(id) != resourceIt->second.end();    
     }
 ----
 
@@ -230,7 +238,7 @@ Finally, we implement intelligent resource lifecycle management through referenc
         // Locate reference count entry for this resource
         auto it = refCounts.find(resourceId);
         if (it != refCounts.end()) {
-            it->second--;
+            it->second.DecreaseRefCount();
 
             // Check if resource has no remaining references
             if (it->second <= 0) {
@@ -316,7 +324,7 @@ Next, we implement the texture loading pipeline that transforms disk-based image
 
 [source,cpp]
 ----
-    bool Load() override {
+    bool doLoad() override {
         // Step 2a: Construct file path using resource ID and expected format
         std::string filePath = "textures/" + GetId() + ".ktx";
 
@@ -348,7 +356,7 @@ Then, we implement comprehensive resource cleanup that ensures all GPU resources
 
 [source,cpp]
 ----
-    void Unload() override {
+    void doUnload() override {
         // Only perform cleanup if resource is currently loaded
         if (IsLoaded()) {
             // Step 3a: Obtain device handle for resource destruction

@@ -275,15 +275,13 @@ jobs:
             fi
           fi
 
-      - name: Cache dependencies (Linux)
-        if: runner.os == 'Linux'
-        id: cache-deps-linux
+      - name: Cache pinned Git checkouts
         uses: actions/cache@v4
         with:
           path: |
-            /home/runner/.cache/siggraph2026_vk_tutorial
-            /home/runner/.local
-          key: ${{ runner.os }}-deps-v1
+            attachments/siggraph2026_vk_tutorial/external
+            attachments/siggraph2026_vk_tutorial/data/external
+          key: ${{ runner.os }}-siggraph-git-${{ hashFiles('attachments/siggraph2026_vk_tutorial/CMakeLists.txt', 'attachments/siggraph2026_vk_tutorial/cmake/fetch_git.cmake') }}
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -294,42 +292,10 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake git ninja-build pkg-config \
             ca-certificates curl zip unzip tar \
-            libglfw3-dev libglm-dev libopenal-dev \
-            nlohmann-json3-dev libx11-dev libxrandr-dev \
+            libglfw3-dev libx11-dev libxrandr-dev \
             libxinerama-dev libxcursor-dev libxi-dev \
             zlib1g-dev libpng-dev libzstd-dev \
             libxkbcommon-dev
-
-          WORK_ROOT="/home/runner/.cache/siggraph2026_vk_tutorial"
-          LOCAL_INSTALL="/home/runner/.local"
-          mkdir -p "${WORK_ROOT}"
-
-          # build tinygltf
-          if [ ! -f "${LOCAL_INSTALL}/lib/cmake/tinygltf/tinygltfConfig.cmake" ]; then
-            # Clean up any partial/failed clones before re-attempting
-            rm -rf "${WORK_ROOT}/tinygltf" "${WORK_ROOT}/tinygltf-build"
-            git clone --depth 1 https://github.com/syoyo/tinygltf.git "${WORK_ROOT}/tinygltf"
-            cmake -S "${WORK_ROOT}/tinygltf" -B "${WORK_ROOT}/tinygltf-build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-              -DTINYGLTF_BUILD_LOADER_EXAMPLE=OFF -DTINYGLTF_BUILD_GL_EXAMPLES=OFF \
-              -DTINYGLTF_BUILD_STB_IMAGE=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}"
-            cmake --build "${WORK_ROOT}/tinygltf-build" --parallel
-            cmake --install "${WORK_ROOT}/tinygltf-build"
-          fi
-
-          # build ktx
-          if [ ! -f "${LOCAL_INSTALL}/lib/cmake/KTX/KTXConfig.cmake" ]; then
-            # Clean up any partial/failed clones before re-attempting
-            rm -rf "${WORK_ROOT}/KTX-Software" "${WORK_ROOT}/KTX-Software-build"
-            git clone --depth 1 --branch v4.3.2 https://github.com/KhronosGroup/KTX-Software.git "${WORK_ROOT}/KTX-Software"
-            cmake -S "${WORK_ROOT}/KTX-Software" -B "${WORK_ROOT}/KTX-Software-build" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-              -DKTX_FEATURE_TESTS=OFF -DKTX_FEATURE_TOOLS=OFF \
-              -DKTX_FEATURE_VULKAN=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}" \
-              -DVulkan_INCLUDE_DIR="${Vulkan_INCLUDE_DIR}"
-            cmake --build "${WORK_ROOT}/KTX-Software-build" --parallel
-            cmake --install "${WORK_ROOT}/KTX-Software-build"
-          fi
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
@@ -372,7 +338,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_PREFIX_PATH="/home/runner/.local;${VULKAN_SDK_SYSROOT}" \
+            -DCMAKE_PREFIX_PATH="${VULKAN_SDK_SYSROOT}" \
             "${extra_args[@]}"
 
       - name: Build Windows

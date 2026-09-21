@@ -3,6 +3,13 @@
 
 = Khronos Vulkan^®^ Tutorial
 
+ifndef::site-gen-antora[]
+[NOTE]
+====
+The tutorial uses the Antora site generator, documentation links might not work when viewed through this git repository. Please use this link:https://docs.vulkan.org/tutorial/latest/00_Introduction.html[this link] to view the tutorial instead.
+====
+endif::[]
+
 == Attribution
 
 The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.com/[Vulkan Tutorial]" by Alexander Overvoorde licensed under link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].

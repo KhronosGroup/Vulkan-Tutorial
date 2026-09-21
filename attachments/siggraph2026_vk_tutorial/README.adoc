@@ -24,11 +24,11 @@ See the link:https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/en/course
 
 * C++ 2023 tool chain
 ** Visual Studio 2022 (or newer)
-** Clang 21 (or newer) and Ninja
+** Clang and ninja (tested on clang-17 to clang-21 and ninja 1.11)
 * CMake 3.26 or newer
-* Git
-* Vulkan SDK
-* +slangc+, either on +PATH+ or supplied with +-DSLANGC_EXECUTABLE=...+
+* Git (to download dependencies)
+* Vulkan SDK (tested on 1.4.357)
+* +slangc+, either on +PATH+ or supplied with +-DSLANGC_EXECUTABLE=...+ (tested with version 2026.8)
 
 [NOTE]
 ====

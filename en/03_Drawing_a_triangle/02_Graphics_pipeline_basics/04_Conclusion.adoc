@@ -58,16 +58,32 @@ Right now there is only a single pipeline, so we'll ignore those members.
 
 Now prepare for the final step by creating a class member to hold the `vk::raii::Pipeline` object:
 
-[,c++]
+[source,multilang,c++,c]
+.Graphics pipeline class member
 ----
+// START c++
 vk::raii::Pipeline graphicsPipeline = nullptr;
+// END c++
+
+// START c
+VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+// END c
 ----
 
 And finally, create the graphics pipeline:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the graphics pipeline
 ----
+// START c++
 graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
+// END c++
+
+// START c
+if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create graphics pipeline!");
+}
+// END c
 ----
 
 The second parameter, for which we've passed the `nullptr` argument, references an optional `vk::raii::PipelineCache` object.

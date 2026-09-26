@@ -81,7 +81,7 @@ case $PACKAGE_MANAGER in
         sudo pacman -S --needed base-devel cmake ninja
 
         echo "Installing GLFW..."
-        sudo pacman -S --needed glfw-x11 || sudo pacman -S --needed glfw-wayland
+        sudo pacman -S --needed glfw
 
         echo "Installing GLM..."
         sudo pacman -S --needed glm

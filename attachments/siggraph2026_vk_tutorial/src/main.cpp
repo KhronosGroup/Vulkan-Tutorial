@@ -474,7 +474,7 @@ void Application::initVulkanVKB()
             // loader. Loading the function pointers is a bit tedious, but is handled automatically by Vulkan-Hpp.
             // Other libraries like Volk provide similar functionality for the C API.
             VULKAN_HPP_DEFAULT_DISPATCHER.init(m_vkbData.m_instance.instance, vkGetInstanceProcAddr,
-                                               m_vkbData.m_device.device);
+                                               m_vkbData.m_device.device, vkGetDeviceProcAddr);
         }
     }
 

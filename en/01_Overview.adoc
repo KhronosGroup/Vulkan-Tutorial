@@ -304,7 +304,7 @@ Functions that create or destroy an object will have a `vk::AllocationCallbacks`
 parameter that allows you to use a custom allocator for driver memory,
 which will also be left `nullptr` in this tutorial.
 
-Almost all functions return a `vk::Result` that is either `vk::result::eSuccess`
+Almost all functions return a `vk::Result` that is either `vk::Result::eSuccess`
 or an error code.
 The specification describes which error codes each function can return and
 what they mean.

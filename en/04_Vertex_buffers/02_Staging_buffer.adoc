@@ -20,7 +20,7 @@ If you like a challenge, then you can still try to use a different queue family 
 It will require you to make the following modifications to your program:
 
 * Introduce an `uint32_t transferQueueIndex` in addition to the `uint32_t queueIndex` (which maybe should be renamed to `graphicsQueueIndex` now), and explicitly look for a queue family with the `vk::QueueFlagBits::eTransfer` bit, but not the `vk::QueueFlagBits::eGraphics`.
-* Modify `createLogicalDevice` to request a handle to a `vk::raii::Queue transferQueue' (and maybe rename the `queue` to `graphicsQueue`)
+* Modify `createLogicalDevice` to request a handle to a `vk::raii::Queue transferQueue` (and maybe rename the `queue` to `graphicsQueue`)
 * Create a second command pool for command buffers that are submitted on the transfer queue family
 * Change the `sharingMode` of resources to be `vk::SharingMode::eConcurrent` and specify both the graphics and transfer queue families
 * Submit any transfer commands like `vk::raii::CommandBuffer::copyBuffer` (which we'll be using in this chapter) to the transfer queue instead of the graphics queue

@@ -140,7 +140,7 @@ It's good practice to tell the driver about our intent using `vk::CommandBufferU
 commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
 ----
 
-Contents of buffers are transferred using the `vk:raii::CommandBuffer::copyBuffer` command.
+Contents of buffers are transferred using the `vk::raii::CommandBuffer::copyBuffer` command.
 It takes the source and destination buffers as arguments, and an array of regions to copy.
 The regions are defined in `vk::BufferCopy` structs and consist of a source buffer offset, destination buffer offset and size.
 It is not possible to specify `vk::WholeSize` here, unlike the `vk::raii::DeviceMemory::mapMemory` command.

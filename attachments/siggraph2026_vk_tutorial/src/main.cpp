@@ -538,7 +538,7 @@ void Application::initVulkanVKB()
 
         // Store format and extent of the swapchain images for later use.
         {
-            m_swapchainFormat = vk::Format{m_vkbData.m_swapchain.image_format};
+            m_swapchainFormat = static_cast<vk::Format>(m_vkbData.m_swapchain.image_format);
             m_swapchainExtent = vk::Extent2D{
                 .width = m_vkbData.m_swapchain.extent.width,
                 .height = m_vkbData.m_swapchain.extent.height,

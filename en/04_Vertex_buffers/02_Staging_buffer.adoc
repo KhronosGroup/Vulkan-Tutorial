@@ -66,8 +66,6 @@ void createVertexBuffer()
 }
 ----
 
-Run your program to make sure that the vertex buffer still works properly.
-
 == Using a staging buffer
 
 We're now going to change `createVertexBuffer` to only use a host visible buffer as temporary buffer and use a device local one as actual vertex buffer.

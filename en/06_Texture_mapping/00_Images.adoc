@@ -143,10 +143,18 @@ Image objects will make it easier and faster to retrieve colors by allowing us t
 Pixels within an image object are known as texels, and we'll use that name from this point on.
 Add the following new class members:
 
-[,c++]
+[source,multilang,c++,c]
+.Texture image class members
 ----
+// START c++
 vk::raii::Image        textureImage       = nullptr;
 vk::raii::DeviceMemory textureImageMemory = nullptr;
+// END c++
+
+// START c
+VkImage        textureImage       = VK_NULL_HANDLE;
+VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
+// END c
 ----
 
 The parameters for an image are specified in a `vk::ImageCreateInfo` struct:
@@ -229,8 +237,10 @@ Use the default `vk::raii::DeviceMemory` constructor, and use `bindMemory` on th
 This function is already getting quite large and there'll be a need to create more images in later chapters, so we should abstract image creation into a `createImage` function, like we did for buffers.
 Create the function and move the image object creation and memory allocation to it:
 
-[,c++]
+[source,multilang,c++,c]
+.createImage helper
 ----
+// START c++
 std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(
   uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties )
 {
@@ -254,14 +264,56 @@ std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(
 
   return {std::move(image), std::move(imageMemory)};
 }
+// END c++
+
+// START c
+void createImage(
+  uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
+  VkImage* image, VkDeviceMemory* imageMemory)
+{
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.format = format;
+    imageInfo.extent.width = width;
+    imageInfo.extent.height = height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling = tiling;
+    imageInfo.usage = usage;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateImage(device, &imageInfo, nullptr, image) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(device, *image, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, imageMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate image memory!");
+    }
+
+    vkBindImageMemory(device, *image, *imageMemory, 0);
+}
+// END c
 ----
 
 I've made the width, height, format, tiling mode, usage, and memory properties parameters, because these will all vary between the images we'll be creating throughout this tutorial.
 
 The `createTextureImage` function can now be simplified to:
 
-[,c++]
+[source,multilang,c++,c]
+.createTextureImage
 ----
+// START c++
 void createTextureImage()
 {
   int            texWidth, texHeight, texChannels;
@@ -289,6 +341,41 @@ void createTextureImage()
                                                            vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
                                                            vk::MemoryPropertyFlagBits::eDeviceLocal);
 }
+// END c++
+
+// START c
+void createTextureImage()
+{
+    int texWidth, texHeight, texChannels;
+    stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    VkDeviceSize imageSize = texWidth * texHeight * 4;
+
+    if (!pixels) {
+        throw std::runtime_error("failed to load texture image!");
+    }
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 &stagingBuffer, &stagingBufferMemory);
+
+    void* data;
+    vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+    memcpy(data, pixels, static_cast<size_t>(imageSize));
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    stbi_image_free(pixels);
+
+    createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                &textureImage, &textureImageMemory);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+// END c
 ----
 
 == Layout transitions
@@ -305,8 +392,10 @@ These transitions are performed using pipeline barriers, which not only change t
 
 The function we're going to write now involves recording and executing a command buffer again, so now's a good time to move that logic into a helper function or two:
 
-[,c++]
+[source,multilang,c++,c]
+.beginSingleTimeCommands and endSingleTimeCommands
 ----
+// START c++
 vk::raii::CommandBuffer beginSingleTimeCommands()
 {
   vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1};
@@ -326,19 +415,72 @@ void endSingleTimeCommands(vk::raii::CommandBuffer &&commandBuffer)
   queue.submit(submitInfo, nullptr);
   queue.waitIdle();
 }
+// END c++
+
+// START c
+VkCommandBuffer beginSingleTimeCommands()
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    return commandBuffer;
+}
+
+void endSingleTimeCommands(VkCommandBuffer commandBuffer)
+{
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
+
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+}
+// END c
 ----
 
 The code for these functions is based on the existing code in `copyBuffer`.
 You can now simplify that function to:
 
-[,c++]
+[source,multilang,c++,c]
+.Simplified copyBuffer
 ----
+// START c++
 void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size)
 {
   vk::raii::CommandBuffer commandCopyBuffer = beginSingleTimeCommands();
   commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy{.size = size});
   endSingleTimeCommands(std::move(commandCopyBuffer));
 }
+// END c++
+
+// START c
+void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+{
+    VkCommandBuffer commandCopyBuffer = beginSingleTimeCommands();
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandCopyBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+    endSingleTimeCommands(commandCopyBuffer);
+}
+// END c
 ----
 
 If we were still using buffers, then we could now write a function to record and execute `copyBufferToImage` to finish the job, but this command requires the image to be in the right layout first.
@@ -355,14 +497,32 @@ One of the most common ways to perform layout transitions is using an _image mem
 A pipeline barrier like that is generally used to synchronize access to resources, like ensuring that a write to a buffer completes before reading from it, but it can also be used to transition image layouts and transfer queue family ownership when `vk::SharingMode::eExclusive` is used.
 There is an equivalent _buffer memory barrier_ to do this for buffers.
 
-[,c++]
+[source,multilang,c++,c]
+.ImageMemoryBarrier
 ----
+// START c++
 vk::ImageMemoryBarrier barrier{.oldLayout           = oldLayout,
                                .newLayout           = newLayout,
                                .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
                                .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
                                .image               = image,
                                .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
+// END c++
+
+// START c
+VkImageMemoryBarrier barrier{};
+barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+barrier.oldLayout = oldLayout;
+barrier.newLayout = newLayout;
+barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+barrier.image = image;
+barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+barrier.subresourceRange.baseMipLevel = 0;
+barrier.subresourceRange.levelCount = 1;
+barrier.subresourceRange.baseArrayLayer = 0;
+barrier.subresourceRange.layerCount = 1;
+// END c
 ----
 
 `oldLayout` and `newLayout` specify the the layout transition.
@@ -410,14 +570,30 @@ void copyBufferToImage(vk::raii::CommandBuffer &commandBuffer, const vk::raii::B
 Just like with buffer copies, you need to specify which part of the buffer is going to be copied to which part of the image.
 This happens through `vk::BufferImageCopy` structs:
 
-[,c++]
+[source,multilang,c++,c]
+.BufferImageCopy region
 ----
+// START c++
 vk::BufferImageCopy region{.bufferOffset      = 0,
                            .bufferRowLength   = 0,
                            .bufferImageHeight = 0,
                            .imageSubresource  = {.aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1},
                            .imageOffset       = {0, 0, 0},
                            .imageExtent       = {width, height, 1}};
+// END c++
+
+// START c
+VkBufferImageCopy region{};
+region.bufferOffset = 0;
+region.bufferRowLength = 0;
+region.bufferImageHeight = 0;
+region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+region.imageSubresource.mipLevel = 0;
+region.imageSubresource.baseArrayLayer = 0;
+region.imageSubresource.layerCount = 1;
+region.imageOffset = {0, 0, 0};
+region.imageExtent = {width, height, 1};
+// END c
 ----
 
 Most of these fields are self-explanatory.
@@ -429,9 +605,16 @@ The `imageSubresource`, `imageOffset` and `imageExtent` fields indicate to which
 
 Buffer to image copy operations are enqueued using the `vk::raii::CommandBuffer::copyBufferToImage` function:
 
-[,c++]
+[source,multilang,c++,c]
+.Recording the buffer-to-image copy
 ----
+// START c++
 commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
+// END c++
+
+// START c
+vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+// END c
 ----
 
 The third parameter indicates which layout the image is currently using.
@@ -481,8 +664,10 @@ There are two transitions we need to handle:
 
 These rules are specified using the following access masks and pipeline stages:
 
-[,c++]
+[source,multilang,c++,c]
+.Determining access masks and pipeline stages for the transition
 ----
+// START c++
 vk::PipelineStageFlags sourceStage;
 vk::PipelineStageFlags destinationStage;
 
@@ -507,6 +692,34 @@ else
   throw std::invalid_argument("unsupported layout transition!");
 }
 commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, {}, nullptr, barrier);
+// END c++
+
+// START c
+VkPipelineStageFlags sourceStage;
+VkPipelineStageFlags destinationStage;
+
+if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+{
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+}
+else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+{
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+}
+else
+{
+    throw std::invalid_argument("unsupported layout transition!");
+}
+vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+// END c
 ----
 
 As you can see in the aforementioned table, transfer writes must occur in the pipeline transfer stage.

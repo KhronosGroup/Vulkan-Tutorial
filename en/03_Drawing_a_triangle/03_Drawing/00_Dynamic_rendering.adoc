@@ -19,8 +19,10 @@ Let's see how this works in practice. We'll be using the `vk::RenderingAttachmen
 
 In the next chapter, we'll create command buffers and record rendering commands. Here's a preview of how we'll use dynamic rendering:
 
-[,c++]
+[source,multilang,c++,c]
+.Recording a frame with dynamic rendering
 ----
+// START c++
 void recordCommandBuffer(uint32_t imageIndex)
 {
     commandBuffer.begin({});
@@ -73,6 +75,67 @@ void recordCommandBuffer(uint32_t imageIndex)
 
     commandBuffer.end();
 }
+// END c++
+
+// START c
+void recordCommandBuffer(uint32_t imageIndex)
+{
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    // Transition the image layout for rendering
+    transition_image_layout(
+        imageIndex,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        0,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+    );
+
+    // Set up the color attachment
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    VkRenderingAttachmentInfo attachmentInfo{};
+    attachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    attachmentInfo.imageView = swapChainImageViews[imageIndex];
+    attachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentInfo.clearValue = clearColor;
+
+    // Set up the rendering info
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.offset = {0, 0};
+    renderingInfo.renderArea.extent = swapChainExtent;
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &attachmentInfo;
+
+    // Begin rendering
+    vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+    // Rendering commands will go here
+
+    // End rendering
+    vkCmdEndRendering(commandBuffer);
+
+    // Transition the image layout for presentation
+    transition_image_layout(
+        imageIndex,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        0,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+    );
+
+    vkEndCommandBuffer(commandBuffer);
+}
+// END c
 ----
 
 As you can see, we directly specify the image view to render to in the `vk::RenderingAttachmentInfo` structure. We also specify the load and store operations, similar to what we would do in a render pass. The `vk::RenderingInfo` structure then combines this with other rendering parameters.

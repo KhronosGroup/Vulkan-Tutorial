@@ -13,9 +13,16 @@ same physical device if you have varying requirements.
 
 Start by adding a new class member to store the logical device handle in.
 
-[,c++]
+[source,multilang,c++,c]
+.Logical device class member
 ----
+// START c++
 vk::raii::Device device = nullptr;
+// END c++
+
+// START c
+VkDevice device = VK_NULL_HANDLE;
+// END c
 ----
 
 Next, add a `createLogicalDevice` function that is called from `initVulkan`.
@@ -41,12 +48,35 @@ structs again, of which the first one will be `vk::DeviceQueueCreateInfo`. This
 structure describes the number of queues we want for a single queue family.
 Right now we're only interested in a queue with graphics capabilities.
 
-[,c++]
+[source,multilang,c++,c]
+.Finding the graphics queue family
 ----
+// START c++
 std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 auto graphicsQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, [](auto const &qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
 auto graphicsIndex = static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex };
+// END c++
+
+// START c
+uint32_t queueFamilyCount = 0;
+vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProperties.data());
+
+uint32_t graphicsIndex = 0;
+for (; graphicsIndex < queueFamilyCount; ++graphicsIndex)
+{
+    if (queueFamilyProperties[graphicsIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+    {
+        break;
+    }
+}
+
+VkDeviceQueueCreateInfo deviceQueueCreateInfo{};
+deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+deviceQueueCreateInfo.queueFamilyIndex = graphicsIndex;
+// END c
 ----
 
 The currently available drivers will only allow you to create a small number of
@@ -58,10 +88,22 @@ Vulkan lets you assign priorities to queues to influence the scheduling of
 command buffer execution using floating point numbers between `0.0` and `1.0`.
 This is required even if there is only a single queue:
 
-[,c++]
+[source,multilang,c++,c]
+.Assigning a queue priority
 ----
+// START c++
 float queuePriority = 0.5f;
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
+// END c++
+
+// START c
+float queuePriority = 0.5f;
+VkDeviceQueueCreateInfo deviceQueueCreateInfo{};
+deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+deviceQueueCreateInfo.queueFamilyIndex = graphicsIndex;
+deviceQueueCreateInfo.queueCount = 1;
+deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
+// END c
 ----
 
 == Specifying used device features
@@ -73,9 +115,16 @@ Right now we don't need anything special, so we can simply define it and leave
 everything to `vk::False`. We'll come back to this structure once we're about to
 start doing more interesting things with Vulkan.
 
-[,c++]
+[source,multilang,c++,c]
+.Requested physical device features
 ----
+// START c++
 vk::PhysicalDeviceFeatures deviceFeatures;
+// END c++
+
+// START c
+VkPhysicalDeviceFeatures deviceFeatures{};
+// END c
 ----
 
 == Enabling additional device features
@@ -91,8 +140,10 @@ To enable multiple sets of features, Vulkan uses a concept called "structure cha
 
 The C++ Vulkan API provides a helper template called `vk::StructureChain` that makes this process easier. Let's see how to use it:
 
-[,c++]
+[source,multilang,c++,c]
+.Chaining feature structures
 ----
+// START c++
 // Create a chain of feature structures
 vk::StructureChain<vk::PhysicalDeviceFeatures2,
                    vk::PhysicalDeviceVulkan11Features,
@@ -104,6 +155,29 @@ vk::StructureChain<vk::PhysicalDeviceFeatures2,
         {.dynamicRendering = true},            // Enable dynamic rendering from Vulkan 1.3
         {.extendedDynamicState = true}         // Enable extended dynamic state from the extension
     };
+// END c++
+
+// START c
+// In C, the pNext chain has to be linked together by hand, from the last
+// structure back to the first.
+VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures{};
+extendedDynamicStateFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
+extendedDynamicStateFeatures.extendedDynamicState = VK_TRUE;
+
+VkPhysicalDeviceVulkan13Features vulkan13Features{};
+vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+vulkan13Features.pNext = &extendedDynamicStateFeatures;
+vulkan13Features.dynamicRendering = VK_TRUE;
+
+VkPhysicalDeviceVulkan11Features vulkan11Features{};
+vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+vulkan11Features.pNext = &vulkan13Features;
+vulkan11Features.shaderDrawParameters = VK_TRUE;
+
+VkPhysicalDeviceFeatures2 featureChain{};
+featureChain.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+featureChain.pNext = &vulkan11Features;
+// END c
 ----
 
 Here's what's happening in this code:
@@ -123,10 +197,18 @@ When we create the logical device later, we'll pass a pointer to the first struc
 
 For our application to work properly, we need to enable certain device extensions. These extensions provide additional functionality that we'll need later in the tutorial.
 
-[,c++]
+[source,multilang,c++,c]
+.Required device extensions
 ----
+// START c++
 std::vector<const char*> requiredDeviceExtension = {
     vk::KHRSwapchainExtensionName};
+// END c++
+
+// START c
+std::vector<const char*> requiredDeviceExtension = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+// END c
 ----
 
 The `VK_KHR_swapchain` extension is required for presenting rendered images to the window. Other extensions provide additional functionality that we'll use in later parts of the tutorial.
@@ -135,8 +217,10 @@ The `VK_KHR_swapchain` extension is required for presenting rendered images to t
 
 With all the necessary information prepared, we can now create the logical device. We need to fill in the `vk::DeviceCreateInfo` structure and connect our feature chain to it:
 
-[,c++]
+[source,multilang,c++,c]
+.DeviceCreateInfo
 ----
+// START c++
 vk::DeviceCreateInfo deviceCreateInfo{
     .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
     .queueCreateInfoCount = 1,
@@ -144,6 +228,17 @@ vk::DeviceCreateInfo deviceCreateInfo{
     .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size()),
     .ppEnabledExtensionNames = requiredDeviceExtension.data()
 };
+// END c++
+
+// START c
+VkDeviceCreateInfo deviceCreateInfo{};
+deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+deviceCreateInfo.pNext = &featureChain;
+deviceCreateInfo.queueCreateInfoCount = 1;
+deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
+deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtension.size());
+deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtension.data();
+// END c
 ----
 
 Reviewing how we connect our feature chain to the device creation process:
@@ -172,9 +267,18 @@ That means that the `enabledLayerCount` and `ppEnabledLayerNames` fields of
 
 With the `vk::DeviceCreateInfo` filled in, we can now proceed with creating logical device.
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the logical device
 ----
+// START c++
 device = vk::raii::Device(physicalDevice, deviceCreateInfo);
+// END c++
+
+// START c
+if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create logical device!");
+}
+// END c
 ----
 
 Passed parameters are the physical device to interface with, and the create
@@ -191,9 +295,16 @@ included as a parameter.
 The queues are automatically created along with the logical device, but we don't have a handle to interface with them yet.
 First, add a class member to store a handle to the graphics queue:
 
-[,c++]
+[source,multilang,c++,c]
+.Graphics queue class member
 ----
+// START c++
 vk::raii::Queue graphicsQueue = nullptr;
+// END c++
+
+// START c
+VkQueue graphicsQueue = VK_NULL_HANDLE;
+// END c
 ----
 
 Device queues are implicitly cleaned up when the device is destroyed, so we
@@ -204,9 +315,16 @@ queue family. The parameters are the logical device, queue family index, and que
 index. Because we're only creating a single queue from this family, we'll simply
 use queue index `0`.
 
-[,c++]
+[source,multilang,c++,c]
+.Retrieving the graphics queue handle
 ----
+// START c++
 graphicsQueue = vk::raii::Queue(device, graphicsIndex, 0);
+// END c++
+
+// START c
+vkGetDeviceQueue(device, graphicsIndex, 0, &graphicsQueue);
+// END c
 ----
 
 With the logical device and queue handles, we can now actually start using the

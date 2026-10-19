@@ -56,8 +56,10 @@ textureImageView = vk::raii::ImageView(device, viewInfo);
 
 Because so much of the logic is duplicated from `createImageViews`, you may wish to abstract it into a new `createImageView` function:
 
-[,c++]
+[source,multilang,c++,c]
+.createImageView helper
 ----
+// START c++
 vk::raii::ImageView createImageView(vk::Image const &image, vk::Format format)
 {
   vk::ImageViewCreateInfo viewInfo{
@@ -67,22 +69,57 @@ vk::raii::ImageView createImageView(vk::Image const &image, vk::Format format)
       .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}};
   return vk::raii::ImageView(device, viewInfo);
 }
+// END c++
+
+// START c
+VkImageView createImageView(VkImage image, VkFormat format)
+{
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VkImageView imageView;
+    if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture image view!");
+    }
+    return imageView;
+}
+// END c
 ----
 
 The `createTextureImageView` function can now be simplified to:
 
-[,c++]
+[source,multilang,c++,c]
+.Simplified createTextureImageView
 ----
+// START c++
 void createTextureImageView()
 {
   textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb);
 }
+// END c++
+
+// START c
+void createTextureImageView()
+{
+    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+}
+// END c
 ----
 
 And `createImageViews` can be simplified to:
 
-[,c++]
+[source,multilang,c++,c]
+.Simplified createImageViews
 ----
+// START c++
 void createImageViews()
 {
   assert(swapChainImageViews.empty());
@@ -93,6 +130,20 @@ void createImageViews()
     swapChainImageViews.emplace_back(createImageView(image, swapChainSurfaceFormat.format));
   }
 }
+// END c++
+
+// START c
+void createImageViews()
+{
+    assert(swapChainImageViews.empty());
+
+    swapChainImageViews.reserve(swapChainImages.size());
+    for (auto &image : swapChainImages)
+    {
+        swapChainImageViews.push_back(createImageView(image, swapChainSurfaceFormat.format));
+    }
+}
+// END c
 ----
 
 == Samplers
@@ -210,8 +261,10 @@ This struct in turn has a member called `maxSamplerAnisotropy` and this is the m
 If we want to go for maximum quality, we can simply use that value directly.
 You can either query the properties at the beginning of your program and pass them around to the functions that need them, or query them in the `createTextureSampler` function itself.
 
-[,c++]
+[source,multilang,c++,c]
+.The complete SamplerCreateInfo
 ----
+// START c++
 vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 vk::SamplerCreateInfo        samplerInfo{.magFilter        = vk::Filter::eLinear,
                                          .minFilter        = vk::Filter::eLinear,
@@ -223,20 +276,53 @@ vk::SamplerCreateInfo        samplerInfo{.magFilter        = vk::Filter::eLinear
                                          .maxAnisotropy    = properties.limits.maxSamplerAnisotropy,
                                          .compareEnable    = vk::False,
                                          .compareOp        = vk::CompareOp::eAlways};
+// END c++
+
+// START c
+VkPhysicalDeviceProperties properties{};
+vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+VkSamplerCreateInfo samplerInfo{};
+samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+samplerInfo.magFilter = VK_FILTER_LINEAR;
+samplerInfo.minFilter = VK_FILTER_LINEAR;
+samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+samplerInfo.anisotropyEnable = VK_TRUE;
+samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+samplerInfo.compareEnable = VK_FALSE;
+samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+// END c
 ----
 
-[,c++]
+[source,multilang,c++,c]
+.Border color
 ----
+// START c++
 samplerInfo.borderColor = vk::BorderColor::eIntOpaqueBlack;
+// END c++
+
+// START c
+samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+// END c
 ----
 
 The `borderColor` field specifies which color is returned when sampling beyond the image with clamp to border addressing mode.
 It is possible to return black, white or transparent in either float or int formats.
 You cannot specify an arbitrary color.
 
-[,c++]
+[source,multilang,c++,c]
+.Coordinate normalization
 ----
+// START c++
 samplerInfo.unnormalizedCoordinates = vk::False;
+// END c++
+
+// START c
+samplerInfo.unnormalizedCoordinates = VK_FALSE;
+// END c
 ----
 
 The `unnormalizedCoordinates` field specifies which coordinate system you want to use to address texels in an image.
@@ -254,12 +340,22 @@ If a comparison function is enabled, then texels will first be compared to a val
 This is mainly used for https://developer.nvidia.com/gpugems/GPUGems/gpugems_ch11.html[percentage-closer filtering] on shadow maps.
 We'll look at this in a future chapter.
 
-[,c++]
+[source,multilang,c++,c]
+.Mipmapping fields
 ----
+// START c++
 samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
 samplerInfo.mipLodBias = 0.0f;
 samplerInfo.minLod = 0.0f;
 samplerInfo.maxLod = 0.0f;
+// END c++
+
+// START c
+samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+samplerInfo.mipLodBias = 0.0f;
+samplerInfo.minLod = 0.0f;
+samplerInfo.maxLod = 0.0f;
+// END c
 ----
 
 All of these fields apply to mipmapping.
@@ -268,8 +364,10 @@ We will look at mipmapping in a link:/Generating_Mipmaps[later chapter], but bas
 The functioning of the sampler is now fully defined.
 Add a class member to hold the handle of the sampler object and create the sampler with `vkCreateSampler`:
 
-[,c++]
+[source,multilang,c++,c]
+.Sampler class member and creation
 ----
+// START c++
 vk::raii::ImageView    textureImageView   = nullptr;
 vk::raii::Sampler      textureSampler     = nullptr;
 
@@ -281,6 +379,23 @@ void createTextureSampler()
 
     textureSampler = vk::raii::Sampler(device, samplerInfo);
 }
+// END c++
+
+// START c
+VkImageView textureImageView = VK_NULL_HANDLE;
+VkSampler   textureSampler   = VK_NULL_HANDLE;
+
+...
+
+void createTextureSampler()
+{
+    ...
+
+    if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
+}
+// END c
 ----
 
 Note the sampler does not reference a `vk::Image` anywhere.
@@ -297,19 +412,41 @@ image::/images/validation_layer_anisotropy.png[]
 That's because anisotropic filtering is actually an optional device feature.
 We need to update the `createLogicalDevice` function to request it:
 
-[,c++]
+[source,multilang,c++,c]
+.Requesting the anisotropic filtering feature
 ----
+// START c++
 vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
     {.features = {.samplerAnisotropy = true } },            // vk::PhysicalDeviceFeatures2
     {.synchronization2 = true, .dynamicRendering = true },  // vk::PhysicalDeviceVulkan13Features
     {.extendedDynamicState = true }                         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
 };
+// END c++
+
+// START c
+VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures{};
+extendedDynamicStateFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
+extendedDynamicStateFeatures.extendedDynamicState = VK_TRUE;
+
+VkPhysicalDeviceVulkan13Features vulkan13Features{};
+vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+vulkan13Features.pNext = &extendedDynamicStateFeatures;
+vulkan13Features.synchronization2 = VK_TRUE;
+vulkan13Features.dynamicRendering = VK_TRUE;
+
+VkPhysicalDeviceFeatures2 featureChain{};
+featureChain.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+featureChain.pNext = &vulkan13Features;
+featureChain.features.samplerAnisotropy = VK_TRUE;
+// END c
 ----
 
 And even though it is very unlikely that a modern graphics card will not support it, we should update `isDeviceSuitable` to check if it is available:
 
-[,c++]
+[source,multilang,c++,c]
+.Checking for the anisotropy feature in isDeviceSuitable
 ----
+// START c++
 bool isDeviceSuitable(VkPhysicalDevice device)
 {
     ...
@@ -325,16 +462,53 @@ bool isDeviceSuitable(VkPhysicalDevice device)
 		// Return true if the physicalDevice meets all the criteria
 		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
+// END c++
+
+// START c
+bool isDeviceSuitable(VkPhysicalDevice device)
+{
+    ...
+
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures{};
+    extendedDynamicStateFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
+
+    VkPhysicalDeviceVulkan13Features vulkan13Features{};
+    vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    vulkan13Features.pNext = &extendedDynamicStateFeatures;
+
+    VkPhysicalDeviceFeatures2 features{};
+    features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features.pNext = &vulkan13Features;
+
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &features);
+
+    bool supportsRequiredFeatures = features.features.samplerAnisotropy &&
+                                     vulkan13Features.dynamicRendering &&
+                                     vulkan13Features.synchronization2 &&
+                                     extendedDynamicStateFeatures.extendedDynamicState;
+
+    // Return true if the physicalDevice meets all the criteria
+    return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+}
+// END c
 ----
 
 The `vk::raii::PhysicalDevice::getFeatures2` repurposes the `vk::PhysicalDeviceFeatures` struct to indicate which features are supported rather than requested by setting the boolean values.
 
 Instead of enforcing the availability of anisotropic filtering, it's also possible to simply not use it by conditional setting:
 
-[,c++]
+[source,multilang,c++,c]
+.Disabling anisotropic filtering
 ----
+// START c++
 samplerInfo.anisotropyEnable = vk::False;
 samplerInfo.maxAnisotropy = 1.0f;
+// END c++
+
+// START c
+samplerInfo.anisotropyEnable = VK_FALSE;
+samplerInfo.maxAnisotropy = 1.0f;
+// END c
 ----
 
 In the xref:./02_Combined_image_sampler.adoc[next chapter] we will expose the image and sampler objects to the shaders to draw the texture onto the square.

@@ -15,9 +15,16 @@ We have to create a command pool before we can create command buffers.
 Command pools manage the memory that is used to store the buffers and command buffers are allocated from them.
 Add a new class member to store a `vk::raii::CommandPool`:
 
-[,c++]
+[source,multilang,c++,c]
+.Command pool class member
 ----
+// START c++
 vk::raii::CommandPool commandPool = nullptr;
+// END c++
+
+// START c
+VkCommandPool commandPool = VK_NULL_HANDLE;
+// END c
 ----
 
 Then create a new function `createCommandPool` and call it from `initVulkan` after the graphics pipeline was created.
@@ -46,10 +53,20 @@ void createCommandPool()
 
 Command pool creation only takes two parameters:
 
-[,c++]
+[source,multilang,c++,c]
+.CommandPoolCreateInfo
 ----
+// START c++
 vk::CommandPoolCreateInfo poolInfo{.flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                    .queueFamilyIndex = queueIndex};
+// END c++
+
+// START c
+VkCommandPoolCreateInfo poolInfo{};
+poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+poolInfo.queueFamilyIndex = queueIndex;
+// END c
 ----
 
 There are two possible flags for command pools:
@@ -66,9 +83,18 @@ Command buffers are executed by submitting them on one of the device queues, lik
 Each command pool can only allocate command buffers that are submitted on a single type of queue.
 We're going to record commands for drawing, which is why we've chosen the graphics queue family.
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the command pool
 ----
+// START c++
 commandPool = vk::raii::CommandPool(device, poolInfo);
+// END c++
+
+// START c
+if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create command pool!");
+}
+// END c
 ----
 
 Finish creating the command pool using the `vk::raii::CommandPool` constructor.
@@ -82,9 +108,16 @@ We can now start allocating command buffers.
 Create a `vk::raii::CommandBuffer` object as a class member.
 Command buffers will be automatically freed when their command pool is destroyed, so we don't need explicit cleanup.
 
-[,c++]
+[source,multilang,c++,c]
+.Command buffer class member
 ----
+// START c++
 vk::raii::CommandBuffer commandBuffer = nullptr;
+// END c++
+
+// START c
+VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+// END c
 ----
 
 We'll now start working on a `createCommandBuffer` function to allocate a single command buffer from the command pool.
@@ -114,11 +147,26 @@ void createCommandBuffer()
 
 Command buffers are allocated with the `vk::raii::CommandBuffers` constructor, which takes a `vk::CommandBufferAllocateInfo` struct as parameter that specifies the command pool and number of buffers to allocate:
 
-[,c++]
+[source,multilang,c++,c]
+.Allocating the command buffer
 ----
+// START c++
 vk::CommandBufferAllocateInfo allocInfo{ .commandPool = commandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1 };
 
 commandBuffer = std::move(vk::raii::CommandBuffers(device, allocInfo).front());
+// END c++
+
+// START c
+VkCommandBufferAllocateInfo allocInfo{};
+allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+allocInfo.commandPool = commandPool;
+allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+allocInfo.commandBufferCount = 1;
+
+if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+    throw std::runtime_error("failed to allocate command buffers!");
+}
+// END c
 ----
 
 The `level` parameter specifies if the allocated command buffers are primary or secondary command buffers.
@@ -145,9 +193,20 @@ void recordCommandBuffer(uint32_t imageIndex)
 
 We always begin recording a command buffer by calling `vk::raii::CommandBuffer::begin` with a small `vk::CommandBufferBeginInfo` structure as argument that specifies some details about the usage of this specific command buffer.
 
-[,c++]
+[source,multilang,c++,c]
+.Beginning command buffer recording
 ----
+// START c++
 commandBuffer.begin({});
+// END c++
+
+// START c
+VkCommandBufferBeginInfo beginInfo{};
+beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+    throw std::runtime_error("failed to begin recording command buffer!");
+}
+// END c
 ----
 
 The `flags` member of the `vk::CommandBufferBeginInfo` specifies how we're going to use the command buffer.
@@ -171,8 +230,10 @@ Before we can start rendering to an image, we need to transition its layout to o
 
 We'll use a pipeline barrier to transition the image layout from `vk::ImageLayout::eUndefined` to `vk::ImageLayout::eColorAttachmentOptimal`:
 
-[,c++]
+[source,multilang,c++,c]
+.transition_image_layout
 ----
+// START c++
 void transition_image_layout(
 	    uint32_t                imageIndex,
 	    vk::ImageLayout         old_layout,
@@ -204,6 +265,43 @@ void transition_image_layout(
 		    .pImageMemoryBarriers    = &barrier};
     commandBuffer.pipelineBarrier2(dependency_info);
 }
+// END c++
+
+// START c
+void transition_image_layout(
+    uint32_t                imageIndex,
+    VkImageLayout           old_layout,
+    VkImageLayout           new_layout,
+    VkAccessFlags2          src_access_mask,
+    VkAccessFlags2          dst_access_mask,
+    VkPipelineStageFlags2   src_stage_mask,
+    VkPipelineStageFlags2   dst_stage_mask)
+{
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = src_stage_mask;
+    barrier.srcAccessMask = src_access_mask;
+    barrier.dstStageMask = dst_stage_mask;
+    barrier.dstAccessMask = dst_access_mask;
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = swapChainImages[imageIndex];
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkDependencyInfo dependency_info{};
+    dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency_info.imageMemoryBarrierCount = 1;
+    dependency_info.pImageMemoryBarriers = &barrier;
+
+    vkCmdPipelineBarrier2(commandBuffer, &dependency_info);
+}
+// END c
 ----
 
 This function will be used to transition the image layout before and after rendering.
@@ -228,8 +326,10 @@ transition_image_layout(
 
 First, we transition the image layout to `vk::ImageLayout::eColorAttachmentOptimal`. Then, we set up the color attachment:
 
-[,c++]
+[source,multilang,c++,c]
+.Color attachment info
 ----
+// START c++
 vk::ClearValue              clearColor     = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
 vk::RenderingAttachmentInfo attachmentInfo = {
     .imageView   = swapChainImageViews[imageIndex],
@@ -237,28 +337,61 @@ vk::RenderingAttachmentInfo attachmentInfo = {
     .loadOp      = vk::AttachmentLoadOp::eClear,
     .storeOp     = vk::AttachmentStoreOp::eStore,
     .clearValue  = clearColor};
+// END c++
+
+// START c
+VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+
+VkRenderingAttachmentInfo attachmentInfo{};
+attachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+attachmentInfo.imageView = swapChainImageViews[imageIndex];
+attachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+attachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+attachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+attachmentInfo.clearValue = clearColor;
+// END c
 ----
 
 The `imageView` parameter specifies which image view to render to. The `imageLayout` parameter specifies the layout the image will be in during rendering. The `loadOp` parameter specifies what to do with the image before rendering, and the `storeOp` parameter specifies what to do with the image after rendering. We're using `vk::AttachmentLoadOp::eClear` to clear the image to black before rendering, and `vk::AttachmentStoreOp::eStore` to store the rendered image for later use.
 
 Next, we set up the rendering info:
 
-[,c++]
+[source,multilang,c++,c]
+.RenderingInfo
 ----
+// START c++
 vk::RenderingInfo renderingInfo = {
     .renderArea           = {.offset = {0, 0}, .extent = swapChainExtent},
     .layerCount           = 1,
     .colorAttachmentCount = 1,
     .pColorAttachments    = &attachmentInfo};
+// END c++
+
+// START c
+VkRenderingInfo renderingInfo{};
+renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+renderingInfo.renderArea.offset = {0, 0};
+renderingInfo.renderArea.extent = swapChainExtent;
+renderingInfo.layerCount = 1;
+renderingInfo.colorAttachmentCount = 1;
+renderingInfo.pColorAttachments = &attachmentInfo;
+// END c
 ----
 
 The `renderArea` parameter defines the size of the render area, similar to the render area in a render pass. The `layerCount` parameter specifies the number of layers to render to, which is 1 for a non-layered image. The `colorAttachmentCount` and `pColorAttachments` parameters specify the color attachments to render to.
 
 Now we can begin rendering:
 
-[,c++]
+[source,multilang,c++,c]
+.Starting dynamic rendering
 ----
+// START c++
 commandBuffer.beginRendering(renderingInfo);
+// END c++
+
+// START c
+vkCmdBeginRendering(commandBuffer, &renderingInfo);
+// END c
 ----
 
 All the functions that record commands return `void`, so there will be no error handling until we've finished recording.
@@ -269,9 +402,16 @@ The parameter for the `beginRendering` command is the rendering info we just set
 
 We can now bind the graphics pipeline:
 
-[,c++]
+[source,multilang,c++,c]
+.Binding the graphics pipeline
 ----
+// START c++
 commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+// END c++
+
+// START c
+vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+// END c
 ----
 
 The first parameter specifies if the pipeline object is a graphics or compute pipeline.
@@ -280,17 +420,43 @@ We've now told Vulkan which operations to execute in the graphics pipeline and w
 As noted in the link:../02_Graphics_pipeline_basics/02_Fixed_functions.md#dynamic-state[fixed functions chapter], we did specify viewport and scissor state for this pipeline to be dynamic.
 So we need to set them in the command buffer before issuing our draw command:
 
-[,c++]
+[source,multilang,c++,c]
+.Setting the dynamic viewport and scissor
 ----
+// START c++
 commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+// END c++
+
+// START c
+VkViewport viewport{};
+viewport.x = 0.0f;
+viewport.y = 0.0f;
+viewport.width = static_cast<float>(swapChainExtent.width);
+viewport.height = static_cast<float>(swapChainExtent.height);
+viewport.minDepth = 0.0f;
+viewport.maxDepth = 1.0f;
+vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+VkRect2D scissor{};
+scissor.offset = {0, 0};
+scissor.extent = swapChainExtent;
+vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+// END c
 ----
 
 Now we are ready to issue the draw command for the triangle:
 
-[,c++]
+[source,multilang,c++,c]
+.The draw call
 ----
+// START c++
 commandBuffer.draw(3, 1, 0, 0);
+// END c++
+
+// START c
+vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+// END c
 ----
 
 The actual `vk::raii::CommandBuffer::draw` function is a bit anticlimactic, but it's so simple because of all the information we specified in advance.
@@ -305,9 +471,16 @@ It has the following parameters:
 
 The rendering can now be ended:
 
-[,c++]
+[source,multilang,c++,c]
+.Ending dynamic rendering
 ----
+// START c++
 commandBuffer.endRendering();
+// END c++
+
+// START c
+vkCmdEndRendering(commandBuffer);
+// END c
 ----
 
 After rendering, we need to transition the image layout back to `vk::ImageLayout::ePresentSrcKHR` so it can be presented to the screen:
@@ -328,9 +501,18 @@ transition_image_layout(
 
 And we've finished recording the command buffer:
 
-[,c++]
+[source,multilang,c++,c]
+.Ending command buffer recording
 ----
+// START c++
 commandBuffer.end();
+// END c++
+
+// START c
+if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+    throw std::runtime_error("failed to record command buffer!");
+}
+// END c
 ----
 
 In the xref:./02_Rendering_and_presentation.adoc[next chapter] we'll write the code for the main loop, which will acquire an image from the swap chain, record and execute a command buffer, then return the finished image to the swap chain.

@@ -15,11 +15,23 @@ pipeline at draw time. Examples are the size of the viewport, line width
 and blend constants. If you want to use dynamic state and keep these properties out,
 then you'll have to fill in a `vk::PipelineDynamicStateCreateInfo` structure like this:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineDynamicStateCreateInfo
 ----
+// START c++
 std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 
 vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
+// END c++
+
+// START c
+std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+
+VkPipelineDynamicStateCreateInfo dynamicState{};
+dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+dynamicState.pDynamicStates = dynamicStates.data();
+// END c
 ----
 
 This will cause the configuration of these values to be ignored, and you will be able (and required) to specify the data at drawing time.
@@ -36,9 +48,17 @@ It describes this in roughly two ways:
 Because we're hard coding the vertex data directly in the vertex shader, we'll fill in this structure to specify that there is no vertex data to load for now.
 We'll get back to it in the vertex buffer chapter.
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineVertexInputStateCreateInfo
 ----
+// START c++
 vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+// END c++
+
+// START c
+VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+// END c
 ----
 
 The `pVertexBindingDescriptions` and `pVertexAttributeDescriptions` members point to an array of structs that describe the aforementioned details for loading vertex data.
@@ -61,9 +81,18 @@ If you set the `primitiveRestartEnable`  member to `vk::True`, then it's possibl
 
 We intend to draw triangles throughout this tutorial, so we'll stick to the following data for the structure:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineInputAssemblyStateCreateInfo
 ----
+// START c++
 vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
+// END c++
+
+// START c
+VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+// END c
 ----
 
 == Viewports and scissors
@@ -71,9 +100,22 @@ vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::Primitive
 A viewport basically describes the region of the framebuffer that the output will be rendered to.
 This will almost always be `(0, 0)` to `(width, height)` and in this tutorial that will also be the case.
 
-[,c++]
+[source,multilang,c++,c]
+.Viewport
 ----
+// START c++
 vk::Viewport viewport{0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f};
+// END c++
+
+// START c
+VkViewport viewport{};
+viewport.x = 0.0f;
+viewport.y = 0.0f;
+viewport.width = static_cast<float>(swapChainExtent.width);
+viewport.height = static_cast<float>(swapChainExtent.height);
+viewport.minDepth = 0.0f;
+viewport.maxDepth = 1.0f;
+// END c
 ----
 
 Remember that the size of the swap chain and its images may differ from the `WIDTH` and `HEIGHT` of the window.
@@ -93,9 +135,18 @@ image::/images/viewports_scissors.png[]
 
 So if we wanted to draw to the entire framebuffer, we would specify a scissor rectangle that covers it entirely:
 
-[,c++]
+[source,multilang,c++,c]
+.Scissor rectangle
 ----
+// START c++
 vk::Rect2D scissor{vk::Offset2D{ 0, 0 }, swapChainExtent};
+// END c++
+
+// START c
+VkRect2D scissor{};
+scissor.offset = {0, 0};
+scissor.extent = swapChainExtent;
+// END c
 ----
 
 Viewport(s) and scissor rectangle(s) can either be specified as a static part of the pipeline or as a dynamic state set in the command buffer.
@@ -105,18 +156,40 @@ This is widespread and all implementations can handle this dynamic state without
 When opting for dynamic viewport(s) and scissor rectangle(s), you need to
 enable the respective dynamic states for the pipeline:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineDynamicStateCreateInfo
 ----
+// START c++
 std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 
 vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
+// END c++
+
+// START c
+std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+
+VkPipelineDynamicStateCreateInfo dynamicState{};
+dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+dynamicState.pDynamicStates = dynamicStates.data();
+// END c
 ----
 
 And then you only need to specify their count at pipeline creation time:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineViewportStateCreateInfo (dynamic)
 ----
+// START c++
 vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
+// END c++
+
+// START c
+VkPipelineViewportStateCreateInfo viewportState{};
+viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+viewportState.viewportCount = 1;
+viewportState.scissorCount = 1;
+// END c
 ----
 
 The actual viewport(s) and scissor rectangle(s) will then later be set up at drawing time.
@@ -127,9 +200,21 @@ Without dynamic state, the viewport and scissor rectangle need to be set in the 
 This makes the viewport and scissor rectangle for this pipeline immutable.
 Any changes required to these values would require a new pipeline to be created with the new values.
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineViewportStateCreateInfo (static)
 ----
+// START c++
 vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .pViewports = &viewport, .scissorCount = 1, .pScissors = &scissor};
+// END c++
+
+// START c
+VkPipelineViewportStateCreateInfo viewportState{};
+viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+viewportState.viewportCount = 1;
+viewportState.pViewports = &viewport;
+viewportState.scissorCount = 1;
+viewportState.pScissors = &scissor;
+// END c
 ----
 
 Independent of how you set them, it's possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
@@ -141,8 +226,10 @@ The rasterizer takes the geometry shaped by the vertices from the vertex shader 
 It also performs https://en.wikipedia.org/wiki/Z-buffering[depth testing], https://en.wikipedia.org/wiki/Back-face_culling[face culling] and the scissor test, and it can be configured to output fragments that fill entire polygons or just the edges (wireframe rendering).
 All this is configured using the `vk::PipelineRasterizationStateCreateInfo` structure.
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineRasterizationStateCreateInfo
 ----
+// START c++
 vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable        = vk::False,
                                                     .rasterizerDiscardEnable = vk::False,
                                                     .polygonMode             = vk::PolygonMode::eFill,
@@ -150,6 +237,19 @@ vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable        = v
                                                     .frontFace               = vk::FrontFace::eClockwise,
                                                     .depthBiasEnable         = vk::False,
                                                     .lineWidth               = 1.0f};
+// END c++
+
+// START c
+VkPipelineRasterizationStateCreateInfo rasterizer{};
+rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+rasterizer.depthClampEnable = VK_FALSE;
+rasterizer.rasterizerDiscardEnable = VK_FALSE;
+rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+rasterizer.depthBiasEnable = VK_FALSE;
+rasterizer.lineWidth = 1.0f;
+// END c
 ----
 
 If `depthClampEnable` is set to `vk::True`, then fragments that are beyond
@@ -189,9 +289,19 @@ This mainly occurs along edges, which is also where the most noticeable aliasing
 Because it doesn't need to run the fragment shader multiple times if only one polygon maps to a pixel, it is significantly less expensive than simply rendering to a higher resolution and then downscaling.
 Enabling it requires enabling a GPU feature.
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineMultisampleStateCreateInfo
 ----
+// START c++
 vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False};
+// END c++
+
+// START c
+VkPipelineMultisampleStateCreateInfo multisampling{};
+multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+multisampling.sampleShadingEnable = VK_FALSE;
+// END c
 ----
 
 We'll revisit multisampling in later chapter, for now let's keep it disabled.
@@ -214,11 +324,20 @@ There are two types of structs to configure color blending.
 The first struct, `vk::PipelineColorBlendAttachmentState` contains the configuration per attached framebuffer and the second struct, `vk::PipelineColorBlendStateCreateInfo` contains the _global_ color blending settings.
 In our case, we only have one framebuffer:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineColorBlendAttachmentState (blending disabled)
 ----
+// START c++
 vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-    .blendEnable    = vk::False,	    
+    .blendEnable    = vk::False,
     .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+// END c++
+
+// START c
+VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+colorBlendAttachment.blendEnable = VK_FALSE;
+colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+// END c
 ----
 
 This per-framebuffer struct allows you to configure the first way of color blending.
@@ -251,8 +370,10 @@ finalColor.a = newAlpha.a;
 
 This can be achieved with the following parameters:
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineColorBlendAttachmentState (alpha blending)
 ----
+// START c++
 vk::PipelineColorBlendAttachmentState colorBlendAttachment{
     .blendEnable         = vk::True,
     .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
@@ -262,16 +383,41 @@ vk::PipelineColorBlendAttachmentState colorBlendAttachment{
     .dstAlphaBlendFactor = vk::BlendFactor::eZero,
     .alphaBlendOp        = vk::BlendOp::eAdd,
     .colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+// END c++
+
+// START c
+VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+colorBlendAttachment.blendEnable = VK_TRUE;
+colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+// END c
 ----
 
 You can find all the possible operations in the `vk::BlendFactor` and `vk::BlendOp` enumerations in the specification.
 
 The second structure references the array of structures for all the framebuffers and allows you to set blend constants that you can use as blend factors in the aforementioned calculations.
 
-[,c++]
+[source,multilang,c++,c]
+.PipelineColorBlendStateCreateInfo
 ----
+// START c++
 vk::PipelineColorBlendStateCreateInfo colorBlending{
     .logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments = &colorBlendAttachment};
+// END c++
+
+// START c
+VkPipelineColorBlendStateCreateInfo colorBlending{};
+colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+colorBlending.logicOpEnable = VK_FALSE;
+colorBlending.logicOp = VK_LOGIC_OP_COPY;
+colorBlending.attachmentCount = 1;
+colorBlending.pAttachments = &colorBlendAttachment;
+// END c
 ----
 
 If you want to use the second method of blending (a bitwise combination), then you should set `logicOpEnable` to `vk::True`.
@@ -290,18 +436,39 @@ Even though we won't be using them until a future chapter, we are still required
 
 Create a class member to hold this object because we'll refer to it from other functions at a later point in time:
 
-[,c++]
+[source,multilang,c++,c]
+.Pipeline layout class member
 ----
+// START c++
 vk::raii::PipelineLayout pipelineLayout = nullptr;
+// END c++
+
+// START c
+VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+// END c
 ----
 
 And then create the object in the `createGraphicsPipeline` function:
 
-[,c++]
+[source,multilang,c++,c]
+.Creating the pipeline layout
 ----
+// START c++
 vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 0, .pushConstantRangeCount = 0};
 
 pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+// END c++
+
+// START c
+VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+pipelineLayoutInfo.setLayoutCount = 0;
+pipelineLayoutInfo.pushConstantRangeCount = 0;
+
+if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create pipeline layout!");
+}
+// END c
 ----
 
 The structure also specifies _push constants_, which are another way of passing dynamic values to shaders that we may get into in a future chapter.

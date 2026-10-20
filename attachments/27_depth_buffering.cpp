@@ -238,10 +238,14 @@ class HelloTriangleApplication
 	void recreateSwapChain()
 	{
 		int width = 0, height = 0;
-		while (width == 0 || height == 0)
+		while ((width == 0 || height == 0) && !glfwWindowShouldClose(window))
 		{
 			glfwGetFramebufferSize(window, &width, &height);
 			glfwWaitEvents();
+		}
+		if (glfwWindowShouldClose(window))
+		{
+			return;
 		}
 
 		device.waitIdle();
@@ -333,9 +337,16 @@ class HelloTriangleApplication
 		// Check if the physicalDevice supports the Vulkan 1.3 API version
 		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-		// Check if any of the queue families support graphics operations
-		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
-		bool supportsGraphics = std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+		// Check if any of the queue families support both graphics and presentation to our surface
+		auto     queueFamilies = physicalDevice.getQueueFamilyProperties();
+		uint32_t qfpIndex      = 0;
+		bool     supportsGraphicsAndPresent =
+		    std::ranges::any_of(queueFamilies,
+		                        [&physicalDevice, &surface = this->surface, &qfpIndex](auto const &qfp) {
+			                        bool const suitable = (qfp.queueFlags & vk::QueueFlagBits::eGraphics) && physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface);
+			                        qfpIndex++;
+			                        return suitable;
+		                        });
 
 		// Check if all required physicalDevice extensions are available
 		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
@@ -355,7 +366,7 @@ class HelloTriangleApplication
 		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria
-		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+		return supportsVulkan1_3 && supportsGraphicsAndPresent && supportsAllRequiredExtensions && supportsRequiredFeatures;
 	}
 
 	void pickPhysicalDevice()
@@ -900,7 +911,8 @@ class HelloTriangleApplication
 
 		commandBuffer.beginRendering(renderingInfo);
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		// Negative height flips Y for Vulkan; see Uniform buffers.
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, static_cast<float>(swapChainExtent.height), static_cast<float>(swapChainExtent.width), -static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
 		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexTypeValue<decltype(indices)::value_type>::value);
@@ -982,7 +994,6 @@ class HelloTriangleApplication
 		ubo.view  = lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj =
 		    glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
 
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 	}

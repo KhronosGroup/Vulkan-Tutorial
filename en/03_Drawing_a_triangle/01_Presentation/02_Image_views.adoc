@@ -119,7 +119,7 @@ for (auto &image : swapChainImages)
 }
 ----
 
-Creating the image view is now a matter of using the constructor of `vk::raii::CreateImageView`,
+Creating the image view is now a matter of using the constructor of `vk::raii::ImageView`,
 here via `std::vector::emplace_back`:
 
 [,c++]

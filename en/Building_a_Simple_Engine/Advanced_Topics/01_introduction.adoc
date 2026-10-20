@@ -23,5 +23,6 @@ Start anywhere that matches your interest:
 * xref:Building_a_Simple_Engine/Advanced_Topics/Robustness2.adoc[VK_EXT_robustness2]
 * xref:Building_a_Simple_Engine/Advanced_Topics/Dynamic_Rendering_Local_Read.adoc[Dynamic Rendering Local Read]
 * xref:Building_a_Simple_Engine/Advanced_Topics/Shader_Tile_Image.adoc[Shader Tile Image]
+* xref:Building_a_Simple_Engine/Advanced_Topics/Direct_To_Display.adoc[Direct-to-Display Rendering (VK_KHR_display)]
 
 xref:Building_a_Simple_Engine/introduction.adoc[Back to Building a Simple Engine]

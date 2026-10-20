@@ -106,11 +106,11 @@ Some other great computer graphics resources are:
 * https://github.com/RayTracing/raytracing.github.io[Ray tracing in one weekend]
 * https://www.pbr-book.org/[Physically Based Rendering book]
 
-You can use C instead of C{pp} if you want, but you will have to use a
-different linear algebra library, and you will be on your own in terms of
-  code structuring.
-We will use C{pp} features like classes and RAII to organize logic and
- resource lifetimes.
+This tutorial exclusively uses C{pp} and the Vulkan-Hpp bindings; it does not
+provide a parallel C track. We use C{pp} features like classes and RAII to
+organize logic and resource lifetimes, so if you use the raw C Vulkan API
+instead, the code shown here will not translate directly and you will be on
+your own in terms of code structuring.
 
 To make it easier to learn to work with Vulkan, we'll be using the newer
 https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp] bindings that

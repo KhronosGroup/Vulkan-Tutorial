@@ -38,6 +38,22 @@ import vulkan_hpp;
 #include <cstdlib>
 
 class HelloTriangleApplication {
+----
+
+The `#if defined(\\__INTELLISENSE__) || !defined(USE_CPP20_MODULES)` block picks
+between two ways of pulling in the Vulkan-Hpp API, both of which provide the
+same functions, structures, and enumerations. By default we include the
+traditional `<vulkan/vulkan_raii.hpp>` header. If you enable C{pp}20 modules
+(`-DENABLE_CPP20_MODULE=ON`), the `USE_CPP20_MODULES` define set by CMake
+makes the code `import vulkan_hpp;` instead. Either way, Visual Studio and VS
+Code's IntelliSense engine doesn't yet understand `import` for modules and
+will flag it as an error even though the code compiles fine, so we fall back
+to the header whenever `\\__INTELLISENSE__` is defined (which IntelliSense
+itself defines while analyzing the code) or when modules are turned off
+entirely.
+
+[,c++]
+----
 public:
     void run() {
         initVulkan();
@@ -76,12 +92,9 @@ int main()
 }
 ----
 
-We first include the Vulkan-Hpp RAII header by default, which provides the
-functions, structures and enumerations. If you enable C{pp}20 modules
-(`-DENABLE_CPP20_MODULE=ON`), the code will `import vulkan_hpp;` instead via the
-`USE_CPP20_MODULES` define set by CMake. The `stdexcept` and `iostream` headers
-are included for reporting and propagating errors. The `cstdlib` header
-provides the `EXIT_SUCCESS` and `EXIT_FAILURE` macros.
+The `stdexcept` and `iostream` headers are included for reporting and
+propagating errors. The `cstdlib` header provides the `EXIT_SUCCESS` and
+`EXIT_FAILURE` macros.
 
 The program itself is wrapped into a class where we'll store the Vulkan objects
 as private class members and add functions to initiate each of them, which will
@@ -343,7 +356,15 @@ tearing GLFW down. Because the guard is declared first, it keeps working no
 matter how many Vulkan objects the later chapters add.
 
 When you run the program now, you should see a window titled `Vulkan` show up
-until the application is terminated by closing the window. Now that we have the
-skeleton for the Vulkan application, let's xref:./01_Instance.adoc[create the first Vulkan object]!
+until the application is terminated by closing the window.
+
+NOTE: On Wayland, the compositor won't actually map (show) a window until its
+first buffer has been presented. Since we haven't created a swapchain or drawn
+anything yet, don't be surprised if no window appears at this point when
+running under Wayland - that's expected, and it will show up once we get to
+presenting images later in the tutorial. This is a Wayland-specific behavior;
+X11 shows the window immediately, as described above.
+
+Now that we have the skeleton for the Vulkan application, let's xref:./01_Instance.adoc[create the first Vulkan object]!
 
 link:/attachments/00_base_code.cpp[C{pp} code]

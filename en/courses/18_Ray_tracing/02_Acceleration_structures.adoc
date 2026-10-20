@@ -69,14 +69,14 @@ vk::AccelerationStructureBuildSizesInfoKHR blasBuildSizes =
 );
 ----
 
-This helper function uses `vkGetAccelerationStructureBuildSizesKHR()` and returns the memory sizes needed for the BLAS. We need to allocate:
+This helper function uses `device.getAccelerationStructureBuildSizesKHR()` and returns the memory sizes needed for the BLAS. We need to allocate:
 
 . A buffer for the BLAS itself.
 . Another buffer for the scratch space used during the build process.
 
 We can then create these buffers and store them in persistent arrays as they will be needed later.
 
-We also need to create the BLAS handle itself, which is done with `vk::AccelerationStructureCreateInfoKHR` and this device function helper that uses `vkCreateAccelerationStructureKHR()`. The handle is stored in a vector for later use (remember that we need one for each submesh):
+We also need to create the BLAS handle itself, which is done with `vk::AccelerationStructureCreateInfoKHR` and this device function helper that uses `device.createAccelerationStructureKHR()`. The handle is stored in a vector for later use (remember that we need one for each submesh):
 
 [,c{pp}]
 ----
@@ -98,7 +98,7 @@ The following diagram summarizes all the structures and buffers we have created 
 
 image::../../../images/38_TASK02_blas_structures.png[]
 
-To put it all together, we need to submit a command buffer to build the BLAS on the GPU. This is done with `vkCmdBuildAccelerationStructuresKHR()`, which takes the build info and a range. The range adds flexibility to build multiple geometries in one go, but here we only have one geometry per BLAS so it is kept simple:
+To put it all together, we need to submit a command buffer to build the BLAS on the GPU. This is done with the command buffer's `buildAccelerationStructuresKHR()` method, which takes the build info and a range. The range adds flexibility to build multiple geometries in one go, but here we only have one geometry per BLAS so it is kept simple:
 
 [,c{pp}]
 ----
@@ -148,7 +148,7 @@ vk::AccelerationStructureInstanceKHR instance{
 instances.push_back(instance);
 ----
 
-Note how we needed to get the device address of the BLAS using `vkGetAccelerationStructureDeviceAddressKHR()`. We also set the transform matrix as the identity matrix for now, we will revisit this later in the lab.
+Note how we needed to get the device address of the BLAS using `device.getAccelerationStructureAddressKHR()`. We also set the transform matrix as the identity matrix for now, we will revisit this later in the lab.
 
 Now that all instances are stored in a vector, we need to prepare the instance data for the TLAS. This involves creating a buffer that holds the instance data.
 
@@ -201,7 +201,7 @@ vk::AccelerationStructureBuildSizesInfoKHR tlasBuildSizes =
 
 And again we create the necessary buffers.
 
-To create the TLAS handle, we use `vkCreateAccelerationStructureKHR()` as before:
+To create the TLAS handle, we use `device.createAccelerationStructureKHR()` as before:
 
 [,c{pp}]
 ----
@@ -274,7 +274,7 @@ vk::WriteDescriptorSet asWrite{
 };
 ----
 
-And later on call `vkUpdateDescriptorSets()` with the TLAS included in the list:
+And later on call `device.updateDescriptorSets()` with the TLAS included in the list:
 
 [,c{pp}]
 ----

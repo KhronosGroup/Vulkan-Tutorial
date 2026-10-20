@@ -422,9 +422,28 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Build
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         working-directory: ${{github.workspace}}/attachments
         run: cmake --build build --config Release --parallel 4
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ${{github.workspace}}/attachments
+        shell: pwsh
+        run: |
+          # vcpkg's applocal DLL-copy post-build step (z-applocal) can hit a
+          # transient ERROR_SHARING_VIOLATION (exit code 32) when several
+          # vcxproj builds run in parallel and race on the same source DLL.
+          # Retry a few times before giving up.
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            cmake --build build --config Release --parallel 4
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Host "Build attempt $attempt failed (exit $LASTEXITCODE); retrying..."
+            Start-Sleep -Seconds 5
+          }
+          exit $LASTEXITCODE
 
       - name: ccache statistics
         if: runner.os == 'Linux'

@@ -154,7 +154,7 @@ function (add_chapter CHAPTER_NAME)
 
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-      set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
+      set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${CHAPTER_NAME}>")
     endif()
   endif()
 

@@ -474,7 +474,7 @@ void Application::initVulkanVKB()
             // loader. Loading the function pointers is a bit tedious, but is handled automatically by Vulkan-Hpp.
             // Other libraries like Volk provide similar functionality for the C API.
             VULKAN_HPP_DEFAULT_DISPATCHER.init(m_vkbData.m_instance.instance, vkGetInstanceProcAddr,
-                                               m_vkbData.m_device.device);
+                                               m_vkbData.m_device.device, vkGetDeviceProcAddr);
         }
     }
 
@@ -538,7 +538,7 @@ void Application::initVulkanVKB()
 
         // Store format and extent of the swapchain images for later use.
         {
-            m_swapchainFormat = vk::Format{m_vkbData.m_swapchain.image_format};
+            m_swapchainFormat = static_cast<vk::Format>(m_vkbData.m_swapchain.image_format);
             m_swapchainExtent = vk::Extent2D{
                 .width = m_vkbData.m_swapchain.extent.width,
                 .height = m_vkbData.m_swapchain.extent.height,

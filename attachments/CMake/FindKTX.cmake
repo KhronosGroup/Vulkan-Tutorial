@@ -13,55 +13,57 @@
 #    KTX::ktx
 #
 
-# Check if we're on Linux - if so, we'll skip the search and directly use FetchContent
-if(UNIX AND NOT APPLE)
-  # On Linux, we assume KTX is not installed and proceed directly to fetching it
-  set(KTX_FOUND FALSE)
-else()
-  # On non-Linux platforms, try to find KTX using pkg-config first
-  find_package(PkgConfig QUIET)
-  if(PKG_CONFIG_FOUND)
-    pkg_check_modules(PC_KTX QUIET ktx libktx ktx2 libktx2)
-  endif()
+# Try to find an already-installed KTX using pkg-config first
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(PC_KTX QUIET ktx libktx ktx2 libktx2)
+endif()
 
-  # Try to find KTX using standard find_package
-  find_path(KTX_INCLUDE_DIR
-    NAMES ktx.h
-    PATH_SUFFIXES include ktx KTX ktx2 KTX2
-    HINTS
-      ${PC_KTX_INCLUDEDIR}
-      /usr/include
-      /usr/local/include
-      $ENV{KTX_DIR}/include
-      $ENV{VULKAN_SDK}/include
-      ${CMAKE_SOURCE_DIR}/external/ktx/include
-  )
+# Try to find KTX using standard find_package
+find_path(KTX_INCLUDE_DIR
+  NAMES ktx.h
+  PATH_SUFFIXES include ktx KTX ktx2 KTX2
+  HINTS
+    ${PC_KTX_INCLUDEDIR}
+    /usr/include
+    /usr/local/include
+    $ENV{KTX_DIR}/include
+    $ENV{VULKAN_SDK}/include
+    ${CMAKE_SOURCE_DIR}/external/ktx/include
+)
 
-  find_library(KTX_LIBRARY
-    NAMES ktx ktx2 libktx libktx2
-    PATH_SUFFIXES lib lib64
-    HINTS
-      ${PC_KTX_LIBDIR}
-      /usr/lib
-      /usr/lib64
-      /usr/local/lib
-      /usr/local/lib64
-      $ENV{KTX_DIR}/lib
-      $ENV{VULKAN_SDK}/lib
-      ${CMAKE_SOURCE_DIR}/external/ktx/lib
-  )
+find_library(KTX_LIBRARY
+  NAMES ktx ktx2 libktx libktx2
+  PATH_SUFFIXES lib lib64
+  HINTS
+    ${PC_KTX_LIBDIR}
+    /usr/lib
+    /usr/lib64
+    /usr/local/lib
+    /usr/local/lib64
+    $ENV{KTX_DIR}/lib
+    $ENV{VULKAN_SDK}/lib
+    ${CMAKE_SOURCE_DIR}/external/ktx/lib
+)
 
-  include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(KTX
-    REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
-    FAIL_MESSAGE ""  # Suppress the error message to allow our fallback
-  )
+include(FindPackageHandleStandardArgs)
+# Run the standard args check as non-REQUIRED/QUIET so a missing KTX does not
+# abort configuration here - we still want to fall back to FetchContent below.
+set(_ktx_saved_find_required ${KTX_FIND_REQUIRED})
+set(_ktx_saved_find_quietly ${KTX_FIND_QUIETLY})
+set(KTX_FIND_REQUIRED FALSE)
+set(KTX_FIND_QUIETLY TRUE)
+find_package_handle_standard_args(KTX
+  REQUIRED_VARS KTX_INCLUDE_DIR KTX_LIBRARY
+)
+set(KTX_FIND_REQUIRED ${_ktx_saved_find_required})
+set(KTX_FIND_QUIETLY ${_ktx_saved_find_quietly})
+unset(_ktx_saved_find_required)
+unset(_ktx_saved_find_quietly)
 
-  # Debug output if KTX is not found (only on non-Linux platforms)
-  if(NOT KTX_FOUND)
-    message(STATUS "KTX include directory search paths: ${PC_KTX_INCLUDEDIR}, /usr/include, /usr/local/include, $ENV{KTX_DIR}/include, $ENV{VULKAN_SDK}/include, ${CMAKE_SOURCE_DIR}/external/ktx/include")
-    message(STATUS "KTX library search paths: ${PC_KTX_LIBDIR}, /usr/lib, /usr/lib64, /usr/local/lib, /usr/local/lib64, $ENV{KTX_DIR}/lib, $ENV{VULKAN_SDK}/lib, ${CMAKE_SOURCE_DIR}/external/ktx/lib")
-  endif()
+if(NOT KTX_FOUND)
+  message(STATUS "KTX include directory search paths: ${PC_KTX_INCLUDEDIR}, /usr/include, /usr/local/include, $ENV{KTX_DIR}/include, $ENV{VULKAN_SDK}/include, ${CMAKE_SOURCE_DIR}/external/ktx/include")
+  message(STATUS "KTX library search paths: ${PC_KTX_LIBDIR}, /usr/lib, /usr/lib64, /usr/local/lib, /usr/local/lib64, $ENV{KTX_DIR}/lib, $ENV{VULKAN_SDK}/lib, ${CMAKE_SOURCE_DIR}/external/ktx/lib")
 endif()
 
 if(KTX_FOUND)
@@ -79,10 +81,7 @@ else()
   # If not found, use FetchContent to download and build
   include(FetchContent)
 
-  # Only show the message on non-Linux platforms
-  if(NOT (UNIX AND NOT APPLE))
-    message(STATUS "KTX not found, fetching from GitHub...")
-  endif()
+  message(STATUS "KTX not found, fetching from GitHub...")
 
   FetchContent_Declare(
     ktx

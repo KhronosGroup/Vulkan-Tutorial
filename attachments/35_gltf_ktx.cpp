@@ -424,10 +424,14 @@ class VulkanApplication
 #if PLATFORM_DESKTOP
 		int width = 0, height = 0;
 		glfwGetFramebufferSize(window, &width, &height);
-		while (width == 0 || height == 0)
+		while ((width == 0 || height == 0) && !glfwWindowShouldClose(window))
 		{
 			glfwGetFramebufferSize(window, &width, &height);
 			glfwWaitEvents();
+		}
+		if (glfwWindowShouldClose(window))
+		{
+			return;
 		}
 #endif
 
@@ -496,9 +500,16 @@ class VulkanApplication
 		// Check if the physicalDevice supports the Vulkan 1.3 API version
 		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-		// Check if any of the queue families support graphics operations
-		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
-		bool supportsGraphics = std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+		// Check if any of the queue families support both graphics and presentation to our surface
+		auto     queueFamilies = physicalDevice.getQueueFamilyProperties();
+		uint32_t qfpIndex      = 0;
+		bool     supportsGraphicsAndPresent =
+		    std::ranges::any_of(queueFamilies,
+		                        [&physicalDevice, &surface = this->surface, &qfpIndex](auto const &qfp) {
+			                        bool const suitable = (qfp.queueFlags & vk::QueueFlagBits::eGraphics) && physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface);
+			                        qfpIndex++;
+			                        return suitable;
+		                        });
 
 		// Check if all required physicalDevice extensions are available
 		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
@@ -517,7 +528,7 @@ class VulkanApplication
 		                                features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria
-		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+		return supportsVulkan1_3 && supportsGraphicsAndPresent && supportsAllRequiredExtensions && supportsRequiredFeatures;
 	}
 
 	void pickPhysicalDevice()
@@ -699,7 +710,7 @@ class VulkanApplication
 		    .rasterizerDiscardEnable = vk::False,
 		    .polygonMode             = vk::PolygonMode::eFill,
 		    .cullMode                = vk::CullModeFlagBits::eBack,        // Re-enabled culling for better performance
-		    .frontFace               = vk::FrontFace::eClockwise,          // Keeping Clockwise for glTF
+		    .frontFace               = vk::FrontFace::eCounterClockwise,   // glTF uses counter-clockwise winding, like the rest of this tutorial
 		    .depthBiasEnable         = vk::False,
 		    .lineWidth               = 1.0f};
 		vk::PipelineMultisampleStateCreateInfo multisampling{
@@ -1030,10 +1041,13 @@ class VulkanApplication
 					Vertex vertex{};
 
 					const float *pos = reinterpret_cast<const float *>(&posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset + i * 12]);
-					// glTF uses a right-handed coordinate system with Y-up
-					// Vulkan uses a right-handed coordinate system with Y-down
-					// We need to flip the Y coordinate
-					vertex.pos = {pos[0], -pos[1], pos[2]};
+					// glTF uses a right-handed, Y-up coordinate system, while this scene is set up
+					// Z-up (see the view/rotation setup in updateUniformBuffer). Negating the Y
+					// coordinate here would mirror the model instead of reorienting it - Vulkan's
+					// clip-space Y convention is already handled separately via proj[1][1] *= -1
+					// below, so we keep the position as-is and let initialRotation do the Y-up to
+					// Z-up conversion.
+					vertex.pos = {pos[0], pos[1], pos[2]};
 
 					if (hasTexCoords)
 					{
@@ -1319,7 +1333,8 @@ class VulkanApplication
 		    .pDepthAttachment     = &depthAttachmentInfo};
 		commandBuffer.beginRendering(renderingInfo);
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		// Negative height flips Y for Vulkan; see Uniform buffers.
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, static_cast<float>(swapChainExtent.height), static_cast<float>(swapChainExtent.width), -static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
 		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
@@ -1396,12 +1411,11 @@ class VulkanApplication
 		float time        = std::chrono::duration<float>(currentTime - startTime).count();
 
 		UniformBufferObject ubo{};
-		glm::mat4           initialRotation    = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		glm::mat4           initialRotation    = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		glm::mat4           continuousRotation = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.model                              = continuousRotation * initialRotation;
 		ubo.view                               = lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj                               = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
 
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 	}

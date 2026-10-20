@@ -329,10 +329,14 @@ class VulkanRaytracingApplication
 	{
 		int width = 0, height = 0;
 		glfwGetFramebufferSize(window, &width, &height);
-		while (width == 0 || height == 0)
+		while ((width == 0 || height == 0) && !glfwWindowShouldClose(window))
 		{
 			glfwGetFramebufferSize(window, &width, &height);
 			glfwWaitEvents();
+		}
+		if (glfwWindowShouldClose(window))
+		{
+			return;
 		}
 
 		device.waitIdle();
@@ -424,9 +428,16 @@ class VulkanRaytracingApplication
 		// Check if the physicalDevice supports the Vulkan 1.3 API version
 		bool supportsVulkan1_3 = physicalDevice.getProperties().apiVersion >= VK_API_VERSION_1_3;
 
-		// Check if any of the queue families support graphics operations
-		auto queueFamilies    = physicalDevice.getQueueFamilyProperties();
-		bool supportsGraphics = std::ranges::any_of(queueFamilies, [](auto const &qfp) { return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
+		// Check if any of the queue families support both graphics and presentation to our surface
+		auto     queueFamilies = physicalDevice.getQueueFamilyProperties();
+		uint32_t qfpIndex      = 0;
+		bool     supportsGraphicsAndPresent =
+		    std::ranges::any_of(queueFamilies,
+		                        [&physicalDevice, &surface = this->surface, &qfpIndex](auto const &qfp) {
+			                        bool const suitable = (qfp.queueFlags & vk::QueueFlagBits::eGraphics) && physicalDevice.getSurfaceSupportKHR(qfpIndex, *surface);
+			                        qfpIndex++;
+			                        return suitable;
+		                        });
 
 		// Check if all required physicalDevice extensions are available
 		auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
@@ -457,7 +468,7 @@ class VulkanRaytracingApplication
 		                                features.template get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
 
 		// Return true if the physicalDevice meets all the criteria
-		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+		return supportsVulkan1_3 && supportsGraphicsAndPresent && supportsAllRequiredExtensions && supportsRequiredFeatures;
 	}
 
 	void pickPhysicalDevice()
@@ -1655,7 +1666,8 @@ class VulkanRaytracingApplication
 		commandBuffer.beginRendering(renderingInfo);
 
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
-		commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+		// Negative height flips Y for Vulkan; see Uniform buffers.
+		commandBuffer.setViewport(0, vk::Viewport(0.0f, static_cast<float>(swapChainExtent.height), static_cast<float>(swapChainExtent.width), -static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 		commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 		commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
 		commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint32);
@@ -1755,7 +1767,6 @@ class VulkanRaytracingApplication
 		ubo.model = rotate(glm::mat4(1.0f), time * 0.1f * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.view  = lookAt(eye, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj  = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
 		ubo.cameraPos = eye;
 
 		memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));

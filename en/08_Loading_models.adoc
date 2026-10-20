@@ -317,6 +317,7 @@ This definitely saves us a lot of GPU memory.
 In the xref:09_Generating_Mipmaps.adoc[next chapter,] we'll learn about a technique to improve texture rendering.
 
 link:/attachments/28_model_loading.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/27_shader_depth.slang[slang shader] /
 link:/attachments/27_shader_depth.vert[GLSL Vertex shader] /
 link:/attachments/27_shader_depth.frag[GLSL Fragment shader]

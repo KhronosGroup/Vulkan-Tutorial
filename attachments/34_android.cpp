@@ -69,6 +69,8 @@ typedef void AssetManagerType;
 #	define GLFW_INCLUDE_VULKAN
 #	include <GLFW/glfw3.h>
 
+#	include "glfw_guard.h"
+
 // Define logging macros for Desktop
 #	define LOGI(...)        \
 		printf(__VA_ARGS__); \
@@ -268,7 +270,6 @@ class HelloTriangleApplication
 	// Initialize window (Desktop only)
 	void initWindow()
 	{
-		glfwInit();
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
@@ -323,6 +324,9 @@ class HelloTriangleApplication
 	AssetManagerType *assetManager = nullptr;
 #else
 	// Desktop-specific members
+	// Declared before every vk::raii member below, so GLFW outlives them. See glfw_guard.h.
+	GlfwGuard glfwGuard;
+
 	GLFWwindow *window = nullptr;
 #endif
 	bool initialized        = false;

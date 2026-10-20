@@ -702,4 +702,5 @@ Migrating from OBJ/PNG to glTF/KTX2 brings significant benefits for modern graph
 
 While the migration requires some code changes, the benefits in terms of performance, features, and future-proofing make it worthwhile for serious graphics applications.
 
-link:/attachments/35_gltf_ktx.cpp[C{pp} code]
+link:/attachments/35_gltf_ktx.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

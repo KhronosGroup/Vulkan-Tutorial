@@ -28,9 +28,10 @@ This series targets intermediate Vulkan programmers. We assume you have complete
 - We use Ray Queries (from `VK_KHR_ray_query`) within fragment shaders instead of a separate ray tracing pipeline. On mobile, ray queries are far more widely supported and often (depending on the use case) more efficient than the full ray tracing pipeline. Ray queries integrate nicely into fragment shading, benefiting from on-chip compression and avoiding context switches.
 
 *Provided Code*:
-The provided code is a Vulkan renderer that already implements a basic graphics pipeline with dynamic rendering. It is based on the Vulkan Tutorial and it is self-contained in a single C++ source file and a Slang shader file:
+The provided code is a Vulkan renderer that already implements a basic graphics pipeline with dynamic rendering. It is based on the Vulkan Tutorial and consists of a single C++ source file, the GLFW guard header shared by all chapters, and a Slang shader file:
 
 - link:/attachments/38_ray_tracing.cpp[38_ray_tracing.cpp]
+- link:/attachments/glfw_guard.h[glfw_guard.h]
 - link:/attachments/38_ray_tracing.slang[38_ray_tracing.slang]
 - If you get stuck on shader tasks, you can refer to the provided reference solution: link:/attachments/38_ray_tracing_complete.slang[38_ray_tracing_complete.slang]
 

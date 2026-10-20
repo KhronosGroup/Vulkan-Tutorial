@@ -13,6 +13,8 @@ import vulkan_hpp;
 #define GLFW_INCLUDE_VULKAN        // REQUIRED only for GLFW CreateWindowSurface.
 #include <GLFW/glfw3.h>
 
+#include "glfw_guard.h"
+
 constexpr uint32_t WIDTH  = 800;
 constexpr uint32_t HEIGHT = 600;
 
@@ -28,6 +30,9 @@ class HelloTriangleApplication
 	}
 
   private:
+	// Declared first, so GLFW outlives every Vulkan member below. See glfw_guard.h.
+	GlfwGuard glfwGuard;
+
 	GLFWwindow *window = nullptr;
 
 	vk::raii::Context  context;
@@ -35,8 +40,6 @@ class HelloTriangleApplication
 
 	void initWindow()
 	{
-		glfwInit();
-
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
@@ -58,9 +61,7 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		glfwDestroyWindow(window);
-
-		glfwTerminate();
+		// GLFW is torn down by glfwGuard (see glfw_guard.h), not here.
 	}
 
 	void createInstance()

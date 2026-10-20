@@ -47,6 +47,7 @@ The advantage of dynamic rendering is that it simplifies the rendering process b
 In the xref:./04_Conclusion.adoc[next chapter], we'll put everything together to finally create the graphics pipeline object!
 
 link:/attachments/12_graphics_pipeline_complete.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/09_shader_base.slang[Slang shader] /
 link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
 link:/attachments/09_shader_base.frag[GLSL Fragment shader]

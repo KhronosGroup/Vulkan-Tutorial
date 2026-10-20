@@ -6,6 +6,8 @@ import vulkan_hpp;
 #endif
 #include <GLFW/glfw3.h>
 
+#include "glfw_guard.h"
+
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -25,12 +27,13 @@ class HelloTriangleApplication
 	}
 
   private:
+	// Declared first, so GLFW outlives every member below. See glfw_guard.h.
+	GlfwGuard glfwGuard;
+
 	GLFWwindow *window = nullptr;
 
 	void initWindow()
 	{
-		glfwInit();
-
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
@@ -51,9 +54,7 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		glfwDestroyWindow(window);
-
-		glfwTerminate();
+		// GLFW is torn down by glfwGuard (see glfw_guard.h), not here.
 	}
 };
 

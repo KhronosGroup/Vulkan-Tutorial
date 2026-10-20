@@ -509,4 +509,5 @@ window. The xref:./02_Image_views.adoc[next chapter] will begin to cover how we 
 render targets, and then we start looking into the actual graphics pipeline and
 drawing commands!
 
-link:/attachments/06_swap_chain_creation.cpp[C{pp} code]
+link:/attachments/06_swap_chain_creation.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

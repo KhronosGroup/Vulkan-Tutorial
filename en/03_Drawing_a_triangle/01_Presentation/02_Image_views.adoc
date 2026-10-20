@@ -135,4 +135,5 @@ An image view is sufficient to start using an image as a texture, but it's not q
 That requires one more step, known as a framebuffer.
 In the xref:/03_Drawing_a_triangle/02_Graphics_pipeline_basics/00_Introduction.adoc[next chapters,] we'll have to set up the graphics pipeline.
 
-link:/attachments/07_image_views.cpp[C{pp} code]
+link:/attachments/07_image_views.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

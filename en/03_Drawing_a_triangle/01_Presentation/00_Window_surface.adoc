@@ -238,4 +238,5 @@ void createLogicalDevice() {
 In the xref:./01_Swap_chain.adoc[next chapter], we're going to look at swap chains and
 how they allow us to present images to the surface.
 
-link:/attachments/05_window_surface.cpp[C{pp} code]
+link:/attachments/05_window_surface.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

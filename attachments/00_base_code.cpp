@@ -6,6 +6,8 @@ import vulkan_hpp;
 #endif
 #include <GLFW/glfw3.h>
 
+#include "glfw_guard.h"
+
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -25,26 +27,8 @@ class HelloTriangleApplication
 	}
 
   private:
-	// Owns the GLFW lifetime: initialises it here and terminates it in the
-	// destructor. Declared first, so it is destroyed last - after every member
-	// below. Later chapters add Vulkan objects here that still reference the
-	// window system connection while they are destroyed, so glfwTerminate() has
-	// to outlive them. It also destroys any windows that are still open.
-	struct GlfwGuard
-	{
-		GlfwGuard()
-		{
-			if (!glfwInit())
-			{
-				throw std::runtime_error("failed to initialize GLFW!");
-			}
-		}
-
-		~GlfwGuard()
-		{
-			glfwTerminate();
-		}
-	} glfwGuard;
+	// Declared first, so GLFW outlives every member below. See glfw_guard.h.
+	GlfwGuard glfwGuard;
 
 	GLFWwindow *window = nullptr;
 
@@ -70,9 +54,7 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		// GLFW is torn down by glfwGuard, which is destroyed after every other
-		// member. Terminating GLFW here would free the window system connection
-		// while later chapters' Vulkan objects are still alive.
+		// GLFW is torn down by glfwGuard (see glfw_guard.h), not here.
 	}
 };
 

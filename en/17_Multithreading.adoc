@@ -527,4 +527,5 @@ By distributing work across multiple CPU cores, we can significantly improve per
 
 As you continue to develop your Vulkan applications, consider how multithreading can help you leverage the full power of modern CPUs, and remember to always measure performance to ensure your threading model is actually beneficial for your specific use case.
 
-link:/attachments/37_multithreading.cpp[C{pp} code]
+link:/attachments/37_multithreading.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

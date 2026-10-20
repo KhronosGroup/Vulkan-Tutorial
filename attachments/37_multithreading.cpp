@@ -26,6 +26,8 @@ import vulkan_hpp;
 #define GLFW_INCLUDE_VULKAN        // REQUIRED only for GLFW CreateWindowSurface.
 #include <GLFW/glfw3.h>
 
+#include "glfw_guard.h"
+
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -164,26 +166,8 @@ class MultithreadedApplication
 	}
 
   private:
-	// Owns the GLFW lifetime: initialises it here and terminates it in the
-	// destructor. Declared first, so it is destroyed last - after every vk::raii
-	// member below. The swapchain and surface still reference the window system
-	// connection when their destructors run, so glfwTerminate() has to outlive
-	// them. It also destroys any windows that are still open.
-	struct GlfwGuard
-	{
-		GlfwGuard()
-		{
-			if (!glfwInit())
-			{
-				throw std::runtime_error("failed to initialize GLFW!");
-			}
-		}
-
-		~GlfwGuard()
-		{
-			glfwTerminate();
-		}
-	} glfwGuard;
+	// Declared first, so GLFW outlives every Vulkan member below. See glfw_guard.h.
+	GlfwGuard glfwGuard;
 
 	GLFWwindow                      *window = nullptr;
 	vk::raii::Context                context;

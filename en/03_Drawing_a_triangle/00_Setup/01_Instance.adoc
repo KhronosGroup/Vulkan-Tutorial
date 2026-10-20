@@ -241,4 +241,5 @@ some details about the Vulkan support.
 Before continuing with the more complex steps after instance creation, it's time
 to evaluate our debugging options by checking out xref:./02_Validation_layers.adoc[validation layers].
 
-link:/attachments/01_instance_creation.cpp[C{pp} code]
+link:/attachments/01_instance_creation.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

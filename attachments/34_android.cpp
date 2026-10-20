@@ -69,6 +69,8 @@ typedef void AssetManagerType;
 #	define GLFW_INCLUDE_VULKAN
 #	include <GLFW/glfw3.h>
 
+#	include "glfw_guard.h"
+
 // Define logging macros for Desktop
 #	define LOGI(...)        \
 		printf(__VA_ARGS__); \
@@ -322,26 +324,8 @@ class HelloTriangleApplication
 	AssetManagerType *assetManager = nullptr;
 #else
 	// Desktop-specific members
-	// glfwGuard owns the GLFW lifetime: it initialises GLFW here and terminates it
-	// in the destructor. Declared before the vk::raii members below, so it is
-	// destroyed after them - the swapchain and surface still reference the window
-	// system connection when their destructors run. It also destroys any windows
-	// that are still open.
-	struct GlfwGuard
-	{
-		GlfwGuard()
-		{
-			if (!glfwInit())
-			{
-				throw std::runtime_error("failed to initialize GLFW!");
-			}
-		}
-
-		~GlfwGuard()
-		{
-			glfwTerminate();
-		}
-	} glfwGuard;
+	// Declared before every vk::raii member below, so GLFW outlives them. See glfw_guard.h.
+	GlfwGuard glfwGuard;
 
 	GLFWwindow *window = nullptr;
 #endif

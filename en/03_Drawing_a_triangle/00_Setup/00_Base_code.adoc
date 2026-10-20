@@ -225,20 +225,46 @@ Before we can open a window, the GLFW library has to be initialized with
 `glfwInit()`, and it has to be shut down again with `glfwTerminate()` once we
 are done with it. Instead of calling those by hand, we'll let a small guard
 object own that lifetime, so GLFW is always shut down no matter how the program
-exits. Add it as the *first* private member of the class:
+exits. Every chapter from here on uses the same guard, so it lives in its own
+header, link:/attachments/glfw_guard.h[`glfw_guard.h`], next to the chapter
+sources:
+
+[,c++]
+----
+#pragma once
+
+#include <GLFW/glfw3.h>
+
+#include <stdexcept>
+
+struct GlfwGuard {
+    GlfwGuard() {
+        if (!glfwInit()) {
+            throw std::runtime_error("failed to initialize GLFW!");
+        }
+    }
+
+    ~GlfwGuard() { glfwTerminate(); }
+};
+----
+
+Include it right after GLFW itself. The header includes GLFW too, so including
+it first would pull GLFW in before `GLFW_INCLUDE_VULKAN` is defined:
+
+[,c++]
+----
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+#include "glfw_guard.h"
+----
+
+Then add the guard as the *first* private member of the class:
 
 [,c++]
 ----
 private:
-    struct GlfwGuard {
-        GlfwGuard() {
-            if (!glfwInit()) {
-                throw std::runtime_error("failed to initialize GLFW!");
-            }
-        }
-
-        ~GlfwGuard() { glfwTerminate(); }
-    } glfwGuard;
+    GlfwGuard glfwGuard;
 ----
 
 Because it is a member, its constructor runs before `run` is ever called, so
@@ -367,4 +393,5 @@ X11 shows the window immediately, as described above.
 
 Now that we have the skeleton for the Vulkan application, let's xref:./01_Instance.adoc[create the first Vulkan object]!
 
-link:/attachments/00_base_code.cpp[C{pp} code]
+link:/attachments/00_base_code.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

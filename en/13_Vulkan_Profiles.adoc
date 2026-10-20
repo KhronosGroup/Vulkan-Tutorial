@@ -318,4 +318,5 @@ Vulkan profiles provide a powerful way to simplify your Vulkan code by eliminati
 
 The example we've explored in this chapter demonstrates how profiles can replace the complex feature detection and fallback paths we had to implement in the previous chapter. By using profiles, you can focus more on your application's core functionality and less on the intricacies of hardware compatibility.
 
-link:/attachments/33_vulkan_profiles.cpp[C{pp} code]
+link:/attachments/33_vulkan_profiles.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

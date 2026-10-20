@@ -83,6 +83,7 @@ In the xref:/03_Drawing_a_triangle/03_Drawing/00_Dynamic_rendering.adoc[next cou
 we'll set up dynamic rendering for the swap chain images and prepare the drawing commands.
 
 link:/attachments/12_graphics_pipeline_complete.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/09_shader_base.slang[Slang shader] /
 link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
 link:/attachments/09_shader_base.frag[GLSL Fragment shader]

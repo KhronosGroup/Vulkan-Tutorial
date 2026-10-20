@@ -316,9 +316,6 @@ void cleanup() {
         gameObject.uniformBuffersMapped.clear();
         gameObject.descriptorSets.clear();
     }
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
 }
 ----
 
@@ -356,4 +353,5 @@ In a real-world application, you might extend this system with:
 
 The foundation you've built here will serve as a solid starting point for these more advanced techniques.
 
-link:/attachments/36_multiple_objects.cpp[C{pp} code]
+link:/attachments/36_multiple_objects.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

@@ -188,7 +188,7 @@ The last parameter specifies an array of offsets that are used for dynamic descr
 We'll look at these in a future chapter.
 
 If you run your program now, then you'll notice that unfortunately nothing is visible.
-The problem is that because of the Y-flip we did in the projection matrix, the vertices are now being drawn in counter-clockwise order instead of clockwise order.
+The problem is that because of the Y-flip we applied using a negative viewport height, the vertices now have counter-clockwise winding in framebuffer coordinates instead of clockwise winding.
 This causes backface culling to kick in and prevents any geometry from being drawn.
 Go to the `createGraphicsPipeline` function and modify the `frontFace` in `vk::PipelineRasterizationStateCreateInfo` to correct this:
 

@@ -135,8 +135,11 @@ As the function prototype indicates, there are going to be two of these structur
 An attribute description struct describes how to extract a vertex attribute from a chunk of vertex data originating from a binding description.
 We have two attributes, position and color, so we need two attribute description structs.
 
-The `location` parameter references the `location` directive of the input in the vertex shader.
-The input in the vertex shader with location `0` is the position, which has two 32-bit float components.
+The `location` parameter is the index of the input in the vertex shader.
+Our Slang shader doesn't write any explicit location annotations; the compiler assigns vertex input locations implicitly, in the order the fields are declared in `VSInput`.
+That makes `inPosition` location `0`, a `float2` with two 32-bit float components, and `inColor` location `1`.
+If you reorder the fields in the shader, the locations change with them, so the attribute descriptions in C++ must match.
+If you prefer to make the locations explicit, you can annotate a field with `[[vk::location(N)]]`, for example `[[vk::location(0)]] float2 inPosition;`.
 The `binding` parameter tells Vulkan from which binding the per-vertex data comes.
 
 The `format` parameter describes the type of data for the attribute.

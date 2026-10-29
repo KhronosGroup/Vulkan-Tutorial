@@ -911,36 +911,34 @@ class VulkanApplication
 	{
 		auto commandBuffer = beginSingleTimeCommands();
 
-		vk::ImageMemoryBarrier barrier{
+		vk::ImageMemoryBarrier2 barrier{
 		    .oldLayout        = oldLayout,
 		    .newLayout        = newLayout,
 		    .image            = *image,
 		    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
 
-		vk::PipelineStageFlags sourceStage;
-		vk::PipelineStageFlags destinationStage;
-
 		if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal)
 		{
 			barrier.srcAccessMask = {};
-			barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+			barrier.dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
 
-			sourceStage      = vk::PipelineStageFlagBits::eTopOfPipe;
-			destinationStage = vk::PipelineStageFlagBits::eTransfer;
+			barrier.srcStageMask = vk::PipelineStageFlagBits2::eNone;
+			barrier.dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
 		}
 		else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
 		{
-			barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-			barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+			barrier.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+			barrier.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
 
-			sourceStage      = vk::PipelineStageFlagBits::eTransfer;
-			destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+			barrier.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+			barrier.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
 		}
 		else
 		{
 			throw std::invalid_argument("unsupported layout transition!");
 		}
-		commandBuffer->pipelineBarrier(sourceStage, destinationStage, {}, {}, nullptr, barrier);
+		vk::DependencyInfo dependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+		commandBuffer->pipelineBarrier2(dependencyInfo);
 		endSingleTimeCommands(*commandBuffer);
 	}
 

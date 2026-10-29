@@ -27,7 +27,7 @@ jobs:
       - name: "Install npm"
         uses: actions/setup-node@v4
         with:
-          node-version: 'latest'
+          node-version: 'lts/*'
           cache: 'npm'
           cache-dependency-path: './antora-ui-khronos/package-lock.json'
       - name: "Install dependencies"

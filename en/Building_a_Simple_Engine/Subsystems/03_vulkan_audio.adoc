@@ -116,7 +116,8 @@ private:
     void CleanupVulkanResources();
 
     // Process audio with HRTF using Vulkan
-    void ProcessAudioWithVulkan(float* inputBuffer, float* outputBuffer, size_t frameCount);
+    void ProcessAudioWithVulkan(float* inputBuffer, float* outputBuffer, size_t frameCount,
+                                float azimuth, float elevation);
 };
 
 } // namespace Audio
@@ -215,7 +216,8 @@ void AudioSystem::InitializeVulkanResources() {
     m_VulkanResources.commandBuffer = std::move(commandBuffers[0]);
 }
 
-void AudioSystem::ProcessAudioWithVulkan(float* inputBuffer, float* outputBuffer, size_t frameCount) {
+void AudioSystem::ProcessAudioWithVulkan(float* inputBuffer, float* outputBuffer, size_t frameCount,
+                                         float azimuth, float elevation) {
     if (!m_HRTFEnabled || !m_HRTFDatabase) {
         // If HRTF is disabled, just copy input to output (or do simple stereo panning)
         memcpy(outputBuffer, inputBuffer, frameCount * sizeof(float));
@@ -231,10 +233,9 @@ void AudioSystem::ProcessAudioWithVulkan(float* inputBuffer, float* outputBuffer
     memcpy(data, inputBuffer, frameCount * sizeof(float));
     vkUnmapMemory(device, *m_VulkanResources.inputBufferMemory);
 
-    // Update HRTF data based on source positions
-    // In a real implementation, you would update this for each sound source
-    // For simplicity, we're just using a single HRTF filter here
-    const auto& hrtfData = m_HRTFDatabase->GetHRTFData(0.0f, 0.0f);
+    // Select the HRTF filter for this source's direction relative to the listener.
+    // Each source is processed separately, so the filter is updated per call.
+    const auto& hrtfData = m_HRTFDatabase->GetHRTFData(azimuth, elevation);
     vkMapMemory(device, *m_VulkanResources.hrtfBufferMemory, 0, sizeof(HRTFData), 0, &data);
     memcpy(data, &hrtfData, sizeof(HRTFData));
     vkUnmapMemory(device, *m_VulkanResources.hrtfBufferMemory);
@@ -276,13 +277,13 @@ void AudioSystem::Update(float deltaTime) {
             // Calculate spatial position relative to listener
             glm::vec3 relativePosition = source->GetPosition() - m_Listener.GetPosition();
 
-            // Rotate relative position based on listener orientation
-            glm::mat3 listenerOrientation(
-                glm::cross(m_Listener.GetForward(), m_Listener.GetUp()),
-                m_Listener.GetUp(),
-                -m_Listener.GetForward()
-            );
-            relativePosition = listenerOrientation * relativePosition;
+            // Rotate relative position into the listener's frame (+X right, +Y up, +Z ahead).
+            // The columns form the listener-to-world basis, so its transpose maps world to listener space.
+            glm::vec3 forward = glm::normalize(m_Listener.GetForward());
+            glm::vec3 right = glm::normalize(glm::cross(forward, m_Listener.GetUp()));
+            glm::vec3 up = glm::cross(right, forward);
+            glm::mat3 listenerToWorld(right, up, forward);
+            relativePosition = glm::transpose(listenerToWorld) * relativePosition;
 
             // Calculate azimuth and elevation
             float distance = glm::length(relativePosition);
@@ -296,7 +297,8 @@ void AudioSystem::Update(float deltaTime) {
 
             // Process audio with HRTF using Vulkan
             float processedAudio[2048]; // Stereo output (2 channels)
-            ProcessAudioWithVulkan(const_cast<float*>(audioData), processedAudio, framesToProcess);
+            ProcessAudioWithVulkan(const_cast<float*>(audioData), processedAudio, framesToProcess,
+                                   azimuth, elevation);
 
             // Send processed audio to the audio backend
             // ...

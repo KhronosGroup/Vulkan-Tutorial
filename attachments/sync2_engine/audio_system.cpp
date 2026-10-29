@@ -48,6 +48,38 @@
 #include "engine.h"
 #include "renderer.h"
 
+// Rotate a world-space direction into the listener's frame (+X right, +Y up, +Z ahead).
+// orientation is {forward, up}; right = forward x up. This is the frame the HRTF table is laid out in.
+// Leaves the direction unchanged if the orientation is degenerate.
+static void WorldToListenerSpace(float direction[3], const float orientation[6]) {
+  const float* fwd = &orientation[0];
+  const float* up = &orientation[3];
+  auto normalize = [](float v[3]) {
+    float len = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (len <= 0.0001f) return false;
+    v[0] /= len; v[1] /= len; v[2] /= len;
+    return true;
+  };
+  auto cross = [](const float a[3], const float b[3], float out[3]) {
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+  };
+  auto dot = [](const float a[3], const float b[3]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+
+  float f[3] = {fwd[0], fwd[1], fwd[2]};
+  float r[3];
+  cross(f, up, r);
+  if (!normalize(f) || !normalize(r)) return;
+  float u[3];
+  cross(r, f, u);
+
+  const float local[3] = {dot(direction, r), dot(direction, u), dot(direction, f)};
+  direction[0] = local[0];
+  direction[1] = local[1];
+  direction[2] = local[2];
+}
+
 #if !defined(PLATFORM_ANDROID)
 // OpenAL error checking utility
 static void CheckOpenALError(const std::string& operation) {
@@ -1345,6 +1377,9 @@ bool AudioSystem::ProcessHRTF(const float* inputBuffer, float* outputBuffer, uin
       direction[1] = 0.0f;
       direction[2] = -1.0f; // Default to front
     }
+
+    // Rotate into the listener's frame so head turns change the result
+    WorldToListenerSpace(direction, listenerOrientation);
 
     // Calculate azimuth and elevation
     float azimuth = std::atan2(direction[0], direction[2]);

@@ -10,93 +10,51 @@ The tutorial uses the Antora site generator, documentation links might not work 
 ====
 endif::[]
 
-== Attribution
-
-The Khronos Vulkan^®^ Tutorial is based on the "link:https://vulkan-tutorial.com/[Vulkan Tutorial]" by Alexander Overvoorde licensed under link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
-
-The following tutorials were written by Holochip Corporation and released under the link:https://www.apache.org/licenses/LICENSE-2.0[Apache-2.0]:
-
-* xref:ML_Inference/introduction.adoc[Machine learning inference]
-* xref:OpenXR_Vulkan_Spatial_Computing/introduction.adoc[Vulkan for XR]
-* xref:AI_Assisted_Vulkan/introduction.adoc[LLM-Assistant Vulkan Development]
-* xref:Advanced_glTF/introduction.adoc[Advanced glTF]
-* xref:Advanced_Vulkan_Compute/introduction.adoc[Advanced Vulkan Compute]
-* xref:Building_a_Simple_Engine/introduction.adoc[Building a Simple Game Engine]
-* xref:Synchronization/introduction.adoc[Synchronization]
-* xref:Building_a_Simple_Engine/Courses/Opacity_Micromaps/00_introduction.adoc[Opacity Micromaps mini course]
-
-The following courses were written by Arm Limited.
-
-* xref:courses/18_Ray_tracing/00_Overview.adoc[SIGGRAPH 2025: Hands-on Vulkan Ray Tracing with Dynamic Rendering]
-* xref:courses/siggraph2026_vk_tutorial/00_Overview.adoc[SIGGRAPH 2026: How to write a Vulkan application in 2026]
-
 == About
 
-This repository hosts the contents of the link:https://docs.vulkan.org/tutorial/latest[Khronos Vulkan Tutorial]. The tutorial is part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project].
+This repository hosts the contents of the link:https://docs.vulkan.org/tutorial/latest[Khronos Vulkan Tutorial].
+The tutorial is part of the link:https://github.com/KhronosGroup/Vulkan-Site[Vulkan Documentation Project].
+Start with the online tutorial if you want to learn Vulkan.
 
-== Differences
+The repository hosts several tutorials:
 
-Compared to the original tutorial, this version of the tutorial is teaching up-to-date concepts:
-
-* Vulkan 1.4 as a baseline
-* Dynamic rendering instead of render passes
-* Timeline semaphores
-* link:https://shader-slang.org/[Slang] as the primary shading language
-* Modern C++ (20)
-* link:https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp] with link:https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization[RAII]
-
-It also contains Vulkan usage clarifications, improved synchronization and new content.
+* The primary **Khronos Vulkan Tutorial** updates the traditional link:https://vulkan-tutorial.com/[Vulkan Tutorial by Alexander Overvoorde] to use modern Vulkan features and practices.
+See link:en/00_Introduction.adoc[the introduction] for a quick start.
+* A set of tutorials on advanced Vulkan topics, which you can follow once you have completed the primary tutorial.
+They are listed in the link:en/00_Introduction.adoc#_advanced_topics[advanced topics section] of the introduction.
 
 == Project Structure
 
-The repository is organized into several important directories:
+* `en/` - the tutorial content in English.
+** `en/00_Introduction.adoc` to `en/17_Multithreading.adoc`, together with the numbered subdirectories, make up the primary Khronos Vulkan Tutorial.
+** `en/Building_a_Simple_Engine/`, `en/Advanced_glTF/`, `en/Advanced_Vulkan_Compute/`, `en/Synchronization/`, `en/ML_Inference/`, `en/OpenXR_Vulkan_Spatial_Computing/` and `en/AI_Assisted_Vulkan/` contain the tutorials on advanced topics.
+** `en/courses/` contains the SIGGRAPH courses.
+* `attachments/` - code examples, shaders, and resources used by the tutorials.
+* `images/` - illustrations, diagrams, and screenshots.
+* `scripts/` - utility scripts, including dependency installation scripts.
+* `antora/` - the configuration for the link:https://antora.org/[Antora] documentation system the site is built with.
 
-* `en/` - Contains the tutorial content in English, organized by chapters
-** The main tutorial covers fundamental Vulkan concepts (chapters 00-17)
-** The "Building a Simple Engine" section builds upon these fundamentals to create a structured rendering engine
-* `attachments/` - Contains code examples, shader files, and resources used in the tutorial
-* `images/` - Contains illustrations, diagrams, and screenshots used in the tutorial
-* `scripts/` - Contains utility scripts, including dependency installation scripts
-* `antora/` - Contains configuration files for the Antora documentation system
+== Building the Code Examples
 
-== Installation Dependencies
+The code for the primary tutorial lives in `attachments/`.
+The tutorial's link:en/02_Development_environment.adoc[development environment chapter] explains how to set up the dependencies, and `scripts/` contains scripts that install them on Linux and Windows.
+Some of the advanced tutorials have additional requirements, which are described in their own chapters.
 
-The project provides scripts to help you install the necessary dependencies:
+== Previewing Changes to the Tutorial
 
-=== Linux
-Run the following command to install dependencies on Linux:
-[source,bash]
-----
-./scripts/install_dependencies_linux.sh
-----
+The tutorial is written in AsciiDoc and rendered with Antora, so some things that look broken in GitHub's preview, such as missing images or cross-references, are expected.
+See link:CONTRIBUTING.adoc[CONTRIBUTING.adoc] for how to preview AsciiDoc in your editor.
 
-This script detects your package manager (apt, dnf, pacman) and installs the required dependencies, including:
-* Build essentials (gcc, cmake, ninja-build)
-* GLFW, GLM, tinyobjloader, stb
-* X Window System dependencies
+To build the documentation the same way CI does, follow the steps in link:.github/workflows/build-antora-doc.yml[`build-antora-doc.yml`]:
+build the Khronos Antora UI bundle from link:https://github.com/KhronosGroup/antora-ui-khronos[antora-ui-khronos], copy `ui-bundle.zip` to the repository root, run `make` in `antora/`, and then run `npx antora antora-ci-playbook.yml` from the repository root.
 
-It also provides instructions for installing the Vulkan SDK.
+== License and Attribution
 
-=== Windows
-Run the following command to install dependencies on Windows:
-[source,batch]
-----
-scripts\install_dependencies_windows.bat
-----
-
-This script uses vcpkg to install the required dependencies, including:
-* GLFW, GLM, tinyobjloader, stb
-
-You will also need to install the Vulkan SDK separately from https://vulkan.lunarg.com/.
-
-== License
-
-The contents of this repository are licensed as https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0], unless stated otherwise.
-By contributing to this repository, you agree to license your contributions to the public under that same license.
-
-The code listings in the `attachments` directory are licensed as
-https://creativecommons.org/publicdomain/zero/1.0/[CC0 1.0 Universal].
-By contributing to that directory, you agree to license your contributions to the public under that same public domain-like license.
+The primary Khronos Vulkan Tutorial is based on the "link:https://vulkan-tutorial.com/[Vulkan Tutorial]" by Alexander Overvoorde and is licensed under link:https://creativecommons.org/licenses/by-sa/4.0/[CC BY-SA 4.0].
+Different parts of the repository are under different licenses:
+the Arm tutorials are also CC BY-SA 4.0, the Holochip tutorials are link:https://www.apache.org/licenses/LICENSE-2.0[Apache-2.0], and code listings are link:https://creativecommons.org/publicdomain/zero/1.0/[CC0 1.0 Universal] where applicable.
+The link:en/00_Introduction.adoc#_attribution[attribution section] of the introduction lists which tutorials are covered by which license, the full license texts are in the `LICENSES` directory, and `REUSE.toml` records which license covers which files.
+See link:CONTRIBUTING.adoc[CONTRIBUTING.adoc] for how contributions are licensed.
 
 == Contributing
 
@@ -114,5 +72,5 @@ AI was used for:
 
 Humans have reviewed all content of all tutorials and we welcome feedback.
 
-xref:AI_Assisted_Vulkan/introduction.adoc[LLM-Assistant Vulkan Development] tutorial used for all LLM use in these tutorials and sample code.
+The link:en/AI_Assisted_Vulkan/introduction.adoc[LLM-Assistant Vulkan Development] tutorial used for all LLM use in these tutorials and sample code.
 ====

@@ -7,6 +7,13 @@ graphics pipeline. In Vulkan, you have to be explicit about most pipeline states
 it'll be baked into an immutable pipeline state object. In this chapter, we'll fill
 in all the structures to configure these fixed-function operations.
 
+The structures you fill in here are not used on their own.
+They are only descriptions of pipeline state, and they take effect once we pass them to `vk::GraphicsPipelineCreateInfo` when we create the pipeline at the end of the graphics pipeline basics chapters.
+Until then it is normal for them to sit unused in `createGraphicsPipeline`.
+Some of the options mentioned along the way, like alternative topologies or the static viewport, are not used by the tutorial's code and exist so that you know they are there.
+If you ever want to see only what to type, compare with the C{pp} code linked at the end of the chapter.
+Don't worry if some terms are new; the first time one comes up, such as _scissor_ or _rasterizer_, it is explained in place.
+
 == Dynamic state
 
 While *most* of the pipeline state needs to be baked into the pipeline state,
@@ -68,72 +75,63 @@ vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::Primitive
 
 == Viewports and scissors
 
-A viewport basically describes the region of the framebuffer that the output will be rendered to.
-This will almost always be `(0, 0)` to `(width, height)` and in this tutorial that will also be the case.
+Two pieces of state decide which part of the image your triangle can end up in: the viewport and the scissor rectangle.
 
-[,c++]
-----
-vk::Viewport viewport{0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f};
-----
-
-Remember that the size of the swap chain and its images may differ from the `WIDTH` and `HEIGHT` of the window.
-The swap chain images will be used as framebuffers later on, so we should stick to their size.
-
+A _viewport_ describes how the coordinates your vertex shader outputs are mapped onto the image you are rendering to.
+It will almost always cover the whole image, from `(0, 0)` to `(width, height)`, and in this tutorial that will also be the case.
 The `minDepth` and `maxDepth` values specify the range of depth values to use for the framebuffer.
 These values must be within the `[0.0f, 1.0f]` range, but `minDepth` may be higher than `maxDepth`.
 If you aren't doing anything special, then you should stick to the standard values of `0.0f` and `1.0f`.
 
+A _scissor rectangle_ is a second, independent clipping region.
 While viewports define the transformation from the image to the framebuffer, scissor rectangles define in which region pixels will actually be stored.
-The rasterizer will discard any pixels outside the scissored rectangles.
-They function like a filter rather than a transformation.
+The rasterizer discards any pixels outside the scissor rectangle.
+In other words, a viewport _moves and scales_ the picture, while a scissor _cuts it off_, like a filter rather than a transformation.
 The difference is illustrated below.
 Note that the left scissored rectangle is just one of the many possibilities that would result in that image, as long as it's larger than the viewport.
 
 image::/images/viewports_scissors.png[]
 
-So if we wanted to draw to the entire framebuffer, we would specify a scissor rectangle that covers it entirely:
+For this tutorial we want to draw to the entire image, so both the viewport and the scissor rectangle will simply cover all of it.
 
-[,c++]
-----
-vk::Rect2D scissor{vk::Offset2D{ 0, 0 }, swapChainExtent};
-----
+=== What the tutorial does: dynamic viewport and scissor
 
-Viewport(s) and scissor rectangle(s) can either be specified as a static part of the pipeline or as a dynamic state set in the command buffer.
-While the former is more in line with the other states, it's often convenient to make viewport and scissor state dynamic as it gives you a lot more flexibility.
-This is widespread and all implementations can handle this dynamic state without a performance penalty.
+Viewport(s) and scissor rectangle(s) can either be baked into the pipeline or set as dynamic state in the command buffer.
+We use dynamic state.
+It's widespread, gives you a lot more flexibility, and all implementations can handle this dynamic state without a performance penalty.
+It also means we don't have to know the size of the swap chain images when we create the pipeline.
 
-When opting for dynamic viewport(s) and scissor rectangle(s), you need to
-enable the respective dynamic states for the pipeline:
-
-[,c++]
-----
-std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-
-vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
-----
-
-And then you only need to specify their count at pipeline creation time:
+That is why you already enabled the viewport and scissor dynamic states at the start of this chapter.
+In the pipeline we only need to specify how many viewports and scissor rectangles there are:
 
 [,c++]
 ----
 vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
 ----
 
-The actual viewport(s) and scissor rectangle(s) will then later be set up at drawing time.
-
+The actual viewport and scissor rectangle will then be set at drawing time, when we record the command buffer in a later chapter.
 With dynamic state, it's even possible to specify different viewports and or scissor rectangles within a single command buffer.
+
+Independent of how you set them, it's possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
+Using multiple requires enabling a GPU feature (see logical device creation).
+
+=== Optional: static viewport and scissor
+
+You do not need the code in this subsection to follow the tutorial.
+It shows what the alternative would look like, and it is the reason the dynamic approach is convenient.
 
 Without dynamic state, the viewport and scissor rectangle need to be set in the pipeline using the `vk::PipelineViewportStateCreateInfo` struct.
 This makes the viewport and scissor rectangle for this pipeline immutable.
 Any changes required to these values would require a new pipeline to be created with the new values.
+Note that the size of the swap chain and its images may differ from the `WIDTH` and `HEIGHT` of the window, so you would build both from `swapChainExtent`, not from the window size:
 
 [,c++]
 ----
+vk::Viewport viewport{0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f};
+vk::Rect2D   scissor{vk::Offset2D{0, 0}, swapChainExtent};
+
 vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .pViewports = &viewport, .scissorCount = 1, .pScissors = &scissor};
 ----
-
-Independent of how you set them, it's possible to use multiple viewports and scissor rectangles on some graphics cards, so the structure members reference an array of them.
-Using multiple requires enabling a GPU feature (see logical device creation).
 
 == Rasterizer
 
@@ -179,6 +177,8 @@ This is sometimes used for shadow mapping, but we won't be using it.
 Just set `depthBiasEnable` to `vk::False`.
 
 The `lineWidth` member is straightforward, it describes the thickness of lines in terms of number of fragments.
+It only has an effect when lines are being rasterized, either because the input assembly topology is a line topology or because `polygonMode` is `vk::PolygonMode::eLine`.
+We are drawing filled triangles, so the value won't change what you see, but it is still part of the structure and should be set to `1.0f`.
 The maximum line width that is supported depends on the hardware and any line thicker than `1.0f` requires you to enable the `wideLines` GPU feature.
 
 == Multisampling

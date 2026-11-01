@@ -392,10 +392,16 @@ Secondary command buffers can be recorded in parallel and then executed by a pri
 [,c{pp}]
 ----
 // In worker thread:
+
+// Dynamic rendering setup
+vk::CommandBufferInheritanceRenderingInfo inheritanceRenderingInfo{
+    .colorAttachmentCount = 1,
+    ...
+};
+
 vk::CommandBufferInheritanceInfo inheritanceInfo{
-    .renderPass = *renderPass,
-    .subpass = 0,
-    .framebuffer = *framebuffers[imageIndex]
+    // Instead of using a renderpass, we pass the dynamic rendering setup
+    .pNext = &inheritanceRenderingInfo
 };
 
 vk::CommandBufferBeginInfo beginInfo{
@@ -409,9 +415,9 @@ secondaryCommandBuffer.end();
 
 // In main thread:
 primaryCommandBuffer.begin({});
-primaryCommandBuffer.beginRenderPass(...);
+primaryCommandBuffer.beginRendering(...);
 primaryCommandBuffer.executeCommands(secondaryCommandBuffers);
-primaryCommandBuffer.endRenderPass();
+primaryCommandBuffer.endRendering();
 primaryCommandBuffer.end();
 ----
 

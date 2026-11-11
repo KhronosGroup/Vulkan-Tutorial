@@ -6,7 +6,7 @@ Bind the TLAS to the shader so we can use Ray Queries.
 When casting a ray in a scene, we need an optimized structure that quickly identifies which triangle the ray hits. GPUs use acceleration structures that group geometry into bounding boxes, allowing large parts of the scene to be skipped. The ray traversal proceeds down a tree, efficiently narrowing down to the intersected triangle.
 The exact implementation is GPU-dependent and opaque to the user.
 
-image::../../../images/38_bounding_boxes.png[]
+image::../../../images/38_bounding_boxes.png["A potted plant scene rendered with thin white wireframe boxes drawn around the objects. A tall box encloses the plant with red leaves and a second box encloses the plant with green leaves. Further boxes enclose the pot, the soil and the floor. An orange arrow points at the tall box around the red-leafed plant."]
 
 Our scene is a simple 3D model (a plant on a table) loaded from an OBJ file. The provided code already loads the model's vertices, indices, normals, and textures into buffers.
 It separates the model into submeshes, each with its own material.
@@ -96,7 +96,7 @@ blasBuildGeometryInfo.dstAccelerationStructure = blasHandles[i];
 
 The following diagram summarizes all the structures and buffers we have created so far:
 
-image::../../../images/38_TASK02_blas_structures.png[]
+image::../../../images/38_TASK02_blas_structures.png["Diagram of the structures used to create a bottom-level acceleration structure. A vk::AccelerationStructureBuildGeometryInfoKHR with type BottomLevel, geometryCount 1 and pGeometries holds a vk::AccelerationStructureGeometryKHR with geometryType Triangles. That holds a vk::AccelerationStructureGeometryDataKHR, which holds a vk::AccelerationStructureGeometryTrianglesDataKHR with vertexFormat, vertexData, vertexStride, indexType and indexData. The build info is passed to vkGetAccelerationStructureBuildSizesKHR(), which fills a vk::AccelerationStructureBuildSizesInfoKHR with accelerationStructureSize and buildScratchSize. A blasBuffer is used in a vk::AccelerationStructureCreateInfoKHR with type BottomLevel, passed to vkCreateAccelerationStructureKHR(), which produces the vk::AccelerationStructureKHR named blas. The scratchBuffer becomes scratchData and blas becomes dstAccelerationStructure of the build info."]
 
 To put it all together, we need to submit a command buffer to build the BLAS on the GPU. This is done with the command buffer's `buildAccelerationStructuresKHR()` method, which takes the build info and a range. The range adds flexibility to build multiple geometries in one go, but here we only have one geometry per BLAS so it is kept simple:
 
@@ -121,7 +121,7 @@ cmd->buildAccelerationStructuresKHR({ blasBuildGeometryInfo }, { &blasRangeInfo 
 endSingleTimeCommands(*cmd);
 ----
 
-image::../../../images/38_TASK02_blas_build.png[]
+image::../../../images/38_TASK02_blas_build.png["Diagram of building the bottom-level acceleration structure. A vk::AccelerationStructureBuildGeometryInfoKHR with type BottomLevel and dstAccelerationStructure set to the vk::AccelerationStructureKHR blas, and a vk::AccelerationStructureBuildRangeInfoKHR with primitiveCount and primitiveOffset, are both passed to vkCmdBuildAccelerationStructuresKHR(), which builds into blas."]
 
 Now you have a BLAS for each model in the scene. Next we need to put them all together into a single TLAS which will then be consumed by our fragment shader.
 
@@ -154,7 +154,7 @@ Now that all instances are stored in a vector, we need to prepare the instance d
 
 Using a very similar approach as for the BLAS, we need to prepare the data for the TLAS build, query buffer sizes, allocate buffers, create the TLAS handle, and issue a build command. The diagram below highlights the main changes needed for the TLAS:
 
-image::../../../images/38_TASK03_tlas_structures.png[]
+image::../../../images/38_TASK03_tlas_structures.png["Diagram of the structures used to create a top-level acceleration structure, laid out like the bottom-level one. A vk::AccelerationStructureBuildGeometryInfoKHR with type TopLevel, geometryCount 1 and pGeometries holds a vk::AccelerationStructureGeometryKHR with geometryType Instances. That holds a vk::AccelerationStructureGeometryDataKHR and a vk::AccelerationStructureGeometryInstancesDataKHR whose data is the instanceBuffer. The build info is passed to vkGetAccelerationStructureBuildSizesKHR(), which fills a vk::AccelerationStructureBuildSizesInfoKHR with accelerationStructureSize and buildScratchSize. A tlasBuffer is used in a vk::AccelerationStructureCreateInfoKHR with type TopLevel, passed to vkCreateAccelerationStructureKHR(), which produces the vk::AccelerationStructureKHR named tlas. The scratchBuffer becomes scratchData and tlas becomes dstAccelerationStructure of the build info."]
 
 To prepare the geometry data for the TLAS we will use `vk::GeometryTypeKHR::eInstances` to indicate that we are building a TLAS from instances of BLASes:
 

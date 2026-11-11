@@ -27,7 +27,8 @@ jobs:
       - name: "Install npm"
         uses: actions/setup-node@v4
         with:
-          node-version: 'latest'
+          # Pin Node.js with bundled npm 11; npm 12 blocks Git dependencies and skips install scripts.
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: './antora-ui-khronos/package-lock.json'
       - name: "Install dependencies"

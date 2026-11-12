@@ -1,4 +1,5 @@
-= Development Environment
+= Build and Development Environment
+:page-aliases: 02_Development_environment.adoc
 
 :pp: {plus}{plus}
 
@@ -7,6 +8,63 @@ applications and install some useful libraries. All the tools we'll use,
 except for the compiler, are compatible with Windows, Linux and macOS, but the
 steps for installing them differ a bit, which is why they're described
 separately here.
+
+== Quick start
+
+Follow these basic steps to build and test the repository on Windows and Linux.
+
+1. Obtain the source code for this project using git clone:
++
+[,shell]
+----
+git clone https://github.com/KhronosGroup/Vulkan-Tutorial
+cd Vulkan-Tutorial
+----
+2. You'll need a C++20 compiler, CMake 3.29+, and Vulkan SDK 1.4.335+
+  * The Vulkan SDK can be obtained from link:https://vulkan.lunarg.com/sdk/home[LunarG]. See <<common_considerations_vulkan_sdk,Vulkan SDK>> for details.
+  * See the <<_cmake, CMake>>, <<common_considerations_windows, Windows>> and <<common_considerations_linux, Linux>> sections, for details about the build dependencies.
+3. On Windows, install link:https://github.com/microsoft/vcpkg[vcpkg] following link:https://learn.microsoft.com/en-us/vcpkg/get_started/get-started[the official guide], and add the directory containing `vcpkg.exe` to your `PATH`.
+4. From the repository folder, run the installation script for your platform:
+  * *Linux:* `bash scripts/install_dependencies_linux.sh`
+  * *Windows (PowerShell):* `.\scripts\install_dependencies_windows.bat`
+  * You can read <<_common_considerations,Common considerations>> for more details.
+5. Configure the project from the `attachments` directory:
++
+On Windows:
++
+[,shell]
+----
+cd attachments
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[path/to/vcpkg]/scripts/buildsystems/vcpkg.cmake"
+----
+  * Replace `[path/to/vcpkg]` with your vcpkg installation directory.
++
+On Linux:
++
+[,shell]
+----
+cd attachments
+cmake -B build -S .
+----
+  * Read <<setting-up-a-cmake-project,Setting up a CMake project>> for more information.
+6. Open the `attachments` directory in an IDE with CMake support, such as Visual Studio, Visual Studio Code with CMake Tools, or CLion, and build the project.
+7. Alternatively, you can compile the project manually:
+  * Go to the `attachments` folder
+  * Compile the project and generate binaries for all steps with:
++
+[,shell]
+----
+cmake --build build --config Debug
+----
+8. From `attachments`, run the model-loading example:
+  * *Windows, Visual Studio*: `cd build\28_model_loading\Debug`, then `.\28_model_loading.exe`.
+  * *Linux, Ninja or Unix Makefiles*: `cd build/28_model_loading`, then `./28_model_loading`.
+  * You should see a textured model like the one shown below.
++
+image::/images/drawing_model.png[A textured model rendered with Vulkan]
+* See <<_running_the_examples,Running the examples>> for other examples and their expected output.
+
+The tutorial supports macOS. Read the <<_macos,macOS instructions>> if you want to run this on macOS.
 
 == Getting the code
 
@@ -50,6 +108,7 @@ If you prefer to install the dependencies manually, or if you're using macOS, fo
 
 == Common considerations
 
+[#common_considerations_vulkan_sdk]
 === Vulkan SDK
 
 The most important part you'll need for developing Vulkan applications is the SDK.
@@ -129,7 +188,7 @@ The Vulkan C{pp} headers also offer a C{pp} module. A large advantage of C{pp} m
 [NOTE]
 ====
 Module support in the Vulkan C{pp} headers is still experimental and might not work with all compilers. Unless you want to experiment, it's recommended to **not** use them.
-==== 
+====
 
 To enable the Vulkan C{pp}20 module in the attachments template, configure CMake with:
 
@@ -224,6 +283,7 @@ easy-to-support features available in a cross-platform library.  However, for th
 tutorial, we're going to use tinyobjloader for its pure simplicity.  We
 recommend tinyobjloader library only for small not complex projects.
 
+[#common_considerations_windows]
 == Windows
 
 Development in Windows is easiest with Visual Studio. CLion works well with
@@ -277,6 +337,7 @@ image::/images/library_directory.png[]
 
 Tinyobjloader can be installed with vcpkg like so: vcpkg install tinyobjloader
 
+[#common_considerations_linux]
 == Linux
 
 These instructions will be aimed at Ubuntu, Fedora and Arch Linux users, but
@@ -301,8 +362,8 @@ link to the latest on like so:
 [,shell]
 ----
 pushd vulkansdk
-tar -xf vulkansdk-linux-x86_64-1.4.304.1.tar.xz
-ln -s 1.4.304.1 default
+tar -xf vulkansdk-linux-x86_64-1.4.335.0.tar.xz
+ln -s 1.4.335.0 default
 ----
 
 Then add the following to your ~/.bashrc file so Vulkan's environment
@@ -500,6 +561,7 @@ You are now all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[th
 
 Vulkan is a first-class API on Android and widely supported. But using it differs in several key areas from window management to build systems. So while the basic chapters focus on desktop platforms, the tutorial also has a xref:14_Android.adoc[dedicated chapter] that walks you through setting up your development environment and getting the tutorial code up-and-running on Android.
 
+[#setting-up-a-cmake-project]
 == Setting up a CMake project
 
 Now that you have installed all the dependencies, we can set up a basic
@@ -509,7 +571,7 @@ everything works.
 We will assume that you already have some basic experience with CMake, like
 how variables and rules work. If not, you can get up to speed very quickly with https://cmake.org/cmake/help/book/mastering-cmake/cmake/Help/guide/tutorial/[this tutorial].
 
-The `attachment\template` folder contains a CMake template that you can use to create a project file in the `build` folder for your IDE of choice. Use this as a starting point to work along the tutorial:
+The `attachments/template` folder contains a CMake template that you can use to create a project file in the `build` folder for your IDE of choice. Use this as a starting point to work along the tutorial:
 
 ----
 cd attachments\template
@@ -524,3 +586,48 @@ cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=[path\to\vcpkg]\scripts\buildsystems\
 ----
 
 Congratulations, you're all set for xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[playing with Vulkan]!
+
+== Running the examples
+
+Each tutorial binary is a checkpoint in the tutorial, rather than a complete application.
+The early examples, from `00_base_code` through `14_command_buffers`,
+open an empty window that may appear black because they do not yet draw and present a triangle.
+This alone does not mean your environment is broken.
+
+To check your setup, try the triangle and model-loading examples below.
+Start from the `attachments` directory.
+Each example must be run from its own folder so it can find its shaders and assets.
+
+=== Windows (Visual Studio, Debug build)
+
+[,shell]
+----
+# Triangle
+cd build\15_hello_triangle\Debug
+.\15_hello_triangle.exe
+
+# Model loading
+cd ..\..\28_model_loading\Debug
+.\28_model_loading.exe
+----
+
+=== Linux (Ninja or Unix Makefiles)
+
+[,shell]
+----
+# Triangle
+cd build/15_hello_triangle
+./15_hello_triangle
+
+# Model loading
+cd ../28_model_loading
+./28_model_loading
+----
+
+The triangle example should display:
+
+image::/images/triangle.png[A coloured triangle rendered with Vulkan]
+
+The model-loading example should display:
+
+image::/images/drawing_model.png[A textured model rendered with Vulkan]

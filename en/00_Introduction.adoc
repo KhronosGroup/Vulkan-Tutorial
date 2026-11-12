@@ -40,6 +40,11 @@ It also contains Vulkan usage clarifications, improved synchronization and new c
 
 This tutorial will teach you the basics of using the
 https://www.khronos.org/vulkan/[Vulkan] graphics and compute API.
+You'll learn how to render a basic scene
+while exploring the core features of a modern Vulkan application.
+
+image::/images/drawing_model.png[A textured model rendered with Vulkan]
+
 Vulkan is an API by the https://www.khronos.org/[Khronos group] that
 provides a much better abstraction of modern graphics cards.
 This new interface allows you to better describe what your application

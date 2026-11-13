@@ -5,7 +5,7 @@
 
 * xref:00_Introduction.adoc[Introduction]
 * xref:01_Overview.adoc[Overview]
-* xref:02_Development_environment.adoc[Development environment]
+* xref:02_Build_and_development_environment.adoc[Build and development environment]
 * xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[Drawing a triangle]
 ** xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[Setup]
 *** xref:03_Drawing_a_triangle/00_Setup/00_Base_code.adoc[Base Code]

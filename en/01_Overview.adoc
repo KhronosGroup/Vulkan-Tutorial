@@ -341,4 +341,4 @@ layers are so extensive, it can actually be a lot easier to find out why
 your screen is black compared to OpenGL and Direct3D!
 
 There's only one more step before we'll start writing code, and that's
-xref:02_Development_environment.adoc[setting up the development environment].
+xref:02_Build_and_development_environment.adoc[setting up the development environment].

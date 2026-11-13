@@ -67,7 +67,7 @@ The tutorial supports macOS. Read the <<_macos,macOS instructions>> if you want 
 
 Alternatively, if you want to use an IDE:
  * On Linux, install the dependencies, then you can use <<setting-up-clion, CLion>> to configure, build and run the project.
- * On Windows, install the dependencies including vcpk, and configure the project `cd attachments; cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[path/to/vcpkg]/scripts/buildsystems/vcpkg.cmake"`. Visual Studio should now be able to open `attachments\build\VulkanTutorial.sln` or `attachments\build\VulkanTutorial.slnx` depending on your version.
+ * On Windows, install the dependencies including vcpkg, and configure the project `cd attachments; cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[path/to/vcpkg]/scripts/buildsystems/vcpkg.cmake"`. Visual Studio should now be able to open `attachments\build\VulkanTutorial.sln` or `attachments\build\VulkanTutorial.slnx` depending on your version.
 
 == Getting the code
 

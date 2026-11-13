@@ -28,7 +28,7 @@ cd Vulkan-Tutorial
   * *Linux:* `bash scripts/install_dependencies_linux.sh`
   * *Windows (PowerShell):* `.\scripts\install_dependencies_windows.bat`
   * You can read <<_common_considerations,Common considerations>> for more details.
-5. Configure the project from the `attachments` directory:
+5. Manually configure the project:
 +
 On Windows:
 +
@@ -47,8 +47,7 @@ cd attachments
 cmake -B build -S .
 ----
   * Read <<setting-up-a-cmake-project,Setting up a CMake project>> for more information.
-6. Open the `attachments` directory in an IDE with CMake support, such as Visual Studio, Visual Studio Code with CMake Tools, or CLion, and build the project.
-7. Alternatively, you can compile the project manually:
+6. You can compile the project manually:
   * Go to the `attachments` folder
   * Compile the project and generate binaries for all steps with:
 +
@@ -56,7 +55,7 @@ cmake -B build -S .
 ----
 cmake --build build --config Debug
 ----
-8. From `attachments`, run the model-loading example:
+7. From `attachments`, run the model-loading example:
   * *Windows, Visual Studio*: `cd build\28_model_loading\Debug`, then `.\28_model_loading.exe`.
   * *Linux, Ninja or Unix Makefiles*: `cd build/28_model_loading`, then `./28_model_loading`.
   * You should see a textured model like the one shown below.
@@ -65,6 +64,10 @@ image::/images/drawing_model.png[A textured model rendered with Vulkan]
 * See <<_running_the_examples,Running the examples>> for other examples and their expected output.
 
 The tutorial supports macOS. Read the <<_macos,macOS instructions>> if you want to run this on macOS.
+
+Alternatively, if you want to use an IDE:
+ * On Linux, install the dependencies, then you can use <<setting-up-clion, CLion>> to configure, build and run the project.
+ * On Windows, install the dependencies including vcpk, and configure the project `cd attachments; cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="[path/to/vcpkg]/scripts/buildsystems/vcpkg.cmake"`. Visual Studio should now be able to open `attachments\build\VulkanTutorial.sln` or `attachments\build\VulkanTutorial.slnx` depending on your version.
 
 == Getting the code
 
@@ -433,6 +436,7 @@ or
 sudo pacman -S glm
 ----
 
+[#setting-up-clion]
 === Setting up CLion (optional)
 
 You can get http://jetbrains.com[CLion] from there.  We recommend installing

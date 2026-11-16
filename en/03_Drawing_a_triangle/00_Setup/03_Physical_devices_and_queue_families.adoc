@@ -131,7 +131,7 @@ void pickPhysicalDevice()
     }
     
     // Use an ordered map to automatically sort candidates by increasing score
-    std::multimap<int, vk::raii::PhysicalDevice> candidates;
+    std::multimap<uint32_t, vk::raii::PhysicalDevice> candidates;
 
     for (const auto& pd : physicalDevices)
     {

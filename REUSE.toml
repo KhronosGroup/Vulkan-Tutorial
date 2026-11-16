@@ -121,7 +121,7 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = [
     "en/00_Introduction.adoc",
     "en/01_Overview.adoc",
-    "en/02_Development_environment.adoc",
+    "en/02_Build_and_development_environment.adoc",
     "en/03_Drawing_a_triangle/**",
     "en/04_Vertex_buffers/**",
     "en/05_Uniform_buffers/**",

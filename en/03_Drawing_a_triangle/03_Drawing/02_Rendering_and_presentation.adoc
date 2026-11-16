@@ -267,6 +267,19 @@ Now call the function `recordCommandBuffer` to record the commands we want.
 recordCommandBuffer(imageIndex);
 ----
 
+Before we submit the recorded command buffer, there is one more thing to take care of.
+The fence we wait on at the start of `drawFrame` is signaled when the submitted work has finished, but it says nothing about the presentation of the previous frame, which waits on `renderFinishedSemaphore`.
+Since we only have a single `renderFinishedSemaphore`, submitting again while the presentation engine may still be waiting on it would signal a semaphore that is still in use.
+To keep this chapter simple, we make the queue wait until all of its previous work, including the presentation, has completed:
+
+[,c++]
+----
+queue.waitIdle();
+----
+
+This is a very rudimentary form of synchronization, and it prevents the CPU and the GPU from working in parallel. This shouldn't be used in production.
+In the xref:./03_Frames_in_flight.adoc[next chapter] we'll replace it by using multiple frames in flight and a `renderFinishedSemaphore` for each swap chain image.
+
 With a fully recorded command buffer, we can now submit it.
 
 == Submitting the command buffer

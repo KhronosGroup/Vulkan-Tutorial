@@ -490,8 +490,8 @@ class HelloTriangleApplication
 
 		recordCommandBuffer(imageIndex);
 
-		queue.waitIdle();        // NOTE: for simplicity, wait for the queue to be idle before starting the frame
-		                         // In the next chapter you see how to use multiple frames in flight and fences to sync
+		queue.waitIdle();        // NOTE: for simplicity, wait for the queue to be idle before submitting, so renderFinishedSemaphore is no longer in use by the previous present
+		                         // In the next chapter you see how to use multiple frames in flight and a semaphore per swap chain image to sync
 
 		vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 		const vk::SubmitInfo   submitInfo{.waitSemaphoreCount   = 1,

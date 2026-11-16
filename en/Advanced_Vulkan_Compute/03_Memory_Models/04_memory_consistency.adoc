@@ -17,20 +17,23 @@ This function is essentially the "Safe Mode" of synchronization. Use it when you
 
 In GLSL, you don't have a single "magic" function that does everything. Instead, you have to be explicit about what you are synchronizing. This is where many bugs creep in, but it's also where you can find performance wins.
 
-[source,glsl]
-----
-// The GLSL equivalent of Slang's GroupMemoryBarrierWithGroupSync()
-memoryBarrierShared(); // Make shared memory writes available/visible
-barrier();             // Wait for all threads to reach this point
-----
-
-If you are working with **Global Memory** (SSBOs), `barrier()` alone is not enough! You must also call `memoryBarrierBuffer()` to ensure that your writes to the buffer are actually visible to other threads before they proceed past the barrier.
+CAUTION: A common idiom calls a `memoryBarrier*()` function immediately before `barrier()`. Under the Vulkan Memory Model this ordering doesn't synchronize what it looks like it should: an acquire operation must happen *after* the control barrier, not before it. `barrier()` on its own is already exactly the right tool here — for compute shaders it's defined as a control barrier that also performs a full acquire-release memory barrier over shared memory, so a preceding `memoryBarrierShared()` call is redundant.
 
 [source,glsl]
 ----
-// Ensuring global memory is ready for other threads in the workgroup
-memoryBarrierBuffer();
+// barrier() alone already does everything GroupMemoryBarrierWithGroupSync() does for shared memory
 barrier();
+----
+
+If you are working with **Global Memory** (SSBOs), `barrier()` alone only covers shared memory. To also synchronize a workgroup's buffer writes, use `controlBarrier()` from the `GL_KHR_memory_scope_semantics` extension, which performs the release, the barrier, and the acquire together as a single, correctly-ordered operation:
+
+[source,glsl]
+----
+#extension GL_KHR_memory_scope_semantics : enable
+
+// Ensuring global memory is ready for other threads in the workgroup
+controlBarrier(gl_ScopeWorkgroup, gl_ScopeWorkgroup,
+               gl_StorageSemanticsBuffer, gl_SemanticsAcquireRelease);
 ----
 
 Vulkan 1.4 further refines this with **Memory Semantics**, allowing you to specify exactly which "domain" (Uniform, Buffer, Image, or Shared) you are synchronizing, avoiding the "sync everything" penalty of a general barrier.

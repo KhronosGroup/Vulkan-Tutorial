@@ -328,19 +328,18 @@ In this example, we'll leave sample shading disabled, but in certain scenarios t
 
 image::/images/sample_shading.png[]
 
-== Conclusion
+== Next steps
 
 It has taken a lot of work to get to this point, but now you finally have a good base for a Vulkan program.
-The knowledge of the basic principles of Vulkan that you now possess should be sufficient to start exploring more of the features, like:
+This isn't the end of the tutorial series, though - the knowledge of the basic principles of Vulkan that
+you now possess should be sufficient to start exploring more of the features, like:
 
-* Push constants
-* Instanced rendering
-* Dynamic uniforms
-* Separate images and sampler descriptors
-* Pipeline cache
-* Multithreaded command buffer generation
-* Multiple subpasses
+* Push constants and instanced rendering, touched on in xref:16_Multiple_Objects.adoc[Rendering multiple objects]
+* xref:17_Multithreading.adoc[Multithreaded command buffer generation]
 * xref:11_Compute_Shader.adoc[Compute shaders]
+* Dynamic uniforms, separate image and sampler descriptors, pipeline caches, and multiple subpasses - not
+  covered by this series, but demonstrated in the Khronos-maintained
+  https://github.com/KhronosGroup/Vulkan-Samples[Vulkan-Samples] repository
 
 The current program can be extended in many ways, like adding Blinn-Phong lighting, post-processing effects, and shadow mapping.
 You should be able to learn how these effects work from tutorials for other APIs, because despite Vulkan's explicitness, many concepts still work the same.

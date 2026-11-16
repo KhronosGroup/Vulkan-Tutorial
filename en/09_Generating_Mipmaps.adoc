@@ -130,8 +130,19 @@ depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBit
 textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mipLevels);
 ----
 
+In the previous chapter, `createTextureImage` called `beginSingleTimeCommands` and
+`endSingleTimeCommands` three separate times: once around the layout transition, once around the
+buffer-to-image copy, and once around the final transition to shader-read layout. Generating
+mipmaps adds a blit and two more layout transitions for every mip level, and opening a new command
+buffer for each of those would be wasteful. So instead, `createTextureImage` will call
+`beginSingleTimeCommands` once at the start, record the transition, the copy, and all of
+`generateMipmaps` into that same command buffer, and only call `endSingleTimeCommands` once, at
+the very end. `beginSingleTimeCommands` and `endSingleTimeCommands` themselves haven't changed -
+we're just calling them less often:
+
 [,c++]
 ----
+vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
 transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
 ----
 
@@ -315,14 +326,17 @@ Finally, we insert one more pipeline barrier.
 This barrier transitions the last mip level from `vk::ImageLayout::eTransferDstOptimal` to `vk::ImageLayout::eShaderReadOnlyOptimal`.
 The loop didn't handle this, since the last mip level is never blitted from.
 
-Finally, add the call to `generateMipmaps` in `createTextureImage`:
+Finally, add the call to `generateMipmaps` in `createTextureImage`, and end the single-time
+command buffer we opened at the start of this chapter now that every operation has been recorded
+into it:
 
 [,c++]
 ----
-transitionImageLayout(*textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
-copyBufferToImage(stagingBuffer, *textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
+copyBufferToImage(commandBuffer, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 //transitioned to vk::ImageLayout::eShaderReadOnlyOptimal while generating mipmaps
 generateMipmaps(commandBuffer, textureImage, texWidth, texHeight, mipLevels);
+endSingleTimeCommands(std::move(commandBuffer));
 ----
 
 Our texture image's mipmaps are now filled.

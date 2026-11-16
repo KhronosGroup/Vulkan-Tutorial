@@ -53,9 +53,27 @@ You'll set up an AI-assisted environment with Ollama and MCP servers, pick model
 The series ends with a capstone project where you use these tools to build, implement, and debug a custom post-process effect.
 It's aimed at developers who want a clearer, less hyped picture of what AI tooling can realistically do for a Vulkan codebase.
 
+The repository also contains dedicated tutorials on other advanced topics.
+See the xref:00_Introduction.adoc#_advanced_topics[advanced topics list] in the introduction for ray tracing, opacity micromaps, advanced compute, synchronization, advanced glTF, machine learning inference, OpenXR, and more.
+
 Future, planned tutorials will guide you through implementing more sophisticated rendering techniques and architectures.
 
 Remember that Vulkan development is a continuous learning process. The graphics programming landscape is constantly evolving, and there's always more to learn and explore.
+
+=== Keep Learning with Samples and Talks
+
+Reading other people's working Vulkan code is one of the best ways to build on what you've learned here, and there are several good places to find it:
+
+* The https://github.com/KhronosGroup/Vulkan-Samples[Khronos Vulkan Samples] are maintained by Khronos and demonstrate individual Vulkan features and best practices, from extensions such as dynamic rendering and synchronization2 to performance topics.
+Their documentation lives at https://docs.vulkan.org/samples/latest/[docs.vulkan.org/samples].
+* Sascha Willems' https://github.com/SaschaWillems/Vulkan[Vulkan C++ examples] are a large collection of small, self-contained programs covering rendering techniques, compute, ray tracing, and more.
+They are a good place to see how a single feature is wired up without the surrounding engine code.
+* https://www.vulkan.org/events[Vulkanised], the annual Vulkan developer conference, publishes recordings and slides of its talks.
+If you are looking for something approachable, start with the introductory and getting-started sessions before moving on to the deep dives on drivers, tooling, and new extensions.
+* The https://www.vulkan.org/learn[Learning Vulkan] page on vulkan.org collects further guides, tutorials, and videos from the wider community.
+
+If you want to strengthen the general graphics knowledge that this tutorial assumes, the books and tutorials listed in the xref:00_Introduction.adoc[introduction] are worth revisiting.
+Ray Tracing in One Weekend and the Physically Based Rendering book both explain concepts that map directly onto the ray tracing and lighting chapters of the advanced tutorials.
 
 === Community Resources and Getting Help
 

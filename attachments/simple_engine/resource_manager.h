@@ -26,7 +26,7 @@
 /**
  * @brief Base class for all resources.
  */
-class Resource final
+class Resource
 {
   protected:
 	std::string resourceId;
@@ -84,8 +84,7 @@ template <typename T>
 class ResourceHandle
 {
   private:
-	std::string            resourceId;
-	class ResourceManager *resourceManager = nullptr;
+	std::shared_ptr<T> resource;
 
   public:
 	/**
@@ -94,25 +93,30 @@ class ResourceHandle
 	ResourceHandle() = default;
 
 	/**
-	 * @brief Constructor with a resource ID and resource manager.
-	 * @param id The resource ID.
-	 * @param manager The resource manager.
+	 * @brief Constructor wrapping an already-loaded resource.
+	 * @param resource The resource to share ownership of.
 	 */
-	ResourceHandle(const std::string &id, class ResourceManager *manager) :
-	    resourceId(id), resourceManager(manager)
+	explicit ResourceHandle(std::shared_ptr<T> resource) :
+	    resource(std::move(resource))
 	{}
 
 	/**
 	 * @brief Get the resource.
-	 * @return A pointer to the resource, or nullptr if not found.
+	 * @return A pointer to the resource, or nullptr if the handle is invalid.
 	 */
-	T *Get() const;
+	T *Get() const
+	{
+		return resource.get();
+	}
 
 	/**
 	 * @brief Check if the handle is valid.
 	 * @return True if the handle is valid, false otherwise.
 	 */
-	bool IsValid() const;
+	bool IsValid() const
+	{
+		return resource != nullptr;
+	}
 
 	/**
 	 * @brief Get the resource ID.
@@ -120,7 +124,7 @@ class ResourceHandle
 	 */
 	const std::string &GetId() const
 	{
-		return resourceId;
+		return resource->GetId();
 	}
 
 	/**
@@ -157,10 +161,10 @@ class ResourceHandle
  * This class implements the resource management system as described in the Engine_Architecture chapter:
  * @see en/Building_a_Simple_Engine/Engine_Architecture/04_resource_management.adoc
  */
-class ResourceManager final
+class ResourceManager
 {
   private:
-	std::unordered_map<std::type_index, std::unordered_map<std::string, std::unique_ptr<Resource>>> resources;
+	std::unordered_map<std::type_index, std::unordered_map<std::string, std::shared_ptr<Resource>>> resources;
 
   public:
 	/**
@@ -186,51 +190,79 @@ class ResourceManager final
 	{
 		static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
 
-		// Check if the resource already exists
 		auto &typeResources = resources[std::type_index(typeid(T))];
 		auto  it            = typeResources.find(id);
 		if (it != typeResources.end())
 		{
-			return ResourceHandle<T>(id, this);
+			return ResourceHandle<T>(std::static_pointer_cast<T>(it->second));
 		}
 
-		// Create and load the resource
-		auto resource = std::make_unique<T>(id, std::forward<Args>(args)...);
+		// The deleter calls Unload() before delete so it still goes through T's vtable.
+		std::shared_ptr<T> resource(new T(id, std::forward<Args>(args)...), [](T *r) {
+			r->Unload();
+			delete r;
+		});
 		if (!resource->Load())
 		{
 			throw std::runtime_error("Failed to load resource: " + id);
 		}
 
-		// Store the resource
-		typeResources[id] = std::move(resource);
-		return ResourceHandle<T>(id, this);
+		typeResources[id] = resource;
+		return ResourceHandle<T>(resource);
 	}
 
 	/**
-	 * @brief Get a resource.
+	 * @brief Get a handle to an already-loaded resource.
 	 * @tparam T The type of resource.
 	 * @param id The resource ID.
-	 * @return A pointer to the resource, or nullptr if not found.
+	 * @return A handle sharing ownership of the resource, or an invalid handle if not found.
 	 */
 	template <typename T>
-	T *GetResource(const std::string &id)
+	ResourceHandle<T> GetResource(const std::string &id)
 	{
 		static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
 
 		auto typeIt = resources.find(std::type_index(typeid(T)));
 		if (typeIt == resources.end())
 		{
-			return nullptr;
+			return ResourceHandle<T>();
 		}
 
 		auto &typeResources = typeIt->second;
 		auto  resourceIt    = typeResources.find(id);
 		if (resourceIt == typeResources.end())
 		{
-			return nullptr;
+			return ResourceHandle<T>();
 		}
 
-		return static_cast<T *>(resourceIt->second.get());
+		return ResourceHandle<T>(std::static_pointer_cast<T>(resourceIt->second));
+	}
+
+	/**
+	 * @brief Get the current reference count of a resource.
+	 * @tparam T The type of resource.
+	 * @param id The resource ID.
+	 * @return The number of outstanding references, or 0 if the resource doesn't exist.
+	 */
+	template <typename T>
+	long UseCount(const std::string &id) const
+	{
+		static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
+
+		auto typeIt = resources.find(std::type_index(typeid(T)));
+		if (typeIt == resources.end())
+		{
+			return 0;
+		}
+
+		auto &typeResources = typeIt->second;
+		auto  resourceIt    = typeResources.find(id);
+		if (resourceIt == typeResources.end())
+		{
+			return 0;
+		}
+
+		return resourceIt->second.use_count();
 	}
 
 	/**
@@ -255,10 +287,10 @@ class ResourceManager final
 	}
 
 	/**
-	 * @brief Unload a resource.
+	 * @brief Release the manager's own reference to a resource.
 	 * @tparam T The type of resource.
 	 * @param id The resource ID.
-	 * @return True if the resource was unloaded, false otherwise.
+	 * @return True if the resource existed, false otherwise.
 	 */
 	template <typename T>
 	bool UnloadResource(const std::string &id)
@@ -278,7 +310,6 @@ class ResourceManager final
 			return false;
 		}
 
-		resourceIt->second->Unload();
 		typeResources.erase(resourceIt);
 		return true;
 	}
@@ -288,20 +319,3 @@ class ResourceManager final
 	 */
 	void UnloadAllResources();
 };
-
-// Implementation of ResourceHandle methods
-template <typename T>
-T *ResourceHandle<T>::Get() const
-{
-	if (!resourceManager)
-		return nullptr;
-	return resourceManager->GetResource<T>(resourceId);
-}
-
-template <typename T>
-bool ResourceHandle<T>::IsValid() const
-{
-	if (!resourceManager)
-		return false;
-	return resourceManager->HasResource<T>(resourceId);
-}

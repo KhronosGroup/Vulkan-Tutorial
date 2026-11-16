@@ -169,7 +169,7 @@ Rendering colored lines requires a specialized graphics pipeline. Because we wan
 
 [source,cpp]
 ----
-void create_debug_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout layout, VkPipeline& out_pipeline)
+void create_debug_pipeline(VkDevice device, VkPipelineLayout layout, VkPipeline& out_pipeline)
 {
     // 1. Shaders: Simple unlit color pass
     // Vertex shader takes vec3 pos, vec3 color and multiplies by ViewProj.

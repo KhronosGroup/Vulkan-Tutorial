@@ -109,6 +109,12 @@ In this tutorial, we use Vulkan's dynamic rendering feature with vk::raii instea
 
 === Rendergraphs and Synchronization
 
+NOTE: The rendergraph described in this section is an architectural pattern, not something
+wired into the Simple Engine code in the attached examples. Treat the sections below as a
+guide to a design you could add to the engine yourself, not a description of what
+`attachments/simple_engine` currently does at runtime - the engine issues its render passes
+directly, without going through a rendergraph abstraction.
+
 A rendergraph is a higher-level abstraction that represents the entire rendering process as a directed acyclic graph (DAG), where nodes are render passes and edges represent dependencies between them. This approach offers several advantages over traditional render pass management:
 
 ==== What is a Rendergraph?
@@ -234,8 +240,20 @@ Now we implement the core algorithmic logic that analyzes pass dependencies and 
         // Track which pass produces each resource (write-after-write dependencies)
         std::unordered_map<std::string, size_t> resourceWriters;
 
+        // Resource Production Registration
+        // Register every pass's outputs *before* looking at any inputs, in its own pass over
+        // `passes`. Producers and consumers can appear in any order in the `passes` vector -
+        // a pass added later might produce a resource a pass added earlier consumes - so
+        // dependency discovery below must not assume producers come first positionally.
+        for (size_t i = 0; i < passes.size(); ++i) {
+            for (const auto& output : passes[i].outputs) {
+                resourceWriters[output] = i;                    // Record this pass as producer
+            }
+        }
+
         // Dependency Discovery Through Resource Usage Analysis
-        // Analyze each pass to determine data flow relationships
+        // Now that every producer is known, analyze each pass's inputs to determine data flow
+        // relationships, regardless of where the producer sits in the passes vector.
         for (size_t i = 0; i < passes.size(); ++i) {
             const auto& pass = passes[i];
 
@@ -247,11 +265,6 @@ Now we implement the core algorithmic logic that analyzes pass dependencies and 
                     dependencies[i].push_back(it->second);      // This pass depends on the producer
                     dependents[it->second].push_back(i);        // Producer has this as dependent
                 }
-            }
-
-            // Register output production - subsequent passes may depend on these
-            for (const auto& output : pass.outputs) {
-                resourceWriters[output] = i;                    // Record this pass as producer
             }
         }
 
@@ -272,9 +285,10 @@ Now we implement the core algorithmic logic that analyzes pass dependencies and 
 
             inStack[node] = true;   // Mark as currently being processed
 
-            // Recursively process all dependent passes first (post-order traversal)
-            for (auto dependent : dependents[node]) {
-                visit(dependent);
+            // Recursively process all passes this one depends on first (post-order traversal),
+            // so a producer is always pushed onto executionOrder before its consumers.
+            for (auto dependency : dependencies[node]) {
+                visit(dependency);
             }
 
             inStack[node] = false;  // Remove from current path

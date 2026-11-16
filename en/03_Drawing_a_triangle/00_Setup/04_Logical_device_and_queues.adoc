@@ -64,20 +64,6 @@ float queuePriority = 0.5f;
 vk::DeviceQueueCreateInfo deviceQueueCreateInfo { .queueFamilyIndex = graphicsIndex, .queueCount = 1, .pQueuePriorities = &queuePriority };
 ----
 
-== Specifying used device features
-
-The next information to specify is the set of device features that we'll be
-using. These are the features that we queried support for with
-`vk::raii::PhysicalDevice::getFeatures` in the previous chapter, like geometry shaders.
-Right now we don't need anything special, so we can simply define it and leave
-everything to `vk::False`. We'll come back to this structure once we're about to
-start doing more interesting things with Vulkan.
-
-[,c++]
-----
-vk::PhysicalDeviceFeatures deviceFeatures;
-----
-
 == Enabling additional device features
 
 Vulkan is designed to be backwards compatible, which means that by default, you only get access to the basic features that were available in Vulkan 1.0. To use newer features, you need to explicitly request them during device creation.
@@ -108,7 +94,7 @@ vk::StructureChain<vk::PhysicalDeviceFeatures2,
 
 Here's what's happening in this code:
 
-1. We create a `vk::StructureChain` with three different feature structures.
+1. We create a `vk::StructureChain` with four different feature structures.
 2. For each structure in the chain, we provide an initializer:
    - The first structure (`vk::PhysicalDeviceFeatures2`) is left empty with `{}`
    - In the second structure, we enable the `shaderDrawParameters` feature from Vulkan 1.1

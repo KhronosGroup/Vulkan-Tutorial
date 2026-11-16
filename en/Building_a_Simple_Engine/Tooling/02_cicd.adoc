@@ -121,7 +121,6 @@ import vulkan_raii;
 
 // A testable function using vk::raii
 bool create_pipeline(vk::raii::Device& device,
-                     vk::raii::RenderPass& render_pass,
                      vk::raii::PipelineLayout& layout,
                      vk::raii::Pipeline& out_pipeline) {
     try {
@@ -139,11 +138,10 @@ TEST_CASE("Pipeline creation") {
     vk::raii::Context context;
     auto instance = create_test_instance(context);
     auto device = create_test_device(instance);
-    auto render_pass = create_test_render_pass(device);
     auto layout = create_test_pipeline_layout(device);
 
     vk::raii::Pipeline pipeline{nullptr};
-    REQUIRE(create_pipeline(device, render_pass, layout, pipeline));
+    REQUIRE(create_pipeline(device, layout, pipeline));
     REQUIRE(pipeline);
 }
 ----

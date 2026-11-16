@@ -211,9 +211,10 @@ void createInstance()
 }
 ----
 
-If the check was successful then the `vk::raii::Instance` constructor should not
-ever throw a `vk::Result::eErrorLayerNotPresent` error, but you should run the
-program to make sure.
+If the check was successful, the `vk::raii::Instance` constructor should not
+throw a `vk::Result::eErrorLayerNotPresent` error. However, the set of layers
+available on the system can change between the check and the call - or between
+separate runs of the program - so you should still run the program to make sure.
 
 == Message callback
 
@@ -285,10 +286,39 @@ some level of severity, for example:
 
 [,c++]
 ----
-if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+if (severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
     // Message is important enough to show
 }
 ----
+
+Applying that to our `debugCallback`, we can filter out anything less severe
+than a warning so that verbose and informational messages don't clutter the
+output:
+
+[,c++]
+----
+static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
+                                                      vk::DebugUtilsMessageTypeFlagsEXT              type,
+                                                      const vk::DebugUtilsMessengerCallbackDataEXT * pCallbackData,
+                                                      void *                                         pUserData)
+{
+  if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning ||
+      severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+    std::cerr << "validation layer: type " << to_string(type) << " msg: " << pCallbackData->pMessage << std::endl;
+  }
+
+  return vk::False;
+}
+----
+
+Note that `severity` is comparable with `==` here rather than needing a
+bitwise `&`. It's typed as `vk::DebugUtilsMessageSeverityFlagBitsEXT`, not
+`vk::DebugUtilsMessageSeverityFlagsEXT`: the `FlagBits` suffix marks it as an
+enum whose values are individual bits, and Vulkan invokes the callback once
+per severity bit, so `severity` always holds exactly one of those bits on any
+given call. A `Flags` value, by contrast, is a plain integer that can hold
+several `FlagBits` combined together, which is when you'd need `&` to test
+whether one of them is set.
 
 The `messageType` parameter can have the following values:
 

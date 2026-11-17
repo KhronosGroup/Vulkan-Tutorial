@@ -76,7 +76,8 @@ build_and_install_ktx() {
 		-DBUILD_SHARED_LIBS=OFF \
 		-DKTX_FEATURE_TESTS=OFF \
 		-DKTX_FEATURE_TOOLS=OFF \
-		-DKTX_FEATURE_VULKAN=ON
+		-DKTX_FEATURE_VULKAN=ON \
+		-DCMAKE_CXX_FLAGS="-Wno-overriding-option"
 	cmake --build "${workRoot}/KTX-Software-build" --parallel
 	sudo cmake --install "${workRoot}/KTX-Software-build"
 }

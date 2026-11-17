@@ -375,6 +375,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
               -DKTX_FEATURE_TESTS=OFF -DKTX_FEATURE_TOOLS=OFF \
               -DKTX_FEATURE_VULKAN=ON -DCMAKE_INSTALL_PREFIX="${LOCAL_INSTALL}" \
+              -DCMAKE_CXX_FLAGS="-Wno-overriding-option" \
               -DVulkan_INCLUDE_DIR="${Vulkan_INCLUDE_DIR}"
             cmake --build "${WORK_ROOT}/KTX-Software-build" --parallel
             cmake --install "${WORK_ROOT}/KTX-Software-build"

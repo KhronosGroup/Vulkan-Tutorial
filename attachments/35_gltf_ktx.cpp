@@ -63,6 +63,8 @@ typedef void AssetManagerType;
 #	define GLFW_INCLUDE_VULKAN
 #	include <GLFW/glfw3.h>
 
+#	include "glfw_guard.h"
+
 // Define logging macros for Desktop
 #	define LOGI(...)        \
 		printf(__VA_ARGS__); \
@@ -264,6 +266,9 @@ class VulkanApplication
 		return 0;
 	}
 #else
+	// Declared first, so GLFW outlives every Vulkan member below. See glfw_guard.h.
+	GlfwGuard glfwGuard;
+
 	GLFWwindow *window = nullptr;
 #endif
 
@@ -327,8 +332,6 @@ class VulkanApplication
 #if PLATFORM_DESKTOP
 	void initWindow()
 	{
-		glfwInit();
-
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
@@ -394,8 +397,7 @@ class VulkanApplication
 #if PLATFORM_DESKTOP
 	void cleanup() const
 	{
-		glfwDestroyWindow(window);
-		glfwTerminate();
+		// GLFW is torn down by glfwGuard (see glfw_guard.h), not here.
 	}
 #endif
 

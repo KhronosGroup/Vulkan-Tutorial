@@ -528,6 +528,7 @@ That's all there is describing the programmable stages of the pipeline.
 In the xref:./02_Fixed_functions.adoc[next chapter,] we'll look at the fixed-function stages.
 
 link:/attachments/09_shader_modules.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/09_shader_base.slang[Slang shader] /
 link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
 link:/attachments/09_shader_base.frag[GLSL Fragment shader]

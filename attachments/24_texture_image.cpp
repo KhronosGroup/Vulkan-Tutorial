@@ -20,6 +20,8 @@ import vulkan_hpp;
 #define GLFW_INCLUDE_VULKAN        // REQUIRED only for GLFW CreateWindowSurface.
 #include <GLFW/glfw3.h>
 
+#include "glfw_guard.h"
+
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -85,6 +87,9 @@ class HelloTriangleApplication
 	}
 
   private:
+	// Declared first, so GLFW outlives every Vulkan member below. See glfw_guard.h.
+	GlfwGuard glfwGuard;
+
 	GLFWwindow                      *window = nullptr;
 	vk::raii::Context                context;
 	vk::raii::Instance               instance       = nullptr;
@@ -134,8 +139,6 @@ class HelloTriangleApplication
 
 	void initWindow()
 	{
-		glfwInit();
-
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
@@ -191,9 +194,7 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		glfwDestroyWindow(window);
-
-		glfwTerminate();
+		// GLFW is torn down by glfwGuard (see glfw_guard.h), not here.
 	}
 
 	void recreateSwapChain()

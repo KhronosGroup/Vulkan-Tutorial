@@ -478,4 +478,5 @@ to show you how helpful the validation layers are with catching them and to teac
 how important it is to know exactly what you're doing with Vulkan. Now it's time
 to look at xref:./03_Physical_devices_and_queue_families.adoc[Vulkan devices in the system].
 
-link:/attachments/02_validation_layers.cpp[C{pp} code]
+link:/attachments/02_validation_layers.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

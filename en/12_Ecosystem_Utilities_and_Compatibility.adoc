@@ -547,4 +547,5 @@ Based on what we've learned, here are some best practices for developing Vulkan 
 
 Understanding Vulkan ecosystem utilities and knowing how to adapt your code for different GPU capabilities are essential skills for Vulkan developers. By following the approaches outlined in this chapter, you can create applications that run on a wide range of hardware while still taking advantage of the latest features when available.
 
-link:/attachments/32_ecosystem_utilities.cpp[C{pp} code]
+link:/attachments/32_ecosystem_utilities.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

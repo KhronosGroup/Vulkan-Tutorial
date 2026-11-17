@@ -248,6 +248,7 @@ You can use these images as inputs to implement cool effects like post-processin
 In the xref:07_Depth_buffering.adoc[next chapter] we'll learn how to add depth buffering for properly sorting objects.
 
 link:/attachments/26_texture_mapping.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/26_shader_textures.slang[slang shader] /
 link:/attachments/26_shader_textures.vert[GLSL Vertex shader] /
 link:/attachments/26_shader_textures.frag[GLSL Fragment shader]

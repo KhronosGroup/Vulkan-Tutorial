@@ -840,4 +840,5 @@ The complete Android example can be found in the attachments/android directory. 
 
 Remember that Vulkan HPP is not included by default in the Android NDK, so you'll need to download it separately from the https://github.com/KhronosGroup/Vulkan-Hpp[Vulkan-Hpp GitHub repository] or use the version included in the Vulkan SDK.
 
-link:/attachments/34_android.cpp[C{pp} code]
+link:/attachments/34_android.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h]

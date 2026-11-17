@@ -466,6 +466,7 @@ Congratulations, your application is now finally ready to render arbitrary 3D ge
 We're going to try this out in the xref:08_Loading_models.adoc[next chapter] by drawing a textured model!
 
 link:/attachments/27_depth_buffering.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/27_shader_depth.slang[slang shader] /
 link:/attachments/27_shader_depth.vert[GLSL Vertex shader] /
 link:/attachments/27_shader_depth.frag[GLSL Fragment shader]

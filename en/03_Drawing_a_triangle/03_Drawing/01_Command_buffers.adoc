@@ -336,6 +336,7 @@ commandBuffer.end();
 In the xref:./02_Rendering_and_presentation.adoc[next chapter] we'll write the code for the main loop, which will acquire an image from the swap chain, record and execute a command buffer, then return the finished image to the swap chain.
 
 link:/attachments/14_command_buffers.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/09_shader_base.slang[Slang shader] /
 link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
 link:/attachments/09_shader_base.frag[GLSL Fragment shader]

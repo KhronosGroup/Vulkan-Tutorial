@@ -61,11 +61,11 @@ void cleanupSwapChain()
 void cleanup()
 {
     cleanupSwapChain();
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
 }
 ----
+
+GLFW is still torn down by `glfwGuard`, which is destroyed after every Vulkan
+member, so `cleanup` must not terminate it here.
 
 Note that in `chooseSwapExtent` we already query the new window resolution to make sure that the swap chain images have the (new) right size, so there's no need to modify `chooseSwapExtent` (remember that we already had to use `glfwGetFramebufferSize` to get the resolution of the surface in pixels when creating the swap chain).
 
@@ -214,8 +214,6 @@ Now, to actually detect resizes, we can use the `glfwSetFramebufferSizeCallback`
 ----
 void initWindow()
 {
-    glfwInit();
-
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
@@ -284,6 +282,7 @@ Congratulations, you've now finished your very first well-behaved Vulkan program
 In the xref:04_Vertex_buffers/00_Vertex_input_description.adoc[next chapter] we're going to get rid of the hardcoded vertices in the vertex shader and actually use a vertex buffer.
 
 link:/attachments/17_swap_chain_recreation.cpp[C{pp} code] /
+link:/attachments/glfw_guard.h[glfw_guard.h] /
 link:/attachments/09_shader_base.slang[Slang shader] /
 link:/attachments/09_shader_base.vert[GLSL Vertex shader] /
 link:/attachments/09_shader_base.frag[GLSL Fragment shader]

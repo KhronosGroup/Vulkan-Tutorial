@@ -619,14 +619,17 @@ class HelloTriangleApplication
 			throw std::runtime_error("texture image format does not support linear blitting!");
 		}
 
-		vk::ImageMemoryBarrier barrier = {.srcAccessMask       = vk::AccessFlagBits::eTransferWrite,
-		                                  .dstAccessMask       = vk::AccessFlagBits::eTransferRead,
-		                                  .oldLayout           = vk::ImageLayout::eTransferDstOptimal,
-		                                  .newLayout           = vk::ImageLayout::eTransferSrcOptimal,
-		                                  .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-		                                  .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-		                                  .image               = image,
-		                                  .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
+		vk::ImageMemoryBarrier2 barrier = {.srcStageMask        = vk::PipelineStageFlagBits2::eTransfer,
+		                                   .srcAccessMask       = vk::AccessFlagBits2::eTransferWrite,
+		                                   .dstStageMask        = vk::PipelineStageFlagBits2::eTransfer,
+		                                   .dstAccessMask       = vk::AccessFlagBits2::eTransferRead,
+		                                   .oldLayout           = vk::ImageLayout::eTransferDstOptimal,
+		                                   .newLayout           = vk::ImageLayout::eTransferSrcOptimal,
+		                                   .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+		                                   .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+		                                   .image               = image,
+		                                   .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
+		vk::DependencyInfo       dependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
 
 		int32_t mipWidth  = texWidth;
 		int32_t mipHeight = texHeight;
@@ -636,10 +639,12 @@ class HelloTriangleApplication
 			barrier.subresourceRange.baseMipLevel = i - 1;
 			barrier.oldLayout                     = vk::ImageLayout::eTransferDstOptimal;
 			barrier.newLayout                     = vk::ImageLayout::eTransferSrcOptimal;
-			barrier.srcAccessMask                 = vk::AccessFlagBits::eTransferWrite;
-			barrier.dstAccessMask                 = vk::AccessFlagBits::eTransferRead;
+			barrier.srcAccessMask                 = vk::AccessFlagBits2::eTransferWrite;
+			barrier.dstAccessMask                 = vk::AccessFlagBits2::eTransferRead;
+			barrier.srcStageMask                  = vk::PipelineStageFlagBits2::eTransfer;
+			barrier.dstStageMask                  = vk::PipelineStageFlagBits2::eTransfer;
 
-			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier);
+			commandBuffer.pipelineBarrier2(dependencyInfo);
 
 			vk::ImageBlit blit = {.srcSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = i - 1, .layerCount = 1},
 			                      .srcOffsets     = std::array<vk::Offset3D, 2>({{}, {mipWidth, mipHeight, 1}}),
@@ -650,10 +655,12 @@ class HelloTriangleApplication
 
 			barrier.oldLayout     = vk::ImageLayout::eTransferSrcOptimal;
 			barrier.newLayout     = vk::ImageLayout::eShaderReadOnlyOptimal;
-			barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-			barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+			barrier.srcAccessMask = vk::AccessFlagBits2::eTransferRead;
+			barrier.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
+			barrier.srcStageMask  = vk::PipelineStageFlagBits2::eTransfer;
+			barrier.dstStageMask  = vk::PipelineStageFlagBits2::eFragmentShader;
 
-			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+			commandBuffer.pipelineBarrier2(dependencyInfo);
 
 			if (1 < mipWidth)
 			{
@@ -668,10 +675,12 @@ class HelloTriangleApplication
 		barrier.subresourceRange.baseMipLevel = mipLevels - 1;
 		barrier.oldLayout                     = vk::ImageLayout::eTransferDstOptimal;
 		barrier.newLayout                     = vk::ImageLayout::eShaderReadOnlyOptimal;
-		barrier.srcAccessMask                 = vk::AccessFlagBits::eTransferWrite;
-		barrier.dstAccessMask                 = vk::AccessFlagBits::eShaderRead;
+		barrier.srcAccessMask                 = vk::AccessFlagBits2::eTransferWrite;
+		barrier.dstAccessMask                 = vk::AccessFlagBits2::eShaderRead;
+		barrier.srcStageMask                  = vk::PipelineStageFlagBits2::eTransfer;
+		barrier.dstStageMask                  = vk::PipelineStageFlagBits2::eFragmentShader;
 
-		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+		commandBuffer.pipelineBarrier2(dependencyInfo);
 	}
 
 	void createTextureImageView()
@@ -743,37 +752,35 @@ class HelloTriangleApplication
 	void transitionImageLayout(
 	    vk::raii::CommandBuffer &commandBuffer, vk::raii::Image const &image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, uint32_t mipLevels)
 	{
-		vk::ImageMemoryBarrier barrier{.oldLayout           = oldLayout,
-		                               .newLayout           = newLayout,
-		                               .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-		                               .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-		                               .image               = image,
-		                               .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = mipLevels, .layerCount = 1}};
-
-		vk::PipelineStageFlags sourceStage;
-		vk::PipelineStageFlags destinationStage;
+		vk::ImageMemoryBarrier2 barrier{.oldLayout           = oldLayout,
+		                                .newLayout           = newLayout,
+		                                .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+		                                .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+		                                .image               = image,
+		                                .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = mipLevels, .layerCount = 1}};
 
 		if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal)
 		{
 			barrier.srcAccessMask = {};
-			barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+			barrier.dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
 
-			sourceStage      = vk::PipelineStageFlagBits::eTopOfPipe;
-			destinationStage = vk::PipelineStageFlagBits::eTransfer;
+			barrier.srcStageMask = vk::PipelineStageFlagBits2::eNone;
+			barrier.dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
 		}
 		else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
 		{
-			barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-			barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+			barrier.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+			barrier.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
 
-			sourceStage      = vk::PipelineStageFlagBits::eTransfer;
-			destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+			barrier.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+			barrier.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
 		}
 		else
 		{
 			throw std::invalid_argument("unsupported layout transition!");
 		}
-		commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, {}, {}, barrier);
+		vk::DependencyInfo dependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+		commandBuffer.pipelineBarrier2(dependencyInfo);
 	}
 
 	void copyBufferToImage(vk::raii::CommandBuffer &commandBuffer, const vk::raii::Buffer &buffer, vk::raii::Image &image, uint32_t width, uint32_t height)

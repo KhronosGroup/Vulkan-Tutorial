@@ -352,17 +352,18 @@ void transitionImageLayout(vk::raii::CommandBuffer &commandBuffer, const vk::rai
 ----
 
 One of the most common ways to perform layout transitions is using an _image memory barrier_.
+Just like when we transitioned the swapchain image while recording the command buffer, we use the synchronization2 versions of these structures, `vk::ImageMemoryBarrier2` and `vk::DependencyInfo`.
 A pipeline barrier like that is generally used to synchronize access to resources, like ensuring that a write to a buffer completes before reading from it, but it can also be used to transition image layouts and transfer queue family ownership when `vk::SharingMode::eExclusive` is used.
 There is an equivalent _buffer memory barrier_ to do this for buffers.
 
 [,c++]
 ----
-vk::ImageMemoryBarrier barrier{.oldLayout           = oldLayout,
-                               .newLayout           = newLayout,
-                               .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-                               .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-                               .image               = image,
-                               .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
+vk::ImageMemoryBarrier2 barrier{.oldLayout           = oldLayout,
+                                .newLayout           = newLayout,
+                                .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+                                .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+                                .image               = image,
+                                .subresourceRange    = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1}};
 ----
 
 `oldLayout` and `newLayout` specify the the layout transition.
@@ -375,26 +376,27 @@ The `image` and `subresourceRange` specify the image that is affected and the sp
 Our image is not an array and does not have mipmapping levels, so only one level and layer are specified.
 
 Barriers are primarily used for synchronization purposes, so you must specify which types of operations that involve the resource must happen before the barrier, and which operations that involve the resource must wait on the barrier.
+With synchronization2, each barrier carries its own `srcStageMask`, `srcAccessMask`, `dstStageMask` and `dstAccessMask`.
 The right values depend on the old and new layout, so we'll get back to this once we've figured out which transitions we're going to use.
 
 [,c++]
 ----
-commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, {}, {}, barrier);
+vk::DependencyInfo dependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+commandBuffer.pipelineBarrier2(dependencyInfo);
 ----
 
-All types of pipeline barriers are submitted using the same function.
-The first parameter specifies in which pipeline stage the operations occur that should happen before the barrier.
-The second parameter specifies the pipeline stage in which operations will wait on the barrier.
+All types of pipeline barriers are submitted using the same function, with the barriers of each kind gathered into a `vk::DependencyInfo`.
+The stage masks inside the barrier specify in which pipeline stage the operations occur that should happen before the barrier, and in which pipeline stage operations will wait on the barrier.
 The pipeline stages that you are allowed to specify before and after the barrier depend on how you use the resource before and after the barrier.
 The allowed values are listed in https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-access-types-supported[this table] of the specification.
-For example, if you're going to read from a uniform after the barrier, you would specify a usage of `vk::AccessFlagBits::eUniformRead` and the earliest shader that will read from the uniform as pipeline stage, for example `vk::PipelineStageFlagBits::eFragmentShader`.
+For example, if you're going to read from a uniform after the barrier, you would specify a usage of `vk::AccessFlagBits2::eUniformRead` and the earliest shader that will read from the uniform as pipeline stage, for example `vk::PipelineStageFlagBits2::eFragmentShader`.
 It would not make sense to specify a non-shader pipeline stage for this type of usage and the validation layers will warn you when you specify a pipeline stage that does not match the type of usage.
 
-The third parameter is either `{}` or `vk::DependencyFlagBits::eByRegion`.
+The `dependencyFlags` member of `vk::DependencyInfo` can be left empty or set to `vk::DependencyFlagBits::eByRegion`.
 The latter turns the barrier into a per-region condition.
 That means that the implementation is allowed to already begin reading from the parts of a resource that were written so far, for example.
 
-The last three parameters reference arrays of pipeline barriers of the three available types: memory barriers, buffer memory barriers, and image memory barriers like the one we're using here.
+The remaining members of `vk::DependencyInfo` reference arrays of barriers of the three available types: memory barriers, buffer memory barriers, and image memory barriers like the one we're using here.
 
 == Copying buffer to image
 
@@ -483,35 +485,33 @@ These rules are specified using the following access masks and pipeline stages:
 
 [,c++]
 ----
-vk::PipelineStageFlags sourceStage;
-vk::PipelineStageFlags destinationStage;
-
 if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal)
 {
   barrier.srcAccessMask = {};
-  barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+  barrier.dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
 
-  sourceStage      = vk::PipelineStageFlagBits::eTopOfPipe;
-  destinationStage = vk::PipelineStageFlagBits::eTransfer;
+  barrier.srcStageMask = vk::PipelineStageFlagBits2::eNone;
+  barrier.dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
 }
 else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
 {
-  barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-  barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+  barrier.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+  barrier.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
 
-  sourceStage      = vk::PipelineStageFlagBits::eTransfer;
-  destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+  barrier.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+  barrier.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
 }
 else
 {
   throw std::invalid_argument("unsupported layout transition!");
 }
-commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, {}, nullptr, barrier);
+vk::DependencyInfo dependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+commandBuffer.pipelineBarrier2(dependencyInfo);
 ----
 
 As you can see in the aforementioned table, transfer writes must occur in the pipeline transfer stage.
-Since the writings don't have to wait on anything, you may specify an empty access mask and the earliest possible pipeline stage `vk::PipelineStageFlagBits::eTopOfPipe` for the pre-barrier operations.
-It should be noted that `vk::PipelineStageFlagBits::eTransfer` is not a _real_ stage within the graphics and compute pipelines.
+Since the writings don't have to wait on anything, you may specify an empty access mask and `vk::PipelineStageFlagBits2::eNone` for the pre-barrier operations.
+It should be noted that `vk::PipelineStageFlagBits2::eTransfer` is not a _real_ stage within the graphics and compute pipelines.
 It is more of a pseudo-stage where transfers happen.
 See https://docs.vulkan.org/spec/latest/chapters/synchronization.html#VkPipelineStageFlagBits[the documentation] for more information and other examples of pseudo-stages.
 
@@ -520,8 +520,8 @@ The image will be written in the same pipeline stage and subsequently read by th
 If we need to do more transitions in the future, then we'll extend the function.
 The application should now run successfully, although there are of course no visual changes yet.
 
-One thing to note is that command buffer submission results in implicit `vk::AccessFlagBits::eHostWrite` synchronization at the beginning.
-Since the `transitionImageLayout` function executes a command buffer with only a single command, you could use this implicit synchronization and set `srcAccessMask` to `0` if you ever needed a `vk::AccessFlagBits::eHostWrite` dependency in a layout transition.
+One thing to note is that command buffer submission results in implicit `vk::AccessFlagBits2::eHostWrite` synchronization at the beginning.
+Since the `transitionImageLayout` function executes a command buffer with only a single command, you could use this implicit synchronization and set `srcAccessMask` to `0` if you ever needed a `vk::AccessFlagBits2::eHostWrite` dependency in a layout transition.
 It's up to you if you want to be explicit about it or not, but I'm personally not a fan of relying on these OpenGL-like "hidden" operations.
 
 There is actually a special type of image layout that supports all operations, `vk::ImageLayout::eGeneral`.

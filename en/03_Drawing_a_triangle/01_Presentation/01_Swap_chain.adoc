@@ -22,22 +22,12 @@ into the window system and the surfaces associated with windows, it is not
 part of the Vulkan core. You have to enable the `VK_KHR_swapchain` device
 extension after querying for its support.
 
-For that purpose we'll first extend the `createLogicalDevice` function to
-check if this extension is supported. We've previously seen how to list the
-extensions that are supported by a `vk::raii::PhysicalDevice`, so doing that should
-be fairly straightforward. Note that the Vulkan header file provides a nice
-macro `vk::KHRSwapchainExtensionName` that is defined as
-`VK_KHR_swapchain`. The advantage of using this macro is that the compiler
-will catch misspellings.
-
-First declare a list of required device extensions, similar to the list of
-validation layers to enable.
-
-[,c++]
-----
-std::vector<const char*> requiredDeviceExtension = {
-    vk::KHRSwapchainExtensionName};
-----
+We already queried for it in `isDeviceSuitable` during
+xref:03_Drawing_a_triangle/00_Setup/03_Physical_devices_and_queue_families.adoc#_required_extension_check[physical device selection],
+which only selects devices that support every extension within `requiredDeviceExtension`.
+Note that the Vulkan header file provides a nice macro `vk::KHRSwapchainExtensionName`
+that is defined as `VK_KHR_swapchain`. The advantage of using this macro is that the
+compiler will catch misspellings.
 
 It should be noted that the availability of a presentation queue,
 as we checked in the previous chapter, implies that the swap chain extension

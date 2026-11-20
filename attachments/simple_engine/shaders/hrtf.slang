@@ -47,8 +47,9 @@ uint FindClosestHRTF(float azimuth, float elevation) {
     // In a real implementation, this would find the closest HRTF in the dataset
     // based on the azimuth and elevation angles
 
-    // Normalize azimuth to [0, 360) degrees
-    azimuth = fmod(azimuth + 360.0, 360.0);
+    // Azimuth arrives as 0 = ahead, positive = right. The table starts at -180 degrees (directly behind),
+    // so shift by 180 and wrap into [0, 360) to get the table's angular offset.
+    azimuth = fmod(azimuth + 180.0 + 360.0, 360.0);
 
     // Clamp elevation to [-90, 90] degrees
     elevation = clamp(elevation, -90.0, 90.0);
@@ -64,13 +65,18 @@ uint FindClosestHRTF(float azimuth, float elevation) {
 
 // Helper function to calculate azimuth and elevation angles
 void CalculateAngles(float3 sourceDir, float3 listenerForward, float3 listenerUp, out float azimuth, out float elevation) {
-    // Simplified angle calculation - directly use source direction
-    // Calculate azimuth (horizontal angle) - angle around Y axis
-    azimuth = atan2(sourceDir.x, -sourceDir.z) * 57.2957795; // Convert to degrees, negate z for correct orientation
+    // Express the source direction in the listener's frame: +Z ahead, +X right, +Y up
+    float3 f = normalize(listenerForward);
+    float3 r = normalize(cross(f, listenerUp));
+    float3 u = cross(r, f);
+    float3 local = float3(dot(sourceDir, r), dot(sourceDir, u), dot(sourceDir, f));
 
-    // Calculate elevation (vertical angle) - angle from horizontal plane
-    float horizontalLength = sqrt(sourceDir.x * sourceDir.x + sourceDir.z * sourceDir.z);
-    elevation = atan2(sourceDir.y, horizontalLength) * 57.2957795; // Convert to degrees
+    // Azimuth (horizontal angle): 0 = ahead, positive = right
+    azimuth = atan2(local.x, local.z) * 57.2957795; // Convert to degrees
+
+    // Elevation (vertical angle) - angle from horizontal plane
+    float horizontalLength = sqrt(local.x * local.x + local.z * local.z);
+    elevation = atan2(local.y, horizontalLength) * 57.2957795; // Convert to degrees
 }
 
 // Main compute shader function
